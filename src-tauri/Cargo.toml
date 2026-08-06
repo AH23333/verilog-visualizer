@@ -1,0 +1,19 @@
+[package]
+name = "verilog-visualizer"
+version = "0.1.0"
+description = "Verilog Circuit Visualizer powered by DigitalJS"
+authors = ["you"]
+edition = "2021"
+
+[lib]
+name = "verilog_visualizer_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2.7.2"
+tauri-plugin-fs = "2.5.1"
