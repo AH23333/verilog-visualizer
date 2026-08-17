@@ -28,14 +28,14 @@ export async function initYosys(): Promise<YosysModule> {
 
   initPromise = (async () => {
     if (typeof window.Yosys !== 'function') {
-      throw new Error('window.Yosys is not available.');
+      throw new Error('window.Yosys is not available. Ensure yosys.browser.js is loaded.');
     }
     const mod = await window.Yosys({
       noInitialRun: true,
       locateFile: (path: string) => '/yosys/' + path,
     });
     if (!mod.FS) {
-      throw new Error('FS not available');
+      throw new Error('Yosys FS not available');
     }
     yosysModule = mod;
     return mod;
@@ -44,14 +44,23 @@ export async function initYosys(): Promise<YosysModule> {
   return initPromise;
 }
 
+/**
+ * Compile Verilog source code to a DigitalJS circuit JSON.
+ * Clears Yosys state between calls to allow multiple compilations.
+ */
 export async function compileVerilog(verilogCode: string) {
   const mod = await initYosys();
   const FS = mod.FS;
+
   const filename = '/input.v';
   const scriptFile = '/script.ys';
   const jsonFile = '/output.json';
+
   FS.writeFile(filename, verilogCode);
+
+  // design -reset ensures clean state for re-imports
   const script = [
+    'design -reset',
     'read_verilog ' + filename,
     'hierarchy -auto-top',
     'proc',
@@ -64,16 +73,27 @@ export async function compileVerilog(verilogCode: string) {
     'opt',
     'write_json ' + jsonFile,
   ].join('\n');
+
   FS.writeFile(scriptFile, script);
-  mod.callMain([scriptFile]);
+
+  try {
+    mod.callMain([scriptFile]);
+  } catch (err: any) {
+    throw new Error('Yosys compilation failed: ' + (err.message || String(err)));
+  }
+
   const jsonStr = FS.readFile(jsonFile, { encoding: 'utf8' }) as string;
-  FS.unlink(filename);
-  FS.unlink(scriptFile);
-  FS.unlink(jsonFile);
+
+  // Cleanup temp files
+  try { FS.unlink(filename); } catch {}
+  try { FS.unlink(scriptFile); } catch {}
+  try { FS.unlink(jsonFile); } catch {}
+
   const yosysOutput = JSON.parse(jsonStr);
   if (!yosysOutput.modules || Object.keys(yosysOutput.modules).length === 0) {
-    throw new Error('No modules');
+    throw new Error('No modules found in the Verilog source. Check the syntax.');
   }
+
   const digitaljsCircuit = yosys2digitaljs(yosysOutput, { propagation: 1 });
   io_ui(digitaljsCircuit);
   return digitaljsCircuit;

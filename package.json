@@ -20,7 +20,13 @@
     "react-dom": "^19.1.0",
     "tailwind-merge": "^3.6.0",
     "yosys": "^0.30.5",
-    "yosys2digitaljs": "^0.10.3"
+    "yosys2digitaljs": "^0.10.3",
+    "@codemirror/state": "^6",
+    "@codemirror/view": "^6",
+    "@codemirror/language": "^6",
+    "@codemirror/commands": "^6",
+    "@codemirror/legacy-modes": "^6",
+    "@codemirror/theme-one-dark": "^6"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
