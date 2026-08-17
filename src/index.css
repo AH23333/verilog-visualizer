@@ -27,6 +27,7 @@ html, body, #root {
   --dropdown-bg: #252526;
   --sidebar-bg: #252526;
   --toolbar-bg: #2d2d2d;
+  --panel-bg: #2d2d2d;
   --canvas-bg: #1e1e1e;
   --input-bg: #3c3c3c;
   --accent: #007acc;
@@ -47,6 +48,7 @@ html, body, #root {
   --dropdown-bg: #ffffff;
   --sidebar-bg: #f3f3f3;
   --toolbar-bg: #f3f3f3;
+  --panel-bg: #f3f3f3;
   --canvas-bg: #ffffff;
   --input-bg: #e0e0e0;
   --accent: #0078d4;

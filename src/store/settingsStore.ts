@@ -1,7 +1,10 @@
 // Global settings store
-// Manages font size and other UI preferences
+// Manages font size, default view mode, and other UI preferences
 
 const FONT_SIZE_KEY = 'verilog-viz-font-size';
+const DEFAULT_VIEW_KEY = 'verilog-viz-default-view';
+
+export type ViewMode = 'circuit' | 'code';
 
 function getSavedFontSize(): number {
   try {
@@ -14,7 +17,16 @@ function getSavedFontSize(): number {
   return 13;
 }
 
+function getSavedDefaultView(): ViewMode {
+  try {
+    const saved = localStorage.getItem(DEFAULT_VIEW_KEY);
+    if (saved === 'code' || saved === 'circuit') return saved;
+  } catch {}
+  return 'circuit';
+}
+
 let fontSize: number = getSavedFontSize();
+let defaultViewMode: ViewMode = getSavedDefaultView();
 let listeners: Array<() => void> = [];
 
 function notify() {
@@ -22,7 +34,6 @@ function notify() {
 }
 
 // Apply font size to document root
-// Sets html { font-size } so that 1rem = fontSize px globally
 function applyFontSize(size: number) {
   document.documentElement.style.fontSize = `${size}px`;
   document.documentElement.style.setProperty('--editor-font-size', `${size}px`);
@@ -52,6 +63,16 @@ export const settingsStore = {
 
   resetFontSize(): void {
     this.setFontSize(13);
+  },
+
+  getDefaultViewMode(): ViewMode {
+    return defaultViewMode;
+  },
+
+  setDefaultViewMode(mode: ViewMode): void {
+    defaultViewMode = mode;
+    localStorage.setItem(DEFAULT_VIEW_KEY, mode);
+    notify();
   },
 
   subscribe(fn: () => void): () => void {

@@ -7,6 +7,7 @@ interface MenuBarProps {
   onToggleTheme: () => void;
   onResetZoom: () => void;
   onFitToWindow: () => void;
+  onCreateFile: () => void;
   currentTheme: Theme;
 }
 
@@ -15,7 +16,7 @@ interface MenuState {
   items: { label: string; action: () => void; shortcut?: string }[];
 }
 
-export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFitToWindow, currentTheme }: MenuBarProps) {
+export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFitToWindow, onCreateFile, currentTheme }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -41,13 +42,23 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
       label: 'File',
       items: [
         {
+          label: 'New File...',
+          shortcut: 'Ctrl+N',
+          action: () => { onCreateFile(); setOpenMenu(null); },
+        },
+        {
           label: 'Import Verilog File...',
           shortcut: 'Ctrl+O',
           action: () => { onImportFile(); setOpenMenu(null); },
         },
         {
-          label: 'Close File',
-          shortcut: 'Ctrl+W',
+          label: 'Save',
+          shortcut: 'Ctrl+S',
+          action: () => { setOpenMenu(null); },
+        },
+        {
+          label: 'Compile',
+          shortcut: 'F5',
           action: () => { setOpenMenu(null); },
         },
       ],
@@ -90,7 +101,7 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
       items: [
         {
           label: `Editor Font Size: ${editorFontSize}px`,
-          action: () => {}, // non-clickable, just shows current value
+          action: () => {},
           shortcut: undefined,
         },
         {
@@ -107,6 +118,13 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
           label: 'Reset Font Size',
           shortcut: 'Ctrl+0',
           action: () => { settingsStore.resetFontSize(); },
+        },
+        {
+          label: `Default View: ${settingsStore.getDefaultViewMode() === 'circuit' ? 'Circuit' : 'Code'}`,
+          action: () => {
+            const current = settingsStore.getDefaultViewMode();
+            settingsStore.setDefaultViewMode(current === 'circuit' ? 'code' : 'circuit');
+          },
         },
         {
           label: 'Toggle Sidebar',

@@ -7,6 +7,7 @@ interface CodeEditorProps {
   theme: 'dark' | 'light';
   onCodeChange: (code: string) => void;
   onRecompile: () => void;
+  onSave: () => void;
   isCompiling: boolean;
 }
 
@@ -16,6 +17,7 @@ export default function CodeEditor({
   theme,
   onCodeChange,
   onRecompile,
+  onSave,
   isCompiling,
 }: CodeEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -60,8 +62,14 @@ export default function CodeEditor({
         });
         return;
       }
-      // Ctrl+S / Cmd+S: recompile
+      // Ctrl+S / Cmd+S: save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        onSave();
+        return;
+      }
+      // F5: recompile
+      if (e.key === 'F5') {
         e.preventDefault();
         onRecompile();
         return;
@@ -135,7 +143,7 @@ export default function CodeEditor({
             fontWeight: 500,
           }}
         >
-          {isCompiling ? 'Compiling...' : 'Re-compile (Ctrl+S)'}
+          {isCompiling ? 'Compiling...' : 'Compile (F5)'}
         </button>
       </div>
 

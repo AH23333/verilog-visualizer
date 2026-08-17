@@ -1,5 +1,5 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::Manager;
 
 /// Get the project files directory from the app's data directory
@@ -19,28 +19,40 @@ fn ensure_project_dir(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> 
     Ok(dir)
 }
 
-/// Save a file to the project directory
-#[tauri::command]
-fn save_project_file(app_handle: tauri::AppHandle, name: String, content: String) -> Result<(), String> {
-    let dir = ensure_project_dir(&app_handle)?;
-    let path = dir.join(&name);
-    fs::write(&path, &content).map_err(|e| format!("Failed to save file '{}': {}", name, e))?;
-    Ok(())
+/// Sanitize a relative path to prevent directory traversal attacks
+fn sanitize_path(name: &str) -> Result<PathBuf, String> {
+    let path = Path::new(name);
+    // Reject absolute paths
+    if path.is_absolute() {
+        return Err("Absolute paths are not allowed".to_string());
+    }
+    // Reject paths with parent directory traversal
+    for component in path.components() {
+        if let std::path::Component::ParentDir = component {
+            return Err("Parent directory traversal is not allowed".to_string());
+        }
+    }
+    Ok(path.to_path_buf())
 }
 
-/// List all files in the project directory
-#[tauri::command]
-fn list_project_files(app_handle: tauri::AppHandle) -> Result<Vec<ProjectFileInfo>, String> {
-    let dir = ensure_project_dir(&app_handle)?;
+/// Recursively scan a directory for Verilog files, returning relative paths
+fn scan_dir_recursive(base: &Path, dir: &Path) -> Result<Vec<ProjectFileInfo>, String> {
     let mut files = Vec::new();
-
-    let entries = fs::read_dir(&dir).map_err(|e| format!("Failed to read project directory: {}", e))?;
+    let entries = fs::read_dir(dir).map_err(|e| format!("Failed to read directory '{}': {}", dir.display(), e))?;
 
     for entry in entries {
         let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
         let path = entry.path();
-        if path.extension().map_or(false, |ext| ext == "v" || ext == "sv" || ext == "vh") {
-            let metadata = entry.metadata().map_err(|e| format!("Failed to read metadata: {}", e))?;
+        let metadata = entry.metadata().map_err(|e| format!("Failed to read metadata: {}", e))?;
+
+        if metadata.is_dir() {
+            // Recursively scan subdirectories
+            let sub_files = scan_dir_recursive(base, &path)?;
+            files.extend(sub_files);
+        } else if path.extension().map_or(false, |ext| ext == "v" || ext == "sv" || ext == "vh") {
+            let relative = path
+                .strip_prefix(base)
+                .map_err(|e| format!("Failed to get relative path: {}", e))?;
             let modified = metadata
                 .modified()
                 .map(|t| {
@@ -51,7 +63,7 @@ fn list_project_files(app_handle: tauri::AppHandle) -> Result<Vec<ProjectFileInf
                 .unwrap_or(0);
 
             files.push(ProjectFileInfo {
-                name: path.file_name().unwrap().to_string_lossy().to_string(),
+                name: relative.to_string_lossy().to_string().replace('\\', "/"),
                 size: metadata.len(),
                 modified,
             });
@@ -61,22 +73,77 @@ fn list_project_files(app_handle: tauri::AppHandle) -> Result<Vec<ProjectFileInf
     Ok(files)
 }
 
-/// Read a file from the project directory
+/// Save a file to the project directory (supports subdirectories)
+#[tauri::command]
+fn save_project_file(app_handle: tauri::AppHandle, name: String, content: String) -> Result<(), String> {
+    let dir = ensure_project_dir(&app_handle)?;
+    let rel_path = sanitize_path(&name)?;
+    let path = dir.join(&rel_path);
+
+    // Ensure parent directories exist
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create parent directory: {}", e))?;
+    }
+
+    fs::write(&path, &content).map_err(|e| format!("Failed to save file '{}': {}", name, e))?;
+    Ok(())
+}
+
+/// List all files in the project directory (recursively)
+#[tauri::command]
+fn list_project_files(app_handle: tauri::AppHandle) -> Result<Vec<ProjectFileInfo>, String> {
+    let dir = ensure_project_dir(&app_handle)?;
+    scan_dir_recursive(&dir, &dir)
+}
+
+/// Read a file from the project directory (supports subdirectories)
 #[tauri::command]
 fn read_project_file(app_handle: tauri::AppHandle, name: String) -> Result<String, String> {
     let dir = ensure_project_dir(&app_handle)?;
-    let path = dir.join(&name);
+    let rel_path = sanitize_path(&name)?;
+    let path = dir.join(&rel_path);
     fs::read_to_string(&path).map_err(|e| format!("Failed to read file '{}': {}", name, e))
 }
 
-/// Delete a file from the project directory
+/// Delete a file from the project directory (supports subdirectories)
 #[tauri::command]
 fn delete_project_file(app_handle: tauri::AppHandle, name: String) -> Result<(), String> {
     let dir = ensure_project_dir(&app_handle)?;
-    let path = dir.join(&name);
+    let rel_path = sanitize_path(&name)?;
+    let path = dir.join(&rel_path);
     if path.exists() {
         fs::remove_file(&path).map_err(|e| format!("Failed to delete file '{}': {}", name, e))?;
     }
+    Ok(())
+}
+
+/// Create a folder in the project directory
+#[tauri::command]
+fn create_project_folder(app_handle: tauri::AppHandle, name: String) -> Result<(), String> {
+    let dir = ensure_project_dir(&app_handle)?;
+    let rel_path = sanitize_path(&name)?;
+    let path = dir.join(&rel_path);
+    if path.exists() {
+        return Err(format!("Folder '{}' already exists", name));
+    }
+    fs::create_dir_all(&path).map_err(|e| format!("Failed to create folder '{}': {}", name, e))?;
+    Ok(())
+}
+
+/// Delete a folder from the project directory
+#[tauri::command]
+fn delete_project_folder(app_handle: tauri::AppHandle, name: String) -> Result<(), String> {
+    let dir = ensure_project_dir(&app_handle)?;
+    let rel_path = sanitize_path(&name)?;
+    let path = dir.join(&rel_path);
+    if !path.exists() {
+        return Ok(());
+    }
+    if !path.is_dir() {
+        return Err(format!("'{}' is not a folder", name));
+    }
+    fs::remove_dir_all(&path).map_err(|e| format!("Failed to delete folder '{}': {}", name, e))?;
     Ok(())
 }
 
@@ -98,6 +165,8 @@ pub fn run() {
             list_project_files,
             read_project_file,
             delete_project_file,
+            create_project_folder,
+            delete_project_folder,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

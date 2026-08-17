@@ -6,13 +6,16 @@ import Sidebar from './components/Sidebar';
 import CodeEditor from './components/CodeEditor';
 import ContextMenu from './components/ContextMenu';
 import type { ContextMenuItem } from './components/ContextMenu';
-import { compileVerilog } from './lib/verilog';
+import MissingModulesDialog from './components/MissingModulesDialog';
+import ModulePanel from './components/ModulePanel';
+import OutputPanel from './components/OutputPanel';
+import BindingDialog from './components/BindingDialog';
+import { compileVerilog, MissingModulesError, YosysCompileError, parseVerilogInstances, validateModuleInterfaces } from './lib/verilog';
 import { fileStore, type FileEntry } from './store/fileStore';
 import { themeStore } from './store/themeStore';
-import { settingsStore } from './store/settingsStore';
+import { settingsStore, type ViewMode } from './store/settingsStore';
 
 type Status = 'idle' | 'compiling' | 'done' | 'error';
-type ViewMode = 'circuit' | 'code';
 
 export default function App() {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
@@ -22,6 +25,16 @@ export default function App() {
   const [viewMode, setViewMode] = useState<ViewMode>('circuit');
   const canvasRef = useRef<CanvasHandle>(null);
 
+  // Missing modules dialog state
+  const [missingModules, setMissingModules] = useState<string[] | null>(null);
+
+  // Output panel state
+  const [yosysLog, setYosysLog] = useState('');
+  const [outputPanelVisible, setOutputPanelVisible] = useState(false);
+
+  // IDE panel state: 'files' | 'modules'
+  const [leftPanel, setLeftPanel] = useState<'files' | 'modules'>('files');
+
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
     x: number;
@@ -29,87 +42,269 @@ export default function App() {
     items: ContextMenuItem[];
   } | null>(null);
 
-  // Subscribe to file store changes
-  const files = useSyncExternalStore(
-    fileStore.subscribe,
-    () => fileStore.getAll()
-  );
+  // Binding dialog state
+  const [bindingDialogFile, setBindingDialogFile] = useState<FileEntry | null>(null);
 
-  // Subscribe to theme changes
-  const theme = useSyncExternalStore(
-    themeStore.subscribe,
-    () => themeStore.get()
-  );
+  // Sidebar resize state
+  const SIDEBAR_WIDTH_KEY = 'verilog-viz-sidebar-width';
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(SIDEBAR_WIDTH_KEY);
+      if (saved) {
+        const n = parseInt(saved, 10);
+        if (n >= 180 && n <= 500) return n;
+      }
+    } catch {}
+    return 240;
+  });
+  const [isDraggingSidebar, setIsDraggingSidebar] = useState(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
 
-  // Subscribe to font size changes
-  const editorFontSize = useSyncExternalStore(
-    settingsStore.subscribe,
-    () => settingsStore.getFontSize()
-  );
+  // Sidebar drag handlers
+  const handleSidebarDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsDraggingSidebar(true);
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = sidebarWidth;
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    if (!isDraggingSidebar) return;
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = e.clientX - dragStartX.current;
+      const newWidth = Math.max(180, Math.min(500, dragStartWidth.current + delta));
+      setSidebarWidth(newWidth);
+    };
+    const handleMouseUp = () => {
+      setIsDraggingSidebar(false);
+      // Save to localStorage
+      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDraggingSidebar, sidebarWidth]);
+
+  // Subscribe to stores
+  const files = useSyncExternalStore(fileStore.subscribe, () => fileStore.getAll());
+  const theme = useSyncExternalStore(themeStore.subscribe, () => themeStore.get());
+  const editorFontSize = useSyncExternalStore(settingsStore.subscribe, () => settingsStore.getFontSize());
+  const defaultViewMode = useSyncExternalStore(settingsStore.subscribe, () => settingsStore.getDefaultViewMode());
 
   const activeFile = activeFileId ? fileStore.getById(activeFileId) : undefined;
 
-  // Load project files on startup
+  // Load project files on startup (no auto-compile)
   useEffect(() => {
     fileStore.loadFromProjectDir();
   }, []);
 
   // Disable browser default context menu globally
   useEffect(() => {
-    const preventDefaultContext = (e: MouseEvent) => {
-      // Only prevent if our custom menu isn't open
-      // (contextMenu state might not be updated yet, so we check the DOM)
-      e.preventDefault();
-    };
+    const preventDefaultContext = (e: MouseEvent) => { e.preventDefault(); };
     document.addEventListener('contextmenu', preventDefaultContext);
     return () => document.removeEventListener('contextmenu', preventDefaultContext);
   }, []);
+
+  // ============ Dependency Resolution ============
+
+  /** Resolve all dependency files for a target file using moduleBindings and definedModules */
+  function resolveDependencies(targetFileId: string): FileEntry[] {
+    const allFiles = fileStore.getAll();
+    const targetFile = allFiles.find((f) => f.id === targetFileId);
+    if (!targetFile) return [];
+
+    const included = new Set<string>([targetFileId]);
+    const result: FileEntry[] = [targetFile];
+
+    // Build a module-to-file map
+    const moduleToFile = new Map<string, FileEntry>();
+    for (const f of allFiles) {
+      if (f.definedModules) {
+        for (const mod of f.definedModules) {
+          moduleToFile.set(mod, f);
+        }
+      }
+    }
+
+    // Queue of files to process
+    const queue = [targetFile];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+
+      // Find modules instantiated by this file
+      const instances = parseVerilogInstances(current.content);
+
+      for (const modName of instances) {
+        // Check manual bindings first
+        const boundFileId = current.moduleBindings?.[modName];
+        if (boundFileId) {
+          const boundFile = allFiles.find((f) => f.id === boundFileId);
+          if (boundFile && !included.has(boundFile.id)) {
+            included.add(boundFile.id);
+            result.push(boundFile);
+            queue.push(boundFile);
+          }
+          continue;
+        }
+
+        // Check auto-resolution via definedModules
+        const definingFile = moduleToFile.get(modName);
+        if (definingFile && !included.has(definingFile.id)) {
+          included.add(definingFile.id);
+          result.push(definingFile);
+          queue.push(definingFile);
+        }
+      }
+    }
+
+    return result;
+  }
+
+  // ============ Compilation ============
+
+  /** Compile the target file with its resolved dependencies */
+  const tryCompileAll = useCallback(
+    async (targetFileId: string) => {
+      const allFiles = fileStore.getAll();
+      if (allFiles.length === 0) return;
+
+      const targetFile = fileStore.getById(targetFileId);
+      if (!targetFile) return;
+
+      setStatus('compiling');
+      setMessage('Compiling...');
+      setYosysLog('');
+
+      // Resolve which files are needed for this target
+      const dependencyFiles = resolveDependencies(targetFileId);
+      const fileList = dependencyFiles.map((f) => ({ name: f.name, content: f.content }));
+
+      // Determine top module: use the first defined module of the target file
+      const topModule = targetFile.definedModules?.[0];
+
+      setYosysLog(`Compiling '${topModule || targetFile.name}' with ${dependencyFiles.length} file(s)...\n`);
+
+      // ===== Pre-compilation validation =====
+      const validationErrors = validateModuleInterfaces(fileList);
+      if (validationErrors.length > 0) {
+        let log = '========== 模块接口验证错误 ==========\n\n';
+        for (const err of validationErrors) {
+          log += `[错误] ${err.message}\n`;
+          log += `  文件: ${err.fileName}\n`;
+          if (err.instanceName) {
+            log += `  实例: ${err.instanceName}\n`;
+          }
+          log += `  模块: ${err.moduleName}\n`;
+          log += `  详情: ${err.detail}\n`;
+          log += '\n';
+        }
+        log += `共 ${validationErrors.length} 个验证错误。请修复后重新编译。\n`;
+        log += '========================================\n';
+
+        fileStore.updateFile(targetFileId, {
+          status: 'error',
+          errorMessage: `接口验证失败: ${validationErrors.length} 个错误`,
+          missingModules: undefined,
+          circuitJson: null,
+        });
+        setStatus('error');
+        setMessage(`接口验证失败: ${validationErrors.length} 个错误`);
+        setYosysLog((prev) => prev + '\n' + log);
+        setOutputPanelVisible(true);
+        return;
+      }
+
+      try {
+        const result = await compileVerilog(fileList, topModule);
+
+        // Store circuitJson on the target file only
+        fileStore.updateFile(targetFileId, {
+          circuitJson: result.circuitJson,
+          status: 'compiled',
+          errorMessage: undefined,
+          missingModules: undefined,
+        });
+
+        setStatus('done');
+        setMessage('Compiled successfully!');
+        setMissingModules(null);
+        setYosysLog((prev) => prev + '\n' + result.yosysLog);
+        setOutputPanelVisible(true);
+      } catch (err: any) {
+        const log = err instanceof MissingModulesError ? err.yosysLog :
+                    err instanceof YosysCompileError ? err.yosysLog :
+                    '';
+
+        if (err instanceof MissingModulesError) {
+          // Mark the target file as missing_deps
+          fileStore.updateFile(targetFileId, {
+            status: 'missing_deps',
+            errorMessage: err.message,
+            missingModules: err.missingModules,
+            circuitJson: null,
+          });
+          setMissingModules(err.missingModules);
+          setStatus('error');
+          setMessage(err.message);
+          setYosysLog((prev) => prev + '\n' + log);
+          setOutputPanelVisible(true);
+        } else {
+          fileStore.updateFile(targetFileId, {
+            status: 'error',
+            errorMessage: err.message || 'Compilation failed',
+            missingModules: undefined,
+          });
+          setStatus('error');
+          setMessage(err.message || 'Compilation failed');
+          setYosysLog((prev) => prev + '\n' + (log || err.message || 'Unknown error'));
+          setOutputPanelVisible(true);
+          console.error(err);
+        }
+      }
+    },
+    []
+  );
+
+  // ============ File Operations ============
 
   const handleImportFile = useCallback(async () => {
     try {
       setStatus('idle');
       setMessage('');
-
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.v,.sv,.vh';
+      input.multiple = true;
 
       input.onchange = async (e: Event) => {
-        const file = (e.target as HTMLInputElement).files?.[0];
-        if (!file) return;
+        const fileList = (e.target as HTMLInputElement).files;
+        if (!fileList || fileList.length === 0) return;
 
         setStatus('compiling');
-        setMessage('Compiling Verilog...');
+        setMessage('Importing files...');
 
-        try {
+        let primaryId: string | null = null;
+
+        for (let i = 0; i < fileList.length; i++) {
+          const file = fileList[i];
           const text = await file.text();
-
-          // Add to file store (will also save to project directory)
-          const entry = fileStore.addFile(file.name, text);
-          setActiveFileId(entry.id);
-
-          // Compile
-          const json = await compileVerilog(text);
-
-          fileStore.updateFile(entry.id, {
-            circuitJson: json,
-            status: 'compiled',
-          });
-
-          setStatus('done');
-          setMessage('Done! Click switches to interact.');
-        } catch (err: any) {
-          const currentFiles = fileStore.getAll();
-          const lastFile = currentFiles[currentFiles.length - 1];
-          if (lastFile && lastFile.status === 'pending') {
-            fileStore.updateFile(lastFile.id, {
-              status: 'error',
-              errorMessage: err.message || 'Compilation failed',
-            });
+          // Try to get the full path from the file object (Tauri provides this)
+          const fullPath = (file as any).path || file.name;
+          const entry = fileStore.addFile(file.name, text, fullPath);
+          if (i === 0) {
+            primaryId = entry.id;
           }
-          setStatus('error');
-          setMessage(err.message || 'Compilation failed');
-          console.error(err);
+        }
+
+        if (primaryId) {
+          setActiveFileId(primaryId);
+          setViewMode(defaultViewMode);
+          await tryCompileAll(primaryId);
         }
       };
 
@@ -118,43 +313,53 @@ export default function App() {
       setStatus('error');
       setMessage(err.message);
     }
+  }, [tryCompileAll, defaultViewMode]);
+
+  const handleCreateFile = useCallback(() => {
+    const name = prompt('Enter file name (e.g. my_module.v or subdir/my_module.v):');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    const fileName = trimmed.split('/').pop() || trimmed;
+    if (!fileName.endsWith('.v') && !fileName.endsWith('.sv') && !fileName.endsWith('.vh')) {
+      alert('Only .v, .sv, or .vh files are supported for compilation.');
+      return;
+    }
+    const entry = fileStore.createFile(trimmed);
+    setActiveFileId(entry.id);
+    setViewMode('code');
+    setStatus('idle');
+    setMessage('New file created. Edit and compile to render.');
   }, []);
 
-  const handleSelectFile = useCallback(async (id: string) => {
+  const handleCreateFolder = useCallback(() => {
+    const name = prompt('Enter folder name:');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    fileStore.createFolder(trimmed);
+    setMessage(`Folder '${trimmed}' created.`);
+  }, []);
+
+  const handleSelectFile = useCallback((id: string) => {
     setActiveFileId(id);
-    setViewMode('circuit');
+    setViewMode(defaultViewMode);
     const file = fileStore.getById(id);
     if (!file) return;
 
     if (file.status === 'compiled' && file.circuitJson) {
       setStatus('done');
-      setMessage('Loaded from project.');
+      setMessage('Loaded from cache.');
+    } else if (file.status === 'missing_deps') {
+      setStatus('error');
+      setMessage(file.errorMessage || 'Missing module implementations');
+      if (file.missingModules) setMissingModules(file.missingModules);
     } else if (file.status === 'error') {
       setStatus('error');
       setMessage(file.errorMessage || 'Compilation error');
     } else {
-      // Auto-compile pending files (loaded from project dir on startup)
-      setStatus('compiling');
-      setMessage('Compiling Verilog...');
-      try {
-        const json = await compileVerilog(file.content);
-        fileStore.updateFile(id, {
-          circuitJson: json,
-          status: 'compiled',
-          errorMessage: undefined,
-        });
-        setStatus('done');
-        setMessage('Done! Click switches to interact.');
-      } catch (err: any) {
-        fileStore.updateFile(id, {
-          status: 'error',
-          errorMessage: err.message || 'Compilation failed',
-        });
-        setStatus('error');
-        setMessage(err.message || 'Compilation failed');
-      }
+      setStatus('idle');
+      setMessage('Pending compilation. Press F5 to compile.');
     }
-  }, []);
+  }, [defaultViewMode]);
 
   const handleDeleteFile = useCallback((id: string) => {
     fileStore.deleteFile(id);
@@ -162,12 +367,66 @@ export default function App() {
       setActiveFileId(null);
       setStatus('idle');
       setMessage('');
+      setMissingModules(null);
     }
   }, [activeFileId]);
 
   const handleRenameFile = useCallback((id: string, name: string) => {
     fileStore.renameFile(id, name);
   }, []);
+
+  // ============ Save vs Compile ============
+
+  /** Save file content to disk only (Ctrl+S) */
+  const handleSave = useCallback(() => {
+    if (!activeFileId) return;
+    const file = fileStore.getById(activeFileId);
+    if (!file) return;
+    fileStore.saveContent(activeFileId, file.content);
+    setStatus('idle');
+    setMessage('File saved.');
+  }, [activeFileId]);
+
+  /** Compile current file (F5) */
+  const handleCompile = useCallback(async () => {
+    if (!activeFileId) return;
+    await tryCompileAll(activeFileId);
+  }, [activeFileId, tryCompileAll]);
+
+  // ============ Code Editor ============
+
+  const handleCodeChange = useCallback(
+    (code: string) => {
+      if (activeFileId) {
+        fileStore.updateFile(activeFileId, { content: code });
+      }
+    },
+    [activeFileId]
+  );
+
+  // ============ Module Binding ============
+
+  const handleBindModule = useCallback(
+    (fileId: string, missingModule: string, sourceFileId: string) => {
+      fileStore.setModuleBinding(fileId, missingModule, sourceFileId);
+      setMessage(`Bound '${missingModule}' to source file. Recompile to apply.`);
+    },
+    []
+  );
+
+  const handleBindingConfirm = useCallback(
+    (bindings: Record<string, string>) => {
+      if (!bindingDialogFile) return;
+      for (const [moduleName, fileId] of Object.entries(bindings)) {
+        fileStore.setModuleBinding(bindingDialogFile.id, moduleName, fileId);
+      }
+      setMessage('Module bindings saved. Recompile to apply.');
+      setBindingDialogFile(null);
+    },
+    [bindingDialogFile]
+  );
+
+  // ============ Theme ============
 
   const handleToggleTheme = useCallback(() => {
     themeStore.toggle();
@@ -178,197 +437,295 @@ export default function App() {
     setMessage(msg);
   }, []);
 
-  // Code editor: update file content in store
-  const handleCodeChange = useCallback(
-    (code: string) => {
-      if (activeFileId) {
-        fileStore.updateFile(activeFileId, { content: code });
-      }
-    },
-    [activeFileId]
-  );
+  // ============ Context Menus ============
 
-  // Recompile from edited code
-  const handleRecompile = useCallback(async () => {
-    const file = activeFileId ? fileStore.getById(activeFileId) : undefined;
-    if (!file) return;
-
-    setStatus('compiling');
-    setMessage('Recompiling Verilog...');
-    try {
-      const json = await compileVerilog(file.content);
-      fileStore.updateFile(file.id, {
-        circuitJson: json,
-        status: 'compiled',
-        errorMessage: undefined,
-      });
-      setStatus('done');
-      setMessage('Recompiled successfully!');
-      setViewMode('circuit');
-    } catch (err: any) {
-      fileStore.updateFile(file.id, {
-        status: 'error',
-        errorMessage: err.message || 'Compilation failed',
-      });
-      setStatus('error');
-      setMessage(err.message || 'Compilation failed');
-    }
-  }, [activeFileId]);
-
-  // File context menu (right-click on sidebar file)
   const handleFileContextMenu = useCallback((e: React.MouseEvent, file: FileEntry) => {
     e.preventDefault();
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
       items: [
-        {
-          label: 'Open',
-          action: () => handleSelectFile(file.id),
-        },
-        {
-          label: 'View Code',
-          action: () => {
-            handleSelectFile(file.id);
-            setViewMode('code');
-          },
-        },
+        { label: 'Open', action: () => handleSelectFile(file.id) },
+        { label: 'View Code', action: () => { handleSelectFile(file.id); setViewMode('code'); } },
+        { label: 'Compile', action: async () => { setActiveFileId(file.id); await tryCompileAll(file.id); } },
+        { label: 'Bind...', action: () => setBindingDialogFile(file) },
+        { label: '---', disabled: true, action: () => {} },
         {
           label: 'Rename',
           action: () => {
-            // Trigger rename via a simple approach
             const newName = prompt('Rename file:', file.name);
-            if (newName && newName.trim()) {
-              handleRenameFile(file.id, newName.trim());
-            }
+            if (newName && newName.trim()) handleRenameFile(file.id, newName.trim());
           },
         },
-        {
-          label: 'Delete',
-          danger: true,
-          action: () => handleDeleteFile(file.id),
-        },
+        { label: 'Delete', danger: true, action: () => handleDeleteFile(file.id) },
       ],
     });
-  }, [handleSelectFile, handleRenameFile, handleDeleteFile]);
+  }, [handleSelectFile, handleRenameFile, handleDeleteFile, tryCompileAll]);
 
-  // Canvas context menu
+  const handleEmptyAreaContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: 'New File', action: () => handleCreateFile() },
+        { label: 'Import File...', action: () => handleImportFile() },
+      ],
+    });
+  }, [handleCreateFile, handleImportFile]);
+
   const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
       items: [
-        {
-          label: 'Reset Zoom',
-          action: () => canvasRef.current?.resetZoom(),
-        },
-        {
-          label: 'Fit to Window',
-          action: () => canvasRef.current?.fitToWindow(),
-        },
+        { label: 'Reset Zoom', action: () => canvasRef.current?.resetZoom() },
+        { label: 'Fit to Window', action: () => canvasRef.current?.fitToWindow() },
         { label: '---', disabled: true, action: () => {} },
-        {
-          label: 'Import Verilog File...',
-          action: () => handleImportFile(),
-        },
+        { label: 'Compile', action: () => handleCompile() },
+        { label: 'Import Verilog File...', action: () => handleImportFile() },
       ],
     });
-  }, [handleImportFile]);
+  }, [handleCompile, handleImportFile]);
 
-  const closeContextMenu = useCallback(() => {
-    setContextMenu(null);
-  }, []);
+  const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
-  // Keyboard shortcuts
+  // ============ Keyboard Shortcuts ============
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
         e.preventDefault();
         handleImportFile();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
         e.preventDefault();
         setSidebarCollapsed((c) => !c);
+      } else if (e.key === 'F5') {
+        e.preventDefault();
+        handleCompile();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
+        e.preventDefault();
+        handleCreateFile();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
+        e.preventDefault();
+        setOutputPanelVisible((v) => !v);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleImportFile]);
+  }, [handleImportFile, handleSave, handleCompile, handleCreateFile]);
+
+  // ============ Render Helpers ============
 
   const statusColor =
     status === 'error' ? 'var(--danger)' :
     status === 'done' ? 'var(--success)' :
     status === 'compiling' ? '#ff9800' : 'var(--text-dim)';
 
+  const hasMissingDeps = files.some((f) => f.status === 'missing_deps');
+
   return (
-    <div
-      style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}
-    >
+    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}>
       {/* Menu Bar */}
       <MenuBar
         onImportFile={handleImportFile}
         onToggleTheme={handleToggleTheme}
         onResetZoom={() => canvasRef.current?.resetZoom()}
         onFitToWindow={() => canvasRef.current?.fitToWindow()}
+        onCreateFile={handleCreateFile}
         currentTheme={theme}
       />
 
-      {/* Main area: Sidebar + Canvas */}
+      {/* Main area */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        {/* Left Sidebar */}
-        <Sidebar
-          files={files}
-          activeFileId={activeFileId}
-          onSelectFile={handleSelectFile}
-          onRenameFile={handleRenameFile}
-          onImportFile={handleImportFile}
-          onContextMenu={handleFileContextMenu}
-          collapsed={sidebarCollapsed}
-          onToggleCollapse={() => setSidebarCollapsed((c) => !c)}
-        />
+        {/* Activity Bar (IDE-style left icon bar) */}
+        <div
+          style={{
+            width: 40,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            paddingTop: 4,
+            background: 'var(--menu-bg)',
+            borderRight: '1px solid var(--border)',
+            flexShrink: 0,
+          }}
+        >
+          <ActivityButton
+            icon="📁"
+            label="Files"
+            active={leftPanel === 'files' && !sidebarCollapsed}
+            onClick={() => {
+              if (leftPanel === 'files' && !sidebarCollapsed) {
+                setSidebarCollapsed(true);
+              } else {
+                setLeftPanel('files');
+                setSidebarCollapsed(false);
+              }
+            }}
+          />
+          <ActivityButton
+            icon="📦"
+            label="Modules"
+            active={leftPanel === 'modules' && !sidebarCollapsed}
+            onClick={() => {
+              if (leftPanel === 'modules' && !sidebarCollapsed) {
+                setSidebarCollapsed(true);
+              } else {
+                setLeftPanel('modules');
+                setSidebarCollapsed(false);
+              }
+            }}
+          />
+          <div style={{ flex: 1 }} />
+          <ActivityButton
+            icon={theme === 'dark' ? '☀' : '🌙'}
+            label="Theme"
+            active={false}
+            onClick={handleToggleTheme}
+          />
+        </div>
 
-        {/* Canvas area */}
+        {/* Left Panel: Files or Modules */}
+        {!sidebarCollapsed && (
+          <div
+            style={{
+              width: sidebarWidth,
+              minWidth: 180,
+              borderRight: '1px solid var(--border)',
+              background: 'var(--sidebar-bg)',
+              display: 'flex',
+              flexDirection: 'column',
+              flexShrink: 0,
+              position: 'relative',
+            }}
+          >
+            {leftPanel === 'files' ? (
+              <Sidebar
+                files={files}
+                activeFileId={activeFileId}
+                onSelectFile={handleSelectFile}
+                onRenameFile={handleRenameFile}
+                onImportFile={handleImportFile}
+                onContextMenu={handleFileContextMenu}
+                onEmptyContextMenu={handleEmptyAreaContextMenu}
+                collapsed={false}
+                onToggleCollapse={() => setSidebarCollapsed(true)}
+                onCreateFile={handleCreateFile}
+                onCreateFolder={handleCreateFolder}
+              />
+            ) : (
+              <ModulePanel
+                files={files}
+                onSelectFile={handleSelectFile}
+                onBindModule={handleBindModule}
+                onRecompile={handleCompile}
+                isCompiling={status === 'compiling'}
+              />
+            )}
+
+            {/* Resize handle */}
+            <div
+              onMouseDown={handleSidebarDragStart}
+              style={{
+                position: 'absolute',
+                top: 0,
+                right: 0,
+                width: 4,
+                height: '100%',
+                cursor: 'col-resize',
+                background: isDraggingSidebar ? 'var(--accent)' : 'transparent',
+                zIndex: 10,
+                userSelect: 'none',
+              }}
+              onMouseEnter={(e) => {
+                (e.currentTarget as HTMLElement).style.background = 'var(--accent)';
+              }}
+              onMouseLeave={(e) => {
+                if (!isDraggingSidebar) {
+                  (e.currentTarget as HTMLElement).style.background = 'transparent';
+                }
+              }}
+            />
+          </div>
+        )}
+
+        {/* Main Content Area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          {/* Status bar */}
+          {/* Toolbar */}
           <div
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 12,
-              padding: '6px 16px',
+              gap: 8,
+              padding: '4px 12px',
               background: 'var(--toolbar-bg)',
               borderBottom: '1px solid var(--border)',
               flexShrink: 0,
-              fontSize: '1rem',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: '50%',
-                  background: statusColor,
-                  flexShrink: 0,
-                }}
-              />
-              <span style={{ color: 'var(--text)' }}>
-                {activeFile
-                  ? `${activeFile.name} — ${message || 'Ready'}`
-                  : message || 'Select a Verilog file to begin'}
-              </span>
-            </div>
-            <div style={{ flex: 1 }} />
+            <div
+              style={{
+                width: 8, height: 8, borderRadius: '50%',
+                background: statusColor, flexShrink: 0,
+              }}
+            />
+            <span style={{ fontSize: '0.92rem', color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {activeFile ? `${activeFile.name} — ${message || 'Ready'}` : message || 'Verilog Visualizer'}
+            </span>
             {activeFile && (
-              <div style={{ display: 'flex', gap: 4 }}>
+              <>
+                <button
+                  onClick={handleSave}
+                  title="Save (Ctrl+S)"
+                  style={{
+                    padding: '2px 10px', border: 'none', borderRadius: 3, cursor: 'pointer',
+                    fontSize: '0.85rem', background: 'var(--input-bg)', color: 'var(--text)',
+                  }}
+                >
+                  Save
+                </button>
+                <button
+                  onClick={handleCompile}
+                  disabled={status === 'compiling'}
+                  title="Compile (F5)"
+                  style={{
+                    padding: '2px 10px', border: 'none', borderRadius: 3,
+                    cursor: status === 'compiling' ? 'default' : 'pointer',
+                    fontSize: '0.85rem',
+                    background: status === 'compiling' ? 'var(--text-dim)' : 'var(--accent)',
+                    color: '#fff', fontWeight: 500,
+                  }}
+                >
+                  {status === 'compiling' ? 'Compiling...' : 'Compile'}
+                </button>
+                {hasMissingDeps && (
+                  <button
+                    onClick={handleCompile}
+                    disabled={status === 'compiling'}
+                    style={{
+                      padding: '2px 10px', border: 'none', borderRadius: 3,
+                      cursor: status === 'compiling' ? 'default' : 'pointer',
+                      fontSize: '0.85rem', background: 'var(--warning)', color: '#000', fontWeight: 500,
+                    }}
+                  >
+                    Fix Dependencies
+                  </button>
+                )}
+              </>
+            )}
+            {activeFile && (
+              <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
                 <button
                   onClick={() => setViewMode('circuit')}
                   style={{
-                    padding: '2px 10px',
-                    border: 'none',
-                    borderRadius: 3,
-                    cursor: 'pointer',
-                    fontSize: '0.85rem',
+                    padding: '2px 8px', border: 'none', borderRadius: 3, cursor: 'pointer',
+                    fontSize: '0.77rem',
                     background: viewMode === 'circuit' ? 'var(--accent)' : 'var(--input-bg)',
                     color: viewMode === 'circuit' ? '#fff' : 'var(--text)',
                   }}
@@ -378,11 +735,8 @@ export default function App() {
                 <button
                   onClick={() => setViewMode('code')}
                   style={{
-                    padding: '2px 10px',
-                    border: 'none',
-                    borderRadius: 3,
-                    cursor: 'pointer',
-                    fontSize: '0.85rem',
+                    padding: '2px 8px', border: 'none', borderRadius: 3, cursor: 'pointer',
+                    fontSize: '0.77rem',
                     background: viewMode === 'code' ? 'var(--accent)' : 'var(--input-bg)',
                     color: viewMode === 'code' ? '#fff' : 'var(--text)',
                   }}
@@ -391,12 +745,9 @@ export default function App() {
                 </button>
               </div>
             )}
-            <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
-              Right-click drag to pan · Scroll to zoom · Ctrl+O to import
-            </span>
           </div>
 
-          {/* Canvas / Code Editor */}
+          {/* Content: Canvas or Code Editor */}
           <div
             style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
             onContextMenu={handleCanvasContextMenu}
@@ -404,39 +755,27 @@ export default function App() {
             {(() => {
               if (!activeFile) {
                 return (
-                  <div
-                    style={{
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'center',
-                      alignItems: 'center',
-                      height: '100%',
-                      color: 'var(--text-dim)',
-                      fontSize: '1.23rem',
-                      userSelect: 'none',
-                      gap: 12,
-                    }}
-                  >
+                  <div style={{
+                    display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                    alignItems: 'center', height: '100%', color: 'var(--text-dim)',
+                    fontSize: '1.23rem', userSelect: 'none', gap: 12,
+                  }}>
                     <div style={{ fontSize: '3.69rem', opacity: 0.3 }}>📄</div>
-                    <div>No circuit loaded</div>
-                    <button
-                      onClick={handleImportFile}
-                      style={{
-                        marginTop: 8,
-                        padding: '8px 24px',
-                        background: 'var(--accent)',
-                        color: '#fff',
-                        border: 'none',
-                        borderRadius: 6,
-                        cursor: 'pointer',
-                        fontSize: '1.08rem',
-                        fontWeight: 500,
-                      }}
-                    >
-                      Import .v File
-                    </button>
+                    <div>No file selected</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button onClick={handleImportFile} style={{
+                        padding: '8px 24px', background: 'var(--accent)', color: '#fff',
+                        border: 'none', borderRadius: 6, cursor: 'pointer',
+                        fontSize: '1.08rem', fontWeight: 500,
+                      }}>Import .v File</button>
+                      <button onClick={handleCreateFile} style={{
+                        padding: '8px 24px', background: 'var(--input-bg)', color: 'var(--text)',
+                        border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
+                        fontSize: '1.08rem', fontWeight: 500,
+                      }}>New File</button>
+                    </div>
                     <div style={{ fontSize: '0.92rem', opacity: 0.5 }}>
-                      or press Ctrl+O to browse
+                      Ctrl+O to import · Ctrl+N to create · F5 to compile
                     </div>
                   </div>
                 );
@@ -449,7 +788,8 @@ export default function App() {
                     fileName={activeFile.name}
                     theme={theme}
                     onCodeChange={handleCodeChange}
-                    onRecompile={handleRecompile}
+                    onRecompile={handleCompile}
+                    onSave={handleSave}
                     isCompiling={status === 'compiling'}
                   />
                 );
@@ -457,45 +797,42 @@ export default function App() {
 
               if (activeFile.circuitJson) {
                 return (
-                  <Canvas ref={canvasRef} circuitJson={activeFile.circuitJson} theme={theme} onError={handleCanvasError} />
+                  <Canvas
+                    ref={canvasRef}
+                    circuitJson={activeFile.circuitJson}
+                    theme={theme}
+                    onError={handleCanvasError}
+                  />
                 );
               }
 
               return (
-                <div
-                  style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    height: '100%',
-                    color: 'var(--text-dim)',
-                    fontSize: '1.23rem',
-                    userSelect: 'none',
-                    gap: 12,
-                  }}
-                >
-                  <div style={{ fontSize: '3.69rem', opacity: 0.3 }}>📄</div>
-                  <div>No circuit loaded</div>
-                  <button
-                    onClick={handleImportFile}
-                    style={{
-                      marginTop: 8,
-                      padding: '8px 24px',
-                      background: 'var(--accent)',
-                      color: '#fff',
-                      border: 'none',
-                      borderRadius: 6,
-                      cursor: 'pointer',
-                      fontSize: '1.08rem',
-                      fontWeight: 500,
-                    }}
-                  >
-                    Import .v File
-                  </button>
-                  <div style={{ fontSize: '0.92rem', opacity: 0.5 }}>
-                    or press Ctrl+O to browse
+                <div style={{
+                  display: 'flex', flexDirection: 'column', justifyContent: 'center',
+                  alignItems: 'center', height: '100%', color: 'var(--text-dim)',
+                  fontSize: '1.23rem', userSelect: 'none', gap: 12,
+                }}>
+                  <div style={{ fontSize: '3.69rem', opacity: 0.3 }}>
+                    {activeFile.status === 'missing_deps' ? '⚠' : '📄'}
                   </div>
+                  <div>
+                    {activeFile.status === 'missing_deps'
+                      ? 'Missing dependencies'
+                      : activeFile.status === 'error'
+                      ? 'Compilation error'
+                      : 'Not compiled'}
+                  </div>
+                  <div style={{ fontSize: '0.92rem', opacity: 0.7, maxWidth: 400, textAlign: 'center' }}>
+                    {activeFile.errorMessage || 'Press F5 to compile. Check Output panel for details.'}
+                  </div>
+                  <button onClick={handleCompile} disabled={status === 'compiling'} style={{
+                    marginTop: 8, padding: '8px 24px',
+                    background: status === 'compiling' ? 'var(--text-dim)' : 'var(--accent)',
+                    color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer',
+                    fontSize: '1.08rem', fontWeight: 500,
+                  }}>
+                    {status === 'compiling' ? 'Compiling...' : 'Compile (F5)'}
+                  </button>
                 </div>
               );
             })()}
@@ -503,25 +840,33 @@ export default function App() {
         </div>
       </div>
 
-      {/* Bottom status bar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          height: 24,
-          padding: '0 12px',
-          background: 'var(--accent)',
-          color: '#fff',
-          fontSize: '0.92rem',
-          flexShrink: 0,
-          gap: 16,
-        }}
-      >
-        <span>{files.length} file{files.length !== 1 ? 's' : ''} imported</span>
-        <span>Theme: {theme === 'dark' ? 'Dark' : 'Light'}</span>
+      {/* Output Panel */}
+      <OutputPanel
+        log={yosysLog}
+        visible={outputPanelVisible}
+        onToggle={() => setOutputPanelVisible((v) => !v)}
+        onClose={() => setOutputPanelVisible(false)}
+      />
+
+      {/* Bottom Status Bar (IDE-style) */}
+      <div style={{
+        display: 'flex', alignItems: 'center', height: 22,
+        padding: '0 12px', background: 'var(--accent)', color: '#fff',
+        fontSize: '0.85rem', flexShrink: 0, gap: 12,
+      }}>
+        <span>{files.length} file{files.length !== 1 ? 's' : ''}</span>
+        <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
         <span>Font: {editorFontSize}px</span>
+        <span>Default: {defaultViewMode === 'circuit' ? 'Circuit' : 'Code'}</span>
+        <span
+          style={{ cursor: 'pointer' }}
+          onClick={() => setOutputPanelVisible((v) => !v)}
+          title="Toggle Output Panel (Ctrl+J)"
+        >
+          {outputPanelVisible ? 'Hide Output' : 'Show Output'}
+        </span>
         <span style={{ flex: 1 }} />
-        <span>Verilog Visualizer</span>
+        <span>Ctrl+S Save · F5 Compile · Ctrl+J Output</span>
       </div>
 
       {/* Custom Context Menu */}
@@ -533,6 +878,64 @@ export default function App() {
           onClose={closeContextMenu}
         />
       )}
+
+      {/* Missing Modules Dialog */}
+      {missingModules && missingModules.length > 0 && (
+        <MissingModulesDialog
+          missingModules={missingModules}
+          onImport={handleImportFile}
+          onRecompile={handleCompile}
+          onClose={() => setMissingModules(null)}
+          isCompiling={status === 'compiling'}
+        />
+      )}
+
+      {/* Binding Dialog */}
+      {bindingDialogFile && (
+        <BindingDialog
+          file={bindingDialogFile}
+          allFiles={files}
+          onConfirm={handleBindingConfirm}
+          onCancel={() => setBindingDialogFile(null)}
+        />
+      )}
     </div>
+  );
+}
+
+/** IDE-style activity bar button */
+function ActivityButton({
+  icon,
+  label,
+  active,
+  onClick,
+}: {
+  icon: string;
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      title={label}
+      style={{
+        width: 36,
+        height: 36,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        fontSize: '1.23rem',
+        background: active ? 'var(--menu-hover)' : 'transparent',
+        border: 'none',
+        borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
+        cursor: 'pointer',
+        color: active ? 'var(--accent)' : 'var(--text-dim)',
+        borderRadius: 0,
+        marginBottom: 2,
+      }}
+    >
+      {icon}
+    </button>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import type { FileEntry } from '../store/fileStore';
 
 interface SidebarProps {
@@ -8,8 +8,51 @@ interface SidebarProps {
   onRenameFile: (id: string, name: string) => void;
   onImportFile: () => void;
   onContextMenu: (e: React.MouseEvent, file: FileEntry) => void;
+  onEmptyContextMenu: (e: React.MouseEvent) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
+  onCreateFile: () => void;
+  onCreateFolder: () => void;
+}
+
+interface FolderNode {
+  name: string;
+  path: string;
+  children: Map<string, FolderNode>;
+  files: FileEntry[];
+}
+
+function buildFolderTree(files: FileEntry[]): { root: FolderNode; flatFiles: FileEntry[] } {
+  const root: FolderNode = { name: '', path: '', children: new Map(), files: [] };
+  const flatFiles: FileEntry[] = [];
+
+  for (const file of files) {
+    const parts = file.name.split('/');
+    if (parts.length === 1) {
+      root.files.push(file);
+      flatFiles.push(file);
+      continue;
+    }
+
+    let current = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const part = parts[i];
+      if (!current.children.has(part)) {
+        const folderPath = parts.slice(0, i + 1).join('/');
+        current.children.set(part, {
+          name: part,
+          path: folderPath,
+          children: new Map(),
+          files: [],
+        });
+      }
+      current = current.children.get(part)!;
+    }
+    current.files.push(file);
+    flatFiles.push(file);
+  }
+
+  return { root, flatFiles };
 }
 
 export default function Sidebar({
@@ -19,11 +62,17 @@ export default function Sidebar({
   onRenameFile,
   onImportFile,
   onContextMenu,
+  onEmptyContextMenu,
   collapsed,
   onToggleCollapse,
+  onCreateFile,
+  onCreateFolder,
 }: SidebarProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+
+  const { root } = useMemo(() => buildFolderTree(files), [files]);
 
   const handleConfirmRename = () => {
     if (renamingId && renameValue.trim()) {
@@ -32,9 +81,157 @@ export default function Sidebar({
     setRenamingId(null);
   };
 
-  const formatDate = (ts: number) => {
-    const d = new Date(ts);
-    return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const toggleFolder = (path: string) => {
+    setCollapsedFolders((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) {
+        next.delete(path);
+      } else {
+        next.add(path);
+      }
+      return next;
+    });
+  };
+
+  const renderFolder = (node: FolderNode, depth: number): React.ReactNode => {
+    const isCollapsed = collapsedFolders.has(node.path);
+    const folderEntries = Array.from(node.children.values());
+
+    return (
+      <div key={node.path}>
+        {/* Folder header */}
+        {node.path && (
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: `2px 8px 2px ${8 + depth * 12}px`,
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              color: 'var(--text-dim)',
+              userSelect: 'none',
+            }}
+            onClick={() => toggleFolder(node.path)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              // Could add folder context menu here
+            }}
+          >
+            <span style={{ marginRight: 4, fontSize: '0.69rem' }}>
+              {isCollapsed ? '▸' : '▾'}
+            </span>
+            <span style={{ marginRight: 4 }}>📁</span>
+            <span>{node.name}</span>
+          </div>
+        )}
+
+        {/* Folder children (if not collapsed) */}
+        {(!node.path || !isCollapsed) && (
+          <>
+            {folderEntries.map((child) => renderFolder(child, depth + 1))}
+            {node.files.map((file) => renderFileEntry(file, depth + (node.path ? 1 : 0)))}
+          </>
+        )}
+      </div>
+    );
+  };
+
+  const renderFileEntry = (file: FileEntry, depth: number): React.ReactNode => {
+    const isActive = file.id === activeFileId;
+    const displayName = file.name.split('/').pop() || file.name;
+    const isRenaming = renamingId === file.id;
+
+    const statusColor =
+      file.status === 'compiled' ? 'var(--success)' :
+      file.status === 'missing_deps' ? 'var(--warning)' :
+      file.status === 'error' ? 'var(--danger)' : 'var(--text-dim)';
+
+    return (
+      <div
+        key={file.id}
+        onClick={() => onSelectFile(file.id)}
+        onContextMenu={(e) => onContextMenu(e, file)}
+        style={{
+          padding: `2px 8px 2px ${8 + depth * 12}px`,
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 4,
+          background: isActive ? 'var(--menu-hover)' : 'transparent',
+          borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
+          fontSize: '0.85rem',
+          color: 'var(--text)',
+          userSelect: 'none',
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--menu-hover)';
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent';
+        }}
+      >
+        {/* Status dot */}
+        <div
+          style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: statusColor, flexShrink: 0,
+          }}
+        />
+        {/* File icon */}
+        <span style={{ flexShrink: 0 }}>📄</span>
+        {/* File name */}
+        {isRenaming ? (
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={handleConfirmRename}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleConfirmRename();
+              if (e.key === 'Escape') setRenamingId(null);
+            }}
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              flex: 1,
+              background: 'var(--input-bg)',
+              color: 'var(--text)',
+              border: '1px solid var(--accent)',
+              borderRadius: 2,
+              padding: '1px 4px',
+              fontSize: '0.85rem',
+            }}
+          />
+        ) : (
+          <span
+            style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+            title={file.name}
+          >
+            {displayName}
+          </span>
+        )}
+        {/* Rename button on hover */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setRenamingId(file.id);
+            setRenameValue(file.name);
+          }}
+          title="Rename"
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'var(--text-dim)',
+            cursor: 'pointer',
+            fontSize: '0.69rem',
+            padding: '0 2px',
+            opacity: 0.5,
+            flexShrink: 0,
+          }}
+        >
+          ✎
+        </button>
+      </div>
+    );
   };
 
   if (collapsed) {
@@ -72,12 +269,11 @@ export default function Sidebar({
   return (
     <div
       style={{
-        width: 240,
+        width: '100%',
+        height: '100%',
         background: 'var(--sidebar-bg)',
-        borderRight: '1px solid var(--border)',
         display: 'flex',
         flexDirection: 'column',
-        flexShrink: 0,
         overflow: 'hidden',
       }}
     >
@@ -94,6 +290,7 @@ export default function Sidebar({
           color: 'var(--text-dim)',
           textTransform: 'uppercase',
           letterSpacing: '0.5px',
+          flexShrink: 0,
         }}
       >
         <span>Files</span>
@@ -116,6 +313,40 @@ export default function Sidebar({
             +
           </button>
           <button
+            onClick={onCreateFile}
+            title="New file"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              fontSize: '1.08rem',
+              padding: '2px 6px',
+              borderRadius: 3,
+            }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+          >
+            📄
+          </button>
+          <button
+            onClick={onCreateFolder}
+            title="New folder"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              fontSize: '1.08rem',
+              padding: '2px 6px',
+              borderRadius: 3,
+            }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+          >
+            📁
+          </button>
+          <button
             onClick={onToggleCollapse}
             title="Collapse sidebar"
             style={{
@@ -130,109 +361,39 @@ export default function Sidebar({
             onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
             onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
           >
-            ◂
+            −
           </button>
         </div>
       </div>
 
-      {/* File list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
+      {/* File tree */}
+      <div
+        style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}
+        onContextMenu={(e) => {
+          // Only trigger empty-area menu if clicking on the container itself (not a file/folder)
+          const target = e.target as HTMLElement;
+          if (target === e.currentTarget || target.closest('[data-sidebar-empty]')) {
+            e.preventDefault();
+            onEmptyContextMenu(e);
+          }
+        }}
+      >
         {files.length === 0 ? (
-          <div style={{ padding: '16px 12px', color: 'var(--text-dim)', fontSize: '0.92rem', textAlign: 'center' }}>
-            No files imported yet.
-            <br />
-            <button
-              onClick={onImportFile}
-              style={{
-                marginTop: 8,
-                background: 'var(--accent)',
-                color: '#fff',
-                border: 'none',
-                borderRadius: 4,
-                padding: '4px 12px',
-                cursor: 'pointer',
-                fontSize: '0.92rem',
-              }}
-            >
-              Import .v File
-            </button>
+          <div
+            style={{
+              padding: 16,
+              fontSize: '0.92rem',
+              color: 'var(--text-dim)',
+              textAlign: 'center',
+            }}
+          >
+            No files imported
           </div>
         ) : (
-          files.map((file) => (
-            <div
-              key={file.id}
-              onClick={() => onSelectFile(file.id)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                onContextMenu(e, file);
-              }}
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '6px 12px',
-                cursor: 'pointer',
-                background: file.id === activeFileId ? 'var(--menu-hover)' : 'transparent',
-                borderLeft: file.id === activeFileId ? '2px solid var(--accent)' : '2px solid transparent',
-                transition: 'background 0.1s',
-              }}
-              onMouseEnter={(e) => {
-                if (file.id !== activeFileId) {
-                  (e.currentTarget as HTMLElement).style.background = 'var(--menu-hover)';
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (file.id !== activeFileId) {
-                  (e.currentTarget as HTMLElement).style.background = 'transparent';
-                }
-              }}
-            >
-              <div style={{ overflow: 'hidden', flex: 1 }}>
-                {renamingId === file.id ? (
-                  <input
-                    value={renameValue}
-                    onChange={(e) => setRenameValue(e.target.value)}
-                    onBlur={handleConfirmRename}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') handleConfirmRename();
-                      if (e.key === 'Escape') setRenamingId(null);
-                    }}
-                    autoFocus
-                    onClick={(e) => e.stopPropagation()}
-                    style={{
-                      width: '100%',
-                      background: 'var(--input-bg)',
-                      color: 'var(--text)',
-                      border: '1px solid var(--accent)',
-                      borderRadius: 3,
-                      padding: '2px 6px',
-                      fontSize: '0.92rem',
-                      outline: 'none',
-                    }}
-                  />
-                ) : (
-                  <>
-                    <div
-                      style={{
-                        fontSize: '1rem',
-                        color: 'var(--text)',
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                      }}
-                    >
-                      {file.name}
-                    </div>
-                    <div style={{ fontSize: '0.77rem', color: 'var(--text-dim)', marginTop: 1 }}>
-                      {file.status === 'compiled' ? 'Compiled' : file.status === 'error' ? 'Error' : 'Pending'}
-                      {' · '}
-                      {formatDate(file.importedAt)}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          ))
+          <>
+            {Array.from(root.children.values()).map((child) => renderFolder(child, 0))}
+            {root.files.map((file) => renderFileEntry(file, 0))}
+          </>
         )}
       </div>
     </div>

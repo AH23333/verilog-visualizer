@@ -1,15 +1,16 @@
-// Quartus Gate-Level Netlist: 4-bit Counter
+// 4-bit Counter (gate-level netlist)
 // Generated for testing the Verilog Visualizer
 module counter(input clk, input reset, output [3:0] count);
 
-  wire n0, n1, n2, n3;
+  wire n0_wire, n1, n2, n3;
+  wire w1, w2;
 
-  dff d0 (.clk(clk), .d(n0), .q(count[0]));
+  dff d0 (.clk(clk), .d(n0_wire), .q(count[0]));
   dff d1 (.clk(clk), .d(n1), .q(count[1]));
   dff d2 (.clk(clk), .d(n2), .q(count[2]));
   dff d3 (.clk(clk), .d(n3), .q(count[3]));
 
-  not n0 (.in(count[0]), .out(n0));
+  not n0_gate (.in(count[0]), .out(n0_wire));
   xor x1 (.a(count[0]), .b(count[1]), .out(n1));
   and a1 (.a(count[0]), .b(count[1]), .out(w1));
   xor x2 (.a(w1), .b(count[2]), .out(n2));
