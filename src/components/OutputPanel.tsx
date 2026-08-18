@@ -71,8 +71,8 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
           display: 'flex',
           alignItems: 'center',
           padding: '0 12px',
-          background: 'var(--panel-bg)',
-          borderTop: '1px solid var(--border)',
+          background: 'var(--statusbar-bg)',
+          borderTop: '1px solid var(--border-subtle)',
           flexShrink: 0,
           cursor: 'pointer',
           userSelect: 'none',
@@ -95,8 +95,8 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
         display: 'flex',
         flexDirection: 'column',
         flexShrink: 0,
-        borderTop: '1px solid var(--border)',
-        background: 'var(--panel-bg)',
+        borderTop: '1px solid var(--border-subtle)',
+        background: 'var(--bg-elevated)',
         userSelect: isDragging ? 'none' : 'auto',
         minHeight: 60,
         maxHeight: '40vh',
@@ -107,9 +107,9 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
       <div
         onMouseDown={handleDragStart}
         style={{
-          height: 4,
+          height: 3,
           cursor: 'ns-resize',
-          background: isDragging ? 'var(--accent)' : 'var(--border)',
+          background: isDragging ? 'var(--accent)' : 'var(--border-subtle)',
           flexShrink: 0,
         }}
       />
@@ -126,9 +126,9 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
       >
         <span
           style={{
-            fontSize: '0.77rem',
+            fontSize: '0.75rem',
             fontWeight: 600,
-            color: 'var(--text-dim)',
+            color: 'var(--text-secondary)',
             textTransform: 'uppercase',
             letterSpacing: '0.5px',
             cursor: 'pointer',
@@ -166,9 +166,9 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
           padding: '8px 12px',
           overflow: 'auto',
           fontFamily: "'Consolas', 'Courier New', monospace",
-          fontSize: '0.85rem',
-          lineHeight: '1.5',
-          color: 'var(--text)',
+          fontSize: '0.8rem',
+          lineHeight: '1.6',
+          color: 'var(--text-secondary)',
           background: 'var(--bg)',
           whiteSpace: 'pre-wrap',
           wordBreak: 'break-all',

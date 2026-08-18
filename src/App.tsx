@@ -546,18 +546,20 @@ export default function App() {
         {/* Activity Bar (IDE-style left icon bar) */}
         <div
           style={{
-            width: 40,
+            width: 44,
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            paddingTop: 4,
-            background: 'var(--menu-bg)',
-            borderRight: '1px solid var(--border)',
+            paddingTop: 6,
+            paddingBottom: 6,
+            background: 'var(--sidebar-bg)',
+            borderRight: '1px solid var(--border-subtle)',
             flexShrink: 0,
+            gap: 2,
           }}
         >
           <ActivityButton
-            icon="📁"
+            icon="▦"
             label="Files"
             active={leftPanel === 'files' && !sidebarCollapsed}
             onClick={() => {
@@ -570,7 +572,7 @@ export default function App() {
             }}
           />
           <ActivityButton
-            icon="📦"
+            icon="◫"
             label="Modules"
             active={leftPanel === 'modules' && !sidebarCollapsed}
             onClick={() => {
@@ -584,7 +586,7 @@ export default function App() {
           />
           <div style={{ flex: 1 }} />
           <ActivityButton
-            icon={theme === 'dark' ? '☀' : '🌙'}
+            icon={theme === 'dark' ? '◎' : '◉'}
             label="Theme"
             active={false}
             onClick={handleToggleTheme}
@@ -597,7 +599,7 @@ export default function App() {
             style={{
               width: sidebarWidth,
               minWidth: 180,
-              borderRight: '1px solid var(--border)',
+              borderRight: '1px solid var(--border-subtle)',
               background: 'var(--sidebar-bg)',
               display: 'flex',
               flexDirection: 'column',
@@ -662,20 +664,28 @@ export default function App() {
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              padding: '4px 12px',
+              gap: 10,
+              padding: '6px 14px',
               background: 'var(--toolbar-bg)',
-              borderBottom: '1px solid var(--border)',
+              borderBottom: '1px solid var(--border-subtle)',
               flexShrink: 0,
+              minHeight: 38,
             }}
           >
             <div
               style={{
                 width: 8, height: 8, borderRadius: '50%',
                 background: statusColor, flexShrink: 0,
+                boxShadow: `0 0 6px ${statusColor}`,
               }}
             />
-            <span style={{ fontSize: '0.92rem', color: 'var(--text)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span
+              style={{
+                fontSize: '0.88rem', color: 'var(--text)', flex: 1,
+                overflow: 'hidden', textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap', fontWeight: 500,
+              }}
+            >
               {activeFile ? `${activeFile.name} — ${message || 'Ready'}` : message || 'Verilog Visualizer'}
             </span>
             {activeFile && (
@@ -684,8 +694,16 @@ export default function App() {
                   onClick={handleSave}
                   title="Save (Ctrl+S)"
                   style={{
-                    padding: '2px 10px', border: 'none', borderRadius: 3, cursor: 'pointer',
-                    fontSize: '0.85rem', background: 'var(--input-bg)', color: 'var(--text)',
+                    padding: '4px 14px', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                    fontSize: '0.82rem', background: 'var(--surface)',
+                    color: 'var(--text)', fontWeight: 500,
+                  }}
+                  onMouseEnter={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
+                  }}
+                  onMouseLeave={(e) => {
+                    (e.currentTarget as HTMLElement).style.background = 'var(--surface)';
                   }}
                 >
                   Save
@@ -695,11 +713,24 @@ export default function App() {
                   disabled={status === 'compiling'}
                   title="Compile (F5)"
                   style={{
-                    padding: '2px 10px', border: 'none', borderRadius: 3,
+                    padding: '4px 14px', border: 'none',
+                    borderRadius: 'var(--radius-md)',
                     cursor: status === 'compiling' ? 'default' : 'pointer',
-                    fontSize: '0.85rem',
-                    background: status === 'compiling' ? 'var(--text-dim)' : 'var(--accent)',
-                    color: '#fff', fontWeight: 500,
+                    fontSize: '0.82rem',
+                    background: status === 'compiling'
+                      ? 'var(--text-muted)'
+                      : 'var(--accent)',
+                    color: '#fff', fontWeight: 600,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (status !== 'compiling') {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--accent-hover)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (status !== 'compiling') {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--accent)';
+                    }
                   }}
                 >
                   {status === 'compiling' ? 'Compiling...' : 'Compile'}
@@ -709,9 +740,12 @@ export default function App() {
                     onClick={handleCompile}
                     disabled={status === 'compiling'}
                     style={{
-                      padding: '2px 10px', border: 'none', borderRadius: 3,
+                      padding: '4px 14px', border: 'none',
+                      borderRadius: 'var(--radius-md)',
                       cursor: status === 'compiling' ? 'default' : 'pointer',
-                      fontSize: '0.85rem', background: 'var(--warning)', color: '#000', fontWeight: 500,
+                      fontSize: '0.82rem',
+                      background: 'var(--warning)',
+                      color: '#000', fontWeight: 600,
                     }}
                   >
                     Fix Dependencies
@@ -720,14 +754,26 @@ export default function App() {
               </>
             )}
             {activeFile && (
-              <div style={{ display: 'flex', gap: 2, marginLeft: 8 }}>
+              <div
+                style={{
+                  display: 'flex', gap: 1, marginLeft: 8,
+                  background: 'var(--surface)',
+                  borderRadius: 'var(--radius-md)',
+                  border: '1px solid var(--border)',
+                  padding: 1,
+                }}
+              >
                 <button
                   onClick={() => setViewMode('circuit')}
                   style={{
-                    padding: '2px 8px', border: 'none', borderRadius: 3, cursor: 'pointer',
-                    fontSize: '0.77rem',
-                    background: viewMode === 'circuit' ? 'var(--accent)' : 'var(--input-bg)',
-                    color: viewMode === 'circuit' ? '#fff' : 'var(--text)',
+                    padding: '3px 10px', border: 'none',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                    fontSize: '0.77rem', fontWeight: 500,
+                    background: viewMode === 'circuit'
+                      ? 'var(--accent)' : 'transparent',
+                    color: viewMode === 'circuit'
+                      ? '#fff' : 'var(--text-secondary)',
+                    transition: 'all var(--transition-fast)',
                   }}
                 >
                   Circuit
@@ -735,10 +781,14 @@ export default function App() {
                 <button
                   onClick={() => setViewMode('code')}
                   style={{
-                    padding: '2px 8px', border: 'none', borderRadius: 3, cursor: 'pointer',
-                    fontSize: '0.77rem',
-                    background: viewMode === 'code' ? 'var(--accent)' : 'var(--input-bg)',
-                    color: viewMode === 'code' ? '#fff' : 'var(--text)',
+                    padding: '3px 10px', border: 'none',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                    fontSize: '0.77rem', fontWeight: 500,
+                    background: viewMode === 'code'
+                      ? 'var(--accent)' : 'transparent',
+                    color: viewMode === 'code'
+                      ? '#fff' : 'var(--text-secondary)',
+                    transition: 'all var(--transition-fast)',
                   }}
                 >
                   Code
@@ -756,25 +806,50 @@ export default function App() {
               if (!activeFile) {
                 return (
                   <div style={{
-                    display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                    alignItems: 'center', height: '100%', color: 'var(--text-dim)',
-                    fontSize: '1.23rem', userSelect: 'none', gap: 12,
+                    display: 'flex', flexDirection: 'column',
+                    justifyContent: 'center', alignItems: 'center',
+                    height: '100%', color: 'var(--text-secondary)',
+                    userSelect: 'none', gap: 16,
                   }}>
-                    <div style={{ fontSize: '3.69rem', opacity: 0.3 }}>📄</div>
-                    <div>No file selected</div>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={handleImportFile} style={{
-                        padding: '8px 24px', background: 'var(--accent)', color: '#fff',
-                        border: 'none', borderRadius: 6, cursor: 'pointer',
-                        fontSize: '1.08rem', fontWeight: 500,
-                      }}>Import .v File</button>
-                      <button onClick={handleCreateFile} style={{
-                        padding: '8px 24px', background: 'var(--input-bg)', color: 'var(--text)',
-                        border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
-                        fontSize: '1.08rem', fontWeight: 500,
-                      }}>New File</button>
+                    <div style={{
+                      fontSize: '4rem', opacity: 0.15,
+                      fontWeight: 300, lineHeight: 1,
+                    }}>◈</div>
+                    <div style={{ fontSize: '1.15rem', fontWeight: 500, color: 'var(--text)' }}>
+                      No file selected
                     </div>
-                    <div style={{ fontSize: '0.92rem', opacity: 0.5 }}>
+                    <div style={{ display: 'flex', gap: 10 }}>
+                      <button onClick={handleImportFile} style={{
+                        padding: '8px 22px',
+                        background: 'var(--accent)', color: '#fff',
+                        border: 'none', borderRadius: 'var(--radius-md)',
+                        cursor: 'pointer', fontSize: '0.92rem',
+                        fontWeight: 600,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'var(--accent-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'var(--accent)';
+                      }}
+                      >Import .v File</button>
+                      <button onClick={handleCreateFile} style={{
+                        padding: '8px 22px',
+                        background: 'var(--surface)', color: 'var(--text)',
+                        border: '1px solid var(--border)',
+                        borderRadius: 'var(--radius-md)',
+                        cursor: 'pointer', fontSize: '0.92rem',
+                        fontWeight: 500,
+                      }}
+                      onMouseEnter={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
+                      }}
+                      onMouseLeave={(e) => {
+                        (e.currentTarget as HTMLElement).style.background = 'var(--surface)';
+                      }}
+                      >New File</button>
+                    </div>
+                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
                       Ctrl+O to import · Ctrl+N to create · F5 to compile
                     </div>
                   </div>
@@ -808,29 +883,47 @@ export default function App() {
 
               return (
                 <div style={{
-                  display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                  alignItems: 'center', height: '100%', color: 'var(--text-dim)',
-                  fontSize: '1.23rem', userSelect: 'none', gap: 12,
+                  display: 'flex', flexDirection: 'column',
+                  justifyContent: 'center', alignItems: 'center',
+                  height: '100%', color: 'var(--text-secondary)',
+                  userSelect: 'none', gap: 14,
                 }}>
-                  <div style={{ fontSize: '3.69rem', opacity: 0.3 }}>
-                    {activeFile.status === 'missing_deps' ? '⚠' : '📄'}
+                  <div style={{ fontSize: '3rem', opacity: 0.15, fontWeight: 300 }}>
+                    {activeFile.status === 'missing_deps' ? '△' : '◈'}
                   </div>
-                  <div>
+                  <div style={{ fontSize: '1.08rem', fontWeight: 500, color: 'var(--text)' }}>
                     {activeFile.status === 'missing_deps'
                       ? 'Missing dependencies'
                       : activeFile.status === 'error'
                       ? 'Compilation error'
                       : 'Not compiled'}
                   </div>
-                  <div style={{ fontSize: '0.92rem', opacity: 0.7, maxWidth: 400, textAlign: 'center' }}>
+                  <div style={{
+                    fontSize: '0.88rem', color: 'var(--text-secondary)',
+                    maxWidth: 420, textAlign: 'center',
+                  }}>
                     {activeFile.errorMessage || 'Press F5 to compile. Check Output panel for details.'}
                   </div>
                   <button onClick={handleCompile} disabled={status === 'compiling'} style={{
-                    marginTop: 8, padding: '8px 24px',
-                    background: status === 'compiling' ? 'var(--text-dim)' : 'var(--accent)',
-                    color: '#fff', border: 'none', borderRadius: 6, cursor: 'pointer',
-                    fontSize: '1.08rem', fontWeight: 500,
-                  }}>
+                    marginTop: 6, padding: '8px 22px',
+                    background: status === 'compiling'
+                      ? 'var(--text-muted)' : 'var(--accent)',
+                    color: '#fff', border: 'none',
+                    borderRadius: 'var(--radius-md)',
+                    cursor: 'pointer', fontSize: '0.92rem',
+                    fontWeight: 600,
+                  }}
+                  onMouseEnter={(e) => {
+                    if (status !== 'compiling') {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--accent-hover)';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (status !== 'compiling') {
+                      (e.currentTarget as HTMLElement).style.background = 'var(--accent)';
+                    }
+                  }}
+                  >
                     {status === 'compiling' ? 'Compiling...' : 'Compile (F5)'}
                   </button>
                 </div>
@@ -848,25 +941,41 @@ export default function App() {
         onClose={() => setOutputPanelVisible(false)}
       />
 
-      {/* Bottom Status Bar (IDE-style) */}
+      {/* Bottom Status Bar */}
       <div style={{
-        display: 'flex', alignItems: 'center', height: 22,
-        padding: '0 12px', background: 'var(--accent)', color: '#fff',
-        fontSize: '0.85rem', flexShrink: 0, gap: 12,
+        display: 'flex', alignItems: 'center', height: 24,
+        padding: '0 14px',
+        background: 'var(--statusbar-bg)', color: 'var(--text-secondary)',
+        fontSize: '0.74rem', flexShrink: 0, gap: 14,
+        borderTop: '1px solid var(--border-subtle)',
       }}>
         <span>{files.length} file{files.length !== 1 ? 's' : ''}</span>
+        <span style={{ color: 'var(--text-muted)' }}>|</span>
         <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
+        <span style={{ color: 'var(--text-muted)' }}>|</span>
         <span>Font: {editorFontSize}px</span>
-        <span>Default: {defaultViewMode === 'circuit' ? 'Circuit' : 'Code'}</span>
+        <span style={{ color: 'var(--text-muted)' }}>|</span>
+        <span style={{ cursor: 'pointer' }}
+          onClick={() => {
+            const next = settingsStore.getDefaultViewMode() === 'circuit' ? 'code' : 'circuit';
+            settingsStore.setDefaultViewMode(next);
+          }}
+          title="Click to toggle default view"
+        >
+          Default: {defaultViewMode === 'circuit' ? 'Circuit' : 'Code'}
+        </span>
+        <span style={{ color: 'var(--text-muted)' }}>|</span>
         <span
-          style={{ cursor: 'pointer' }}
+          style={{ cursor: 'pointer', color: outputPanelVisible ? 'var(--accent)' : 'var(--text-secondary)' }}
           onClick={() => setOutputPanelVisible((v) => !v)}
           title="Toggle Output Panel (Ctrl+J)"
         >
-          {outputPanelVisible ? 'Hide Output' : 'Show Output'}
+          {outputPanelVisible ? 'Output' : 'Output'}
         </span>
         <span style={{ flex: 1 }} />
-        <span>Ctrl+S Save · F5 Compile · Ctrl+J Output</span>
+        <span style={{ color: 'var(--text-muted)' }}>
+          Ctrl+S Save · F5 Compile · Ctrl+J Output
+        </span>
       </div>
 
       {/* Custom Context Menu */}
@@ -920,19 +1029,31 @@ function ActivityButton({
       onClick={onClick}
       title={label}
       style={{
-        width: 36,
-        height: 36,
+        width: 38,
+        height: 38,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        fontSize: '1.23rem',
-        background: active ? 'var(--menu-hover)' : 'transparent',
+        fontSize: '1.15rem',
+        background: active ? 'var(--accent-muted)' : 'transparent',
         border: 'none',
         borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
         cursor: 'pointer',
-        color: active ? 'var(--accent)' : 'var(--text-dim)',
+        color: active ? 'var(--accent)' : 'var(--text-muted)',
         borderRadius: 0,
-        marginBottom: 2,
+        transition: 'all var(--transition-fast)',
+      }}
+      onMouseEnter={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+          (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (!active) {
+          (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
+          (e.currentTarget as HTMLElement).style.background = 'transparent';
+        }
       }}
     >
       {icon}

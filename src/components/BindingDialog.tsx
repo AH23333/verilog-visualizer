@@ -72,7 +72,8 @@ export default function BindingDialog({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.6)',
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(2px)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -84,24 +85,24 @@ export default function BindingDialog({
     >
       <div
         style={{
-          background: 'var(--panel-bg)',
+          background: 'var(--bg-elevated)',
           border: '1px solid var(--border)',
-          borderRadius: 8,
-          padding: '20px 24px',
+          borderRadius: 'var(--radius-xl)',
+          padding: '24px 28px',
           minWidth: 520,
           maxWidth: 680,
           maxHeight: '80vh',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+          boxShadow: 'var(--shadow-lg)',
         }}
       >
         {/* Header */}
         <div style={{ marginBottom: 16, flexShrink: 0 }}>
-          <h2 style={{ margin: 0, fontSize: '1.15rem', color: 'var(--text)' }}>
+          <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
             Module Binding: {file.name}
           </h2>
-          <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-dim)' }}>
+          <p style={{ margin: '6px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
             {instantiatedModules.length > 0
               ? `Found ${instantiatedModules.length} instantiated module(s). Select the file that defines each module.`
               : 'This file does not instantiate any custom modules.'}
@@ -234,13 +235,14 @@ export default function BindingDialog({
           <button
             onClick={onCancel}
             style={{
-              padding: '6px 16px',
+              padding: '6px 18px',
               border: '1px solid var(--border)',
-              borderRadius: 4,
-              background: 'var(--input-bg)',
+              borderRadius: 'var(--radius-md)',
+              background: 'var(--surface)',
               color: 'var(--text)',
               cursor: 'pointer',
-              fontSize: '0.92rem',
+              fontSize: '0.85rem',
+              fontWeight: 500,
             }}
           >
             Cancel
@@ -248,14 +250,14 @@ export default function BindingDialog({
           <button
             onClick={handleConfirm}
             style={{
-              padding: '6px 16px',
+              padding: '6px 18px',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 'var(--radius-md)',
               background: 'var(--accent)',
               color: '#fff',
               cursor: 'pointer',
-              fontSize: '0.92rem',
-              fontWeight: 500,
+              fontSize: '0.85rem',
+              fontWeight: 600,
             }}
           >
             OK

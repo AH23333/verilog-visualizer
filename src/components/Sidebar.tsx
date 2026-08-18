@@ -105,22 +105,25 @@ export default function Sidebar({
             style={{
               display: 'flex',
               alignItems: 'center',
-              padding: `2px 8px 2px ${8 + depth * 12}px`,
+              padding: `3px 8px 3px ${8 + depth * 12}px`,
               cursor: 'pointer',
-              fontSize: '0.85rem',
-              color: 'var(--text-dim)',
+              fontSize: '0.82rem',
+              color: 'var(--text-secondary)',
               userSelect: 'none',
+              transition: 'color var(--transition-fast)',
             }}
             onClick={() => toggleFolder(node.path)}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              // Could add folder context menu here
+            onMouseEnter={(e) => {
+              (e.currentTarget as HTMLElement).style.color = 'var(--text)';
+            }}
+            onMouseLeave={(e) => {
+              (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
             }}
           >
-            <span style={{ marginRight: 4, fontSize: '0.69rem' }}>
+            <span style={{ marginRight: 4, fontSize: '0.62rem', width: 10, display: 'inline-block' }}>
               {isCollapsed ? '▸' : '▾'}
             </span>
-            <span style={{ marginRight: 4 }}>📁</span>
+            <span style={{ marginRight: 4 }}>{isCollapsed ? '📁' : '📂'}</span>
             <span>{node.name}</span>
           </div>
         )}
@@ -152,28 +155,35 @@ export default function Sidebar({
         onClick={() => onSelectFile(file.id)}
         onContextMenu={(e) => onContextMenu(e, file)}
         style={{
-          padding: `2px 8px 2px ${8 + depth * 12}px`,
+          padding: `3px 8px 3px ${8 + depth * 12}px`,
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
-          background: isActive ? 'var(--menu-hover)' : 'transparent',
+          gap: 6,
+          background: isActive ? 'var(--accent-muted)' : 'transparent',
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
-          fontSize: '0.85rem',
-          color: 'var(--text)',
+          fontSize: '0.82rem',
+          color: isActive ? 'var(--text)' : 'var(--text-secondary)',
           userSelect: 'none',
+          transition: 'background var(--transition-fast), color var(--transition-fast)',
         }}
         onMouseEnter={(e) => {
-          if (!isActive) (e.currentTarget as HTMLElement).style.background = 'var(--menu-hover)';
+          if (!isActive) {
+            (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
+            (e.currentTarget as HTMLElement).style.color = 'var(--text)';
+          }
         }}
         onMouseLeave={(e) => {
-          if (!isActive) (e.currentTarget as HTMLElement).style.background = 'transparent';
+          if (!isActive) {
+            (e.currentTarget as HTMLElement).style.background = 'transparent';
+            (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+          }
         }}
       >
         {/* Status dot */}
         <div
           style={{
-            width: 6, height: 6, borderRadius: '50%',
+            width: 5, height: 5, borderRadius: '50%',
             background: statusColor, flexShrink: 0,
           }}
         />
@@ -240,7 +250,7 @@ export default function Sidebar({
         style={{
           width: 36,
           background: 'var(--sidebar-bg)',
-          borderRight: '1px solid var(--border)',
+          borderRight: '1px solid var(--border-subtle)',
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
@@ -283,13 +293,13 @@ export default function Sidebar({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '8px 12px',
-          borderBottom: '1px solid var(--border)',
-          fontSize: '0.85rem',
+          padding: '8px 14px',
+          borderBottom: '1px solid var(--border-subtle)',
+          fontSize: '0.75rem',
           fontWeight: 600,
-          color: 'var(--text-dim)',
+          color: 'var(--text-secondary)',
           textTransform: 'uppercase',
-          letterSpacing: '0.5px',
+          letterSpacing: '0.6px',
           flexShrink: 0,
         }}
       >
@@ -382,8 +392,8 @@ export default function Sidebar({
           <div
             style={{
               padding: 16,
-              fontSize: '0.92rem',
-              color: 'var(--text-dim)',
+              fontSize: '0.82rem',
+              color: 'var(--text-muted)',
               textAlign: 'center',
             }}
           >

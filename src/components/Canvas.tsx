@@ -43,7 +43,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       (wrapper.querySelector('svg') as HTMLElement | null);
     if (!paper) return;
 
-    const bgColor = theme === 'dark' ? '#1e1e1e' : '#ffffff';
+    const bgColor = theme === 'dark' ? '#0d1117' : '#ffffff';
     paper.style.backgroundColor = bgColor;
     paper.style.setProperty('background-color', bgColor, 'important');
 

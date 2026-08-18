@@ -105,7 +105,7 @@ export default function CodeEditor({
         height: '100%',
         display: 'flex',
         flexDirection: 'column',
-        background: isDark ? '#1e1e1e' : '#ffffff',
+        background: 'var(--bg)',
       }}
     >
       {/* Header bar */}
@@ -114,16 +114,16 @@ export default function CodeEditor({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '6px 12px',
-          background: isDark ? '#2d2d2d' : '#f3f3f3',
-          borderBottom: '1px solid var(--border)',
+          padding: '6px 14px',
+          background: 'var(--surface)',
+          borderBottom: '1px solid var(--border-subtle)',
           flexShrink: 0,
         }}
       >
         <span
           style={{
-            fontSize: '0.92rem',
-            color: 'var(--text-dim)',
+            fontSize: '0.82rem',
+            color: 'var(--text-secondary)',
             fontFamily: 'monospace',
           }}
         >
@@ -134,12 +134,12 @@ export default function CodeEditor({
           disabled={isCompiling}
           style={{
             padding: '4px 14px',
-            background: isCompiling ? 'var(--text-dim)' : 'var(--accent)',
+            background: isCompiling ? 'var(--text-muted)' : 'var(--accent)',
             color: '#fff',
             border: 'none',
-            borderRadius: 4,
+            borderRadius: 'var(--radius-md)',
             cursor: isCompiling ? 'default' : 'pointer',
-            fontSize: '0.92rem',
+            fontSize: '0.82rem',
             fontWeight: 500,
           }}
         >
@@ -156,8 +156,8 @@ export default function CodeEditor({
             width: Math.max(48, fontSize * 3.5),
             overflow: 'hidden',
             flexShrink: 0,
-            background: isDark ? '#252526' : '#f0f0f0',
-            borderRight: `1px solid ${isDark ? '#3c3c3c' : '#d4d4d4'}`,
+            background: 'var(--surface)',
+            borderRight: '1px solid var(--border-subtle)',
             paddingTop: 8,
             paddingBottom: 8,
             userSelect: 'none',
@@ -173,7 +173,7 @@ export default function CodeEditor({
                 paddingRight: 8,
                 fontSize,
                 fontFamily: "'Consolas', 'Courier New', monospace",
-                color: isDark ? '#858585' : '#999',
+                color: 'var(--text-muted)',
               }}
             >
               {i + 1}
@@ -198,8 +198,8 @@ export default function CodeEditor({
             fontSize,
             lineHeight: `${lineHeight}px`,
             fontFamily: "'Consolas', 'Courier New', monospace",
-            background: isDark ? '#1e1e1e' : '#ffffff',
-            color: isDark ? '#d4d4d4' : '#333333',
+            background: 'var(--bg)',
+            color: 'var(--text)',
             tabSize: 2,
             whiteSpace: 'pre',
             overflowWrap: 'normal',
@@ -213,12 +213,13 @@ export default function CodeEditor({
         style={{
           display: 'flex',
           alignItems: 'center',
-          padding: '2px 12px',
-          background: isDark ? '#007acc' : '#0078d4',
-          color: '#fff',
-          fontSize: '0.85rem',
+          padding: '2px 14px',
+          background: 'var(--statusbar-bg)',
+          color: 'var(--text-secondary)',
+          fontSize: '0.74rem',
           flexShrink: 0,
           gap: 16,
+          borderTop: '1px solid var(--border-subtle)',
         }}
       >
         <span>Verilog</span>

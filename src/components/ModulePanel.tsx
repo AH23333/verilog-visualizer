@@ -61,13 +61,13 @@ export default function ModulePanel({
       {/* Header */}
       <div
         style={{
-          padding: '8px 12px',
-          fontSize: '0.85rem',
+          padding: '8px 14px',
+          fontSize: '0.75rem',
           fontWeight: 600,
-          color: 'var(--text-dim)',
+          color: 'var(--text-secondary)',
           textTransform: 'uppercase',
-          letterSpacing: '0.5px',
-          borderBottom: '1px solid var(--border)',
+          letterSpacing: '0.6px',
+          borderBottom: '1px solid var(--border-subtle)',
           flexShrink: 0,
         }}
       >
@@ -80,8 +80,8 @@ export default function ModulePanel({
           <div
             style={{
               padding: 16,
-              fontSize: '0.92rem',
-              color: 'var(--text-dim)',
+              fontSize: '0.82rem',
+              color: 'var(--text-muted)',
               textAlign: 'center',
             }}
           >
@@ -98,7 +98,7 @@ export default function ModulePanel({
             <div
               key={file.id}
               style={{
-                borderBottom: '1px solid var(--border)',
+                borderBottom: '1px solid var(--border-subtle)',
               }}
             >
               {/* File header */}

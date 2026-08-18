@@ -18,7 +18,8 @@ export default function MissingModulesDialog({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(0,0,0,0.5)',
+        background: 'rgba(0,0,0,0.55)',
+        backdropFilter: 'blur(2px)',
         display: 'flex',
         justifyContent: 'center',
         alignItems: 'center',
@@ -28,10 +29,10 @@ export default function MissingModulesDialog({
     >
       <div
         style={{
-          background: 'var(--dropdown-bg)',
+          background: 'var(--bg-elevated)',
           border: '1px solid var(--border)',
-          borderRadius: 8,
-          boxShadow: '0 12px 40px rgba(0,0,0,0.5)',
+          borderRadius: 'var(--radius-xl)',
+          boxShadow: 'var(--shadow-lg)',
           maxWidth: 480,
           width: '90%',
           padding: 24,
@@ -43,12 +44,12 @@ export default function MissingModulesDialog({
       >
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: '1.54rem' }}>⚠</span>
+          <span style={{ fontSize: '1.4rem' }}>△</span>
           <div>
-            <div style={{ fontSize: '1.08rem', fontWeight: 600, color: 'var(--warning)' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--warning)' }}>
               Missing Module Implementations
             </div>
-            <div style={{ fontSize: '0.92rem', color: 'var(--text-dim)', marginTop: 2 }}>
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 }}>
               The following modules are referenced but not defined in any loaded file.
             </div>
           </div>
@@ -59,7 +60,7 @@ export default function MissingModulesDialog({
           style={{
             background: 'var(--bg)',
             border: '1px solid var(--border)',
-            borderRadius: 6,
+            borderRadius: 'var(--radius-md)',
             padding: '12px 16px',
             display: 'flex',
             flexDirection: 'column',
@@ -111,13 +112,14 @@ export default function MissingModulesDialog({
           <button
             onClick={onClose}
             style={{
-              padding: '6px 16px',
+              padding: '6px 18px',
               background: 'transparent',
-              color: 'var(--text)',
+              color: 'var(--text-secondary)',
               border: '1px solid var(--border)',
-              borderRadius: 4,
+              borderRadius: 'var(--radius-md)',
               cursor: 'pointer',
-              fontSize: '0.92rem',
+              fontSize: '0.85rem',
+              fontWeight: 500,
             }}
           >
             Dismiss
@@ -125,14 +127,14 @@ export default function MissingModulesDialog({
           <button
             onClick={onImport}
             style={{
-              padding: '6px 16px',
+              padding: '6px 18px',
               background: 'var(--accent)',
               color: '#fff',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 'var(--radius-md)',
               cursor: 'pointer',
-              fontSize: '0.92rem',
-              fontWeight: 500,
+              fontSize: '0.85rem',
+              fontWeight: 600,
             }}
           >
             Import Implementation File...
@@ -141,14 +143,14 @@ export default function MissingModulesDialog({
             onClick={onRecompile}
             disabled={isCompiling}
             style={{
-              padding: '6px 16px',
-              background: isCompiling ? 'var(--text-dim)' : 'var(--success)',
+              padding: '6px 18px',
+              background: isCompiling ? 'var(--text-muted)' : 'var(--success)',
               color: '#fff',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 'var(--radius-md)',
               cursor: isCompiling ? 'default' : 'pointer',
-              fontSize: '0.92rem',
-              fontWeight: 500,
+              fontSize: '0.85rem',
+              fontWeight: 600,
             }}
           >
             {isCompiling ? 'Compiling...' : 'Recompile'}

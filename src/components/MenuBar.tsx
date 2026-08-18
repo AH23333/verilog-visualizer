@@ -141,12 +141,12 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
       style={{
         display: 'flex',
         alignItems: 'center',
-        height: 32,
+        height: 30,
         background: 'var(--menu-bg)',
-        borderBottom: '1px solid var(--border)',
+        borderBottom: '1px solid var(--border-subtle)',
         flexShrink: 0,
         userSelect: 'none',
-        paddingLeft: 4,
+        paddingLeft: 6,
       }}
     >
       {menus.map((menu) => (
@@ -155,14 +155,14 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
             onClick={() => setOpenMenu(openMenu === menu.label ? null : menu.label)}
             onMouseEnter={() => openMenu !== null && setOpenMenu(menu.label)}
             style={{
-              height: 31,
+              height: 29,
               padding: '0 10px',
-              background: openMenu === menu.label ? 'var(--menu-hover)' : 'transparent',
-              color: 'var(--text)',
+              background: openMenu === menu.label ? 'var(--surface-hover)' : 'transparent',
+              color: 'var(--text-secondary)',
               border: 'none',
-              borderRadius: 4,
+              borderRadius: 'var(--radius-sm)',
               cursor: 'pointer',
-              fontSize: '1rem',
+              fontSize: '0.82rem',
             }}
           >
             {menu.label}
@@ -174,10 +174,10 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
                 top: '100%',
                 left: 0,
                 minWidth: 220,
-                background: 'var(--dropdown-bg)',
+                background: 'var(--bg-elevated)',
                 border: '1px solid var(--border)',
-                borderRadius: 6,
-                boxShadow: '0 8px 24px rgba(0,0,0,0.4)',
+                borderRadius: 'var(--radius-lg)',
+                boxShadow: 'var(--shadow-lg)',
                 padding: '4px 0',
                 zIndex: 1000,
               }}
@@ -191,12 +191,12 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     width: '100%',
-                    padding: '6px 16px',
+                    padding: '5px 14px',
                     background: 'transparent',
-                    color: 'var(--text)',
+                    color: 'var(--text-secondary)',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: '1rem',
+                    fontSize: '0.82rem',
                     textAlign: 'left',
                   }}
                   onMouseEnter={(e) => {
@@ -208,7 +208,7 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
                 >
                   <span>{item.label}</span>
                   {item.shortcut && (
-                    <span style={{ color: 'var(--text-dim)', fontSize: '0.92rem', marginLeft: 24 }}>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginLeft: 24 }}>
                       {item.shortcut}
                     </span>
                   )}
