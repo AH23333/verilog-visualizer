@@ -495,6 +495,181 @@ function estimateExpressionWidth(expr: string): number {
 }
 
 /**
+ * Rename auto-generated Yosys cells (e.g. "$auto$ff.cc:266:slice$781")
+ * to clean, human-readable names based on cell type.
+ * Preserves user-defined names (those not starting with $).
+ */
+function renameAutoCells(circuit: any): void {
+  if (!circuit) return;
+
+  // Map Yosys cell type prefixes to clean display names
+  const typeNameMap: Record<string, string> = {
+    // Combinational
+    '$and':   'AND',
+    '$or':    'OR',
+    '$xor':   'XOR',
+    '$not':   'NOT',
+    '$nand':  'NAND',
+    '$nor':   'NOR',
+    '$xnor':  'XNOR',
+    '$mux':   'MUX',
+    '$pmux':  'PMUX',
+    '$tribuf': 'TRI',
+    '$lut':   'LUT',
+    // Arithmetic
+    '$add':   'ADDER',
+    '$sub':   'SUB',
+    '$mul':   'MUL',
+    '$div':   'DIV',
+    '$mod':   'MOD',
+    '$eq':    'EQ',
+    '$ne':    'NE',
+    '$lt':    'LT',
+    '$le':    'LE',
+    '$gt':    'GT',
+    '$ge':    'GE',
+    '$shl':   'SHL',
+    '$shr':   'SHR',
+    '$sshl':  'SSHL',
+    '$sshr':  'SSHR',
+    '$neg':   'NEG',
+    '$pos':   'POS',
+    '$reduce_and': 'RAND',
+    '$reduce_or':  'ROR',
+    '$reduce_xor': 'RXOR',
+    '$reduce_bool': 'RBOOL',
+    '$logic_and': 'LAND',
+    '$logic_or':  'LOR',
+    '$logic_not': 'LNOT',
+    // Sequential
+    '$dff':   'DFF',
+    '$dffe':  'DFFE',
+    '$dffsr': 'DFFSR',
+    '$sdff':  'SDFF',
+    '$dlatch': 'DLATCH',
+    '$adff':  'ADFF',
+    '$dlatchsr': 'DSR',
+    '$sr':    'SR',
+    // Memory
+    '$mem':   'MEM',
+    '$memrd': 'MRD',
+    '$memwr': 'MWR',
+    // Misc
+    '$slice': 'SLICE',
+    '$concat': 'CONCAT',
+    '$shift': 'SHIFT',
+    '$shiftx': 'SHIFTX',
+    '$alu':   'ALU',
+    '$fa':    'FA',
+    '$lcu':   'LCU',
+    '$macc':  'MACC',
+    '$fsm':   'FSM',
+    '$assert': 'ASSERT',
+    '$assume': 'ASSUME',
+    '$cover':  'COVER',
+    '$specify2': 'SPEC2',
+    '$specify3': 'SPEC3',
+    '$specrule': 'SPECRULE',
+    '$initstate': 'INIT',
+    '$anyconst': 'ANYC',
+    '$anyseq':   'ANYSEQ',
+    '$allconst': 'ALLCONST',
+    '$allseq':   'ALLSEQ',
+    '$equiv':  'EQUIV',
+    '$pow':    'POW',
+    '$bwmux':  'BWMUX',
+    '$bweqx':  'BWEQ',
+    '$bwnot':  'BWNOT',
+    '$bwand':  'BWAND',
+    '$bwor':   'BWOR',
+    // Designs
+    '$paramod': 'PARAM',
+    '$abstract': 'ABS',
+    '$techmap':  'TECHMAP',
+    '$scopeinfo': 'SCOPE',
+  };
+
+  function getBaseFromName(name: string): string {
+    // Try to find a known $type within the name
+    for (const prefix of Object.keys(typeNameMap)) {
+      if (name.includes(prefix)) {
+        return prefix;
+      }
+    }
+    // Fallback: try to match generic $xxx pattern
+    const match = name.match(/\$(\w+)/);
+    return match ? `$${match[1]}` : 'CELL';
+  }
+
+  // Process this circuit's devices
+  if (circuit.devices && Object.keys(circuit.devices).length > 0) {
+    const counters: Record<string, number> = {};
+    const renameMap: Record<string, string> = {};
+
+    function makeCleanName(baseType: string): string {
+      const display = typeNameMap[baseType] || baseType.replace(/^\$/, '').toUpperCase();
+      if (!counters[display]) {
+        counters[display] = 0;
+      }
+      counters[display]++;
+      return `${display}_${counters[display]}`;
+    }
+
+    // Collect all devices that need renaming by checking device.label
+    // (the device key in DigitalJS is generated from the cell TYPE, not the cell name;
+    //  the Yosys auto-generated name is stored in device.label)
+    for (const [devKey, device] of Object.entries(circuit.devices)) {
+      const label = (device as any).label || '';
+      // Only rename devices whose label contains Yosys auto-generated patterns
+      if (label.includes('$auto') || label.includes('$abc') || label.includes('$techmap')) {
+        const baseType = getBaseFromName(label);
+        renameMap[devKey] = makeCleanName(baseType);
+      }
+    }
+
+    if (Object.keys(renameMap).length > 0) {
+      // Rename device keys and update labels
+      const newDevices: Record<string, any> = {};
+      for (const [oldKey, device] of Object.entries(circuit.devices)) {
+        const newKey = renameMap[oldKey] || oldKey;
+        newDevices[newKey] = device;
+        // Always update the label to the new clean name
+        (device as any).label = newKey;
+      }
+      circuit.devices = newDevices;
+
+      // Rename references in connectors
+      if (circuit.connectors) {
+        for (const conn of circuit.connectors) {
+          if (conn.from && renameMap[conn.from.id]) {
+            conn.from.id = renameMap[conn.from.id];
+          }
+          if (conn.to && renameMap[conn.to.id]) {
+            conn.to.id = renameMap[conn.to.id];
+          }
+        }
+      }
+    }
+  }
+
+  // Always recurse into subcircuits (this is where most devices live in DigitalJS)
+  if (circuit.subcircuits) {
+    for (const sub of Object.values(circuit.subcircuits)) {
+      renameAutoCells(sub as any);
+    }
+  }
+
+  // Also recurse into cells (nested IO cells)
+  if (circuit.cells) {
+    for (const cell of Object.values(circuit.cells) as any[]) {
+      if (cell && typeof cell === 'object') {
+        renameAutoCells(cell);
+      }
+    }
+  }
+}
+
+/**
  * Compile all Verilog files together, with optional top-level module override.
  * @param files - All Verilog files to compile
  * @param topModule - Optional top-level module name (uses auto-top if not specified)
@@ -597,6 +772,7 @@ export async function compileVerilog(
 
   const digitaljsCircuit = yosys2digitaljs(yosysOutput, { propagation: 1 });
   io_ui(digitaljsCircuit);
+  renameAutoCells(digitaljsCircuit);
   return { circuitJson: digitaljsCircuit, yosysLog: fullLog };
 }
 
