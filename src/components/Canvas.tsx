@@ -6,7 +6,7 @@ export interface CanvasHandle {
 }
 
 interface CanvasProps {
-  circuitJson: any;
+  circuitJson: Record<string, unknown>;
   theme: 'dark' | 'light';
   onError: (msg: string) => void;
 }

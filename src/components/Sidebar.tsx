@@ -1,18 +1,24 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import type { FileEntry } from '../store/fileStore';
 
 interface SidebarProps {
   files: FileEntry[];
+  folders: string[];
   activeFileId: string | null;
+  selectedIds: Set<string>;
   onSelectFile: (id: string) => void;
+  onMultiSelect: (id: string, ctrl: boolean, shift: boolean) => void;
   onRenameFile: (id: string, name: string) => void;
   onImportFile: () => void;
   onContextMenu: (e: React.MouseEvent, file: FileEntry) => void;
   onEmptyContextMenu: (e: React.MouseEvent) => void;
+  onFolderContextMenu: (e: React.MouseEvent, folderPath: string) => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onCreateFile: () => void;
   onCreateFolder: () => void;
+  onMoveFiles: (fileIds: string[], targetFolder: string) => void;
+  onMoveFolder: (folderPath: string, targetFolder: string) => void;
 }
 
 interface FolderNode {
@@ -22,10 +28,30 @@ interface FolderNode {
   files: FileEntry[];
 }
 
-function buildFolderTree(files: FileEntry[]): { root: FolderNode; flatFiles: FileEntry[] } {
+function buildFolderTree(files: FileEntry[], folders: string[]): { root: FolderNode; flatFiles: FileEntry[] } {
   const root: FolderNode = { name: '', path: '', children: new Map(), files: [] };
   const flatFiles: FileEntry[] = [];
 
+  // Add all tracked folders first
+  for (const folderPath of folders) {
+    const parts = folderPath.split('/');
+    let current = root;
+    for (let i = 0; i < parts.length; i++) {
+      const part = parts[i];
+      if (!current.children.has(part)) {
+        const subPath = parts.slice(0, i + 1).join('/');
+        current.children.set(part, {
+          name: part,
+          path: subPath,
+          children: new Map(),
+          files: [],
+        });
+      }
+      current = current.children.get(part)!;
+    }
+  }
+
+  // Add files
   for (const file of files) {
     const parts = file.name.split('/');
     if (parts.length === 1) {
@@ -55,24 +81,48 @@ function buildFolderTree(files: FileEntry[]): { root: FolderNode; flatFiles: Fil
   return { root, flatFiles };
 }
 
+/** Get all descendant file IDs of a folder */
+function getFolderFileIds(node: FolderNode): string[] {
+  const ids: string[] = [];
+  for (const file of node.files) {
+    ids.push(file.id);
+  }
+  for (const child of node.children.values()) {
+    ids.push(...getFolderFileIds(child));
+  }
+  return ids;
+}
+
 export default function Sidebar({
   files,
+  folders,
   activeFileId,
+  selectedIds,
   onSelectFile,
+  onMultiSelect,
   onRenameFile,
   onImportFile,
   onContextMenu,
   onEmptyContextMenu,
+  onFolderContextMenu,
   collapsed,
   onToggleCollapse,
   onCreateFile,
   onCreateFolder,
+  onMoveFiles,
+  onMoveFolder,
 }: SidebarProps) {
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [collapsedFolders, setCollapsedFolders] = useState<Set<string>>(new Set());
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+  const [dragOverRoot, setDragOverRoot] = useState(false);
+  const dragCounter = useRef(0);
 
-  const { root } = useMemo(() => buildFolderTree(files), [files]);
+  const { root } = useMemo(
+    () => buildFolderTree(files, folders),
+    [files, folders]
+  );
 
   const handleConfirmRename = () => {
     if (renamingId && renameValue.trim()) {
@@ -93,9 +143,125 @@ export default function Sidebar({
     });
   };
 
+  // ============ Drag & Drop ============
+
+  // Use ref to keep selectedIds stable across renders, avoiding drag handler churn
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
+
+  const handleDragStart = useCallback(
+    (e: React.DragEvent, fileId: string) => {
+      const ids = selectedIdsRef.current;
+      const dragIds = ids.has(fileId) ? Array.from(ids) : [fileId];
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'files', ids: dragIds }));
+      e.dataTransfer.setData('text/html', '');
+    },
+    [] // Stable — uses ref, no dependency on selectedIds
+  );
+
+  const handleFileDragStart = useCallback(
+    (fileId: string) => (e: React.DragEvent) => handleDragStart(e, fileId),
+    [handleDragStart]
+  );
+
+  const handleFolderDragStart = useCallback(
+    (folderPath: string) => (e: React.DragEvent) => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'folder', path: folderPath }));
+      e.dataTransfer.setData('text/html', '');
+    },
+    []
+  );
+
+  const handleFolderDragOver = useCallback(
+    (folderPath: string) => (e: React.DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      setDragOverFolder(folderPath);
+    },
+    []
+  );
+
+  const handleDragLeave = useCallback(() => {
+    setDragOverFolder(null);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    setDragOverFolder(null);
+    setDragOverRoot(false);
+    dragCounter.current = 0;
+  }, []);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent, targetFolder: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragOverFolder(null);
+      setDragOverRoot(false);
+
+      try {
+        const raw = e.dataTransfer.getData('text/plain');
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data.type === 'files') {
+          onMoveFiles(data.ids, targetFolder);
+        } else if (data.type === 'folder') {
+          if (data.path === targetFolder) return;
+          const folderName = data.path.split('/').pop() || data.path;
+          const newPath = targetFolder ? targetFolder + '/' + folderName : folderName;
+          onMoveFolder(data.path, newPath);
+        }
+      } catch {}
+    },
+    [onMoveFiles, onMoveFolder]
+  );
+
+  const handleRootDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    dragCounter.current++;
+    setDragOverRoot(true);
+  }, []);
+
+  const handleRootDragLeave = useCallback(() => {
+    dragCounter.current--;
+    if (dragCounter.current <= 0) {
+      dragCounter.current = 0;
+      setDragOverRoot(false);
+    }
+  }, []);
+
+  const handleRootDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDragOverRoot(false);
+      dragCounter.current = 0;
+
+      try {
+        const raw = e.dataTransfer.getData('text/plain');
+        if (!raw) return;
+        const data = JSON.parse(raw);
+        if (data.type === 'files') {
+          onMoveFiles(data.ids, '');
+        } else if (data.type === 'folder') {
+          const folderName = data.path.split('/').pop() || data.path;
+          onMoveFolder(data.path, folderName);
+        }
+      } catch {}
+    },
+    [onMoveFiles, onMoveFolder]
+  );
+
+  // ============ Render ============
+
   const renderFolder = (node: FolderNode, depth: number): React.ReactNode => {
     const isCollapsed = collapsedFolders.has(node.path);
     const folderEntries = Array.from(node.children.values());
+    const folderFileIds = getFolderFileIds(node);
+    const allChildrenSelected = folderFileIds.length > 0 && folderFileIds.every((id) => selectedIds.has(id));
+    const dragOverThis = dragOverFolder === node.path;
 
     return (
       <div key={node.path}>
@@ -111,20 +277,42 @@ export default function Sidebar({
               color: 'var(--text-secondary)',
               userSelect: 'none',
               transition: 'color var(--transition-fast)',
+              background: dragOverThis ? 'var(--accent-muted)' : 'transparent',
+              outline: dragOverThis ? '1px dashed var(--accent)' : 'none',
             }}
             onClick={() => toggleFolder(node.path)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onFolderContextMenu(e, node.path);
+            }}
+            onDragOver={handleFolderDragOver(node.path)}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, node.path)}
+            draggable
+            onDragStart={handleFolderDragStart(node.path)}
+            onDragEnd={handleDragEnd}
             onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.color = 'var(--text)';
+              if (!dragOverThis) {
+                (e.currentTarget as HTMLElement).style.color = 'var(--text)';
+              }
             }}
             onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+              if (!dragOverThis) {
+                (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
+              }
             }}
           >
             <span style={{ marginRight: 4, fontSize: '0.62rem', width: 10, display: 'inline-block' }}>
               {isCollapsed ? '▸' : '▾'}
             </span>
             <span style={{ marginRight: 4 }}>{isCollapsed ? '📁' : '📂'}</span>
-            <span>{node.name}</span>
+            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {node.name}
+            </span>
+            {allChildrenSelected && (
+              <span style={{ fontSize: '0.65rem', color: 'var(--accent)', marginLeft: 4 }}>✓</span>
+            )}
           </div>
         )}
 
@@ -141,6 +329,7 @@ export default function Sidebar({
 
   const renderFileEntry = (file: FileEntry, depth: number): React.ReactNode => {
     const isActive = file.id === activeFileId;
+    const isSelected = selectedIds.has(file.id);
     const displayName = file.name.split('/').pop() || file.name;
     const isRenaming = renamingId === file.id;
 
@@ -152,15 +341,52 @@ export default function Sidebar({
     return (
       <div
         key={file.id}
-        onClick={() => onSelectFile(file.id)}
-        onContextMenu={(e) => onContextMenu(e, file)}
+        onClick={(e) => {
+          onMultiSelect(file.id, e.ctrlKey || e.metaKey, e.shiftKey);
+        }}
+        onContextMenu={(e) => {
+          // If not already selected, select this file before showing context menu
+          if (!selectedIds.has(file.id)) {
+            onSelectFile(file.id);
+          }
+          onContextMenu(e, file);
+        }}
+        draggable
+        onDragStart={handleFileDragStart(file.id)}
+        onDragEnd={handleDragEnd}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          try {
+            const raw = e.dataTransfer.getData('text/plain');
+            if (!raw) return;
+            const data = JSON.parse(raw);
+            const parentFolder = file.name.includes('/')
+              ? file.name.split('/').slice(0, -1).join('/')
+              : '';
+            if (data.type === 'files') {
+              onMoveFiles(data.ids, parentFolder);
+            } else if (data.type === 'folder') {
+              const folderName = data.path.split('/').pop() || data.path;
+              const newPath = parentFolder ? parentFolder + '/' + folderName : folderName;
+              onMoveFolder(data.path, newPath);
+            }
+          } catch {}
+        }}
         style={{
           padding: `3px 8px 3px ${8 + depth * 12}px`,
           cursor: 'pointer',
           display: 'flex',
           alignItems: 'center',
           gap: 6,
-          background: isActive ? 'var(--accent-muted)' : 'transparent',
+          background: isActive
+            ? 'var(--accent-muted)'
+            : isSelected
+            ? 'var(--surface-hover)'
+            : 'transparent',
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
           fontSize: '0.82rem',
           color: isActive ? 'var(--text)' : 'var(--text-secondary)',
@@ -168,13 +394,13 @@ export default function Sidebar({
           transition: 'background var(--transition-fast), color var(--transition-fast)',
         }}
         onMouseEnter={(e) => {
-          if (!isActive) {
+          if (!isActive && !isSelected) {
             (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
             (e.currentTarget as HTMLElement).style.color = 'var(--text)';
           }
         }}
         onMouseLeave={(e) => {
-          if (!isActive) {
+          if (!isActive && !isSelected) {
             (e.currentTarget as HTMLElement).style.background = 'transparent';
             (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
           }
@@ -378,18 +604,29 @@ export default function Sidebar({
 
       {/* File tree */}
       <div
-        style={{ flex: 1, overflow: 'auto', padding: '4px 0' }}
+        style={{
+          flex: 1,
+          overflow: 'auto',
+          padding: '4px 0',
+          background: dragOverRoot ? 'var(--accent-muted)' : 'transparent',
+          outline: dragOverRoot ? '2px dashed var(--accent)' : 'none',
+          outlineOffset: -2,
+        }}
         onContextMenu={(e) => {
-          // Only trigger empty-area menu if clicking on the container itself (not a file/folder)
+          // Only trigger empty-area menu if clicking on the container itself
           const target = e.target as HTMLElement;
           if (target === e.currentTarget || target.closest('[data-sidebar-empty]')) {
             e.preventDefault();
             onEmptyContextMenu(e);
           }
         }}
+        onDragOver={handleRootDragOver}
+        onDragLeave={handleRootDragLeave}
+        onDrop={handleRootDrop}
       >
-        {files.length === 0 ? (
+        {files.length === 0 && folders.length === 0 ? (
           <div
+            data-sidebar-empty
             style={{
               padding: 16,
               fontSize: '0.82rem',

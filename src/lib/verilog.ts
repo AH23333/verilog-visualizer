@@ -21,7 +21,7 @@ interface EmscriptenFS {
 
 /** Result of a successful compilation */
 export interface CompileResult {
-  circuitJson: any;
+  circuitJson: Record<string, unknown>;
   yosysLog: string;
 }
 

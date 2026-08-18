@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, useSyncExternalStore } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
 import Canvas from './components/Canvas';
 import type { CanvasHandle } from './components/Canvas';
 import MenuBar from './components/MenuBar';
@@ -17,12 +17,21 @@ import { settingsStore, type ViewMode } from './store/settingsStore';
 
 type Status = 'idle' | 'compiling' | 'done' | 'error';
 
+type ClipboardEntry = 
+  | { type: 'files'; ids: string[] }
+  | { type: 'folder'; path: string }
+  | { type: 'cut'; data: { type: 'files'; ids: string[] } | { type: 'folder'; path: string } }
+  | null;
+
 export default function App() {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [message, setMessage] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('circuit');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [clipboard, setClipboard] = useState<ClipboardEntry>(null);
+  const lastClickedIndex = useRef<number>(-1);
   const canvasRef = useRef<CanvasHandle>(null);
 
   // Missing modules dialog state
@@ -91,9 +100,17 @@ export default function App() {
 
   // Subscribe to stores
   const files = useSyncExternalStore(fileStore.subscribe, () => fileStore.getAll());
+  const folders = useSyncExternalStore(fileStore.subscribe, () => fileStore.getFolders());
   const theme = useSyncExternalStore(themeStore.subscribe, () => themeStore.get());
   const editorFontSize = useSyncExternalStore(settingsStore.subscribe, () => settingsStore.getFontSize());
   const defaultViewMode = useSyncExternalStore(settingsStore.subscribe, () => settingsStore.getDefaultViewMode());
+
+  // Flat file list for range selection (Shift+click)
+  const flatFiles = useMemo(() => {
+    const result: FileEntry[] = [...files];
+    result.sort((a, b) => a.name.localeCompare(b.name));
+    return result;
+  }, [files]);
 
   const activeFile = activeFileId ? fileStore.getById(activeFileId) : undefined;
 
@@ -326,6 +343,7 @@ export default function App() {
     }
     const entry = fileStore.createFile(trimmed);
     setActiveFileId(entry.id);
+    setSelectedIds(new Set([entry.id]));
     setViewMode('code');
     setStatus('idle');
     setMessage('New file created. Edit and compile to render.');
@@ -341,6 +359,7 @@ export default function App() {
 
   const handleSelectFile = useCallback((id: string) => {
     setActiveFileId(id);
+    setSelectedIds(new Set([id]));
     setViewMode(defaultViewMode);
     const file = fileStore.getById(id);
     if (!file) return;
@@ -361,8 +380,61 @@ export default function App() {
     }
   }, [defaultViewMode]);
 
+  const handleMultiSelect = useCallback((id: string, ctrl: boolean, shift: boolean) => {
+    setActiveFileId(id);
+
+    if (shift) {
+      // Range select from last clicked file to this one
+      const currentIndex = flatFiles.findIndex((f) => f.id === id);
+      const prevIndex = lastClickedIndex.current;
+      if (prevIndex >= 0 && currentIndex >= 0) {
+        const start = Math.min(prevIndex, currentIndex);
+        const end = Math.max(prevIndex, currentIndex);
+        const rangeIds = new Set<string>();
+        for (let i = start; i <= end; i++) {
+          rangeIds.add(flatFiles[i].id);
+        }
+        setSelectedIds(rangeIds);
+      } else {
+        setSelectedIds(new Set([id]));
+      }
+      lastClickedIndex.current = currentIndex;
+    } else if (ctrl) {
+      // Toggle selection
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        if (next.has(id)) {
+          next.delete(id);
+        } else {
+          next.add(id);
+        }
+        return next;
+      });
+      lastClickedIndex.current = flatFiles.findIndex((f) => f.id === id);
+    } else {
+      // Single select
+      setSelectedIds(new Set([id]));
+      lastClickedIndex.current = flatFiles.findIndex((f) => f.id === id);
+    }
+  }, [flatFiles]);
+
+  const handleMoveFiles = useCallback((fileIds: string[], targetFolder: string) => {
+    fileStore.moveFilesToFolder(fileIds, targetFolder);
+    setMessage(`Moved ${fileIds.length} file(s) to ${targetFolder || 'root'}.`);
+  }, []);
+
+  const handleMoveFolder = useCallback((folderPath: string, newPath: string) => {
+    fileStore.moveFolder(folderPath, newPath);
+    setMessage(`Moved folder to '${newPath}'.`);
+  }, []);
+
   const handleDeleteFile = useCallback((id: string) => {
     fileStore.deleteFile(id);
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
     if (activeFileId === id) {
       setActiveFileId(null);
       setStatus('idle');
@@ -370,6 +442,87 @@ export default function App() {
       setMissingModules(null);
     }
   }, [activeFileId]);
+
+  const handleDeleteFiles = useCallback((ids: string[]) => {
+    for (const id of ids) {
+      fileStore.deleteFile(id);
+    }
+    setSelectedIds(new Set());
+    if (ids.includes(activeFileId || '')) {
+      setActiveFileId(null);
+      setStatus('idle');
+      setMessage('');
+      setMissingModules(null);
+    }
+    setMessage(`Deleted ${ids.length} file(s).`);
+  }, [activeFileId]);
+
+  const handleCopy = useCallback((ids?: string[]) => {
+    const copyIds = ids || Array.from(selectedIds);
+    if (copyIds.length === 0) return;
+    setClipboard({ type: 'files', ids: copyIds });
+    setMessage(`${copyIds.length} file(s) copied to clipboard.`);
+  }, [selectedIds]);
+
+  const handleCut = useCallback((ids?: string[]) => {
+    const cutIds = ids || Array.from(selectedIds);
+    if (cutIds.length === 0) return;
+    setClipboard({ type: 'cut', data: { type: 'files', ids: cutIds } });
+    setMessage(`${cutIds.length} file(s) cut to clipboard.`);
+  }, [selectedIds]);
+
+  const handleCopyFolder = useCallback((folderPath: string) => {
+    setClipboard({ type: 'folder', path: folderPath });
+    setMessage(`Folder '${folderPath}' copied to clipboard.`);
+  }, []);
+
+  const handleCutFolder = useCallback((folderPath: string) => {
+    setClipboard({ type: 'cut', data: { type: 'folder', path: folderPath } });
+    setMessage(`Folder '${folderPath}' cut to clipboard.`);
+  }, []);
+
+  const handlePaste = useCallback((targetFolder?: string) => {
+    if (!clipboard) {
+      setMessage('Clipboard is empty.');
+      return;
+    }
+
+    const isCut = clipboard.type === 'cut';
+    const data = isCut ? clipboard.data : clipboard;
+
+    if (data.type === 'files') {
+      for (const id of data.ids) {
+        const file = fileStore.getById(id);
+        if (!file) continue;
+        if (isCut) {
+          const fileName = file.name.split('/').pop() || file.name;
+          const newPath = targetFolder ? targetFolder + '/' + fileName : fileName;
+          fileStore.moveFile(id, newPath);
+        } else {
+          fileStore.copyFile(id, targetFolder);
+        }
+      }
+      setMessage(`${isCut ? 'Moved' : 'Copied'} ${data.ids.length} file(s) ${targetFolder ? 'to ' + targetFolder : ''}.`);
+    } else if (data.type === 'folder') {
+      if (isCut) {
+        const folderName = data.path.split('/').pop() || data.path;
+        const newPath = targetFolder ? targetFolder + '/' + folderName : folderName;
+        fileStore.moveFolder(data.path, newPath);
+        setMessage(`Moved folder '${data.path}' to '${newPath}'.`);
+      } else {
+        fileStore.copyFolder(data.path, targetFolder);
+        setMessage(`Copied folder '${data.path}'${targetFolder ? ' to ' + targetFolder : ''}.`);
+      }
+    }
+
+    if (isCut) {
+      setClipboard(null);
+    }
+  }, [clipboard]);
+
+  const handlePasteFromClipboard = useCallback(() => {
+    handlePaste();
+  }, [handlePaste]);
 
   const handleRenameFile = useCallback((id: string, name: string) => {
     fileStore.renameFile(id, name);
@@ -441,26 +594,44 @@ export default function App() {
 
   const handleFileContextMenu = useCallback((e: React.MouseEvent, file: FileEntry) => {
     e.preventDefault();
+    const selCount = selectedIds.size;
+    const multiSelected = selCount > 1;
+
     setContextMenu({
       x: e.clientX,
       y: e.clientY,
-      items: [
-        { label: 'Open', action: () => handleSelectFile(file.id) },
-        { label: 'View Code', action: () => { handleSelectFile(file.id); setViewMode('code'); } },
-        { label: 'Compile', action: async () => { setActiveFileId(file.id); await tryCompileAll(file.id); } },
-        { label: 'Bind...', action: () => setBindingDialogFile(file) },
-        { label: '---', disabled: true, action: () => {} },
-        {
-          label: 'Rename',
-          action: () => {
-            const newName = prompt('Rename file:', file.name);
-            if (newName && newName.trim()) handleRenameFile(file.id, newName.trim());
-          },
-        },
-        { label: 'Delete', danger: true, action: () => handleDeleteFile(file.id) },
-      ],
+      items: multiSelected
+        ? [
+            { label: 'Copy', action: () => handleCopy() },
+            { label: 'Cut', action: () => handleCut() },
+            { label: `Delete ${selCount} Files`, danger: true, action: () => handleDeleteFiles(Array.from(selectedIds)) },
+            { label: '---', disabled: true, action: () => {} },
+            { label: 'Compile', action: async () => { setActiveFileId(file.id); await tryCompileAll(file.id); } },
+            { label: 'Bind...', action: () => setBindingDialogFile(file) },
+            { label: 'Rename', action: () => {
+              const newName = prompt('Rename file:', file.name);
+              if (newName && newName.trim()) handleRenameFile(file.id, newName.trim());
+            }},
+          ]
+        : [
+            { label: 'Open', action: () => handleSelectFile(file.id) },
+            { label: 'View Code', action: () => { handleSelectFile(file.id); setViewMode('code'); } },
+            { label: 'Compile', action: async () => { setActiveFileId(file.id); await tryCompileAll(file.id); } },
+            { label: 'Bind...', action: () => setBindingDialogFile(file) },
+            { label: '---', disabled: true, action: () => {} },
+            { label: 'Copy', action: () => handleCopy([file.id]) },
+            { label: 'Cut', action: () => handleCut([file.id]) },
+            {
+              label: 'Rename',
+              action: () => {
+                const newName = prompt('Rename file:', file.name);
+                if (newName && newName.trim()) handleRenameFile(file.id, newName.trim());
+              },
+            },
+            { label: 'Delete', danger: true, action: () => handleDeleteFile(file.id) },
+          ],
     });
-  }, [handleSelectFile, handleRenameFile, handleDeleteFile, tryCompileAll]);
+  }, [handleSelectFile, handleRenameFile, handleDeleteFile, handleDeleteFiles, tryCompileAll, handleCopy, handleCut, selectedIds]);
 
   const handleEmptyAreaContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -470,10 +641,65 @@ export default function App() {
       y: e.clientY,
       items: [
         { label: 'New File', action: () => handleCreateFile() },
+        { label: 'New Folder', action: () => handleCreateFolder() },
         { label: 'Import File...', action: () => handleImportFile() },
+        { label: '---', disabled: true, action: () => {} },
+        { label: 'Paste', action: () => handlePasteFromClipboard() },
       ],
     });
-  }, [handleCreateFile, handleImportFile]);
+  }, [handleCreateFile, handleCreateFolder, handleImportFile, handlePasteFromClipboard]);
+
+  const handleFolderContextMenu = useCallback((e: React.MouseEvent, folderPath: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: 'New File...', action: () => {
+          const name = prompt('Enter file name (e.g. my_module.v):');
+          if (!name || !name.trim()) return;
+          const trimmed = name.trim();
+          const fullPath = folderPath + '/' + trimmed;
+          const fileName = fullPath.split('/').pop() || trimmed;
+          if (!fileName.endsWith('.v') && !fileName.endsWith('.sv') && !fileName.endsWith('.vh')) {
+            alert('Only .v, .sv, or .vh files are supported for compilation.');
+            return;
+          }
+          const entry = fileStore.createFile(fullPath);
+          setActiveFileId(entry.id);
+          setViewMode('code');
+          setStatus('idle');
+          setMessage('New file created. Edit and compile to render.');
+        }},
+        { label: 'New Folder...', action: () => {
+          const name = prompt('Enter folder name:');
+          if (!name || !name.trim()) return;
+          fileStore.createFolder(folderPath + '/' + name.trim());
+          setMessage(`Folder '${name.trim()}' created.`);
+        }},
+        { label: '---', disabled: true, action: () => {} },
+        { label: 'Copy Folder', action: () => handleCopyFolder(folderPath) },
+        { label: 'Cut Folder', action: () => handleCutFolder(folderPath) },
+        { label: 'Paste', action: () => handlePaste(folderPath) },
+        { label: '---', disabled: true, action: () => {} },
+        { label: 'Rename Folder', action: () => {
+          const newName = prompt('Rename folder:', folderPath.split('/').pop() || folderPath);
+          if (!newName || !newName.trim()) return;
+          const parts = folderPath.split('/');
+          parts[parts.length - 1] = newName.trim();
+          fileStore.moveFolder(folderPath, parts.join('/'));
+          setMessage(`Folder renamed to '${newName.trim()}'.`);
+        }},
+        { label: 'Delete Folder', danger: true, action: () => {
+          if (confirm(`Delete folder '${folderPath}' and all its contents?`)) {
+            fileStore.deleteFolder(folderPath);
+            setMessage(`Folder '${folderPath}' deleted.`);
+          }
+        }},
+      ],
+    });
+  }, [handleCopyFolder, handleCutFolder, handlePaste]);
 
   const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -511,6 +737,18 @@ export default function App() {
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
         e.preventDefault();
         handleCreateFile();
+      } else if (e.key === 'Delete' && selectedIds.size > 0) {
+        e.preventDefault();
+        handleDeleteFiles(Array.from(selectedIds));
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+        e.preventDefault();
+        handleCopy();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
+        e.preventDefault();
+        handleCut();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+        e.preventDefault();
+        handlePasteFromClipboard();
       } else if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
         e.preventDefault();
         setOutputPanelVisible((v) => !v);
@@ -518,7 +756,7 @@ export default function App() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleImportFile, handleSave, handleCompile, handleCreateFile]);
+  }, [handleImportFile, handleSave, handleCompile, handleCreateFile, handleDeleteFiles, handleCopy, handleCut, handlePasteFromClipboard, selectedIds]);
 
   // ============ Render Helpers ============
 
@@ -610,16 +848,22 @@ export default function App() {
             {leftPanel === 'files' ? (
               <Sidebar
                 files={files}
+                folders={folders}
                 activeFileId={activeFileId}
+                selectedIds={selectedIds}
                 onSelectFile={handleSelectFile}
+                onMultiSelect={handleMultiSelect}
                 onRenameFile={handleRenameFile}
                 onImportFile={handleImportFile}
                 onContextMenu={handleFileContextMenu}
                 onEmptyContextMenu={handleEmptyAreaContextMenu}
+                onFolderContextMenu={handleFolderContextMenu}
                 collapsed={false}
                 onToggleCollapse={() => setSidebarCollapsed(true)}
                 onCreateFile={handleCreateFile}
                 onCreateFolder={handleCreateFolder}
+                onMoveFiles={handleMoveFiles}
+                onMoveFolder={handleMoveFolder}
               />
             ) : (
               <ModulePanel
@@ -950,6 +1194,12 @@ export default function App() {
         borderTop: '1px solid var(--border-subtle)',
       }}>
         <span>{files.length} file{files.length !== 1 ? 's' : ''}</span>
+        {folders.length > 0 && (
+          <>
+            <span style={{ color: 'var(--text-muted)' }}>|</span>
+            <span>{folders.length} folder{folders.length !== 1 ? 's' : ''}</span>
+          </>
+        )}
         <span style={{ color: 'var(--text-muted)' }}>|</span>
         <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
         <span style={{ color: 'var(--text-muted)' }}>|</span>

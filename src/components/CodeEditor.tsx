@@ -1,5 +1,15 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { settingsStore } from '../store/settingsStore';
+
+// Declare Prism global from CDN
+declare global {
+  interface Window {
+    Prism: {
+      highlight: (code: string, grammar: any, language: string) => string;
+      languages: Record<string, any>;
+    };
+  }
+}
 
 interface CodeEditorProps {
   code: string;
@@ -21,9 +31,10 @@ export default function CodeEditor({
   isCompiling,
 }: CodeEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const preRef = useRef<HTMLPreElement>(null);
   const lineNumbersRef = useRef<HTMLDivElement>(null);
-  const [lineCount, setLineCount] = useState(1);
   const [fontSize, setFontSize] = useState(settingsStore.getFontSize());
+  const [highlightedCode, setHighlightedCode] = useState('');
 
   // Sync with global font size setting changes
   useEffect(() => {
@@ -32,24 +43,39 @@ export default function CodeEditor({
     });
   }, []);
 
-  // Sync scroll between textarea and line numbers
+  // Highlight code using Prism
+  useEffect(() => {
+    try {
+      if (window.Prism && window.Prism.languages?.verilog) {
+        const html = window.Prism.highlight(code, window.Prism.languages.verilog, 'verilog');
+        setHighlightedCode(html);
+      } else {
+        setHighlightedCode(escapeHtml(code));
+      }
+    } catch {
+      setHighlightedCode(escapeHtml(code));
+    }
+  }, [code]);
+
+  // Sync scroll between textarea, pre, and line numbers
   const handleScroll = useCallback(() => {
     const textarea = textareaRef.current;
+    const pre = preRef.current;
     const lineNumbers = lineNumbersRef.current;
-    if (textarea && lineNumbers) {
-      lineNumbers.scrollTop = textarea.scrollTop;
+    if (textarea) {
+      if (pre) {
+        pre.scrollTop = textarea.scrollTop;
+        pre.scrollLeft = textarea.scrollLeft;
+      }
+      if (lineNumbers) {
+        lineNumbers.scrollTop = textarea.scrollTop;
+      }
     }
   }, []);
-
-  // Update line count when code changes
-  useEffect(() => {
-    setLineCount(code.split('\n').length);
-  }, [code]);
 
   // Tab key support, zoom shortcuts, and recompile
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-      // Tab: insert 2 spaces
       if (e.key === 'Tab') {
         e.preventDefault();
         const textarea = e.currentTarget;
@@ -62,41 +88,48 @@ export default function CodeEditor({
         });
         return;
       }
-      // Ctrl+S / Cmd+S: save
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
         onSave();
         return;
       }
-      // F5: recompile
       if (e.key === 'F5') {
         e.preventDefault();
         onRecompile();
         return;
       }
-      // Ctrl+= / Ctrl+Plus: zoom in
       if ((e.ctrlKey || e.metaKey) && (e.key === '=' || e.key === '+')) {
         e.preventDefault();
         settingsStore.increaseFontSize();
         return;
       }
-      // Ctrl+-: zoom out
       if ((e.ctrlKey || e.metaKey) && e.key === '-') {
         e.preventDefault();
         settingsStore.decreaseFontSize();
         return;
       }
-      // Ctrl+0: reset zoom
       if ((e.ctrlKey || e.metaKey) && e.key === '0') {
         e.preventDefault();
         settingsStore.resetFontSize();
       }
     },
-    [code, onCodeChange, onRecompile]
+    [code, onCodeChange, onRecompile, onSave]
+  );
+
+  const lineHeight = fontSize + 7;
+  const lineCount = useMemo(() => code.split('\n').length, [code]);
+
+  const editorStyle = useMemo(
+    () => ({
+      fontSize,
+      lineHeight: `${lineHeight}px`,
+      fontFamily: "'Consolas', 'Courier New', 'Fira Code', 'Cascadia Code', monospace",
+      tabSize: 2,
+    }),
+    [fontSize, lineHeight]
   );
 
   const isDark = theme === 'dark';
-  const lineHeight = fontSize + 7;
 
   return (
     <div
@@ -181,31 +214,70 @@ export default function CodeEditor({
           ))}
         </div>
 
-        {/* Textarea */}
-        <textarea
-          ref={textareaRef}
-          value={code}
-          onChange={(e) => onCodeChange(e.target.value)}
-          onScroll={handleScroll}
-          onKeyDown={handleKeyDown}
-          spellCheck={false}
-          style={{
-            flex: 1,
-            padding: '8px 12px',
-            border: 'none',
-            outline: 'none',
-            resize: 'none',
-            fontSize,
-            lineHeight: `${lineHeight}px`,
-            fontFamily: "'Consolas', 'Courier New', monospace",
-            background: 'var(--bg)',
-            color: 'var(--text)',
-            tabSize: 2,
-            whiteSpace: 'pre',
-            overflowWrap: 'normal',
-            overflowX: 'auto',
-          }}
-        />
+        {/* Code container with overlay */}
+        <div style={{ flex: 1, position: 'relative', overflow: 'hidden' }}>
+          {/* Highlighted code layer (behind) */}
+          <pre
+            ref={preRef}
+            aria-hidden="true"
+            style={{
+              ...editorStyle,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              margin: 0,
+              padding: '8px 12px',
+              overflow: 'auto',
+              whiteSpace: 'pre',
+              overflowWrap: 'normal',
+              background: 'transparent',
+              border: 'none',
+              pointerEvents: 'none',
+              color: 'var(--text)',
+            }}
+          >
+            <code
+              className="language-verilog"
+              dangerouslySetInnerHTML={{ __html: highlightedCode }}
+            />
+          </pre>
+
+          {/* Editable textarea layer (on top, transparent text) */}
+          <textarea
+            ref={textareaRef}
+            value={code}
+            onChange={(e) => onCodeChange(e.target.value)}
+            onScroll={handleScroll}
+            onKeyDown={handleKeyDown}
+            spellCheck={false}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            style={{
+              ...editorStyle,
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              width: '100%',
+              height: '100%',
+              padding: '8px 12px',
+              border: 'none',
+              outline: 'none',
+              resize: 'none',
+              background: 'transparent',
+              color: 'transparent',
+              caretColor: isDark ? '#e6edf3' : '#24292f',
+              whiteSpace: 'pre',
+              overflowWrap: 'normal',
+              overflow: 'auto',
+              zIndex: 1,
+            }}
+          />
+        </div>
       </div>
 
       {/* Status bar */}
@@ -229,4 +301,13 @@ export default function CodeEditor({
       </div>
     </div>
   );
+}
+
+/** Escape HTML entities for plain text fallback */
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
