@@ -320,8 +320,6 @@ function parseInstantiations(source: string): InstanceInfo[] {
     }
 
     // Calculate approximate line number in original source
-    const beforeMatch = cleaned.substring(0, match.index);
-    const lineNum = beforeMatch.split(' ').length > 0 ? 1 : 1;
     // Use a rough estimate: count newlines in original source up to the module name position
     const origIdx = source.indexOf(moduleName);
     const origLineNum = origIdx >= 0 ? source.substring(0, origIdx).split('\n').length : 1;

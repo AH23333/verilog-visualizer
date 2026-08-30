@@ -9,6 +9,12 @@ interface MenuBarProps {
   onFitToWindow: () => void;
   onCreateFile: () => void;
   currentTheme: Theme;
+  onExportSVG?: () => void;
+  onExportPNG?: () => void;
+  onExportJSON?: () => void;
+  onExportVerilog?: () => void;
+  onGlobalSearch?: () => void;
+  hasCircuit?: boolean;
 }
 
 interface MenuState {
@@ -16,7 +22,7 @@ interface MenuState {
   items: { label: string; action: () => void; shortcut?: string }[];
 }
 
-export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFitToWindow, onCreateFile, currentTheme }: MenuBarProps) {
+export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFitToWindow, onCreateFile, currentTheme, onExportSVG, onExportPNG, onExportJSON, onExportVerilog, onGlobalSearch, hasCircuit: _hasCircuit }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -75,6 +81,37 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
           label: 'Redo',
           shortcut: 'Ctrl+Y',
           action: () => setOpenMenu(null),
+        },
+        {
+          label: 'Find / Replace',
+          shortcut: 'Ctrl+F',
+          action: () => setOpenMenu(null),
+        },
+        {
+          label: 'Global Search',
+          shortcut: 'Ctrl+Shift+F',
+          action: () => { onGlobalSearch?.(); setOpenMenu(null); },
+        },
+      ],
+    },
+    {
+      label: 'Export',
+      items: [
+        {
+          label: 'Export SVG',
+          action: () => { onExportSVG?.(); setOpenMenu(null); },
+        },
+        {
+          label: 'Export PNG',
+          action: () => { onExportPNG?.(); setOpenMenu(null); },
+        },
+        {
+          label: 'Export Circuit JSON',
+          action: () => { onExportJSON?.(); setOpenMenu(null); },
+        },
+        {
+          label: 'Export Verilog Source',
+          action: () => { onExportVerilog?.(); setOpenMenu(null); },
         },
       ],
     },

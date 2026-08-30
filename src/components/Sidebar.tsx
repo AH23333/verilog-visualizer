@@ -17,6 +17,7 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onCreateFile: () => void;
   onCreateFolder: () => void;
+  onRefresh: () => void;
   onMoveFiles: (fileIds: string[], targetFolder: string) => void;
   onMoveFolder: (folderPath: string, targetFolder: string) => void;
 }
@@ -109,6 +110,7 @@ export default function Sidebar({
   onToggleCollapse,
   onCreateFile,
   onCreateFolder,
+  onRefresh,
   onMoveFiles,
   onMoveFolder,
 }: SidebarProps) {
@@ -581,6 +583,23 @@ export default function Sidebar({
             onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
           >
             📁
+          </button>
+          <button
+            onClick={onRefresh}
+            title="Refresh from disk"
+            style={{
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-dim)',
+              cursor: 'pointer',
+              fontSize: '1rem',
+              padding: '2px 6px',
+              borderRadius: 3,
+            }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+          >
+            ⟳
           </button>
           <button
             onClick={onToggleCollapse}

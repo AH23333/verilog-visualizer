@@ -471,13 +471,62 @@ export const fileStore = {
   async loadFromProjectDir(): Promise<void> {
     if (initialized) return;
     initialized = true;
+    await this.refresh();
+  },
 
+  /** Refresh file list from disk — syncs additions, deletions, and content changes */
+  async refresh(): Promise<void> {
     const tryLoad = async (retries: number): Promise<void> => {
       try {
-        // Use list_project_tree to get both files and folders
         const tree = await invoke<{ files: Array<{ name: string; size: number; modified: number }>; folders: string[] }>(
           'list_project_tree'
         );
+
+        // Build a set of disk file names for quick lookup
+        const diskFileNames = new Set(tree.files.map((f) => f.name));
+
+        // Remove files that no longer exist on disk
+        files = files.filter((f) => {
+          const diskName = f.filePath || f.name;
+          return diskFileNames.has(diskName) || diskFileNames.has(f.name);
+        });
+
+        // Add or update files from disk
+        for (const info of tree.files) {
+          const existing = files.find((f) => (f.filePath || f.name) === info.name || f.name === info.name);
+          if (existing) {
+            // Update content if file was modified on disk
+            if (existing.importedAt < info.modified) {
+              try {
+                const content = await invoke<string>('read_project_file', { name: info.name });
+                existing.content = content;
+                existing.definedModules = parseVerilogModules(content);
+                existing.status = 'pending';
+                existing.importedAt = info.modified;
+              } catch (err) {
+                console.warn(`Failed to re-read project file '${info.name}':`, err);
+              }
+            }
+          } else {
+            // New file on disk — import it
+            try {
+              const content = await invoke<string>('read_project_file', { name: info.name });
+              const modules = parseVerilogModules(content);
+              files = [...files, {
+                id: generateId(),
+                name: info.name,
+                filePath: info.name,
+                content,
+                circuitJson: null,
+                importedAt: info.modified || Date.now(),
+                status: 'pending' as const,
+                definedModules: modules,
+              }];
+            } catch (err) {
+              console.warn(`Failed to read project file '${info.name}':`, err);
+            }
+          }
+        }
 
         // Merge folders from disk with locally tracked folders
         const diskFolders = new Set(folders);
@@ -487,31 +536,10 @@ export const fileStore = {
         folders = Array.from(diskFolders).sort();
         saveFoldersToLocalStorage(folders);
 
-        for (const info of tree.files) {
-          if (files.some((f) => f.name === info.name)) continue;
-
-          try {
-            const content = await invoke<string>('read_project_file', { name: info.name });
-            const modules = parseVerilogModules(content);
-            const entry: FileEntry = {
-              id: generateId(),
-              name: info.name,
-              filePath: info.name,
-              content,
-              circuitJson: null,
-              importedAt: info.modified || Date.now(),
-              status: 'pending',
-              definedModules: modules,
-            };
-            files = [...files, entry];
-          } catch (err) {
-            console.warn(`Failed to read project file '${info.name}':`, err);
-          }
-        }
         saveFilesToLocalStorage(files);
         notify();
       } catch (err) {
-        console.warn(`Failed to list project files (retries left: ${retries}):`, err);
+        console.warn(`Failed to refresh project files (retries left: ${retries}):`, err);
         if (retries > 0) {
           await new Promise((r) => setTimeout(r, 800));
           return tryLoad(retries - 1);

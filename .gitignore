@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 dist-ssr/
+.npm-cache/
+.npm-local-cache/
 
 # Tauri / Rust
 src-tauri/target/
@@ -44,3 +46,5 @@ log-current.txt
 # OS files
 Thumbs.db
 Desktop.ini
+DEVELOPMENT_PLAN.md
+FEASIBILITY_REPORT.md

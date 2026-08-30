@@ -363,11 +363,6 @@ export default function ModulePanel({
                           const boundFile = boundFileId ? files.find((f) => f.id === boundFileId) : undefined;
                           const autoMatch = moduleToFile.get(mod);
 
-                          // Filter dropdown: only show files that define this module
-                          const candidateFiles = files.filter(
-                            (f) => f.id !== file.id && f.definedModules?.includes(mod)
-                          );
-
                           return (
                             <div
                               key={mod}

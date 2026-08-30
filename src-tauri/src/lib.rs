@@ -1,6 +1,8 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::Manager;
+use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::FilePath;
 
 /// Get the project files directory from the app's data directory
 /// This places files outside src-tauri/ so Tauri's file watcher won't trigger rebuilds
@@ -320,6 +322,46 @@ fn scan_tree_recursive(base: &Path, dir: &Path) -> Result<ProjectTree, String> {
     Ok(ProjectTree { files, folders })
 }
 
+/// Read the project configuration file (verilog-viz.config.json)
+#[tauri::command]
+fn read_project_config(app_handle: tauri::AppHandle) -> Result<String, String> {
+    let dir = ensure_project_dir(&app_handle)?;
+    let path = dir.join("verilog-viz.config.json");
+    if !path.exists() {
+        return Err("Config file not found".to_string());
+    }
+    fs::read_to_string(&path).map_err(|e| format!("Failed to read config: {}", e))
+}
+
+/// Save the project configuration file (verilog-viz.config.json)
+#[tauri::command]
+fn save_project_config(app_handle: tauri::AppHandle, content: String) -> Result<(), String> {
+    let dir = ensure_project_dir(&app_handle)?;
+    let path = dir.join("verilog-viz.config.json");
+    fs::write(&path, &content).map_err(|e| format!("Failed to save config: {}", e))
+}
+
+/// Show a save-file dialog and write exported content to the chosen path
+#[tauri::command]
+async fn save_export_file(app_handle: tauri::AppHandle, content: Vec<u8>, default_name: String) -> Result<Option<String>, String> {
+    let path = app_handle
+        .dialog()
+        .file()
+        .set_file_name(default_name)
+        .blocking_save_file();
+
+    match path {
+        Some(FilePath::Path(path_buf)) => {
+            fs::write(&path_buf, &content).map_err(|e| format!("Write error: {}", e))?;
+            Ok(Some(path_buf.to_string_lossy().to_string()))
+        }
+        Some(FilePath::Url(url)) => {
+            Ok(Some(url.to_string()))
+        }
+        None => Ok(None),
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 struct ProjectFileInfo {
     name: String,
@@ -339,6 +381,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .invoke_handler(tauri::generate_handler![
             save_project_file,
             list_project_files,
@@ -351,6 +394,9 @@ pub fn run() {
             copy_project_file,
             copy_project_folder,
             list_project_tree,
+            read_project_config,
+            save_project_config,
+            save_export_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
