@@ -115,7 +115,7 @@ export default function BindingDialog({
           {definedModules.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{
-                fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-dim)',
+                fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)',
                 marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px',
               }}>
                 Defined Modules ({definedModules.length})
@@ -139,10 +139,10 @@ export default function BindingDialog({
                   }}>
                     {mod}
                   </code>
-                  <span style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>defined in</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>defined in</span>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text)' }}>{file.name}</span>
                   {file.filePath && file.filePath !== file.name && (
-                    <span style={{ fontSize: '0.77rem', color: 'var(--text-dim)', opacity: 0.6 }}>
+                    <span style={{ fontSize: '0.77rem', color: 'var(--text-muted)', opacity: 0.6 }}>
                       ({file.filePath})
                     </span>
                   )}
@@ -186,7 +186,7 @@ export default function BindingDialog({
                     }}>
                       {mod}
                     </code>
-                    <span style={{ color: 'var(--text-dim)', fontSize: '0.85rem' }}>→</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>→</span>
                     <select
                       value={boundFileId || ''}
                       onChange={(e) => handleSelect(mod, e.target.value)}
@@ -224,7 +224,7 @@ export default function BindingDialog({
 
           {/* Empty state */}
           {definedModules.length === 0 && instantiatedModules.length === 0 && (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-dim)', fontSize: '0.92rem' }}>
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.92rem' }}>
               No custom modules found in this file.
             </div>
           )}

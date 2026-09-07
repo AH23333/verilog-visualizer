@@ -68,7 +68,7 @@ export default function TabBar({
       style={{
         display: 'flex',
         alignItems: 'stretch',
-        height: 36,
+        height: 40,
         background: 'var(--toolbar-bg)',
         borderBottom: '1px solid var(--border-subtle)',
         flexShrink: 0,
@@ -105,8 +105,8 @@ export default function TabBar({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 6,
-              padding: '0 12px',
+              gap: 8,
+              padding: '0 14px',
               height: '100%',
               cursor: 'pointer',
               background: isActive
@@ -117,7 +117,7 @@ export default function TabBar({
               borderRight: '1px solid var(--border-subtle)',
               borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
               opacity: isDragging ? 0.5 : 1,
-              fontSize: '0.8rem',
+              fontSize: '0.95rem',
               color: isActive ? 'var(--text)' : 'var(--text-secondary)',
               whiteSpace: 'nowrap',
               transition: 'background var(--transition-fast)',

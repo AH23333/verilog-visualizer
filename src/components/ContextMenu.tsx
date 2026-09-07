@@ -16,18 +16,15 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Close on any click outside
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         onClose();
       }
     };
-    // Close on Escape
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
 
-    // Delay adding listeners to avoid immediate close from the right-click event
     const timer = setTimeout(() => {
       document.addEventListener('mousedown', handleClick);
       document.addEventListener('contextmenu', handleClick);
@@ -42,25 +39,22 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
     };
   }, [onClose]);
 
-  // Adjust position to stay within viewport
-  const adjustedX = Math.min(x, window.innerWidth - 200);
-  const adjustedY = Math.min(y, window.innerHeight - items.length * 32 - 16);
+  const itemHeight = 52;
+  const adjustedX = Math.min(x, window.innerWidth - 280);
+  const adjustedY = Math.min(y, window.innerHeight - items.length * itemHeight - 16);
 
   return (
     <div
       ref={menuRef}
+      className="animate-scale-in fixed z-[2000] min-w-[280px] py-2 select-none rounded-lg"
       style={{
-        position: 'fixed',
         left: adjustedX,
         top: adjustedY,
-        minWidth: 180,
-        background: 'var(--bg-elevated)',
+        background: 'var(--menu-bg)',
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
         border: '1px solid var(--border)',
-        borderRadius: 'var(--radius-lg)',
         boxShadow: 'var(--shadow-lg)',
-        padding: '4px 0',
-        zIndex: 2000,
-        userSelect: 'none',
       }}
     >
       {items.map((item, i) => (
@@ -73,27 +67,29 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
             }
           }}
           disabled={item.disabled}
+          className="block w-full px-6 py-3.5 text-left border-0 transition-colors rounded-none"
           style={{
-            display: 'block',
-            width: '100%',
-            padding: '5px 14px',
             background: 'transparent',
             color: item.danger ? 'var(--danger)' : item.disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
-            border: 'none',
             cursor: item.disabled ? 'default' : 'pointer',
-            fontSize: '0.82rem',
-            textAlign: 'left',
             opacity: item.disabled ? 0.5 : 1,
+            fontSize: '1.05rem',
           }}
           onMouseEnter={(e) => {
             if (!item.disabled) {
               (e.target as HTMLElement).style.background = item.danger
-                ? 'var(--danger-bg)'
-                : 'var(--menu-hover)';
+                ? 'var(--danger-muted)'
+                : 'var(--surface)';
+              (e.target as HTMLElement).style.color = item.danger
+                ? 'var(--danger-hover)'
+                : 'var(--text)';
             }
           }}
           onMouseLeave={(e) => {
             (e.target as HTMLElement).style.background = 'transparent';
+            (e.target as HTMLElement).style.color = item.danger
+              ? 'var(--danger)'
+              : item.disabled ? 'var(--text-muted)' : 'var(--text-secondary)';
           }}
         >
           {item.label}

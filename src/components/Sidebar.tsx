@@ -270,17 +270,14 @@ export default function Sidebar({
         {/* Folder header */}
         {node.path && (
           <div
+            className="flex items-center select-none transition-all cursor-pointer mx-1 rounded-md"
             style={{
-              display: 'flex',
-              alignItems: 'center',
-              padding: `3px 8px 3px ${8 + depth * 12}px`,
-              cursor: 'pointer',
-              fontSize: '0.82rem',
+              padding: `5px 10px 5px ${6 + depth * 14}px`,
+              fontSize: '0.9rem',
               color: 'var(--text-secondary)',
-              userSelect: 'none',
-              transition: 'color var(--transition-fast)',
               background: dragOverThis ? 'var(--accent-muted)' : 'transparent',
               outline: dragOverThis ? '1px dashed var(--accent)' : 'none',
+              outlineOffset: -1,
             }}
             onClick={() => toggleFolder(node.path)}
             onContextMenu={(e) => {
@@ -296,11 +293,13 @@ export default function Sidebar({
             onDragEnd={handleDragEnd}
             onMouseEnter={(e) => {
               if (!dragOverThis) {
+                (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
                 (e.currentTarget as HTMLElement).style.color = 'var(--text)';
               }
             }}
             onMouseLeave={(e) => {
               if (!dragOverThis) {
+                (e.currentTarget as HTMLElement).style.background = 'transparent';
                 (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)';
               }
             }}
@@ -338,7 +337,7 @@ export default function Sidebar({
     const statusColor =
       file.status === 'compiled' ? 'var(--success)' :
       file.status === 'missing_deps' ? 'var(--warning)' :
-      file.status === 'error' ? 'var(--danger)' : 'var(--text-dim)';
+      file.status === 'error' ? 'var(--danger)' : 'var(--text-muted)';
 
     return (
       <div
@@ -378,22 +377,17 @@ export default function Sidebar({
             }
           } catch {}
         }}
+        className="flex items-center gap-1.5 select-none transition-all cursor-pointer mx-1 rounded-md"
         style={{
-          padding: `3px 8px 3px ${8 + depth * 12}px`,
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 6,
+          padding: `5px 10px 5px ${6 + depth * 14}px`,
           background: isActive
             ? 'var(--accent-muted)'
             : isSelected
             ? 'var(--surface-hover)'
             : 'transparent',
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
-          fontSize: '0.82rem',
+          fontSize: '0.9rem',
           color: isActive ? 'var(--text)' : 'var(--text-secondary)',
-          userSelect: 'none',
-          transition: 'background var(--transition-fast), color var(--transition-fast)',
         }}
         onMouseEnter={(e) => {
           if (!isActive && !isSelected) {
@@ -436,7 +430,7 @@ export default function Sidebar({
               border: '1px solid var(--accent)',
               borderRadius: 2,
               padding: '1px 4px',
-              fontSize: '0.85rem',
+              fontSize: '0.9rem',
             }}
           />
         ) : (
@@ -458,9 +452,9 @@ export default function Sidebar({
           style={{
             background: 'transparent',
             border: 'none',
-            color: 'var(--text-dim)',
+            color: 'var(--text-muted)',
             cursor: 'pointer',
-            fontSize: '0.69rem',
+            fontSize: '0.75rem',
             padding: '0 2px',
             opacity: 0.5,
             flexShrink: 0,
@@ -492,7 +486,7 @@ export default function Sidebar({
           style={{
             background: 'transparent',
             border: 'none',
-            color: 'var(--text-dim)',
+            color: 'var(--text-muted)',
             cursor: 'pointer',
             fontSize: '1rem',
             padding: 4,
@@ -505,116 +499,63 @@ export default function Sidebar({
   }
 
   return (
-    <div
-      style={{
-        width: '100%',
-        height: '100%',
-        background: 'var(--sidebar-bg)',
-        display: 'flex',
-        flexDirection: 'column',
-        overflow: 'hidden',
-      }}
-    >
+    <div className="w-full h-full flex flex-col overflow-hidden"
+      style={{ background: 'var(--sidebar-bg)' }}>
       {/* Header */}
-      <div
+      <div className="flex items-center justify-between px-3.5 py-2.5 flex-shrink-0"
         style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '8px 14px',
-          borderBottom: '1px solid var(--border-subtle)',
-          fontSize: '0.75rem',
-          fontWeight: 600,
+          borderBottom: '1px solid var(--border)',
           color: 'var(--text-secondary)',
-          textTransform: 'uppercase',
-          letterSpacing: '0.6px',
-          flexShrink: 0,
-        }}
-      >
-        <span>Files</span>
-        <div style={{ display: 'flex', gap: 4 }}>
+        }}>
+        <span className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]">Files</span>
+        <div className="flex gap-0.5">
           <button
             onClick={onImportFile}
             title="Import file"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '1.08rem',
-              padding: '2px 6px',
-              borderRadius: 3,
-            }}
-            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
-            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+            className="bg-transparent border-0 cursor-pointer text-base px-1.5 py-0.5 rounded transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
             +
           </button>
           <button
             onClick={onCreateFile}
             title="New file"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '1.08rem',
-              padding: '2px 6px',
-              borderRadius: 3,
-            }}
-            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
-            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+            className="bg-transparent border-0 cursor-pointer text-sm px-1.5 py-0.5 rounded transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
             📄
           </button>
           <button
             onClick={onCreateFolder}
             title="New folder"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '1.08rem',
-              padding: '2px 6px',
-              borderRadius: 3,
-            }}
-            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
-            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+            className="bg-transparent border-0 cursor-pointer text-sm px-1.5 py-0.5 rounded transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
             📁
           </button>
           <button
             onClick={onRefresh}
             title="Refresh from disk"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '1rem',
-              padding: '2px 6px',
-              borderRadius: 3,
-            }}
-            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
-            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+            className="bg-transparent border-0 cursor-pointer text-sm px-1.5 py-0.5 rounded transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
             ⟳
           </button>
           <button
             onClick={onToggleCollapse}
             title="Collapse sidebar"
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: 'var(--text-dim)',
-              cursor: 'pointer',
-              fontSize: '1.08rem',
-              padding: '2px 6px',
-              borderRadius: 3,
-            }}
-            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
-            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+            className="bg-transparent border-0 cursor-pointer text-sm px-1.5 py-0.5 rounded transition-colors"
+            style={{ color: 'var(--text-secondary)' }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
             −
           </button>
@@ -622,11 +563,8 @@ export default function Sidebar({
       </div>
 
       {/* File tree */}
-      <div
+      <div className="flex-1 overflow-auto py-1 transition-colors"
         style={{
-          flex: 1,
-          overflow: 'auto',
-          padding: '4px 0',
           background: dragOverRoot ? 'var(--accent-muted)' : 'transparent',
           outline: dragOverRoot ? '2px dashed var(--accent)' : 'none',
           outlineOffset: -2,
@@ -648,7 +586,7 @@ export default function Sidebar({
             data-sidebar-empty
             style={{
               padding: 16,
-              fontSize: '0.82rem',
+              fontSize: '0.9rem',
               color: 'var(--text-muted)',
               textAlign: 'center',
             }}

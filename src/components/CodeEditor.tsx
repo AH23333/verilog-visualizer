@@ -166,8 +166,10 @@ export default function CodeEditor({
     StreamLanguage.define(verilog),
     themeCompartment.of(theme === 'dark' ? oneDark : syntaxHighlighting(defaultHighlightStyle)),
     EditorView.theme({
-      '&': { height: '100%', fontSize: 'var(--editor-font-size, 13px)' },
+      '&': { height: '100%', fontSize: '1rem', fontFamily: "'Consolas', 'Courier New', monospace" },
       '.cm-scroller': { overflow: 'auto' },
+      '.cm-content': { fontSize: '1rem', fontFamily: "'Consolas', 'Courier New', monospace", lineHeight: '1.6' },
+      '.cm-line': { lineHeight: '1.6' },
       '.cm-gutters': { backgroundColor: 'var(--surface)', color: 'var(--text-muted)', borderRight: '1px solid var(--border-subtle)' },
       '.cm-activeLineGutter': { backgroundColor: 'var(--surface-hover)' },
       '.cm-activeLine': { backgroundColor: 'var(--accent-muted)' },
@@ -377,7 +379,7 @@ export default function CodeEditor({
         padding: '4px 14px', background: 'var(--surface)',
         borderBottom: '1px solid var(--border-subtle)', flexShrink: 0, minHeight: 32,
       }}>
-        <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+        <span style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
           {fileName}
         </span>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>

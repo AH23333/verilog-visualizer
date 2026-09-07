@@ -14,7 +14,7 @@ function getSavedFontSize(): number {
       if (n >= 8 && n <= 36) return n;
     }
   } catch {}
-  return 13;
+  return 16;
 }
 
 function getSavedDefaultView(): ViewMode {
@@ -62,7 +62,7 @@ export const settingsStore = {
   },
 
   resetFontSize(): void {
-    this.setFontSize(13);
+    this.setFontSize(16);
   },
 
   getDefaultViewMode(): ViewMode {

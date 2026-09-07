@@ -80,11 +80,11 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
         onClick={onToggle}
         title="Show output panel"
       >
-        <span style={{ fontSize: '0.77rem', color: 'var(--text-dim)', fontWeight: 600, textTransform: 'uppercase' }}>
+        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
           Output
         </span>
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.69rem', color: 'var(--text-dim)' }}>Click to expand</span>
+        <span style={{ fontSize: '0.69rem', color: 'var(--text-muted)' }}>Click to expand</span>
       </div>
     );
   }
@@ -126,7 +126,7 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
       >
         <span
           style={{
-            fontSize: '0.75rem',
+            fontSize: '0.9rem',
             fontWeight: 600,
             color: 'var(--text-secondary)',
             textTransform: 'uppercase',
@@ -144,7 +144,7 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
           style={{
             background: 'transparent',
             border: 'none',
-            color: 'var(--text-dim)',
+            color: 'var(--text-muted)',
             cursor: 'pointer',
             fontSize: '0.85rem',
             padding: '2px 6px',
@@ -166,7 +166,7 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
           padding: '8px 12px',
           overflow: 'auto',
           fontFamily: "'Consolas', 'Courier New', monospace",
-          fontSize: '0.8rem',
+          fontSize: '1rem',
           lineHeight: '1.6',
           color: 'var(--text-secondary)',
           background: 'var(--bg)',

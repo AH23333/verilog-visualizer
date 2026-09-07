@@ -115,7 +115,7 @@ export default function ModulePanel({
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--menu-hover)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
               >
-                <span style={{ fontSize: '0.69rem', color: 'var(--text-dim)', width: 12 }}>
+                <span style={{ fontSize: '0.69rem', color: 'var(--text-muted)', width: 12 }}>
                   {isExpanded ? '▾' : '▸'}
                 </span>
                 <span
@@ -143,7 +143,7 @@ export default function ModulePanel({
                     background:
                       file.status === 'compiled' ? 'var(--success)' :
                       file.status === 'missing_deps' ? 'var(--warning)' :
-                      file.status === 'error' ? 'var(--danger)' : 'var(--text-dim)',
+                      file.status === 'error' ? 'var(--danger)' : 'var(--text-muted)',
                     color: '#fff',
                     fontWeight: 600,
                     flexShrink: 0,
@@ -163,7 +163,7 @@ export default function ModulePanel({
                     <div
                       style={{
                         fontSize: '0.69rem',
-                        color: 'var(--text-dim)',
+                        color: 'var(--text-muted)',
                         fontFamily: 'monospace',
                         marginBottom: 6,
                         wordBreak: 'break-all',
@@ -177,7 +177,7 @@ export default function ModulePanel({
 
                   {/* Defined modules section */}
                   <div style={{ marginBottom: hasMissingModules ? 8 : 0 }}>
-                    <div style={{ fontSize: '0.69rem', color: 'var(--text-dim)', marginBottom: 3, fontWeight: 600 }}>
+                    <div style={{ fontSize: '0.69rem', color: 'var(--text-muted)', marginBottom: 3, fontWeight: 600 }}>
                       Defined Modules
                     </div>
                     {hasDefinedModules ? (
@@ -204,13 +204,13 @@ export default function ModulePanel({
                             >
                               {mod}
                             </code>
-                            <span style={{ color: 'var(--text-dim)', fontSize: '0.69rem' }}>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.69rem' }}>
                               → {file.name}
                             </span>
                             {file.filePath && file.filePath !== file.name && (
                               <span
                                 style={{
-                                  color: 'var(--text-dim)',
+                                  color: 'var(--text-muted)',
                                   fontSize: '0.62rem',
                                   opacity: 0.6,
                                   overflow: 'hidden',
@@ -230,7 +230,7 @@ export default function ModulePanel({
                       <div
                         style={{
                           fontSize: '0.77rem',
-                          color: 'var(--text-dim)',
+                          color: 'var(--text-muted)',
                           fontStyle: 'italic',
                           padding: '2px 6px',
                         }}
@@ -327,7 +327,7 @@ export default function ModulePanel({
                               <span
                                 style={{
                                   fontSize: '0.62rem',
-                                  color: 'var(--text-dim)',
+                                  color: 'var(--text-muted)',
                                   opacity: 0.6,
                                   width: '100%',
                                   overflow: 'hidden',
@@ -387,7 +387,7 @@ export default function ModulePanel({
                               >
                                 {mod}
                               </code>
-                              <span style={{ color: 'var(--text-dim)', fontSize: '0.69rem' }}>
+                              <span style={{ color: 'var(--text-muted)', fontSize: '0.69rem' }}>
                                 {boundFile
                                   ? `→ ${boundFile.name}`
                                   : autoMatch
@@ -397,7 +397,7 @@ export default function ModulePanel({
                               {boundFile?.filePath && boundFile.filePath !== boundFile.name && (
                                 <span
                                   style={{
-                                    color: 'var(--text-dim)',
+                                    color: 'var(--text-muted)',
                                     fontSize: '0.62rem',
                                     opacity: 0.6,
                                     overflow: 'hidden',
@@ -438,7 +438,7 @@ export default function ModulePanel({
             style={{
               width: '100%',
               padding: '6px 0',
-              background: isCompiling ? 'var(--text-dim)' : 'var(--accent)',
+              background: isCompiling ? 'var(--text-muted)' : 'var(--accent)',
               color: '#fff',
               border: 'none',
               borderRadius: 4,

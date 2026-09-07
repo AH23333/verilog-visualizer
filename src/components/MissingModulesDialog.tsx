@@ -100,7 +100,7 @@ export default function MissingModulesDialog({
                   {mod}
                 </code>
               </div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-dim)' }}>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
                 missing implementation
               </span>
             </div>

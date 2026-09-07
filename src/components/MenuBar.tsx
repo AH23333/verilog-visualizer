@@ -26,13 +26,11 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe to font size changes
   const editorFontSize = useSyncExternalStore(
     settingsStore.subscribe,
     () => settingsStore.getFontSize()
   );
 
-  // Close menu on outside click
   useEffect(() => {
     function handleClick(e: MouseEvent) {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -47,127 +45,50 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
     {
       label: 'File',
       items: [
-        {
-          label: 'New File...',
-          shortcut: 'Ctrl+N',
-          action: () => { onCreateFile(); setOpenMenu(null); },
-        },
-        {
-          label: 'Import Verilog File...',
-          shortcut: 'Ctrl+O',
-          action: () => { onImportFile(); setOpenMenu(null); },
-        },
-        {
-          label: 'Save',
-          shortcut: 'Ctrl+S',
-          action: () => { setOpenMenu(null); },
-        },
-        {
-          label: 'Compile',
-          shortcut: 'F5',
-          action: () => { setOpenMenu(null); },
-        },
+        { label: 'New File...', shortcut: 'Ctrl+N', action: () => { onCreateFile(); setOpenMenu(null); } },
+        { label: 'Import Verilog File...', shortcut: 'Ctrl+O', action: () => { onImportFile(); setOpenMenu(null); } },
+        { label: 'Save', shortcut: 'Ctrl+S', action: () => { setOpenMenu(null); } },
+        { label: 'Compile', shortcut: 'F5', action: () => { setOpenMenu(null); } },
       ],
     },
     {
       label: 'Edit',
       items: [
-        {
-          label: 'Undo',
-          shortcut: 'Ctrl+Z',
-          action: () => setOpenMenu(null),
-        },
-        {
-          label: 'Redo',
-          shortcut: 'Ctrl+Y',
-          action: () => setOpenMenu(null),
-        },
-        {
-          label: 'Find / Replace',
-          shortcut: 'Ctrl+F',
-          action: () => setOpenMenu(null),
-        },
-        {
-          label: 'Global Search',
-          shortcut: 'Ctrl+Shift+F',
-          action: () => { onGlobalSearch?.(); setOpenMenu(null); },
-        },
+        { label: 'Undo', shortcut: 'Ctrl+Z', action: () => setOpenMenu(null) },
+        { label: 'Redo', shortcut: 'Ctrl+Y', action: () => setOpenMenu(null) },
+        { label: 'Find / Replace', shortcut: 'Ctrl+F', action: () => setOpenMenu(null) },
+        { label: 'Global Search', shortcut: 'Ctrl+Shift+F', action: () => { onGlobalSearch?.(); setOpenMenu(null); } },
       ],
     },
     {
       label: 'Export',
       items: [
-        {
-          label: 'Export SVG',
-          action: () => { onExportSVG?.(); setOpenMenu(null); },
-        },
-        {
-          label: 'Export PNG',
-          action: () => { onExportPNG?.(); setOpenMenu(null); },
-        },
-        {
-          label: 'Export Circuit JSON',
-          action: () => { onExportJSON?.(); setOpenMenu(null); },
-        },
-        {
-          label: 'Export Verilog Source',
-          action: () => { onExportVerilog?.(); setOpenMenu(null); },
-        },
+        { label: 'Export SVG', action: () => { onExportSVG?.(); setOpenMenu(null); } },
+        { label: 'Export PNG', action: () => { onExportPNG?.(); setOpenMenu(null); } },
+        { label: 'Export Circuit JSON', action: () => { onExportJSON?.(); setOpenMenu(null); } },
+        { label: 'Export Verilog Source', action: () => { onExportVerilog?.(); setOpenMenu(null); } },
       ],
     },
     {
       label: 'View',
       items: [
-        {
-          label: 'Reset Zoom',
-          shortcut: 'Ctrl+0',
-          action: () => { onResetZoom(); setOpenMenu(null); },
-        },
-        {
-          label: 'Fit to Window',
-          action: () => { onFitToWindow(); setOpenMenu(null); },
-        },
-        {
-          label: currentTheme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme',
-          action: () => { onToggleTheme(); setOpenMenu(null); },
-        },
+        { label: 'Reset Zoom', shortcut: 'Ctrl+0', action: () => { onResetZoom(); setOpenMenu(null); } },
+        { label: 'Fit to Window', action: () => { onFitToWindow(); setOpenMenu(null); } },
+        { label: currentTheme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme', action: () => { onToggleTheme(); setOpenMenu(null); } },
       ],
     },
     {
       label: 'Settings',
       items: [
-        {
-          label: `Editor Font Size: ${editorFontSize}px`,
-          action: () => {},
-          shortcut: undefined,
-        },
-        {
-          label: 'Increase Font Size',
-          shortcut: 'Ctrl+=',
-          action: () => { settingsStore.increaseFontSize(); },
-        },
-        {
-          label: 'Decrease Font Size',
-          shortcut: 'Ctrl+-',
-          action: () => { settingsStore.decreaseFontSize(); },
-        },
-        {
-          label: 'Reset Font Size',
-          shortcut: 'Ctrl+0',
-          action: () => { settingsStore.resetFontSize(); },
-        },
-        {
-          label: `Default View: ${settingsStore.getDefaultViewMode() === 'circuit' ? 'Circuit' : 'Code'}`,
-          action: () => {
-            const current = settingsStore.getDefaultViewMode();
-            settingsStore.setDefaultViewMode(current === 'circuit' ? 'code' : 'circuit');
-          },
-        },
-        {
-          label: 'Toggle Sidebar',
-          shortcut: 'Ctrl+B',
-          action: () => setOpenMenu(null),
-        },
+        { label: `Editor Font Size: ${editorFontSize}px`, action: () => {} },
+        { label: 'Increase Font Size', shortcut: 'Ctrl+=', action: () => { settingsStore.increaseFontSize(); } },
+        { label: 'Decrease Font Size', shortcut: 'Ctrl+-', action: () => { settingsStore.decreaseFontSize(); } },
+        { label: 'Reset Font Size', shortcut: 'Ctrl+0', action: () => { settingsStore.resetFontSize(); } },
+        { label: `Default View: ${settingsStore.getDefaultViewMode() === 'circuit' ? 'Circuit' : 'Code'}`, action: () => {
+          const current = settingsStore.getDefaultViewMode();
+          settingsStore.setDefaultViewMode(current === 'circuit' ? 'code' : 'circuit');
+        }},
+        { label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => setOpenMenu(null) },
       ],
     },
   ];
@@ -175,77 +96,60 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
   return (
     <div
       ref={menuRef}
+      className="flex items-center h-[46px] flex-shrink-0 select-none pl-3 gap-2"
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        height: 30,
         background: 'var(--menu-bg)',
-        borderBottom: '1px solid var(--border-subtle)',
-        flexShrink: 0,
-        userSelect: 'none',
-        paddingLeft: 6,
+        borderBottom: '1px solid var(--border)',
       }}
     >
       {menus.map((menu) => (
-        <div key={menu.label} style={{ position: 'relative' }}>
+        <div key={menu.label} className="relative">
           <button
             onClick={() => setOpenMenu(openMenu === menu.label ? null : menu.label)}
             onMouseEnter={() => openMenu !== null && setOpenMenu(menu.label)}
+            className="h-[40px] px-5 border-0 rounded-md cursor-pointer transition-colors"
             style={{
-              height: 29,
-              padding: '0 10px',
               background: openMenu === menu.label ? 'var(--surface-hover)' : 'transparent',
               color: 'var(--text-secondary)',
-              border: 'none',
-              borderRadius: 'var(--radius-sm)',
-              cursor: 'pointer',
-              fontSize: '0.82rem',
+              fontSize: '1.15rem',
+              fontWeight: 500,
             }}
           >
             {menu.label}
           </button>
           {openMenu === menu.label && (
             <div
+              className="animate-fade-in absolute top-full left-0 min-w-[300px] py-2 rounded-lg z-[1000]"
               style={{
-                position: 'absolute',
-                top: '100%',
-                left: 0,
-                minWidth: 220,
-                background: 'var(--bg-elevated)',
+                background: 'var(--menu-bg)',
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
                 border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-lg)',
                 boxShadow: 'var(--shadow-lg)',
-                padding: '4px 0',
-                zIndex: 1000,
               }}
             >
               {menu.items.map((item) => (
                 <button
                   key={item.label}
                   onClick={item.action}
+                  className="flex justify-between items-center w-full px-5 py-3.5 border-0 cursor-pointer text-left transition-colors"
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    width: '100%',
-                    padding: '5px 14px',
                     background: 'transparent',
                     color: 'var(--text-secondary)',
-                    border: 'none',
-                    cursor: 'pointer',
-                    fontSize: '0.82rem',
-                    textAlign: 'left',
+                    fontSize: '1.05rem',
                   }}
                   onMouseEnter={(e) => {
-                    (e.target as HTMLElement).style.background = 'var(--menu-hover)';
+                    (e.target as HTMLElement).style.background = 'var(--surface)';
+                    (e.target as HTMLElement).style.color = 'var(--text)';
                   }}
                   onMouseLeave={(e) => {
                     (e.target as HTMLElement).style.background = 'transparent';
+                    (e.target as HTMLElement).style.color = 'var(--text-secondary)';
                   }}
                 >
                   <span>{item.label}</span>
                   {item.shortcut && (
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginLeft: 24 }}>
+                    <span className="ml-10" style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
                       {item.shortcut}
                     </span>
                   )}

@@ -708,12 +708,12 @@ export default function App() {
   const statusColor =
     status === 'error' ? 'var(--danger)' :
     status === 'done' ? 'var(--success)' :
-    status === 'compiling' ? '#ff9800' : 'var(--text-dim)';
+    status === 'compiling' ? '#ff9800' : 'var(--text-muted)';
 
   const hasMissingDeps = files.some((f) => f.status === 'missing_deps');
 
   return (
-    <div style={{ width: '100vw', height: '100vh', display: 'flex', flexDirection: 'column' }}>
+    <div className="w-screen h-screen flex flex-col bg-[var(--bg)]">
       {/* Menu Bar */}
       <MenuBar
         onImportFile={handleImportFile}
@@ -731,13 +731,13 @@ export default function App() {
       />
 
       {/* Main area */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+      <div className="flex-1 flex overflow-hidden">
         {/* Activity Bar */}
-        <div style={{
-          width: 44, display: 'flex', flexDirection: 'column', alignItems: 'center',
-          paddingTop: 6, paddingBottom: 6, background: 'var(--sidebar-bg)',
-          borderRight: '1px solid var(--border-subtle)', flexShrink: 0, gap: 2,
-        }}>
+        <div className="w-[48px] flex flex-col items-center pt-2 pb-2 gap-1 flex-shrink-0"
+          style={{
+            background: 'var(--sidebar-bg)',
+            borderRight: '1px solid var(--border-subtle)',
+          }}>
           <ActivityButton icon="▦" label="Files"
             active={leftPanel === 'files' && !sidebarCollapsed}
             onClick={() => {
@@ -767,11 +767,12 @@ export default function App() {
 
         {/* Left Panel */}
         {!sidebarCollapsed && (
-          <div style={{
-            width: sidebarWidth, minWidth: 180, borderRight: '1px solid var(--border-subtle)',
-            background: 'var(--sidebar-bg)', display: 'flex', flexDirection: 'column',
-            flexShrink: 0, position: 'relative',
-          }}>
+          <div className="flex-shrink-0 relative flex flex-col"
+            style={{
+              width: sidebarWidth, minWidth: 180,
+              borderRight: '1px solid var(--border)',
+              background: 'var(--sidebar-bg)',
+            }}>
             {leftPanel === 'files' ? (
               <Sidebar
                 files={files} folders={folders} activeFileId={activeFileId}
@@ -800,10 +801,9 @@ export default function App() {
             {/* Resize handle */}
             <div
               onMouseDown={handleSidebarDragStart}
+              className="absolute top-0 right-0 w-1 h-full cursor-col-resize z-10 select-none transition-colors"
               style={{
-                position: 'absolute', top: 0, right: 0, width: 4, height: '100%',
-                cursor: 'col-resize', background: isDraggingSidebar ? 'var(--accent)' : 'transparent',
-                zIndex: 10, userSelect: 'none',
+                background: isDraggingSidebar ? 'var(--accent)' : 'transparent',
               }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; }}
               onMouseLeave={(e) => { if (!isDraggingSidebar) (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
@@ -826,9 +826,9 @@ export default function App() {
 
           {/* Toolbar */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 10, padding: '6px 14px',
-            background: 'var(--toolbar-bg)', borderBottom: '1px solid var(--border-subtle)',
-            flexShrink: 0, minHeight: 38,
+            display: 'flex', alignItems: 'center', gap: 16, padding: '10px 18px',
+            background: 'var(--toolbar-bg)', borderBottom: '1px solid var(--border)',
+            flexShrink: 0, minHeight: 50,
           }}>
             <div style={{
               width: 8, height: 8, borderRadius: '50%',
@@ -836,7 +836,7 @@ export default function App() {
               boxShadow: `0 0 6px ${statusColor}`,
             }} />
             <span style={{
-              fontSize: '0.88rem', color: 'var(--text)', flex: 1,
+              fontSize: '1.05rem', color: 'var(--text)', flex: 1,
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500,
             }}>
               {activeFile ? `${activeFile.name} — ${message || 'Ready'}` : message || 'Verilog Visualizer'}
@@ -844,20 +844,20 @@ export default function App() {
             {activeFile && (
               <>
                 <button onClick={handleSave} title="Save (Ctrl+S)" style={{
-                  padding: '4px 14px', border: '1px solid var(--border)',
+                  padding: '8px 20px', border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                  fontSize: '0.82rem', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500,
+                  fontSize: '1rem', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500,
                 }}>Save</button>
                 <button onClick={handleCompile} disabled={status === 'compiling'} title="Compile (F5)" style={{
-                  padding: '4px 14px', border: 'none', borderRadius: 'var(--radius-md)',
-                  cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '0.82rem',
+                  padding: '8px 20px', border: 'none', borderRadius: 'var(--radius-md)',
+                  cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '1rem',
                   background: status === 'compiling' ? 'var(--text-muted)' : 'var(--accent)',
                   color: '#fff', fontWeight: 600,
                 }}>{status === 'compiling' ? 'Compiling...' : 'Compile'}</button>
                 {hasMissingDeps && (
                   <button onClick={handleCompile} disabled={status === 'compiling'} style={{
-                    padding: '4px 14px', border: 'none', borderRadius: 'var(--radius-md)',
-                    cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '0.82rem',
+                    padding: '8px 20px', border: 'none', borderRadius: 'var(--radius-md)',
+                    cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '1rem',
                     background: 'var(--warning)', color: '#000', fontWeight: 600,
                   }}>Fix Dependencies</button>
                 )}
@@ -865,51 +865,42 @@ export default function App() {
             )}
             {activeFile && (
               <div style={{
-                display: 'flex', gap: 1, marginLeft: 8, background: 'var(--surface)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', padding: 1,
+                display: 'flex', gap: 4, marginLeft: 14, background: 'var(--surface)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', padding: 4,
               }}>
-                <button onClick={() => setViewMode('circuit')} style={{
-                  padding: '3px 10px', border: 'none', borderRadius: 'var(--radius-sm)',
-                  cursor: 'pointer', fontSize: '0.77rem', fontWeight: 500,
-                  background: viewMode === 'circuit' ? 'var(--accent)' : 'transparent',
-                  color: viewMode === 'circuit' ? '#fff' : 'var(--text-secondary)',
-                }}>Circuit</button>
-                <button onClick={() => setViewMode('code')} style={{
-                  padding: '3px 10px', border: 'none', borderRadius: 'var(--radius-sm)',
-                  cursor: 'pointer', fontSize: '0.77rem', fontWeight: 500,
-                  background: viewMode === 'code' ? 'var(--accent)' : 'transparent',
-                  color: viewMode === 'code' ? '#fff' : 'var(--text-secondary)',
-                }}>Code</button>
+                <button onClick={() => setViewMode('circuit')} className="px-6 py-2.5 border-0 rounded-md cursor-pointer font-medium transition-all"
+                  style={{
+                    background: viewMode === 'circuit' ? 'var(--accent)' : 'transparent',
+                    color: viewMode === 'circuit' ? '#fff' : 'var(--text-secondary)',
+                    fontSize: '1.05rem',
+                  }}>Circuit</button>
+                <button onClick={() => setViewMode('code')} className="px-6 py-2.5 border-0 rounded-md cursor-pointer font-medium transition-all"
+                  style={{
+                    background: viewMode === 'code' ? 'var(--accent)' : 'transparent',
+                    color: viewMode === 'code' ? '#fff' : 'var(--text-secondary)',
+                    fontSize: '1.05rem',
+                  }}>Code</button>
               </div>
             )}
           </div>
 
           {/* Content: Canvas or Code Editor */}
-          <div ref={canvasContainerRef} style={{ flex: 1, position: 'relative', overflow: 'hidden' }}
+          <div ref={canvasContainerRef} className="flex-1 relative overflow-hidden"
             onContextMenu={handleCanvasContextMenu}>
             {(() => {
               if (!activeFile) {
                 return (
-                  <div style={{
-                    display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                    alignItems: 'center', height: '100%', color: 'var(--text-secondary)',
-                    userSelect: 'none', gap: 16,
-                  }}>
-                    <div style={{ fontSize: '4rem', opacity: 0.15, fontWeight: 300, lineHeight: 1 }}>◈</div>
-                    <div style={{ fontSize: '1.15rem', fontWeight: 500, color: 'var(--text)' }}>No file selected</div>
-                    <div style={{ display: 'flex', gap: 10 }}>
-                      <button onClick={handleImportFile} style={{
-                        padding: '8px 22px', background: 'var(--accent)', color: '#fff',
-                        border: 'none', borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                        fontSize: '0.92rem', fontWeight: 600,
-                      }}>Import .v File</button>
-                      <button onClick={handleCreateFile} style={{
-                        padding: '8px 22px', background: 'var(--surface)', color: 'var(--text)',
-                        border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-                        cursor: 'pointer', fontSize: '0.92rem', fontWeight: 500,
-                      }}>New File</button>
+                  <div className="flex flex-col justify-center items-center h-full gap-6 select-none"
+                    style={{ color: 'var(--text-secondary)' }}>
+                    <div className="text-6xl font-light opacity-10 leading-none">◈</div>
+                    <div className="text-lg font-medium" style={{ color: 'var(--text)' }}>No file selected</div>
+                    <div className="flex gap-3">
+                      <button onClick={handleImportFile} className="px-6 py-2.5 text-sm font-semibold rounded-lg border-0 cursor-pointer text-white transition-all hover:opacity-90 hover:shadow-lg"
+                        style={{ background: 'var(--accent)' }}>Import .v File</button>
+                      <button onClick={handleCreateFile} className="px-6 py-2.5 text-sm font-medium rounded-lg cursor-pointer transition-all hover:border-[var(--border)]"
+                        style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>New File</button>
                     </div>
-                    <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                    <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       Ctrl+O to import · Ctrl+N to create · F5 to compile
                     </div>
                   </div>
@@ -942,27 +933,22 @@ export default function App() {
               }
 
               return (
-                <div style={{
-                  display: 'flex', flexDirection: 'column', justifyContent: 'center',
-                  alignItems: 'center', height: '100%', color: 'var(--text-secondary)',
-                  userSelect: 'none', gap: 14,
-                }}>
-                  <div style={{ fontSize: '3rem', opacity: 0.15, fontWeight: 300 }}>
+                <div className="flex flex-col justify-center items-center h-full gap-5 select-none"
+                  style={{ color: 'var(--text-secondary)' }}>
+                  <div className="text-5xl font-light opacity-10">
                     {activeFile.status === 'missing_deps' ? '△' : '◈'}
                   </div>
-                  <div style={{ fontSize: '1.08rem', fontWeight: 500, color: 'var(--text)' }}>
+                  <div className="text-base font-medium" style={{ color: 'var(--text)' }}>
                     {activeFile.status === 'missing_deps' ? 'Missing dependencies'
                       : activeFile.status === 'error' ? 'Compilation error' : 'Not compiled'}
                   </div>
-                  <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', maxWidth: 420, textAlign: 'center' }}>
+                  <div className="text-sm max-w-[420px] text-center leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
                     {activeFile.errorMessage || 'Press F5 to compile. Check Output panel for details.'}
                   </div>
-                  <button onClick={handleCompile} disabled={status === 'compiling'} style={{
-                    marginTop: 6, padding: '8px 22px',
-                    background: status === 'compiling' ? 'var(--text-muted)' : 'var(--accent)',
-                    color: '#fff', border: 'none', borderRadius: 'var(--radius-md)',
-                    cursor: 'pointer', fontSize: '0.92rem', fontWeight: 600,
-                  }}>{status === 'compiling' ? 'Compiling...' : 'Compile (F5)'}</button>
+                  <button onClick={handleCompile} disabled={status === 'compiling'} className="mt-2 px-6 py-2.5 text-sm font-semibold rounded-lg border-0 cursor-pointer text-white transition-all hover:opacity-90 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                      background: status === 'compiling' ? 'var(--text-muted)' : 'var(--accent)',
+                    }}>{status === 'compiling' ? 'Compiling...' : 'Compile (F5)'}</button>
                 </div>
               );
             })()}
@@ -979,12 +965,12 @@ export default function App() {
       />
 
       {/* Bottom Status Bar */}
-      <div style={{
-        display: 'flex', alignItems: 'center', height: 24, padding: '0 14px',
-        background: 'var(--statusbar-bg)', color: 'var(--text-secondary)',
-        fontSize: '0.74rem', flexShrink: 0, gap: 14,
-        borderTop: '1px solid var(--border-subtle)',
-      }}>
+      <div className="flex items-center h-8 px-4 gap-4 text-[0.9rem]"
+        style={{
+          background: 'var(--statusbar-bg)',
+          color: 'var(--text-secondary)',
+          borderTop: '1px solid var(--border)',
+        }}>
         <span>{files.length} file{files.length !== 1 ? 's' : ''}</span>
         {folders.length > 0 && (
           <>
