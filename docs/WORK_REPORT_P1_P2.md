@@ -180,6 +180,29 @@ OutputPanel 已具备高度拖拽（`handleDragStart` + localStorage 持久化 `
 
 ---
 
+## 八、第四轮：根因深挖 + 布局重构（2026-10-01，commits 2afb8e6 / d63944e / 88038b2）
+
+### 1. 子电路放大镜弹窗深色（jQuery UI dialog）
+- **根因**：hover 子模块 cell → 右上角出现放大镜 → 点击后 digitaljs 弹出 **jQuery UI `.ui-dialog`** 显示子电路内部。这个 dialog 没被主题覆盖，jQuery 默认白色
+- **修复**：`index.css` 把 `.ui-dialog` / `.ui-dialog-titlebar` / `.ui-dialog-content` / `.ui-widget-overlay` 全部改成 `--menu-bg` 深色
+- Playwright 实测：hover half_adder → 点放大镜 → 弹窗深色标题栏 + 深色内部 paper
+
+### 2. 分窗拖拽不工作（React 事件池化）
+- **根因**：`onSplitDividerMouseDown` 里 mousemove 闭包访问 `e.currentTarget`——React 事件池化在 handler 返回后把 currentTarget 置 null，闭包拿到 null container 直接 return
+- **修复**：mousedown 时把 `container/startX/startRatio` 存到普通局部变量，不依赖合成事件对象
+
+### 3. 顶层布局重构（上下结构）
+- **问题**：原来菜单栏在主内容区内部，左侧 ActivityBar+Sidebar 占了顶部一行
+- **修复**：MenuBar+状态+WindowControls 移到顶层全宽 40px 固定标题栏；下面才是 ActivityBar+Sidebar+主内容的左右行
+- 窗口最小化/全屏/关闭按钮始终在右上角可见
+
+### 4. 连线凹陷问题
+- manhattan router padding=8 太窄，线路紧贴 cell 边缘转弯内折
+- 尝试 orthogonal padding=24 导致 cell 变黑（CSS 副作用），已 revert
+- 现状：回退 manhattan padding=8，凹陷问题留作后续
+
+---
+
 ## 四、已知遗留（非阻塞）
 
 1. **BusGroup label**：dev13 的 label 仍为 dev13（无 net 属性，getConnectedLinks 反查未命中）——但总线上已有 "count" 标签，视觉冗余可接受
