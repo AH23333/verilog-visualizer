@@ -535,29 +535,33 @@ code[class*="language-"] {
 
 /* ============================================================
    DigitalJS cell inspector popup (hover cell -> magnifier -> click).
-   This overlay creates its own paper outside our canvas wrapper — give it
-   the dark menu bg so it doesn't show as a white slab.
+   digitaljs uses jQuery UI dialog — theme it dark.
    ============================================================ */
-.joint-inspector,
-.joint-cell-inspector,
-.joint-popup,
-.djs-inspector {
+.ui-dialog {
+  background: var(--menu-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5) !important;
+}
+.ui-dialog .ui-dialog-titlebar {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.ui-dialog .ui-dialog-content {
+  background: var(--menu-bg) !important;
+  color: var(--text) !important;
+}
+.ui-dialog .ui-dialog-content .joint-paper,
+.ui-dialog .ui-dialog-content svg {
   background: var(--menu-bg) !important;
 }
-.joint-inspector .joint-paper,
-.joint-cell-inspector .joint-paper,
-.joint-popup .joint-paper,
-.djs-inspector .joint-paper,
-.joint-inspector svg,
-.joint-cell-inspector svg,
-.joint-popup svg {
-  background: var(--menu-bg) !important;
+.ui-dialog .ui-dialog-titlebar-close {
+  filter: invert(0.8);
 }
-/* Magnifier button itself */
-.joint-magnify,
-.djs-magnify {
-  background: var(--accent) !important;
-  color: #fff !important;
+.ui-widget-overlay {
+  background: rgba(0,0,0,.5) !important;
 }
 /* Link paths — make them crisper (Quartus-ish): 1.5px, no rounded corners */
 .joint-paper .connection-wrap,
