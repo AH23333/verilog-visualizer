@@ -203,6 +203,21 @@ OutputPanel 已具备高度拖拽（`handleDragStart` + localStorage 持久化 `
 
 ---
 
+## 九、第五轮：功能补全与技术债（2026-10-01，commits 92069d9 / 53c4d01 / 88d693d）
+
+### 1. 总线粗线视觉区分
+- 多比特 link（bits > 1）stroke-width 从 1.5 升到 2.5，Quartus 风格 bus vs wire 一眼可分
+
+### 2. 保留 yosys 原始 JSON
+- `CompileResult` 加 `yosysJson` 字段，不再 parse 后丢弃原始 write_json 产物
+- 为后续信号追踪/goto-def/netlist 级分析铺路
+
+### 3. Canvas unmount 内存泄漏修复
+- cleanup 里显式 `paper.remove()`，确保 elkjs layout worker 在 circuitJson 切换/文件切换时被终止
+- 防止 Tauri 长会话内存缓涨
+
+---
+
 ## 四、已知遗留（非阻塞）
 
 1. **BusGroup label**：dev13 的 label 仍为 dev13（无 net 属性，getConnectedLinks 反查未命中）——但总线上已有 "count" 标签，视觉冗余可接受
