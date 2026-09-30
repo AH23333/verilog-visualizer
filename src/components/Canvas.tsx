@@ -507,12 +507,16 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       paperRef.current = paper;
 
       // Force orthogonal (right-angle) routing on every link — overrides any
-      // curved vertices elkjs may have baked in.
+      // curved vertices elkjs may have baked in. Use 'orthogonal' with larger
+      // padding so wires don't hug cell edges (was causing inward notches).
       try {
         paper.options = paper.options || {};
-        paper.options.defaultRouter = { name: 'manhattan', args: { padding: 8 } };
+        paper.options.defaultRouter = { name: 'orthogonal', args: { padding: 24 } };
         for (const lk of paper.model.getLinks()) {
-          try { lk.set('vertices', []); lk.set('router', { name: 'manhattan', args: { padding: 8 } }); } catch {}
+          try {
+            lk.set('vertices', []);
+            lk.set('router', { name: 'orthogonal', args: { padding: 24 } });
+          } catch {}
         }
       } catch { /* router cosmetic */ }
 

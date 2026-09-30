@@ -529,7 +529,8 @@ code[class*="language-"] {
   background-color: transparent !important;
 }
 /* Kill any white fill rect joint may paint as paper background */
-.joint-paper svg rect:first-child {
+.joint-paper svg rect:first-child,
+.joint-paper .joint-viewport rect {
   fill: transparent !important;
 }
 /* Link paths — make them crisper (Quartus-ish): 1.5px, no rounded corners */
