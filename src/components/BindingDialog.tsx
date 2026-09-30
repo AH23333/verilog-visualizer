@@ -103,7 +103,7 @@ export default function BindingDialog({
           <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
             Module Binding: {file.name}
           </h2>
-          <p style={{ margin: '6px 0 0', fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+          <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-md)', color: 'var(--text-secondary)' }}>
             {instantiatedModules.length > 0
               ? `Found ${instantiatedModules.length} instantiated module(s). Select the file that defines each module.`
               : 'This file does not instantiate any custom modules.'}
@@ -116,7 +116,7 @@ export default function BindingDialog({
           {definedModules.length > 0 && (
             <div style={{ marginBottom: 16 }}>
               <div style={{
-                fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-muted)',
+                fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-muted)',
                 marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px',
               }}>
                 Defined Modules ({definedModules.length})
@@ -135,15 +135,15 @@ export default function BindingDialog({
                   }}
                 >
                   <code style={{
-                    fontFamily: 'monospace', fontSize: '0.92rem',
+                    fontFamily: 'monospace', fontSize: 'var(--fs-lg)',
                     color: 'var(--success)', fontWeight: 600, minWidth: 100,
                   }}>
                     {mod}
                   </code>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>defined in</span>
-                  <span style={{ fontSize: '0.85rem', color: 'var(--text)' }}>{file.name}</span>
+                  <span style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-md)' }}>defined in</span>
+                  <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text)' }}>{file.name}</span>
                   {file.filePath && file.filePath !== file.name && (
-                    <span style={{ fontSize: '0.77rem', color: 'var(--text-muted)', opacity: 0.6 }}>
+                    <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', opacity: 0.6 }}>
                       ({file.filePath})
                     </span>
                   )}
@@ -156,7 +156,7 @@ export default function BindingDialog({
           {instantiatedModules.length > 0 && (
             <div>
               <div style={{
-                fontSize: '0.85rem', fontWeight: 600, color: 'var(--warning)',
+                fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--warning)',
                 marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px',
               }}>
                 Instantiated Modules ({instantiatedModules.length})
@@ -181,7 +181,7 @@ export default function BindingDialog({
                     }}
                   >
                     <code style={{
-                      fontFamily: 'monospace', fontSize: '0.92rem',
+                      fontFamily: 'monospace', fontSize: 'var(--fs-lg)',
                       color: boundFile ? 'var(--success)' : 'var(--warning)',
                       fontWeight: 600, minWidth: 100,
                     }}>
@@ -194,7 +194,7 @@ export default function BindingDialog({
                       style={{
                         flex: 1,
                         padding: '4px 8px',
-                        fontSize: '0.85rem',
+                        fontSize: 'var(--fs-md)',
                         background: 'var(--input-bg)',
                         color: 'var(--text)',
                         border: '1px solid var(--border)',
@@ -213,7 +213,7 @@ export default function BindingDialog({
                         ))}
                     </select>
                     {boundFile && (
-                      <span style={{ fontSize: '0.77rem', color: 'var(--success)', whiteSpace: 'nowrap' }}>
+                      <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--success)', whiteSpace: 'nowrap' }}>
                         <Check size={12} /> bound
                       </span>
                     )}
@@ -225,7 +225,7 @@ export default function BindingDialog({
 
           {/* Empty state */}
           {definedModules.length === 0 && instantiatedModules.length === 0 && (
-            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.92rem' }}>
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-lg)' }}>
               No custom modules found in this file.
             </div>
           )}
@@ -242,7 +242,7 @@ export default function BindingDialog({
               background: 'var(--surface)',
               color: 'var(--text)',
               cursor: 'pointer',
-              fontSize: '0.85rem',
+              fontSize: 'var(--fs-md)',
               fontWeight: 500,
             }}
           >
@@ -257,7 +257,7 @@ export default function BindingDialog({
               background: 'var(--accent)',
               color: '#fff',
               cursor: 'pointer',
-              fontSize: '0.85rem',
+              fontSize: 'var(--fs-md)',
               fontWeight: 600,
             }}
           >

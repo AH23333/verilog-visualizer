@@ -133,7 +133,7 @@ export default function WaveformPanel({ getChannels, getSample, resetKey, onClos
   return (
     <div style={{ borderTop: '1px solid var(--border)', background: 'var(--surface)', display: 'flex', flexDirection: 'column', maxHeight: 240 }}>
       <div className="flex items-center justify-between" style={{ padding: '4px 10px', borderBottom: '1px solid var(--border-subtle)' }}>
-        <span className="text-[0.75rem] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
+        <span className="text-[var(--fs-sm)] font-semibold uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>
           Waveform {channels.length === 0 && '— no named nets'}
         </span>
         <button onClick={onClose} title="Close waveform"

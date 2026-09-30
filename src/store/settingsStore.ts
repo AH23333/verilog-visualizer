@@ -4,7 +4,7 @@
 const FONT_SIZE_KEY = 'verilog-viz-font-size';
 const DEFAULT_VIEW_KEY = 'verilog-viz-default-view';
 
-export type ViewMode = 'circuit' | 'code';
+export type ViewMode = 'circuit' | 'code' | 'split';
 
 function getSavedFontSize(): number {
   try {

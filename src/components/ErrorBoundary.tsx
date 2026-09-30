@@ -76,7 +76,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
                 background: 'var(--surface)',
                 border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-md)',
-                fontSize: '0.78rem',
+                fontSize: 'var(--fs-sm)',
                 fontFamily: 'monospace',
                 color: 'var(--danger)',
                 whiteSpace: 'pre-wrap',

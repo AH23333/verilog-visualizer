@@ -63,7 +63,7 @@ export default function ModulePanel({
       <div
         style={{
           padding: '8px 14px',
-          fontSize: '0.75rem',
+          fontSize: 'var(--fs-sm)',
           fontWeight: 600,
           color: 'var(--text-secondary)',
           textTransform: 'uppercase',
@@ -81,7 +81,7 @@ export default function ModulePanel({
           <div
             style={{
               padding: 16,
-              fontSize: '0.82rem',
+              fontSize: 'var(--fs-md)',
               color: 'var(--text-muted)',
               textAlign: 'center',
             }}
@@ -122,7 +122,7 @@ export default function ModulePanel({
                 <span
                   onClick={(e) => { e.stopPropagation(); onSelectFile(file.id); }}
                   style={{
-                    fontSize: '0.92rem',
+                    fontSize: 'var(--fs-lg)',
                     fontWeight: 500,
                     color: 'var(--text)',
                     cursor: 'pointer',
@@ -138,7 +138,7 @@ export default function ModulePanel({
                 {/* Status badge */}
                 <span
                   style={{
-                    fontSize: '0.62rem',
+                    fontSize: 'var(--fs-xs)',
                     padding: '1px 5px',
                     borderRadius: 3,
                     background:
@@ -163,7 +163,7 @@ export default function ModulePanel({
                   {file.filePath && (
                     <div
                       style={{
-                        fontSize: '0.69rem',
+                        fontSize: 'var(--fs-xs)',
                         color: 'var(--text-muted)',
                         fontFamily: 'monospace',
                         marginBottom: 6,
@@ -178,7 +178,7 @@ export default function ModulePanel({
 
                   {/* Defined modules section */}
                   <div style={{ marginBottom: hasMissingModules ? 8 : 0 }}>
-                    <div style={{ fontSize: '0.69rem', color: 'var(--text-muted)', marginBottom: 3, fontWeight: 600 }}>
+                    <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginBottom: 3, fontWeight: 600 }}>
                       Defined Modules
                     </div>
                     {hasDefinedModules ? (
@@ -190,7 +190,7 @@ export default function ModulePanel({
                               display: 'flex',
                               alignItems: 'center',
                               gap: 4,
-                              fontSize: '0.77rem',
+                              fontSize: 'var(--fs-sm)',
                               padding: '2px 6px',
                               borderRadius: 3,
                               background: 'var(--input-bg)',
@@ -205,14 +205,14 @@ export default function ModulePanel({
                             >
                               {mod}
                             </code>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.69rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
                               <ArrowRight size={11} />{file.name}
                             </span>
                             {file.filePath && file.filePath !== file.name && (
                               <span
                                 style={{
                                   color: 'var(--text-muted)',
-                                  fontSize: '0.62rem',
+                                  fontSize: 'var(--fs-xs)',
                                   opacity: 0.6,
                                   overflow: 'hidden',
                                   textOverflow: 'ellipsis',
@@ -230,7 +230,7 @@ export default function ModulePanel({
                     ) : (
                       <div
                         style={{
-                          fontSize: '0.77rem',
+                          fontSize: 'var(--fs-sm)',
                           color: 'var(--text-muted)',
                           fontStyle: 'italic',
                           padding: '2px 6px',
@@ -244,7 +244,7 @@ export default function ModulePanel({
                   {/* Missing modules section */}
                   {hasMissingModules && (
                     <div>
-                      <div style={{ fontSize: '0.69rem', color: 'var(--danger)', marginBottom: 3, fontWeight: 600 }}>
+                      <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger)', marginBottom: 3, fontWeight: 600 }}>
                         Missing Modules
                       </div>
                       {file.missingModules!.map((mod) => {
@@ -264,7 +264,7 @@ export default function ModulePanel({
                               display: 'flex',
                               alignItems: 'center',
                               gap: 4,
-                              fontSize: '0.77rem',
+                              fontSize: 'var(--fs-sm)',
                               marginBottom: 3,
                               padding: '2px 6px',
                               borderRadius: 3,
@@ -291,7 +291,7 @@ export default function ModulePanel({
                                 }
                               }}
                               style={{
-                                fontSize: '0.69rem',
+                                fontSize: 'var(--fs-xs)',
                                 background: 'var(--input-bg)',
                                 color: 'var(--text)',
                                 border: '1px solid var(--border)',
@@ -327,7 +327,7 @@ export default function ModulePanel({
                             {boundFile && (
                               <span
                                 style={{
-                                  fontSize: '0.62rem',
+                                  fontSize: 'var(--fs-xs)',
                                   color: 'var(--text-muted)',
                                   opacity: 0.6,
                                   width: '100%',
@@ -356,7 +356,7 @@ export default function ModulePanel({
 
                     return (
                       <div style={{ marginTop: (hasDefinedModules || hasMissingModules) ? 8 : 0 }}>
-                        <div style={{ fontSize: '0.69rem', color: 'var(--warning)', marginBottom: 3, fontWeight: 600 }}>
+                        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--warning)', marginBottom: 3, fontWeight: 600 }}>
                           Instantiated Modules
                         </div>
                         {instModsFiltered.map((mod) => {
@@ -371,7 +371,7 @@ export default function ModulePanel({
                                 display: 'flex',
                                 alignItems: 'center',
                                 gap: 4,
-                                fontSize: '0.77rem',
+                                fontSize: 'var(--fs-sm)',
                                 marginBottom: 3,
                                 padding: '2px 6px',
                                 borderRadius: 3,
@@ -388,7 +388,7 @@ export default function ModulePanel({
                               >
                                 {mod}
                               </code>
-                              <span style={{ color: 'var(--text-muted)', fontSize: '0.69rem' }}>
+                              <span style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-xs)' }}>
                                 {boundFile
                                   ? `bound: ${boundFile.name}`
                                   : autoMatch
@@ -399,7 +399,7 @@ export default function ModulePanel({
                                 <span
                                   style={{
                                     color: 'var(--text-muted)',
-                                    fontSize: '0.62rem',
+                                    fontSize: 'var(--fs-xs)',
                                     opacity: 0.6,
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis',
@@ -444,7 +444,7 @@ export default function ModulePanel({
               border: 'none',
               borderRadius: 4,
               cursor: isCompiling ? 'default' : 'pointer',
-              fontSize: '0.85rem',
+              fontSize: 'var(--fs-md)',
               fontWeight: 500,
             }}
           >

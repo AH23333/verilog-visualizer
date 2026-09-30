@@ -108,7 +108,7 @@ export default function HierarchyViewer({ files, targetFileId, onSelectFile, the
       {/* Header */}
       <div style={{
         padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)',
-        fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-secondary)',
+        fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-secondary)',
         textTransform: 'uppercase', letterSpacing: '0.05em',
       }}>
         Hierarchy
@@ -127,7 +127,7 @@ export default function HierarchyViewer({ files, targetFileId, onSelectFile, the
             />
           </div>
         ) : (
-          <div style={{ padding: '16px 14px', fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+          <div style={{ padding: '16px 14px', fontSize: 'var(--fs-md)', color: 'var(--text-muted)' }}>
             {targetFileId
               ? 'No module hierarchy found for this file.'
               : 'Select a file to view its module hierarchy.'}
@@ -139,7 +139,7 @@ export default function HierarchyViewer({ files, targetFileId, onSelectFile, the
       <div style={{
         borderTop: '1px solid var(--border-subtle)',
         padding: '8px 14px',
-        fontSize: '0.72rem',
+        fontSize: 'var(--fs-xs)',
         color: 'var(--text-muted)',
       }}>
         {allModules.moduleToFile.size} module{allModules.moduleToFile.size !== 1 ? 's' : ''} across {files.length} file{files.length !== 1 ? 's' : ''}
@@ -180,7 +180,7 @@ function TreeNode({
           alignItems: 'center',
           height: 28,
           cursor: 'pointer',
-          fontSize: '0.81rem',
+          fontSize: 'var(--fs-md)',
           background: isActive ? 'var(--accent-muted)' : 'transparent',
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
           borderRadius: '0 var(--radius-sm) var(--radius-sm) 0',

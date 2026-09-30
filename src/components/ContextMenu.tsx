@@ -76,7 +76,7 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
             color: item.danger ? 'var(--danger)' : item.disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
             cursor: item.disabled ? 'default' : 'pointer',
             opacity: item.disabled ? 0.5 : 1,
-            fontSize: '0.85rem',
+            fontSize: 'var(--fs-md)',
           }}
           onMouseEnter={(e) => {
             if (!item.disabled) {

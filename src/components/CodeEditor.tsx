@@ -419,7 +419,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
         padding: '4px 14px', background: 'var(--surface)',
         borderBottom: '1px solid var(--border-subtle)', flexShrink: 0, minHeight: 32,
       }}>
-        <span style={{ fontSize: '0.95rem', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
+        <span style={{ fontSize: 'var(--fs-lg)', color: 'var(--text-secondary)', fontFamily: 'monospace' }}>
           {fileName}
         </span>
         <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
@@ -441,7 +441,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
             style={{
               padding: '2px 12px', background: isCompiling ? 'var(--text-muted)' : 'var(--accent)',
               color: '#fff', border: 'none', borderRadius: 'var(--radius-sm)',
-              cursor: isCompiling ? 'default' : 'pointer', fontSize: '0.78rem', fontWeight: 500,
+              cursor: isCompiling ? 'default' : 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 500,
             }}
           >
             {isCompiling ? 'Compiling...' : 'Compile'}
@@ -470,7 +470,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
                 outline: 'none',
               }}
             />
-            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', minWidth: 40 }}>
+            <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', minWidth: 40 }}>
               {searchQuery ? `${matchIndex + 1}/${matchCount}` : ''}
             </span>
             <button
@@ -515,14 +515,14 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
 export default CodeEditor;
 
 const searchBtnStyle: CSSProperties = {
-  padding: '2px 8px', fontSize: '0.72rem', fontWeight: 500,
+  padding: '2px 8px', fontSize: 'var(--fs-xs)', fontWeight: 500,
   background: 'var(--surface)', color: 'var(--text)',
   border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
   cursor: 'pointer',
 };
 
 const toolbarBtnStyle: CSSProperties = {
-  padding: '2px 6px', fontSize: '0.78rem', fontWeight: 500,
+  padding: '2px 6px', fontSize: 'var(--fs-sm)', fontWeight: 500,
   background: 'transparent', color: 'var(--text-secondary)',
   border: '1px solid transparent', borderRadius: 'var(--radius-sm)',
   cursor: 'pointer',

@@ -39,10 +39,10 @@ export default function ExamplesDialog({ loading, onClose, onOpen }: ExamplesDia
           style={{ borderColor: 'var(--border)', background: 'var(--menu-bg)' }}
         >
           <div className="flex flex-col gap-0.5 min-w-0">
-            <span className="text-[0.95rem] font-semibold" style={{ color: 'var(--text)' }}>
+            <span className="text-[var(--fs-lg)] font-semibold" style={{ color: 'var(--text)' }}>
               Example Circuits
             </span>
-            <span className="text-[0.75rem]" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-[var(--fs-sm)]" style={{ color: 'var(--text-muted)' }}>
               Opens as a new project file and compiles automatically
             </span>
           </div>
@@ -73,13 +73,13 @@ export default function ExamplesDialog({ loading, onClose, onOpen }: ExamplesDia
                   {ex.title}
                 </span>
                 <span
-                  className="text-[0.65rem] px-1.5 py-0.5 rounded border flex-shrink-0"
+                  className="text-[var(--fs-xs)] px-1.5 py-0.5 rounded border flex-shrink-0"
                   style={{ color: 'var(--text-muted)', borderColor: 'var(--border-subtle)' }}
                 >
                   .v
                 </span>
               </div>
-              <div className="text-[0.78rem] leading-relaxed mb-2" style={{ color: 'var(--text-secondary)' }}>
+              <div className="text-[var(--fs-sm)] leading-relaxed mb-2" style={{ color: 'var(--text-secondary)' }}>
                 {ex.description}
               </div>
               <div className="text-[0.7rem] font-mono truncate" style={{ color: 'var(--text-muted)' }}>
@@ -90,7 +90,7 @@ export default function ExamplesDialog({ loading, onClose, onOpen }: ExamplesDia
         </div>
 
         {loading && (
-          <div className="px-5 pb-4 text-[0.85rem]" style={{ color: 'var(--text-secondary)' }}>
+          <div className="px-5 pb-4 text-[var(--fs-md)]" style={{ color: 'var(--text-secondary)' }}>
             Compiling selected example…
           </div>
         )}

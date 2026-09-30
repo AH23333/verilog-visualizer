@@ -455,7 +455,7 @@ export default function Sidebar({
             border: 'none',
             color: 'var(--text-muted)',
             cursor: 'pointer',
-            fontSize: '0.75rem',
+            fontSize: 'var(--fs-sm)',
             padding: '0 2px',
             opacity: 0.5,
             flexShrink: 0,

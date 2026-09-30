@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, type ReactNode } from 'react';
+import { X } from 'lucide-react';
 
 interface TabBarProps {
   openFiles: string[];
@@ -120,7 +121,7 @@ export default function TabBar({
               borderRight: '1px solid var(--border-subtle)',
               borderBottom: isActive ? '2px solid var(--accent)' : '2px solid transparent',
               opacity: isDragging ? 0.5 : 1,
-              fontSize: '0.95rem',
+              fontSize: 'var(--fs-lg)',
               color: isActive ? 'var(--text)' : 'var(--text-secondary)',
               whiteSpace: 'nowrap',
               transition: 'background var(--transition-fast)',
@@ -146,31 +147,10 @@ export default function TabBar({
                 onCloseTab(fileId);
               }}
               title="Close"
-              style={{
-                width: 18,
-                height: 18,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                background: 'transparent',
-                border: 'none',
-                borderRadius: '50%',
-                cursor: 'pointer',
-                color: 'var(--text-muted)',
-                fontSize: '0.9rem',
-                lineHeight: 1,
-                padding: 0,
-              }}
-              onMouseEnter={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
-                (e.currentTarget as HTMLElement).style.color = 'var(--text)';
-              }}
-              onMouseLeave={(e) => {
-                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)';
-              }}
+              className="icon-btn"
+              style={{ width: 18, height: 18, borderRadius: '50%', color: 'var(--text-muted)' }}
             >
-              ×
+              <X size={12} />
             </button>
           </div>
         );

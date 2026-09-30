@@ -155,7 +155,7 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
                   style={{
                     background: 'transparent',
                     color: 'var(--text-secondary)',
-                    fontSize: '0.85rem',
+                    fontSize: 'var(--fs-md)',
                   }}
                   onMouseEnter={(e) => {
                     (e.target as HTMLElement).style.background = 'var(--surface)';
@@ -168,7 +168,7 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
                 >
                   <span>{item.label}</span>
                   {item.shortcut && (
-                    <span className="ml-10" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    <span className="ml-10" style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>
                       {item.shortcut}
                     </span>
                   )}

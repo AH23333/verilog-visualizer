@@ -16,13 +16,17 @@ import HierarchyViewer from './components/HierarchyViewer';
 import SearchDialog from './components/SearchDialog';
 import ShortcutsHelpDialog from './components/ShortcutsHelpDialog';
 import ExamplesDialog from './components/ExamplesDialog';
+import CommandPalette from './components/CommandPalette';
+import type { Command } from './components/CommandPalette';
+import OnboardingDialog from './components/OnboardingDialog';
 import WaveformPanel from './components/WaveformPanel';
+import InputPanel from './components/InputPanel';
 import WindowControls from './components/WindowControls';
 import PromptDialog, { type PromptOptions } from './components/PromptDialog';
 import ConfirmDialog, { type ConfirmOptions } from './components/ConfirmDialog';
 import {
-  Files, Boxes, Network, Sun, Moon, LockOpen, Lock, Play, Pause, AudioWaveform,
-  Library, Save, Hammer, Code, ArrowLeft, Cpu, TriangleAlert,
+  Files, Boxes, Network, Sun, Moon, LockOpen, Lock, Play, Pause, StepForward, AudioWaveform,
+  Library, Save, Hammer, Code, ArrowLeft, Cpu, TriangleAlert, SlidersHorizontal, Columns2,
 } from 'lucide-react';
 import type { VerilogExample } from './lib/examples';
 import { SHORTCUTS, matchesCombo } from './lib/shortcuts';
@@ -61,6 +65,8 @@ export default function App() {
   // Output panel state
   const [yosysLog, setYosysLog] = useState('');
   const [outputPanelVisible, setOutputPanelVisible] = useState(false);
+  // Structured problems for the Problems tab (validation errors + parseable compile errors)
+  const [problems, setProblems] = useState<{ fileName: string; line: number; message: string; severity: 'error' | 'warning' }[]>([]);
 
   // IDE panel state: 'files' | 'modules' | 'hierarchy'
   const [leftPanel, setLeftPanel] = useState<'files' | 'modules' | 'hierarchy'>('files');
@@ -81,6 +87,14 @@ export default function App() {
   const [examplesVisible, setExamplesVisible] = useState(false);
   const [exampleLoading, setExampleLoading] = useState(false);
 
+  // Command palette (Ctrl+Shift+P)
+  const [commandPaletteVisible, setCommandPaletteVisible] = useState(false);
+
+  // First-run onboarding
+  const [onboardingVisible, setOnboardingVisible] = useState(() => {
+    try { return !localStorage.getItem('verilog-viz-onboarded'); } catch { return false; }
+  });
+
   // Simulation control state (digitaljs engine)
   const [simLocked, setSimLocked] = useState(false); // default: interactive (unchanged from prior behavior); lock is opt-in
   const [simPaused, setSimPaused] = useState(false);
@@ -93,6 +107,7 @@ export default function App() {
 
   // Waveform panel
   const [waveOpen, setWaveOpen] = useState(false);
+  const [inputsOpen, setInputsOpen] = useState(false);
   const [waveEpoch, setWaveEpoch] = useState(0);
   const waveGetChannels = useCallback(() => canvasRef.current?.getWaveChannels() ?? [], []);
   const waveGetSample = useCallback(() => canvasRef.current?.getWaveSample() ?? null, []);
@@ -297,6 +312,18 @@ export default function App() {
       log += `Total: ${validationErrors.length} error(s).\n`;
       log += '========================================================\n';
 
+      // Structured problems for the Problems tab — parse line number from detail
+      const parsed = validationErrors.map((err) => {
+        const m = err.detail.match(/第(\d+)行/);
+        return {
+          fileName: err.fileName,
+          line: m ? parseInt(m[1], 10) : 1,
+          message: err.message,
+          severity: 'error' as const,
+        };
+      });
+      setProblems(parsed);
+
       fileStore.updateFile(targetFileId, {
         status: 'error', errorMessage: `Interface validation failed: ${validationErrors.length} error(s)`,
         missingModules: undefined, circuitJson: null,
@@ -317,6 +344,7 @@ export default function App() {
       setStatus('done');
       setMessage('Compiled successfully!');
       setMissingModules(null);
+      setProblems([]);
       setSimPaused(false); // a fresh build always starts running
       setYosysLog((prev) => prev + '\n' + result.yosysLog);
       setOutputPanelVisible(true);
@@ -598,10 +626,19 @@ export default function App() {
 
   // ============ Code Editor ============
 
+  const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const handleCodeChange = useCallback((code: string) => {
     if (activeFileId) {
       fileStore.updateFile(activeFileId, { content: code });
       setDirtyMap((prev) => ({ ...prev, [activeFileId]: true }));
+      // Debounced auto-save (2s after last keystroke)
+      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+      autoSaveTimer.current = setTimeout(() => {
+        try {
+          fileStore.saveContent(activeFileId, code);
+          setDirtyMap((prev) => ({ ...prev, [activeFileId]: false }));
+        } catch { /* auto-save best-effort */ }
+      }, 2000);
     }
   }, [activeFileId]);
 
@@ -915,6 +952,8 @@ export default function App() {
             case 'view.sidebar': handleToggleSidebar(); return true;
             case 'view.output': setOutputPanelVisible((v) => !v); return true;
             case 'view.shortcutsHelp': setShortcutsHelpVisible((v) => !v); return true;
+            case 'view.commandPalette': setCommandPaletteVisible(true); return true;
+            case 'sim.stepOnce': canvasRef.current?.stepOnce(); return true;
             case 'search.global': setSearchDialogVisible((v) => !v); return true;
             case 'edit.selected.copy': if (selectedIds.size > 0) { handleCopy(); return true; } return false;
             case 'edit.selected.cut': if (selectedIds.size > 0) { handleCut(); return true; } return false;
@@ -938,6 +977,39 @@ export default function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleImportFile, handleSave, handleCompile, handleCreateFile, handleDeleteFiles, handleCopy, handleCut, handlePasteFromClipboard, handleToggleSidebar, selectedIds]);
+
+  // ============ Command Palette ============
+  // Commands exposed to Ctrl+Shift+P. Built from the same handlers the
+  // keyboard shortcut switch invokes — single source of truth for both.
+  const commands: Command[] = useMemo(() => {
+    const byId = new Map(SHORTCUTS.map((s) => [s.id, s]));
+    const list: Command[] = [];
+    const push = (id: string, run: () => void) => {
+      const s = byId.get(id);
+      if (s && !s.combo.includes('Wheel')) list.push({ id, label: s.label, combo: s.combo, run });
+    };
+    push('file.import', handleImportFile);
+    push('file.new', handleCreateFile);
+    push('file.save', handleSave);
+    push('file.compile', handleCompile);
+    push('view.sidebar', handleToggleSidebar);
+    push('view.output', () => setOutputPanelVisible((v) => !v));
+    push('view.shortcutsHelp', () => setShortcutsHelpVisible((v) => !v));
+    push('search.global', () => setSearchDialogVisible((v) => !v));
+    push('sim.stepOnce', () => canvasRef.current?.stepOnce());
+    push('canvas.fit', () => canvasRef.current?.fitToWindow());
+    // Extra commands not on the global shortcut table
+    list.push(
+      { id: 'view.examples', label: 'Open example circuits gallery', run: () => setExamplesVisible(true) },
+      { id: 'view.toggleTheme', label: 'Toggle dark / light theme', run: handleToggleTheme },
+      { id: 'view.resetZoom', label: 'Reset circuit zoom', run: () => canvasRef.current?.resetZoom() },
+      { id: 'view.fitWindow', label: 'Fit circuit to window', run: () => canvasRef.current?.fitToWindow() },
+      { id: 'view.exportSVG', label: 'Export circuit as SVG', run: handleExportSVG },
+      { id: 'view.exportPNG', label: 'Export circuit as PNG', run: handleExportPNG },
+    );
+    return list;
+  }, [handleImportFile, handleCreateFile, handleSave, handleCompile, handleToggleSidebar,
+      handleToggleTheme, handleExportSVG, handleExportPNG]);
 
   // ============ Render Helpers ============
 
@@ -1067,20 +1139,23 @@ export default function App() {
             />
             <div style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0 }} />
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '0 1 auto' }}>
-              <div style={{
-                width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                background: statusColor,
-                boxShadow: status === 'done' ? '0 0 6px rgba(34, 197, 94, 0.4)' : 'none',
-              }} />
+              <div
+                className={status === 'compiling' ? 'status-compiling-dot' : ''}
+                style={{
+                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                  background: statusColor,
+                  boxShadow: status === 'done' ? '0 0 6px rgba(34, 197, 94, 0.4)' : 'none',
+                }}
+              />
               <span style={{
-                fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)',
+                fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)',
                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240,
               }}>
                 {activeFile ? activeFile.name : 'Verilog Visualizer'}
               </span>
               {message && (
                 <span style={{
-                  fontSize: '0.78rem', color: 'var(--text-muted)',
+                  fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
                   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                 }}>
                   {message}
@@ -1129,7 +1204,19 @@ export default function App() {
                     background: 'transparent', color: 'var(--text)',
                   }}
                 >{simPaused ? <Play size={13} /> : <Pause size={13} />}</button>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                <button
+                  onClick={() => canvasRef.current?.stepOnce()}
+                  disabled={!simPaused}
+                  title={simPaused ? 'Step one clock edge' : 'Pause first to step'}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center',
+                    padding: '4px 9px', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)', cursor: simPaused ? 'pointer' : 'not-allowed',
+                    background: 'transparent', color: simPaused ? 'var(--text)' : 'var(--text-muted)',
+                    opacity: simPaused ? 1 : 0.4,
+                  }}
+                ><StepForward size={13} /></button>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)' }}>
                   SPEED
                   {/* range value = "fastness": low ms = fast engine tick */}
                   <input
@@ -1155,6 +1242,17 @@ export default function App() {
                     color: waveOpen ? '#fff' : 'var(--text)',
                   }}
                 ><AudioWaveform size={13} /> Wave</button>
+                <button
+                  onClick={() => setInputsOpen((v) => !v)}
+                  title="Toggle input switches panel"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '4px 10px', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 600,
+                    background: inputsOpen ? 'var(--accent)' : 'transparent',
+                    color: inputsOpen ? '#fff' : 'var(--text)',
+                  }}
+                ><SlidersHorizontal size={13} /> Inputs</button>
               </div>
             )}
             <button
@@ -1164,7 +1262,7 @@ export default function App() {
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '0 14px', height: 30, border: '1px solid var(--border)',
                 borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                fontSize: '0.85rem', background: 'var(--surface)', color: 'var(--text)',
+                fontSize: 'var(--fs-md)', background: 'var(--surface)', color: 'var(--text)',
                 flexShrink: 0,
               }}
             ><Library size={14} /> Examples</button>
@@ -1174,12 +1272,12 @@ export default function App() {
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '0 14px', height: 30, border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                  fontSize: '0.85rem', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500,
+                  fontSize: 'var(--fs-md)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500,
                 }}><Save size={14} /> Save</button>
                 <button onClick={handleCompile} disabled={status === 'compiling'} title="Compile (F5)" style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '0 14px', height: 30, border: 'none', borderRadius: 'var(--radius-md)',
-                  cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '0.85rem',
+                  cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: 'var(--fs-md)',
                   background: status === 'compiling' ? 'var(--text-muted)' : 'var(--accent)',
                   color: '#fff', fontWeight: 600,
                 }}>{status === 'compiling' ? 'Compiling...' : <><Hammer size={14} /> Compile</>}</button>
@@ -1187,7 +1285,7 @@ export default function App() {
                   <button onClick={handleCompile} disabled={status === 'compiling'} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     padding: '0 14px', height: 30, border: 'none', borderRadius: 'var(--radius-md)',
-                    cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '0.85rem',
+                    cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: 'var(--fs-md)',
                     background: 'var(--warning)', color: '#000', fontWeight: 600,
                   }}><TriangleAlert size={14} /> Fix Dependencies</button>
                 )}
@@ -1203,14 +1301,21 @@ export default function App() {
                   style={{
                     background: viewMode === 'circuit' ? 'var(--accent)' : 'transparent',
                     color: viewMode === 'circuit' ? '#fff' : 'var(--text-secondary)',
-                    fontSize: '0.85rem',
+                    fontSize: 'var(--fs-md)',
                   }}><Network size={13} /> Circuit</button>
                 <button onClick={() => setViewMode('code')} className="inline-flex items-center gap-1.5 px-3.5 h-[26px] border-0 rounded-md cursor-pointer font-medium transition-all"
                   style={{
                     background: viewMode === 'code' ? 'var(--accent)' : 'transparent',
                     color: viewMode === 'code' ? '#fff' : 'var(--text-secondary)',
-                    fontSize: '0.85rem',
+                    fontSize: 'var(--fs-md)',
                   }}><Code size={13} /> Code</button>
+                <button onClick={() => setViewMode('split')} className="inline-flex items-center gap-1.5 px-3.5 h-[26px] border-0 rounded-md cursor-pointer font-medium transition-all"
+                  title="Split: code left, circuit right"
+                  style={{
+                    background: viewMode === 'split' ? 'var(--accent)' : 'transparent',
+                    color: viewMode === 'split' ? '#fff' : 'var(--text-secondary)',
+                    fontSize: 'var(--fs-md)',
+                  }}><Columns2 size={13} /> Split</button>
               </div>
             )}</>}
           />
@@ -1221,7 +1326,7 @@ export default function App() {
             {/* Sub-module breadcrumb — only while drilled in, circuit view */}
             {viewMode === 'circuit' && viewPath.length > 0 && activeFile?.circuitJson && (
               <div
-                className="absolute top-2 left-2 z-20 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[0.82rem] select-none"
+                className="absolute top-2 left-2 z-20 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[var(--fs-md)] select-none"
                 style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
               >
                 <button
@@ -1233,7 +1338,7 @@ export default function App() {
                 <button
                   onClick={() => setViewPath([])}
                   className="border-0 cursor-pointer px-1 py-0.5 rounded hover:opacity-80"
-                  style={{ background: 'transparent', color: 'var(--text)', fontSize: '0.82rem', fontWeight: 600 }}
+                  style={{ background: 'transparent', color: 'var(--text)', fontSize: 'var(--fs-md)', fontWeight: 600 }}
                 >
                   {(activeFile.circuitJson as any)?.name || activeFile.name.replace(/\.(v|sv|vh)$/, '')}
                 </button>
@@ -1244,7 +1349,7 @@ export default function App() {
                       onClick={() => setViewPath(viewPath.slice(0, i + 1))}
                       className="border-0 cursor-pointer px-1 py-0.5 rounded hover:opacity-80"
                       style={{
-                        background: 'transparent', fontSize: '0.82rem',
+                        background: 'transparent', fontSize: 'var(--fs-md)',
                         fontWeight: i === viewPath.length - 1 ? 600 : 400,
                         color: i === viewPath.length - 1 ? 'var(--text)' : 'var(--accent)',
                       }}
@@ -1270,6 +1375,46 @@ export default function App() {
                     </div>
                     <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                       Ctrl+O to import · Ctrl+N to create · F5 to compile · Ctrl+/ for shortcuts
+                    </div>
+                  </div>
+                );
+              }
+
+              if (viewMode === 'split') {
+                return (
+                  <div style={{ display: 'flex', width: '100%', height: '100%' }}>
+                    <div style={{ flex: 1, borderRight: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+                      <CodeEditor
+                        ref={codeEditorRef}
+                        code={activeFile.content}
+                        fileName={activeFile.name}
+                        theme={theme}
+                        onCodeChange={handleCodeChange}
+                        onSave={handleSave}
+                        onRecompile={handleCompile}
+                        isCompiling={status === 'compiling'}
+                      />
+                    </div>
+                    <div style={{ flex: 1, overflow: 'hidden' }}>
+                      {activeFile.circuitJson ? (
+                        <Canvas
+                          ref={canvasRef}
+                          circuitJson={viewJson ?? activeFile.circuitJson}
+                          theme={theme}
+                          onError={handleCanvasError}
+                          locked={simLocked}
+                          paused={simPaused}
+                          speedMs={speedMs}
+                          onRunningChange={handleCanvasRunningChange}
+                          onSourceJump={handleSourceJump}
+                          onReady={handleCanvasReady}
+                        />
+                      ) : (
+                        <div style={{
+                          height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: 'var(--text-muted)', fontSize: 'var(--fs-sm)',
+                        }}>Press F5 to compile →</div>
+                      )}
                     </div>
                   </div>
                 );
@@ -1340,15 +1485,29 @@ export default function App() {
               onClose={() => setWaveOpen(false)}
             />
           )}
+
+          {/* Input switches panel (circuit view only) */}
+          {inputsOpen && viewMode === 'circuit' && activeFile?.circuitJson && (
+            <InputPanel canvasRef={canvasRef} open={inputsOpen} onClose={() => setInputsOpen(false)} />
+          )}
         </div>
       </div>
 
       {/* Output Panel */}
       <OutputPanel
         log={yosysLog}
+        problems={problems}
         visible={outputPanelVisible}
         onToggle={() => setOutputPanelVisible((v) => !v)}
         onClose={() => setOutputPanelVisible(false)}
+        onJumpToProblem={(fileName, line) => {
+          const target = fileStore.getAll().find((f) => f.name === fileName);
+          if (!target) { setMessage(`File "${fileName}" not found.`); return; }
+          openFileInTab(target.id);
+          setViewMode('code');
+          setPendingJump({ fileId: target.id, line });
+          setMessage(`Jumped to ${fileName}:${line}`);
+        }}
       />
 
       {/* Bottom Status Bar */}
@@ -1452,6 +1611,19 @@ export default function App() {
           onOpen={handleOpenExample}
         />
       )}
+
+      {/* Command Palette (Ctrl+Shift+P) */}
+      {commandPaletteVisible && (
+        <CommandPalette commands={commands} onClose={() => setCommandPaletteVisible(false)} />
+      )}
+
+      {/* First-run onboarding */}
+      {onboardingVisible && (
+        <OnboardingDialog
+          onClose={() => setOnboardingVisible(false)}
+          onOpenExample={() => setExamplesVisible(true)}
+        />
+      )}
     </div>
   );
 }
@@ -1461,15 +1633,8 @@ function ActivityButton({ icon, label, active, onClick }: {
   icon: ReactNode; label: string; active: boolean; onClick: () => void;
 }) {
   return (
-    <button onClick={onClick} title={label} style={{
-      width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: active ? 'var(--accent-muted)' : 'transparent',
-      border: 'none', borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
-      cursor: 'pointer', color: active ? 'var(--accent)' : 'var(--text-muted)',
-      borderRadius: 0, transition: 'all var(--transition-fast)',
-    }}
-      onMouseEnter={(e) => { if (!active) { (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; } }}
-      onMouseLeave={(e) => { if (!active) { (e.currentTarget as HTMLElement).style.color = 'var(--text-muted)'; (e.currentTarget as HTMLElement).style.background = 'transparent'; } }}
-    >{icon}</button>
+    <button onClick={onClick} title={label} className={`activity-btn${active ? ' active' : ''}`}>
+      {icon}
+    </button>
   );
 }

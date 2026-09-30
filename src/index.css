@@ -84,6 +84,18 @@ html, body, #root {
   --radius-lg: 10px;
   --radius-xl: 14px;
 
+  /* Font-size scale (VS Code-like density; html base stays 16px so digitaljs/joint em math is untouched) */
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-md: 13px;
+  --fs-lg: 15px;
+
+  /* Component heights (two canonical tiers) */
+  --h-control-sm: 24px;
+  --h-control-md: 30px;
+  --h-tab: 40px;
+  --h-titlebar: 40px;
+
   /* Transitions */
   --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
   --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
@@ -206,6 +218,58 @@ button:focus-visible {
   border-radius: var(--radius-sm);
 }
 
+/* Icon / text button primitives — replace ad-hoc onMouseEnter/Leave hover */
+.icon-btn,
+.text-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.icon-btn:hover,
+.text-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
+  padding: 0;
+}
+.text-btn {
+  padding: 4px 10px;
+}
+
+/* Activity bar (VS Code style): left accent bar, no rounded corners */
+.activity-btn {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 0;
+  transition: all var(--transition-fast);
+}
+.activity-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+.activity-btn.active {
+  background: var(--accent-muted);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
 /* ============================================================
    Input / Select base
    ============================================================ */
@@ -279,6 +343,13 @@ input:focus, select:focus, textarea:focus {
 @keyframes scaleIn {
   from { opacity: 0; transform: scale(0.95); }
   to { opacity: 1; transform: scale(1); }
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+.status-compiling-dot {
+  animation: pulseDot 0.8s ease-in-out infinite;
 }
 @keyframes slideInLeft {
   from { opacity: 0; transform: translateX(-8px); }

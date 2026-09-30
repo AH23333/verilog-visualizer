@@ -28,7 +28,7 @@ export default function ConfirmDialog({
 
   const btnBase: CSSProperties = {
     height: 28, padding: '0 14px', borderRadius: 'var(--radius-md)',
-    cursor: 'pointer', fontSize: '0.82rem', fontWeight: 600, border: 'none',
+    cursor: 'pointer', fontSize: 'var(--fs-md)', fontWeight: 600, border: 'none',
   };
 
   return (
@@ -42,12 +42,12 @@ export default function ConfirmDialog({
           {danger && (
             <TriangleAlert size={17} style={{ color: 'var(--danger)', flexShrink: 0 }} />
           )}
-          <span className="text-[0.95rem] font-semibold" style={{ color: 'var(--text)' }}>{title}</span>
+          <span className="text-[var(--fs-lg)] font-semibold" style={{ color: 'var(--text)' }}>{title}</span>
         </div>
         <div className="px-5 pb-4">
-          <p className="text-[0.85rem] leading-relaxed m-0" style={{ color: 'var(--text-secondary)' }}>{message}</p>
+          <p className="text-[var(--fs-md)] leading-relaxed m-0" style={{ color: 'var(--text-secondary)' }}>{message}</p>
           {detail && (
-            <p className="text-[0.75rem] mt-1.5 mb-0 font-mono break-all" style={{ color: 'var(--text-muted)' }}>{detail}</p>
+            <p className="text-[var(--fs-sm)] mt-1.5 mb-0 font-mono break-all" style={{ color: 'var(--text-muted)' }}>{detail}</p>
           )}
           <div className="flex justify-end gap-2 mt-4">
             <button onClick={onCancel}

@@ -497,6 +497,73 @@ function estimateExpressionWidth(expr: string): number {
 }
 
 /**
+ * After io_ui(), top-level Input/Output ports become interactive cells
+ * (Button/Clock for inputs, Lamp/NumDisplay for outputs) but their `label`
+ * falls back to the auto-generated device key (`dev0`, `dev13`, …), which is
+ * meaningless on the canvas. This pass rewrites those labels to the actual
+ * port/net name (clk, reset, count) so the diagram reads like a real schematic.
+ *
+ * BusGroup devices (multi-bit output aggregates) get their label from the
+ * first named connector touching them. Display-only: device keys and the
+ * source-position jump chain are untouched.
+ */
+function normalizeIoLabels(circuit: any): void {
+  if (!circuit) return;
+
+  const IO_TYPES = new Set(['Button', 'Clock', 'Lamp', 'NumDisplay', 'Input', 'Output']);
+
+  // Build a lookup: which connector names touch each device id (for BusGroup).
+  const connNameByDevId: Record<string, string> = {};
+  if (Array.isArray(circuit.connectors)) {
+    for (const conn of circuit.connectors) {
+      const name = conn?.name || conn?.netname;
+      if (!name) continue;
+      for (const end of [conn?.from, conn?.to]) {
+        const id = end?.id;
+        if (id && !connNameByDevId[id]) connNameByDevId[id] = String(name);
+      }
+    }
+  }
+
+  if (circuit.devices && typeof circuit.devices === 'object') {
+    for (const [devKey, device] of Object.entries<any>(circuit.devices)) {
+      const d: any = device;
+      const type = d?.type;
+      if (!type) continue;
+
+      // 1) Single-bit IO cells: the SVG `<text>` under the cell defaults to the
+      // auto id (dev0/dev1). Rewrite it to the port/net name so the schematic
+      // reads clk/reset instead of dev0. device.label alone is ignored by
+      // digitaljs's cell fromJSON — must patch attrs.label.text directly.
+      if (IO_TYPES.has(type)) {
+        const human = d.net || d.name || connNameByDevId[devKey];
+        if (human) {
+          d.label = String(human);
+          if (d.attrs?.label?.text !== undefined) d.attrs.label.text = String(human);
+        }
+        continue;
+      }
+
+      // 2) BusGroup (multi-bit display): rewrite the auto-id label to the net name.
+      if (type === 'BusGroup' || type === 'bus') {
+        const human = d.net || connNameByDevId[devKey];
+        if (human) {
+          d.label = String(human);
+          if (d.attrs?.label?.text !== undefined) d.attrs.label.text = String(human);
+        }
+      }
+    }
+  }
+
+  // Recurse into subcircuits (drill-down views re-run io_ui themselves).
+  if (circuit.subcircuits) {
+    for (const sub of Object.values(circuit.subcircuits)) {
+      normalizeIoLabels(sub);
+    }
+  }
+}
+
+/**
  * Rename auto-generated Yosys cells (e.g. "$auto$ff.cc:266:slice$781")
  * to clean, human-readable names based on cell type.
  * Preserves user-defined names (those not starting with $).
@@ -787,6 +854,7 @@ export async function compileVerilog(
 
   const digitaljsCircuit = yosys2digitaljs(yosysOutput, { propagation: 1 });
   io_ui(digitaljsCircuit);
+  normalizeIoLabels(digitaljsCircuit);
   renameAutoCells(digitaljsCircuit);
   return { circuitJson: digitaljsCircuit, yosysLog: fullLog, netlistVerilog, srcFileMap };
 }
@@ -896,6 +964,7 @@ export function buildViewJson(
       subcircuits: structuredClone(sub.subcircuits ?? {}),
     };
     try { io_ui(cur); } catch { /* keep raw Input/Output if io_ui rejects */ }
+    try { normalizeIoLabels(cur); } catch { /* labels optional */ }
     try { renameAutoCells(cur); } catch { /* labels optional */ }
   }
   return cur as Record<string, unknown>;

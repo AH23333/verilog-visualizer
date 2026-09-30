@@ -24,6 +24,16 @@ export interface CanvasHandle {
   /** One waveform sample: engine tick + binary value string per named net. */
   getWaveSample: () => { tick: number; values: Record<string, string> } | null;
   /**
+   * Single clock-edge advance (only meaningful while paused).
+   * Forces every auto-created Clock cell through a 0→1 rising edge and
+   * propagates gates, so one DFF clock edge advances the design by one tick.
+   */
+  stepOnce: () => void;
+  /** Enumerate all interactive input cells (Button/Clock) for the side panel. */
+  listInputs: () => { id: string; label: string; type: string; value: string }[];
+  /** Toggle a Button/Clock input by cell id (flip its output and propagate). */
+  toggleInput: (id: string) => void;
+  /**
    * Hit-test a screen point against rendered cells. Returns the cell's sub-module
    * info so the caller (context menu) can offer "Enter submodule" when drillable.
    */
@@ -55,6 +65,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   const containerRef = useRef<HTMLDivElement>(null);
   const circuitRef = useRef<any | null>(null);
   const paperRef = useRef<any | null>(null);
+  const valueTimers = useRef<ReturnType<typeof setInterval>[]>([]);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
@@ -134,6 +145,14 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       || (theme === 'dark' ? '#0d0d13' : '#fafafa');
     paper.style.backgroundColor = bgColor;
     paper.style.setProperty('background-color', bgColor, 'important');
+
+    // Also force the inner SVG (joint paper root) to match — elk async re-render
+    // can leave a white SVG slab behind the transparent .joint-paper container.
+    const svg = wrapper.querySelector('svg') as SVGSVGElement | null;
+    if (svg) {
+      svg.style.backgroundColor = bgColor;
+      svg.style.setProperty('background-color', bgColor, 'important');
+    }
 
     // Also set the wrapper background as fallback
     wrapper.style.backgroundColor = bgColor;
@@ -316,6 +335,76 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       } catch { /* ignore */ }
       return { tick: Number((circuit as any).tick) || 0, values };
     },
+    stepOnce: () => {
+      const paper = paperRef.current;
+      const circuit = circuitRef.current as any;
+      if (!paper || !circuit) return;
+      try {
+        // Find every Clock cell (auto-created by io_ui for clk/clock inputs).
+        const clocks: any[] = [];
+        for (const el of paper.model.getElements()) {
+          if (el.get('type') === 'Clock') clocks.push(el);
+        }
+        if (clocks.length === 0) {
+          // No auto-clock (pure combinational) — just propagate once.
+          if (typeof circuit.updateGates === 'function') circuit.updateGates();
+          return;
+        }
+        // Rising-edge pulse: force clock low, settle; then force high, settle.
+        // DFFs capture on the rising edge.
+        for (const clk of clocks) {
+          const sig = clk.outputSignals?.out;
+          if (sig?._bvec) {
+            sig._bvec[0] = 0;
+            sig._avec = {};
+          }
+        }
+        if (typeof circuit.updateGates === 'function') circuit.updateGates();
+        for (const clk of clocks) {
+          const sig = clk.outputSignals?.out;
+          if (sig?._bvec) {
+            sig._bvec[0] = 1;
+            sig._avec = { 0: 1 };
+          }
+        }
+        if (typeof circuit.updateGates === 'function') circuit.updateGates();
+      } catch { /* step is cosmetic */ }
+    },
+    listInputs: () => {
+      const paper = paperRef.current;
+      if (!paper) return [];
+      const out: { id: string; label: string; type: string; value: string }[] = [];
+      try {
+        for (const el of paper.model.getElements()) {
+          const t = el.get('type');
+          if (t === 'Button' || t === 'Clock') {
+            const sig = el.outputSignals?.out;
+            const bv = sig?._bvec?.[0];
+            out.push({
+              id: el.get('id'),
+              label: el.get('label') || el.get('net') || el.get('id'),
+              type: t,
+              value: bv === 1 ? '1' : '0',
+            });
+          }
+        }
+      } catch { /* ignore */ }
+      return out;
+    },
+    toggleInput: (id: string) => {
+      const paper = paperRef.current;
+      const circuit = circuitRef.current as any;
+      if (!paper || !circuit) return;
+      try {
+        const cell = paper.model.getCell(id);
+        if (!cell) return;
+        const sig = cell.outputSignals?.out;
+        if (!sig?._bvec) return;
+        sig._bvec[0] = sig._bvec[0] === 1 ? 0 : 1;
+        sig._avec = sig._bvec[0] === 1 ? { 0: 1 } : {};
+        if (typeof circuit.updateGates === 'function') circuit.updateGates();
+      } catch { /* ignore */ }
+    },
     setFixed: (fixed: boolean) => applyFixed(fixed),
     setPaused: (p: boolean) => {
       pausedRef.current = p;
@@ -428,12 +517,65 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       const paper = circuit.displayOn(wrapper);
       paperRef.current = paper;
 
+      // Force orthogonal (right-angle) routing on every link — overrides any
+      // curved vertices elkjs may have baked in.
+      try {
+        paper.options = paper.options || {};
+        paper.options.defaultRouter = { name: 'manhattan', args: { padding: 8 } };
+        for (const lk of paper.model.getLinks()) {
+          try { lk.set('vertices', []); lk.set('router', { name: 'manhattan', args: { padding: 8 } }); } catch {}
+        }
+      } catch { /* router cosmetic */ }
+
+      // P1-3: rewrite auto-id cell labels (dev0/dev13) to human port/net names.
+      // digitaljs's cell initialize() sets label.text = id regardless of the JSON
+      // device.label, so we must patch the joint model AFTER displayOn.
+      try {
+        const IO_TYPES = new Set(['Button', 'Clock', 'Lamp', 'NumDisplay']);
+        for (const el of paper.model.getElements()) {
+          const type = el.get('type');
+          if (!type) continue;
+          if (IO_TYPES.has(type)) {
+            const net = el.get('net');
+            if (net) { el.set('label', net); el.attr('label/text', net); }
+          } else if (type === 'BusGroup') {
+            // BusGroup has no direct net attr — find the netname on its outgoing link.
+            const outPort = el.getPort && el.getPort('out');
+            const links = outPort ? paper.model.getConnectedLinks(outPort) : [];
+            const net = links.map((l: any) => l.get('netname')).find(Boolean);
+            if (net) { el.set('label', net); el.attr('label/text', net); }
+          }
+        }
+      } catch { /* cosmetic only */ }
+
+      // Wire value overlay: append live signal value to each named link's label.
+      // Lightweight: only writes to joint model when the displayed value changes.
+      const valueLabelTimer = setInterval(() => {
+        try {
+          for (const lk of paper.model.getLinks()) {
+            const net = lk.get('netname');
+            if (!net) continue;
+            const sig = lk.get('signal');
+            const raw = sig != null ? String(sig).replace(/^Vector3vl\s+/, '') : 'x';
+            const next = `${net} = ${raw}`;
+            const cur = lk.attr('label/text');
+            if (cur !== next) lk.attr('label/text', next);
+          }
+        } catch { /* ignore */ }
+      }, 300);
+      // Store for cleanup
+      ;(valueTimers as any).current.push(valueLabelTimer);
+
       // elk layout is async; joint re-fits content on render:done. Re-run our
       // wrapper fit afterwards so the circuit is centered instead of off-corner.
+      // Also re-apply theme here — elk async layout may rebuild DOM nodes that
+      // lost the dark background (manifested as white paper after subcircuit drill-down).
       try {
         let refitCount = 0;
         paper.on?.('render:done', () => {
-          if (refitCount++ < 3) requestAnimationFrame(() => fitToWindow());
+          if (refitCount++ < 5) {
+            requestAnimationFrame(() => { fitToWindow(); applyThemeToPaper(); });
+          }
         });
       } catch { /* older builds */ }
 
@@ -540,6 +682,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       el.removeEventListener('mouseleave', onLeave);
       try { tip.remove(); } catch { /* already detached */ }
       clearSourceHighlight();
+      for (const t of valueTimers.current) clearInterval(t);
+      valueTimers.current = [];
       if (circuitRef.current) {
         try { circuitRef.current.stop?.(); } catch {}
         try { circuitRef.current.shutdown?.(); } catch {}
@@ -604,6 +748,10 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
         width: '100%',
         height: '100%',
         background: 'var(--canvas-bg)',
+        backgroundImage: theme === 'dark'
+          ? 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)'
+          : 'linear-gradient(rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.06) 1px, transparent 1px)',
+        backgroundSize: '20px 20px',
         overflow: 'hidden',
         position: 'relative',
       }}

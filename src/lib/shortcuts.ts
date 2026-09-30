@@ -26,6 +26,8 @@ export const SHORTCUTS: ShortcutDef[] = [
   { id: 'view.sidebar',        combo: 'Ctrl+B',          label: 'Toggle sidebar',           group: 'View' },
   { id: 'view.output',         combo: 'Ctrl+J',          label: 'Toggle output panel',      group: 'View' },
   { id: 'view.shortcutsHelp',  combo: 'Ctrl+/',          label: 'Keyboard shortcuts help',  group: 'View' },
+  { id: 'view.commandPalette', combo: 'Ctrl+Shift+P',    label: 'Command palette',          group: 'View' },
+  { id: 'sim.stepOnce',        combo: 'F7',              label: 'Step one clock edge',      group: 'Sim' },
 
   { id: 'editor.undo',   combo: 'Ctrl+Z',        label: 'Undo (editor)',          group: 'Editor', editorOnly: true },
   { id: 'editor.redo',   combo: 'Ctrl+Y',        label: 'Redo (editor)',          group: 'Editor', editorOnly: true },

@@ -154,7 +154,7 @@ export default function SearchDialog({ files, theme, onClose, onOpenFile }: Sear
                 outline: 'none',
               }}
             />
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.78rem', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               <input
                 type="checkbox"
                 checked={caseSensitive}
@@ -163,7 +163,7 @@ export default function SearchDialog({ files, theme, onClose, onOpenFile }: Sear
               />
               Aa
             </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: '0.78rem', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', cursor: 'pointer', whiteSpace: 'nowrap' }}>
               <input
                 type="checkbox"
                 checked={regex}
@@ -173,7 +173,7 @@ export default function SearchDialog({ files, theme, onClose, onOpenFile }: Sear
               .*
             </label>
           </div>
-          <div style={{ marginTop: 6, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+          <div style={{ marginTop: 6, fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
             {searching ? 'Searching...' : results.length > 0 ? `${results.length} results in ${new Set(results.map((r) => r.fileId)).size} files` : query ? 'No results' : `Search across ${files.length} files`}
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function SearchDialog({ files, theme, onClose, onOpenFile }: Sear
                 display: 'flex',
                 gap: 12,
                 alignItems: 'center',
-                fontSize: '0.82rem',
+                fontSize: 'var(--fs-md)',
               }}
               onMouseEnter={(e) => {
                 (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)';
@@ -199,7 +199,7 @@ export default function SearchDialog({ files, theme, onClose, onOpenFile }: Sear
                 (e.currentTarget as HTMLElement).style.background = 'transparent';
               }}
             >
-              <span style={{ color: 'var(--text-muted)', minWidth: 120, fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ color: 'var(--text-muted)', minWidth: 120, fontSize: 'var(--fs-sm)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {result.fileName}:{result.line}
               </span>
               <span style={{ color: 'var(--text-secondary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
@@ -210,7 +210,7 @@ export default function SearchDialog({ files, theme, onClose, onOpenFile }: Sear
             </div>
           ))}
           {results.length > 200 && (
-            <div style={{ padding: '8px 16px', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+            <div style={{ padding: '8px 16px', fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
               Showing first 200 of {results.length} results. Refine your search for more specific results.
             </div>
           )}

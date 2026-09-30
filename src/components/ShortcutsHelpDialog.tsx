@@ -56,7 +56,7 @@ export default function ShortcutsHelpDialog({ onClose }: ShortcutsHelpDialogProp
           {SHORTCUT_GROUPS.map((group) => (
             <section key={group}>
               <h3
-                className="text-[0.78rem] font-semibold uppercase tracking-wider mb-2"
+                className="text-[var(--fs-sm)] font-semibold uppercase tracking-wider mb-2"
                 style={{ color: 'var(--text-muted)' }}
               >
                 {group}
@@ -65,12 +65,12 @@ export default function ShortcutsHelpDialog({ onClose }: ShortcutsHelpDialogProp
                 <tbody>
                   {groups[group].map((s) => (
                     <tr key={s.id} style={{ borderBottom: '1px solid var(--border-subtle)' }}>
-                      <td className="py-1.5 pr-3 text-[0.85rem]" style={{ color: 'var(--text-secondary)' }}>
+                      <td className="py-1.5 pr-3 text-[var(--fs-md)]" style={{ color: 'var(--text-secondary)' }}>
                         {s.label}
                       </td>
                       <td className="py-1.5 text-right" style={{ width: 120 }}>
                         <kbd
-                          className="inline-block px-2 py-0.5 rounded text-[0.72rem] font-mono border whitespace-nowrap"
+                          className="inline-block px-2 py-0.5 rounded text-[var(--fs-xs)] font-mono border whitespace-nowrap"
                           style={{
                             background: 'var(--surface)',
                             borderColor: 'var(--border)',
@@ -86,7 +86,7 @@ export default function ShortcutsHelpDialog({ onClose }: ShortcutsHelpDialogProp
               </table>
             </section>
           ))}
-          <p className="text-[0.75rem]" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[var(--fs-sm)]" style={{ color: 'var(--text-muted)' }}>
             Note: editor-only shortcuts apply while the code editor has focus. Canvas mouse:
             scroll wheel = zoom, right-drag = pan. This list is generated from the shortcut
             registry — it stays in sync with actual bindings.

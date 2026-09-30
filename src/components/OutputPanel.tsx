@@ -1,11 +1,20 @@
 import { useState, useRef, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, AlertCircle, Terminal } from 'lucide-react';
+
+export interface Problem {
+  fileName: string;
+  line: number;
+  message: string;
+  severity: 'error' | 'warning';
+}
 
 interface OutputPanelProps {
   log: string;
+  problems: Problem[];
   visible: boolean;
   onToggle: () => void;
   onClose: () => void;
+  onJumpToProblem: (fileName: string, line: number) => void;
 }
 
 const OUTPUT_HEIGHT_KEY = 'verilog-viz-output-height';
@@ -21,12 +30,18 @@ function getSavedHeight(): number {
   return 180;
 }
 
-export default function OutputPanel({ log, visible, onToggle, onClose }: OutputPanelProps) {
+export default function OutputPanel({ log, problems, visible, onToggle, onClose, onJumpToProblem }: OutputPanelProps) {
   const [containerHeight, setContainerHeight] = useState(getSavedHeight);
   const [isDragging, setIsDragging] = useState(false);
+  const [tab, setTab] = useState<'output' | 'problems'>('output');
   const logRef = useRef<HTMLPreElement>(null);
   const dragStartY = useRef(0);
   const dragStartHeight = useRef(0);
+
+  // Auto-switch to Problems tab when new errors arrive
+  useEffect(() => {
+    if (problems.length > 0) setTab('problems');
+  }, [problems]);
 
   // Auto-scroll to bottom when log updates
   useEffect(() => {
@@ -52,7 +67,6 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
     };
     const handleMouseUp = () => {
       setIsDragging(false);
-      // Save to localStorage
       localStorage.setItem(OUTPUT_HEIGHT_KEY, String(containerHeight));
     };
     window.addEventListener('mousemove', handleMouseMove);
@@ -63,7 +77,7 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
     };
   }, [isDragging, containerHeight]);
 
-  // Collapse to status bar only
+  // Collapsed header bar
   if (!visible) {
     return (
       <div
@@ -81,11 +95,11 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
         onClick={onToggle}
         title="Show output panel"
       >
-        <span style={{ fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
-          Output
+        <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase' }}>
+          Problems{problems.length > 0 ? ` (${problems.length})` : ''}
         </span>
         <span style={{ flex: 1 }} />
-        <span style={{ fontSize: '0.69rem', color: 'var(--text-muted)' }}>Click to expand</span>
+        <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>Click to expand</span>
       </div>
     );
   }
@@ -115,69 +129,109 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
         }}
       />
 
-      {/* Header */}
+      {/* Header with tabs */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
           height: 26,
-          padding: '0 8px',
+          padding: '0 4px 0 8px',
           flexShrink: 0,
+          gap: 2,
         }}
       >
-        <span
+        <button
+          onClick={() => setTab('output')}
+          className="text-btn"
           style={{
-            fontSize: '0.9rem',
-            fontWeight: 600,
-            color: 'var(--text-secondary)',
-            textTransform: 'uppercase',
-            letterSpacing: '0.5px',
-            cursor: 'pointer',
+            fontSize: 'var(--fs-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px',
+            color: tab === 'output' ? 'var(--text)' : 'var(--text-muted)',
+            borderBottom: tab === 'output' ? '1px solid var(--accent)' : '1px solid transparent',
+            borderRadius: 0,
+            display: 'flex', alignItems: 'center', gap: 4,
           }}
-          onClick={onToggle}
         >
-          Output
-        </span>
+          <Terminal size={11} /> Output
+        </button>
+        <button
+          onClick={() => setTab('problems')}
+          className="text-btn"
+          style={{
+            fontSize: 'var(--fs-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.5px',
+            color: tab === 'problems' ? 'var(--text)' : 'var(--text-muted)',
+            borderBottom: tab === 'problems' ? '1px solid var(--accent)' : '1px solid transparent',
+            borderRadius: 0,
+            display: 'flex', alignItems: 'center', gap: 4,
+          }}
+        >
+          <AlertCircle size={11} /> Problems{problems.length > 0 ? ` (${problems.length})` : ''}
+        </button>
         <span style={{ flex: 1 }} />
         <button
           onClick={onClose}
           title="Close panel"
-          style={{
-            background: 'transparent',
-            border: 'none',
-            color: 'var(--text-muted)',
-            cursor: 'pointer',
-            fontSize: '0.85rem',
-            padding: '2px 6px',
-            borderRadius: 3,
-          }}
-          onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
-          onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
+          className="icon-btn"
+          style={{ width: 22, height: 22, color: 'var(--text-muted)' }}
         >
           <X size={14} />
         </button>
       </div>
 
-      {/* Log content — scrollable with maxHeight cap */}
-      <pre
-        ref={logRef}
-        style={{
-          flex: 1,
-          margin: 0,
-          padding: '8px 12px',
-          overflow: 'auto',
-          fontFamily: "'Consolas', 'Courier New', monospace",
-          fontSize: '1rem',
-          lineHeight: '1.6',
-          color: 'var(--text-secondary)',
-          background: 'var(--bg)',
-          whiteSpace: 'pre-wrap',
-          wordBreak: 'break-all',
-          minHeight: 0,
-        }}
-      >
-        {log || 'No output yet. Press F5 to compile.'}
-      </pre>
+      {/* Tab content */}
+      {tab === 'output' ? (
+        <pre
+          ref={logRef}
+          style={{
+            flex: 1,
+            margin: 0,
+            padding: '8px 12px',
+            overflow: 'auto',
+            fontFamily: "'Consolas', 'Courier New', monospace",
+            fontSize: 'var(--fs-md)',
+            lineHeight: '1.6',
+            color: 'var(--text-secondary)',
+            background: 'var(--bg)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-all',
+            minHeight: 0,
+          }}
+        >
+          {log || 'No output yet. Press F5 to compile.'}
+        </pre>
+      ) : (
+        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, background: 'var(--bg)' }}>
+          {problems.length === 0 ? (
+            <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>
+              No problems. Code is clean.
+            </div>
+          ) : (
+            problems.map((p, i) => (
+              <div
+                key={i}
+                onClick={() => onJumpToProblem(p.fileName, p.line)}
+                style={{
+                  display: 'flex', alignItems: 'flex-start', gap: 8,
+                  padding: '5px 12px', cursor: 'pointer',
+                  borderBottom: '1px solid var(--border-subtle)',
+                  fontSize: 'var(--fs-sm)',
+                  color: 'var(--text-secondary)',
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+                title={`${p.fileName}:${p.line} — click to jump`}
+              >
+                <AlertCircle size={13} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 2 }} />
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ color: 'var(--text)' }}>{p.message}</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', fontFamily: 'monospace' }}>
+                    {p.fileName}:{p.line}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

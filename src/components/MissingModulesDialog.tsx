@@ -51,7 +51,7 @@ export default function MissingModulesDialog({
             <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--warning)' }}>
               Missing Module Implementations
             </div>
-            <div style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', marginTop: 2 }}>
+            <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-secondary)', marginTop: 2 }}>
               The following modules are referenced but not defined in any loaded file.
             </div>
           </div>
@@ -102,7 +102,7 @@ export default function MissingModulesDialog({
                   {mod}
                 </code>
               </div>
-              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text-muted)' }}>
                 missing implementation
               </span>
             </div>
@@ -120,7 +120,7 @@ export default function MissingModulesDialog({
               border: '1px solid var(--border)',
               borderRadius: 'var(--radius-md)',
               cursor: 'pointer',
-              fontSize: '0.85rem',
+              fontSize: 'var(--fs-md)',
               fontWeight: 500,
             }}
           >
@@ -135,7 +135,7 @@ export default function MissingModulesDialog({
               border: 'none',
               borderRadius: 'var(--radius-md)',
               cursor: 'pointer',
-              fontSize: '0.85rem',
+              fontSize: 'var(--fs-md)',
               fontWeight: 600,
             }}
           >
@@ -151,7 +151,7 @@ export default function MissingModulesDialog({
               border: 'none',
               borderRadius: 'var(--radius-md)',
               cursor: isCompiling ? 'default' : 'pointer',
-              fontSize: '0.85rem',
+              fontSize: 'var(--fs-md)',
               fontWeight: 600,
             }}
           >

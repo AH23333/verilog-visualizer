@@ -56,11 +56,11 @@ export default function PromptDialog({
         onClick={(e) => e.stopPropagation()}
         role="dialog" aria-modal="true" aria-label={title}>
         <div className="px-5 pt-4 pb-2">
-          <span className="text-[0.95rem] font-semibold" style={{ color: 'var(--text)' }}>{title}</span>
+          <span className="text-[var(--fs-lg)] font-semibold" style={{ color: 'var(--text)' }}>{title}</span>
         </div>
         <div className="px-5 pb-4 flex flex-col gap-2">
           {label && (
-            <label className="text-[0.78rem]" style={{ color: 'var(--text-secondary)' }}>{label}</label>
+            <label className="text-[var(--fs-sm)]" style={{ color: 'var(--text-secondary)' }}>{label}</label>
           )}
           <input
             ref={inputRef}
@@ -73,15 +73,15 @@ export default function PromptDialog({
               else if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
             }}
           />
-          {error && <span className="text-[0.75rem]" style={{ color: 'var(--danger)' }}>{error}</span>}
+          {error && <span className="text-[var(--fs-sm)]" style={{ color: 'var(--danger)' }}>{error}</span>}
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={onCancel}
-              className="px-4 h-[28px] rounded-md border cursor-pointer text-[0.82rem]"
+              className="px-4 h-[28px] rounded-md border cursor-pointer text-[var(--fs-md)]"
               style={{ background: 'transparent', borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
               Cancel
             </button>
             <button onClick={submit}
-              className="px-4 h-[28px] rounded-md border-0 cursor-pointer text-[0.82rem] font-semibold text-white"
+              className="px-4 h-[28px] rounded-md border-0 cursor-pointer text-[var(--fs-md)] font-semibold text-white"
               style={{ background: 'var(--accent)' }}>
               {confirmLabel}
             </button>
