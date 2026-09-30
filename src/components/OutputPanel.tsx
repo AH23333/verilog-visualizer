@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { X } from 'lucide-react';
 
 interface OutputPanelProps {
   log: string;
@@ -153,7 +154,7 @@ export default function OutputPanel({ log, visible, onToggle, onClose }: OutputP
           onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--menu-hover)'; }}
           onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; }}
         >
-          ✕
+          <X size={14} />
         </button>
       </div>
 

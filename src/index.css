@@ -4,13 +4,12 @@
    Modern Premium Theme — Verilog Visualizer
    ============================================================ */
 
-*,
-*::before,
-*::after {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
+/* NOTE: no unlayered `* { margin/padding: 0 }` reset here.
+   Tailwind v4's preflight (inside @layer base) already zeroes margin/padding
+   and sets box-sizing — while remaining overridable by @layer utilities.
+   An unlayered universal reset silently DEFEATS every Tailwind utility
+   (unlayered styles beat all layers), which previously killed all spacing
+   (px-5/gap-2/py-3 rendered as 0). Never re-add it outside a layer. */
 
 html, body, #root {
   width: 100%;
@@ -320,10 +319,20 @@ input:focus, select:focus, textarea:focus {
   stroke: #e4e4e7 !important;
 }
 [data-theme="dark"] .joint-paper.joint-theme-dark {
-  background-color: #0d0d13 !important;
+  background-color: transparent !important;
 }
 [data-theme="light"] .joint-paper.joint-theme-default {
-  background-color: #fafafa !important;
+  background-color: transparent !important;
+}
+
+/* Code -> circuit source highlight (glow only; keeps signal stroke colors) */
+.joint-paper .src-highlight {
+  filter: drop-shadow(0 0 5px var(--accent)) drop-shadow(0 0 2px var(--accent));
+  animation: src-highlight-pulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes src-highlight-pulse {
+  from { filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 1px var(--accent)); }
+  to   { filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 0 3px var(--accent)); }
 }
 
 /* ============================================================

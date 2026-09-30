@@ -3,25 +3,110 @@ import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 
 export interface CanvasHandle {
   resetZoom: () => void;
   fitToWindow: () => void;
+  /** Make the joint.js paper read-only (true) or interactive (false). Requires a rendered circuit. */
+  setFixed: (fixed: boolean) => void;
+  /** Pause (true) / resume (false) the digitaljs simulation engine. */
+  setPaused: (paused: boolean) => void;
+  /** Engine tick interval in ms (lower = faster). No-op when paused. */
+  setSpeed: (intervalMs: number) => void;
+  /** Resync sim state after the circuit was (re)built. */
+  reapplySimState: () => void;
+  /**
+   * Glow every top-level cell/wire whose source_positions cover (srcPath, line).
+   * Returns how many elements were highlighted (0 = nothing on this line in the
+   * top view — could be inside a subcircuit).
+   */
+  highlightSource: (srcPath: string, line: number) => number;
+  /** Remove all source-highlight glows. */
+  clearSourceHighlight: () => void;
+  /** Enumerate named nets (deduped) available for waveform display. */
+  getWaveChannels: () => { name: string; bits: number }[];
+  /** One waveform sample: engine tick + binary value string per named net. */
+  getWaveSample: () => { tick: number; values: Record<string, string> } | null;
+  /**
+   * Hit-test a screen point against rendered cells. Returns the cell's sub-module
+   * info so the caller (context menu) can offer "Enter submodule" when drillable.
+   */
+  probeCellAt: (clientX: number, clientY: number) => { celltype: string; label: string; drillable: boolean } | null;
 }
 
 interface CanvasProps {
   circuitJson: Record<string, unknown>;
   theme: 'dark' | 'light';
   onError: (msg: string) => void;
+  /** When true the paper is read-only — clicks/toggles on switches are blocked. */
+  locked: boolean;
+  /** Simulation paused (engine stopped) while mounted. */
+  paused: boolean;
+  /** Engine interval ms at (re)build time. */
+  speedMs: number;
+  /** Notifies App when the engine starts, or (synchronously at build) when a warning-gated design refused to start. */
+  onRunningChange?: (running: boolean) => void;
+  /** Double-click on a cell that carries source_positions → (synthesisPath, line, column) */
+  onSourceJump?: (srcName: string, line: number, column: number) => void;
+  /** Fired once the circuit is built, laid out and fitted (safe point to apply highlights). */
+  onReady?: () => void;
 }
 
 const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
-  { circuitJson, theme, onError },
+  { circuitJson, theme, onError, locked, paused, speedMs, onRunningChange, onSourceJump, onReady },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
   const circuitRef = useRef<any | null>(null);
+  const paperRef = useRef<any | null>(null);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
   const isPanning = useRef(false);
   const panStart = useRef({ x: 0, y: 0 });
+
+  // Refs so imperative sim commands always act on the latest circuit / desired state
+  const lockedRef = useRef(locked);
+  const pausedRef = useRef(paused);
+  const speedRef = useRef(speedMs);
+  const onRunningRef = useRef(onRunningChange);
+  onRunningRef.current = onRunningChange;
+  const onSourceJumpRef = useRef(onSourceJump);
+  onSourceJumpRef.current = onSourceJump;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
+  const applyFixed = useCallback((fixed: boolean) => {
+    try {
+      const p = paperRef.current;
+      if (!p) return;
+      // digitaljs ButtonView binds "click .btnface" via jQuery DOM delegation,
+      // which BYPASSES joint's setInteractivity — so paper.fixed() alone does NOT
+      // block switch clicks. Hard-disable pointer events on the paper element too.
+      try { if (typeof p.fixed === 'function') p.fixed(fixed); } catch { /* older builds */ }
+      const el = p.el || p.$el?.[0];
+      if (el) el.style.pointerEvents = fixed ? 'none' : 'auto';
+    } catch { /* paper not ready */ }
+  }, []);
+
+  // Mirror props into refs and live-apply when they change post-build
+  useEffect(() => { lockedRef.current = locked; applyFixed(locked); }, [locked, applyFixed]);
+  useEffect(() => {
+    speedRef.current = speedMs;
+    const c = circuitRef.current;
+    if (c && !pausedRef.current) {
+      try { c.interval = speedMs; } catch { /* engine may not expose interval */ }
+    }
+  }, [speedMs]);
+  useEffect(() => {
+    pausedRef.current = paused;
+    const c = circuitRef.current;
+    if (!c) return;
+    try {
+      if (paused) {
+        c.stop();
+      } else {
+        c.interval = speedRef.current;
+        c.start();
+      }
+    } catch { /* ignore */ }
+  }, [paused]);
 
   const applyTransform = useCallback(() => {
     const wrapper = wrapperRef.current;
@@ -43,7 +128,10 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       (wrapper.querySelector('svg') as HTMLElement | null);
     if (!paper) return;
 
-    const bgColor = theme === 'dark' ? '#0d1117' : '#ffffff';
+    // Read the theme token instead of hardcoding — the old '#ffffff' light value
+    // made the paper a white slab floating on the #fafafa canvas (visible seam).
+    const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim()
+      || (theme === 'dark' ? '#0d0d13' : '#fafafa');
     paper.style.backgroundColor = bgColor;
     paper.style.setProperty('background-color', bgColor, 'important');
 
@@ -65,60 +153,202 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     applyThemeToPaper();
   }, [theme, applyThemeToPaper]);
 
-  // Fit the circuit to fill the container at initial scale
-  const fitToWindow = useCallback(() => {
-    const el = containerRef.current;
-    const wrapper = wrapperRef.current;
-    if (!el || !wrapper) return;
-
-    const svg = wrapper.querySelector('svg') as SVGSVGElement | null;
-    if (!svg) return;
-
-    const containerRect = el.getBoundingClientRect();
-    let svgW = 0;
-    let svgH = 0;
-
-    const widthAttr = svg.getAttribute('width');
-    const heightAttr = svg.getAttribute('height');
-    if (widthAttr && heightAttr) {
-      svgW = parseFloat(widthAttr);
-      svgH = parseFloat(heightAttr);
-    }
-
-    if (svgW <= 0 || svgH <= 0) {
-      try {
-        const bbox = svg.getBBox();
-        svgW = bbox.width;
-        svgH = bbox.height;
-      } catch {
-        svgW = 800;
-        svgH = 600;
+  // Measure the real drawn content extent. joint's getContentBBox() returns the
+  // union of all cells in paper-local units INCLUDING its x/y origin offset, and
+  // is immune to the svg's width="100%" attribute (which parseFloat() misreads as
+  // 100px — the exact bug that pushed the circuit into the bottom-right corner).
+  const measureContent = useCallback((): { x: number; y: number; width: number; height: number } | null => {
+    const paper = paperRef.current;
+    try {
+      const cb = (paper as any)?.getContentBBox?.();
+      if (cb && cb.width > 0 && cb.height > 0) {
+        return { x: cb.x ?? 0, y: cb.y ?? 0, width: cb.width, height: cb.height };
       }
-    }
+    } catch { /* not available on this joint build */ }
+    // fallback: SVG element content bbox (local units)
+    try {
+      const svg = wrapperRef.current?.querySelector('svg') as SVGSVGElement | null;
+      const g = svg?.getBBox?.();
+      if (g && g.width > 0 && g.height > 0) return { x: g.x, y: g.y, width: g.width, height: g.height };
+    } catch { /* ignore */ }
+    return null;
+  }, []);
 
-    if (svgW <= 0 || svgH <= 0) return;
-
-    const padding = 40;
-    const scale = Math.min(
-      (containerRect.width - padding * 2) / svgW,
-      (containerRect.height - padding * 2) / svgH,
-      1
-    );
+  // Center the measured content at a given scale by setting the wrapper transform
+  // (translate then scale, origin 0 0): screen = pan + scale * local.
+  const centerAtScale = useCallback((scale: number) => {
+    const el = containerRef.current;
+    if (!el) return;
+    const bb = measureContent();
+    if (!bb) return;
+    const rect = el.getBoundingClientRect();
     zoomRef.current = scale;
     panRef.current = {
-      x: (containerRect.width - svgW * scale) / 2,
-      y: (containerRect.height - svgH * scale) / 2,
+      x: (rect.width - bb.width * scale) / 2 - bb.x * scale,
+      y: (rect.height - bb.height * scale) / 2 - bb.y * scale,
     };
     applyTransform();
-  }, [applyTransform]);
+  }, [applyTransform, measureContent]);
+
+  // Fit the circuit to fill the container (never upscale past 1:1)
+  const fitToWindow = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const bb = measureContent();
+    if (!bb) return;
+    const rect = el.getBoundingClientRect();
+    const padding = 48;
+    const scale = Math.max(0.1, Math.min(
+      (rect.width - padding * 2) / bb.width,
+      (rect.height - padding * 2) / bb.height,
+      1,
+    ));
+    centerAtScale(scale);
+  }, [measureContent, centerAtScale]);
 
   const resetZoom = useCallback(() => {
-    zoomRef.current = 1;
-    panRef.current = { x: 0, y: 0 };
-    applyTransform();
-  }, [applyTransform]);
+    centerAtScale(1);
+  }, [centerAtScale]);
 
-  useImperativeHandle(ref, () => ({ resetZoom, fitToWindow }), [resetZoom, fitToWindow]);
+  // ---- code -> circuit source highlight ----
+  const highlightedRef = useRef<Element[]>([]);
+  const clearSourceHighlight = useCallback(() => {
+    for (const el of highlightedRef.current) {
+      try { el.classList.remove('src-highlight'); } catch { /* detached */ }
+    }
+    highlightedRef.current = [];
+  }, []);
+  const highlightSource = useCallback((srcPath: string, line: number): number => {
+    const circuit = circuitRef.current;
+    const paper = paperRef.current;
+    if (!circuit || !paper) return 0;
+    clearSourceHighlight();
+    let n = 0;
+    try {
+      const covers = (model: any) => {
+        const srcs = model.get?.('source_positions');
+        return Array.isArray(srcs) && srcs.some((s: any) =>
+          s && s.name === srcPath
+          && (s.from?.line ?? 0) <= line
+          && line <= (s.to?.line ?? s.from?.line ?? 0));
+      };
+      // Mirror the (proven) dblclick path: read model-id off rendered DOM nodes and
+      // resolve via paper.model.getCell. joint's findView/_views keying is unreliable
+      // here because digitaljs sets an 'id' attribute ('dev6') that differs from the
+      // UUID keys joint uses internally.
+      const paperEl: HTMLElement | undefined = paper.el || paper.$el?.[0];
+      if (!paperEl) return 0;
+      const holders = paperEl.querySelectorAll('[model-id]');
+      for (const el of Array.from(holders)) {
+        const mid = el.getAttribute('model-id');
+        if (!mid) continue;
+        const model = paper.model?.getCell?.(mid);
+        if (model && covers(model)) {
+          el.classList.add('src-highlight');
+          highlightedRef.current.push(el);
+          n++;
+        }
+      }
+    } catch { /* graph internals unavailable on this digitaljs build */ }
+    return n;
+  }, [clearSourceHighlight]);
+
+  useImperativeHandle(ref, () => ({
+    resetZoom,
+    fitToWindow,
+    highlightSource,
+    clearSourceHighlight,
+    probeCellAt: (clientX: number, clientY: number) => {
+      const paper = paperRef.current;
+      if (!paper) return null;
+      const subs = (circuitJson as any)?.subcircuits || {};
+      // Don't rely on elementFromPoint alone: a wire (link) often overlaps a cell
+      // and would win the hit-test. Instead scan every rendered Subcircuit cell
+      // and return the one whose bounding box contains the point.
+      const nodes = Array.from(document.querySelectorAll('[model-id]'));
+      let best: { celltype: string; label: string; drillable: boolean; area: number } | null = null;
+      for (const el of nodes) {
+        const id = el.getAttribute('model-id');
+        if (!id) continue;
+        const model = paper.model?.getCell?.(id);
+        if (!model || model.get('type') !== 'Subcircuit') continue;
+        const celltype = String(model.get('celltype') || '');
+        const label = String(model.get('label') || '');
+        const drillable = !!celltype && !!subs[celltype];
+        if (!drillable) continue;
+        const r = el.getBoundingClientRect();
+        if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
+          const area = r.width * r.height;
+          if (!best || area < best.area) best = { celltype, label, drillable, area };
+        }
+      }
+      return best ? { celltype: best.celltype, label: best.label, drillable: best.drillable } : null;
+    },
+    getWaveChannels: () => {
+      const paper = paperRef.current;
+      if (!paper) return [];
+      const seen = new Map<string, number>();
+      try {
+        for (const lk of paper.model.getLinks()) {
+          const net = lk.get('netname');
+          if (!net || seen.has(String(net))) continue;
+          seen.set(String(net), Number(lk.get('bits')) || 1);
+          if (seen.size >= 24) break;
+        }
+      } catch { /* ignore */ }
+      return Array.from(seen.entries()).map(([name, bits]) => ({ name, bits }));
+    },
+    getWaveSample: () => {
+      const paper = paperRef.current;
+      const circuit = circuitRef.current;
+      if (!paper || !circuit) return null;
+      const values: Record<string, string> = {};
+      try {
+        const seen = new Set<string>();
+        for (const lk of paper.model.getLinks()) {
+          const net = lk.get('netname');
+          if (!net || seen.has(String(net))) continue;
+          seen.add(String(net));
+          const sig = lk.get('signal');
+          values[String(net)] = sig != null ? String(sig).replace(/^Vector3vl\s+/, '') : 'x';
+          if (seen.size >= 24) break;
+        }
+      } catch { /* ignore */ }
+      return { tick: Number((circuit as any).tick) || 0, values };
+    },
+    setFixed: (fixed: boolean) => applyFixed(fixed),
+    setPaused: (p: boolean) => {
+      pausedRef.current = p;
+      const c = circuitRef.current;
+      if (!c) return;
+      try {
+        if (p) {
+          c.stop();
+        } else {
+          c.interval = speedRef.current;
+          c.start();
+        }
+      } catch (err: any) {
+        onError(`Sim control failed: ${err?.message || err}`);
+      }
+    },
+    setSpeed: (ms: number) => {
+      speedRef.current = ms;
+      const c = circuitRef.current;
+      if (c && !pausedRef.current) {
+        try { c.interval = ms; } catch { /* ignore */ }
+      }
+    },
+    reapplySimState: () => {
+      const c = circuitRef.current;
+      if (!c) return;
+      applyFixed(lockedRef.current);
+      try {
+        if (pausedRef.current) c.stop();
+        else { c.interval = speedRef.current; c.start(); }
+      } catch { /* ignore */ }
+    },
+  }), [resetZoom, fitToWindow, highlightSource, clearSourceHighlight, applyFixed, onError, circuitJson]);
 
   // Initialize or update circuit
   useEffect(() => {
@@ -129,6 +359,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       try { circuitRef.current.stop?.(); } catch {}
       try { circuitRef.current.shutdown?.(); } catch {}
       circuitRef.current = null;
+      paperRef.current = null;
     }
 
     el.innerHTML = '';
@@ -142,14 +373,149 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     el.appendChild(wrapper);
     wrapperRef.current = wrapper;
 
+    // ---- hover tooltip: net name + bit-width + live value (cells & wires) ----
+    const tip = document.createElement('div');
+    tip.className = 'net-tip';
+    tip.style.cssText = 'position:absolute;display:none;z-index:30;pointer-events:none;'
+      + 'padding:3px 7px;border-radius:6px;white-space:nowrap;font:500 0.72rem/1.35 ui-monospace,monospace;'
+      + 'background:var(--menu-bg);color:var(--text);border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.25)';
+    el.appendChild(tip);
+    const cleanSig = (s: unknown) => String(s).replace(/^Vector3vl\s+/, '');
+    const onMove = (ev: MouseEvent) => {
+      const paper = paperRef.current;
+      if (!paper || isPanning.current) { tip.style.display = 'none'; return; }
+      const hit = document.elementFromPoint(ev.clientX, ev.clientY);
+      const holder = hit?.closest?.('[model-id]');
+      const id = holder?.getAttribute('model-id');
+      const model = id ? paper.model?.getCell?.(id) : null;
+      if (!model) { tip.style.display = 'none'; return; }
+      let text = '';
+      if (typeof (model as any).isLink === 'function' && (model as any).isLink()) {
+        const net = model.get('netname');
+        const bits = model.get('bits');
+        const sig = model.get('signal');
+        if (sig == null && !net) { tip.style.display = 'none'; return; }
+        text = `net ${net || '?'}${bits > 1 ? ` [${bits - 1}:0]` : ''} = ${sig != null ? cleanSig(sig) : '?'}`;
+      } else {
+        const type = model.get('type');
+        const label = model.get('label');
+        const net = model.get('net');
+        const celltype = model.get('celltype');
+        const os = model.get('outputSignals');
+        const out = os && os.out != null ? cleanSig(os.out) : null;
+        const head = (label && label !== id) ? String(label) : net ? `net ${net}` : (celltype ? String(celltype) : String(type || id));
+        text = head + (type && String(type) !== head ? ` · ${type}` : '') + (out != null ? ` = ${out}` : '');
+      }
+      tip.textContent = text;
+      tip.style.display = 'block';
+      const rect = el.getBoundingClientRect();
+      let x = ev.clientX - rect.left + 14;
+      let y = ev.clientY - rect.top + 14;
+      const tw = tip.offsetWidth, th = tip.offsetHeight;
+      if (x + tw > rect.width - 4) x = ev.clientX - rect.left - tw - 10;
+      if (y + th > rect.height - 4) y = ev.clientY - rect.top - th - 10;
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    };
+    const onLeave = () => { tip.style.display = 'none'; };
+    el.addEventListener('mousemove', onMove);
+    el.addEventListener('mouseleave', onLeave);
+
     try {
       const circuit = new window.digitaljs.Circuit(circuitJson, {
         layoutEngine: 'elkjs',
       });
-      circuit.displayOn(wrapper);
-      circuit.start();
+      const paper = circuit.displayOn(wrapper);
+      paperRef.current = paper;
+
+      // elk layout is async; joint re-fits content on render:done. Re-run our
+      // wrapper fit afterwards so the circuit is centered instead of off-corner.
+      try {
+        let refitCount = 0;
+        paper.on?.('render:done', () => {
+          if (refitCount++ < 3) requestAnimationFrame(() => fitToWindow());
+        });
+      } catch { /* older builds */ }
+
+      // keep external lock state authoritative as soon as paper exists
+      applyFixed(lockedRef.current);
+
+      // notify App when the engine transitions TO running (clears stale errors).
+      // We intentionally do NOT report running=false from this event: React
+      // StrictMode dev double-mount makes cleanup-stop() fire a spurious
+      // changeRunning(false) that would surface a bogus "not started" error.
+      // Refused-start is detected synchronously via hasWarnings() below instead.
+      try {
+        circuit.on?.('changeRunning', () => {
+          if ((circuit as any).running) onRunningRef.current?.(true);
+        });
+      } catch { /* older builds may not expose event emitter on Circuit */ }
+
+      if (pausedRef.current) {
+        circuit.stop();
+      } else {
+        try { circuit.interval = speedRef.current; } catch { /* ignore */ }
+        circuit.start();
+      }
+      // NOTE: do NOT read circuit.running synchronously here. stop() fires its
+      // changeRunning event asynchronously (engine clears _interval then triggers),
+      // so a sync read can transiently see running=false right after a rebuild and
+      // surface a bogus "not started" error. Authoritative updates come from the
+      // 'changeRunning' listener above; the warning gate is checked explicitly below.
+      try {
+        if (!pausedRef.current && typeof circuit.hasWarnings === 'function' && circuit.hasWarnings()) {
+          onRunningRef.current?.(false);
+        }
+      } catch { /* ignore */ }
 
       circuitRef.current = circuit;
+
+      // Double-click a cell carrying source_positions → jump to the defining line
+      // (joint 4.1.3 has no built-in cell-dblclick event; hit-test via model-id attr)
+      try {
+        const paperEl: HTMLElement | undefined = paper.el || paper.$el?.[0];
+        if (paperEl) {
+          paperEl.addEventListener('dblclick', (e: MouseEvent) => {
+            const holder = (e.target as Element | null)?.closest?.('[model-id]');
+            const cellId = holder?.getAttribute('model-id');
+            if (import.meta.env.DEV) {
+              const w = window as any;
+              w.__djsJumpDbg = { fired: ((w.__djsJumpDbg?.fired) || 0) + 1, tag: (e.target as Element)?.tagName, cellId: cellId || null };
+            }
+            if (!cellId) return;
+            const model = paper.model?.getCell?.(cellId);
+            const srcs = model?.get?.('source_positions');
+            if (import.meta.env.DEV && (window as any).__djsJumpDbg) (window as any).__djsJumpDbg.srcs = Array.isArray(srcs) ? srcs.length : 0;
+            if (Array.isArray(srcs) && srcs.length > 0) {
+              const s = srcs[0];
+              onSourceJumpRef.current?.(String(s.name || ''), s.from?.line ?? 1, s.from?.column ?? 1);
+            }
+          });
+        }
+      } catch { /* listener attach is best-effort; paper el is replaced on rebuild */ }
+
+      // DEV-only read-only debug hook for automated smoke probes (stripped in prod builds)
+      if (import.meta.env.DEV) {
+        (window as any).__djsDebug = {
+          getSignals: () => {
+            const g = (circuit as any)._graph;
+            const cells = g.getElements().map((el: any) => ({
+              id: el.get('id'), type: el.get('type'), label: el.get('label'), net: el.get('net'),
+              out: el.get('outputSignals') && el.get('outputSignals').out ? String(el.get('outputSignals').out) : null,
+              ins: el.get('inputSignals') ? Object.fromEntries(Object.entries(el.get('inputSignals')).map(([k, v]: [string, any]) => [k, String(v)])) : null,
+            }));
+            return { running: !!(circuit as any).running, warnings: (g as any)._warnings, tick: (circuit as any).tick ?? null, cells };
+          },
+          getLinks: () => {
+            const g = (circuit as any)._graph;
+            return g.getLinks().map((lk: any) => ({
+              id: lk.get('id'), netname: lk.get('netname'), bits: lk.get('bits') ?? null,
+              source: JSON.stringify(lk.get('source')?.cell || null), target: JSON.stringify(lk.get('target')?.cell || null),
+            }));
+          },
+          getPaper: () => paper,
+        };
+      }
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -161,6 +527,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
           }
           applyThemeToPaper();
           fitToWindow();
+          // circuit built + laid out + fitted: safe for App to apply source highlights
+          onReadyRef.current?.();
         });
       });
     } catch (err: any) {
@@ -168,13 +536,18 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     }
 
     return () => {
+      el.removeEventListener('mousemove', onMove);
+      el.removeEventListener('mouseleave', onLeave);
+      try { tip.remove(); } catch { /* already detached */ }
+      clearSourceHighlight();
       if (circuitRef.current) {
         try { circuitRef.current.stop?.(); } catch {}
         try { circuitRef.current.shutdown?.(); } catch {}
         circuitRef.current = null;
       }
+      paperRef.current = null;
     };
-  }, [circuitJson, onError, fitToWindow, applyThemeToPaper]);
+  }, [circuitJson, onError, fitToWindow, applyThemeToPaper, applyFixed, clearSourceHighlight]);
 
   // Pan and zoom mouse handlers
   const handleMouseDown = useCallback((e: React.MouseEvent) => {

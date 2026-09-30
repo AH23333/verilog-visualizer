@@ -1,4 +1,5 @@
-import { useEffect, useRef, useMemo, useState, useCallback, type CSSProperties } from 'react';
+import { useEffect, useRef, useMemo, useState, useCallback, forwardRef, useImperativeHandle, type CSSProperties } from 'react';
+import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import { EditorState, type Extension, Compartment } from '@codemirror/state';
 import {
   EditorView,
@@ -43,7 +44,18 @@ interface CodeEditorProps {
 
 const themeCompartment = new Compartment();
 
-export default function CodeEditor({
+export interface CodeEditorHandle {
+  undo: () => void;
+  redo: () => void;
+  /** Open the in-file find/replace bar and focus the query input. */
+  openFind: () => void;
+  /** Select the whole given line (1-based, clamped), scroll it into view, focus editor. */
+  jumpToLine: (line: number) => void;
+  /** Current primary-cursor line (1-based), or null when no editor instance. */
+  getCursorLine: () => number | null;
+}
+
+const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor({
   code,
   fileName,
   theme,
@@ -51,7 +63,7 @@ export default function CodeEditor({
   onSave,
   onRecompile,
   isCompiling,
-}: CodeEditorProps) {
+}, ref) {
   const containerRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<EditorView | null>(null);
   const onChangeRef = useRef(onCodeChange);
@@ -362,6 +374,34 @@ export default function CodeEditor({
     setMatchIndex(0);
   }, []);
 
+  // Imperative surface for the app-level menu / global shortcuts
+  const openFindHandle = useCallback(() => {
+    setSearchVisible(true);
+    setTimeout(() => searchInputRef.current?.focus(), 0);
+  }, []);
+
+  useImperativeHandle(ref, () => ({
+    undo: () => { const v = viewRef.current; if (v) undo(v); },
+    redo: () => { const v = viewRef.current; if (v) redo(v); },
+    openFind: openFindHandle,
+    jumpToLine: (line: number) => {
+      const view = viewRef.current;
+      if (!view) return;
+      const clamped = Math.max(1, Math.min(Math.round(line) || 1, view.state.doc.lines));
+      const lineObj = view.state.doc.line(clamped);
+      view.dispatch({
+        selection: { anchor: lineObj.from, head: lineObj.to },
+        scrollIntoView: true,
+      });
+      view.focus();
+    },
+    getCursorLine: () => {
+      const view = viewRef.current;
+      if (!view) return null;
+      return view.state.doc.lineAt(view.state.selection.main.head).number;
+    },
+  }), [openFindHandle]);
+
   const handleSearchKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault();
@@ -436,11 +476,11 @@ export default function CodeEditor({
             <button
               onClick={doFindPrev} title="Previous match (Shift+Enter)"
               style={searchBtnStyle}
-            >&uarr;</button>
+            ><ChevronUp size={13} /></button>
             <button
               onClick={doFindNext} title="Next match (Enter)"
               style={searchBtnStyle}
-            >&darr;</button>
+            ><ChevronDown size={13} /></button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
             <input
@@ -460,21 +500,19 @@ export default function CodeEditor({
             <button onClick={doReplaceOne} title="Replace" style={searchBtnStyle}>Replace</button>
             <button onClick={doReplaceAll} title="Replace All" style={searchBtnStyle}>All</button>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.7rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={caseSensitive} onChange={(e) => { setCaseSensitive(e.target.checked); }} style={{ cursor: 'pointer' }} />
-            Aa
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 3, fontSize: '0.7rem', color: 'var(--text-secondary)', cursor: 'pointer' }}>
-            <input type="checkbox" checked={useRegex} onChange={(e) => { setUseRegex(e.target.checked); }} style={{ cursor: 'pointer' }} />
-            .*
-          </label>
-          <button onClick={closeSearch} title="Close (Escape)" style={{ ...searchBtnStyle, marginLeft: 'auto' }}>&times;</button>
+          <button onClick={() => setCaseSensitive((v) => !v)} title="Match case"
+            style={{ ...searchBtnStyle, fontWeight: 600, background: caseSensitive ? 'var(--accent-muted)' : 'transparent', color: caseSensitive ? 'var(--accent)' : 'var(--text-secondary)' }}>Aa</button>
+          <button onClick={() => setUseRegex((v) => !v)} title="Use regex"
+            style={{ ...searchBtnStyle, fontFamily: 'monospace', background: useRegex ? 'var(--accent-muted)' : 'transparent', color: useRegex ? 'var(--accent)' : 'var(--text-secondary)' }}>.re</button>
+          <button onClick={closeSearch} title="Close (Escape)" style={{ ...searchBtnStyle, marginLeft: 'auto' }}><X size={13} /></button>
         </div>
       )}
       <div ref={containerRef} style={{ flex: 1, overflow: 'hidden' }} />
     </div>
   );
-}
+});
+
+export default CodeEditor;
 
 const searchBtnStyle: CSSProperties = {
   padding: '2px 8px', fontSize: '0.72rem', fontWeight: 500,

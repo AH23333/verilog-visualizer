@@ -23,6 +23,10 @@ interface EmscriptenFS {
 export interface CompileResult {
   circuitJson: Record<string, unknown>;
   yosysLog: string;
+  /** Synthesized gate-level netlist from `write_verilog` (null if unavailable) */
+  netlistVerilog: string | null;
+  /** Maps the synthesis FS path (e.g. '/input_0.v') used inside source_positions back to the real file name */
+  srcFileMap: Record<string, string>;
 }
 
 /** Error thrown when Yosys compilation fails due to missing modules */
@@ -696,14 +700,17 @@ export async function compileVerilog(
 
   // Write all files to the virtual filesystem
   const filePaths: string[] = [];
+  const srcFileMap: Record<string, string> = {};
   for (let i = 0; i < files.length; i++) {
     const fp = `/input_${i}.v`;
     FS.writeFile(fp, files[i].content);
     filePaths.push(fp);
+    srcFileMap[fp] = files[i].name;
   }
 
   const scriptFile = '/script.ys';
   const jsonFile = '/output.json';
+  const netlistFile = '/output_netlist.v';
 
   // Build Yosys script: read all files, then synthesize
   const readCmds = filePaths.map((fp) => `read_verilog ${fp}`).join('\n');
@@ -723,6 +730,7 @@ export async function compileVerilog(
     'techmap',
     'opt',
     'write_json ' + jsonFile,
+    'write_verilog ' + netlistFile,
   ].join('\n');
 
   FS.writeFile(scriptFile, script);
@@ -756,11 +764,18 @@ export async function compileVerilog(
     throw new YosysCompileError('Yosys compilation failed. No output produced.', fullLog);
   }
 
+  // Synthesized netlist is a bonus artifact — never fail the compile over it
+  let netlistVerilog: string | null = null;
+  try {
+    netlistVerilog = FS.readFile(netlistFile, { encoding: 'utf8' }) as string;
+  } catch { /* write_verilog unavailable in this yosys build */ }
+
   // Cleanup temp files
   try {
     for (const fp of filePaths) { FS.unlink(fp); }
     FS.unlink(scriptFile);
     FS.unlink(jsonFile);
+    FS.unlink(netlistFile);
   } catch {}
 
   const yosysOutput = JSON.parse(jsonStr);
@@ -768,10 +783,61 @@ export async function compileVerilog(
     throw new YosysCompileError('No modules found in the Verilog source. Check the syntax.', fullLog);
   }
 
+  normalizeStdDffCells(yosysOutput);
+
   const digitaljsCircuit = yosys2digitaljs(yosysOutput, { propagation: 1 });
   io_ui(digitaljsCircuit);
   renameAutoCells(digitaljsCircuit);
-  return { circuitJson: digitaljsCircuit, yosysLog: fullLog };
+  return { circuitJson: digitaljsCircuit, yosysLog: fullLog, netlistVerilog, srcFileMap };
+}
+
+/**
+ * Upstream-gap workaround (yosys2digitaljs@0.10.3, verified by Node spike):
+ * its `techmap_dff_kinds` Map declares the key `'$_DFF_'` twice — the
+ * clk+arst entry silently overwrites the clk-only entry, so single-polarity
+ * standard cells produced by `techmap` (`$_DFF_P_`, `$_DFF_N_`, `$_DFFE_PP_`, …)
+ * never get registered and conversion throws `Invalid cell type: $_DFF_P_`.
+ * Pure synchronous DFFs (`always @(posedge clk) q <= …`) are extremely common,
+ * so normalize those cells back to `$dff`/`$dffe` RTLIL cells (which
+ * yosys2digitaljs maps correctly) before conversion.
+ */
+export function normalizeStdDffCells(yosysOutput: any): void {
+  const modules = yosysOutput?.modules;
+  if (!modules || typeof modules !== 'object') return;
+  // single-bit WIDTH constant in the exact 32-bit binary-string form Yosys emits
+  const WIDTH1 = '00000000000000000000000000000001';
+  for (const mod of Object.values<any>(modules)) {
+    const cells = mod?.cells;
+    if (!cells || typeof cells !== 'object') continue;
+    for (const cell of Object.values<any>(cells)) {
+      if (typeof cell?.type !== 'string') continue;
+      const m = cell.type.match(/^\$_DFF_(N|P)_$/);
+      if (m) {
+        cell.type = '$dff';
+        cell.parameters = { ...cell.parameters, CLK_POLARITY: m[1] === 'P' ? '1' : '0', WIDTH: WIDTH1 };
+        cell.connections = { CLK: cell.connections.C, D: cell.connections.D, Q: cell.connections.Q };
+        cell.port_directions = { CLK: 'input', D: 'input', Q: 'output' };
+        continue;
+      }
+      const me = cell.type.match(/^\$_DFFE_(N|P)(N|P)_$/);
+      if (me) {
+        cell.type = '$dffe';
+        cell.parameters = {
+          ...cell.parameters,
+          CLK_POLARITY: me[1] === 'P' ? '1' : '0',
+          EN_POLARITY: me[2] === 'P' ? '1' : '0',
+          WIDTH: WIDTH1,
+        };
+        cell.connections = {
+          CLK: cell.connections.C,
+          EN: cell.connections.E,
+          D: cell.connections.D,
+          Q: cell.connections.Q,
+        };
+        cell.port_directions = { CLK: 'input', EN: 'input', D: 'input', Q: 'output' };
+      }
+    }
+  }
 }
 
 /**
@@ -801,4 +867,36 @@ function parseMissingModules(yosysLog: string): string[] {
  */
 export async function compileSingleFile(verilogCode: string): Promise<CompileResult> {
   return compileVerilog([{ name: 'input.v', content: verilogCode }]);
+}
+
+/**
+ * Build a standalone, renderable + interactive circuit JSON for a sub-module at
+ * `path` (e.g. ['half_adder'] or ['cpu','alu']) from the compiled top-level JSON.
+ *
+ * yosys2digitaljs keeps each instantiated module's body in `subcircuits[name]`
+ * with raw Input/Output port cells (io_ui only ran on the top module). Here we
+ * clone that body, run io_ui on it (Input→Button, Output→Lamp so it's clickable
+ * and self-runs like the top view), and rename auto cells for readable labels.
+ * Returns null if any path segment is missing. Empty path returns the top JSON
+ * unchanged. Always re-derives from the root so re-drilling is idempotent.
+ */
+export function buildViewJson(
+  circuitJson: Record<string, unknown> | null | undefined,
+  path: string[],
+): Record<string, unknown> | null {
+  if (!circuitJson) return null;
+  if (path.length === 0) return circuitJson;
+  let cur: any = circuitJson;
+  for (const name of path) {
+    const sub = cur?.subcircuits?.[name];
+    if (!sub || !sub.devices) return null;
+    cur = {
+      devices: structuredClone(sub.devices),
+      connectors: structuredClone(sub.connectors ?? []),
+      subcircuits: structuredClone(sub.subcircuits ?? {}),
+    };
+    try { io_ui(cur); } catch { /* keep raw Input/Output if io_ui rejects */ }
+    try { renameAutoCells(cur); } catch { /* labels optional */ }
+  }
+  return cur as Record<string, unknown>;
 }

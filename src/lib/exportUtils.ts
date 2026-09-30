@@ -109,3 +109,16 @@ export async function exportVerilogCode(code: string, fileName: string): Promise
   });
   return path !== null;
 }
+
+/**
+ * Export the synthesized gate-level netlist produced by Yosys `write_verilog`
+ */
+export async function exportNetlistVerilog(netlist: string | null | undefined, fileName: string): Promise<boolean> {
+  if (!netlist) return false;
+  const baseName = fileName.replace(/\.(v|sv|vh)$/, '');
+  const path = await invoke<string | null>('save_export_file', {
+    content: Array.from(new TextEncoder().encode(netlist)),
+    defaultName: `${baseName}_netlist.v`,
+  });
+  return path !== null;
+}

@@ -1,9 +1,10 @@
-import { useState, useCallback, useEffect, useRef, useMemo, useSyncExternalStore } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import Canvas from './components/Canvas';
 import type { CanvasHandle } from './components/Canvas';
 import MenuBar from './components/MenuBar';
 import Sidebar from './components/Sidebar';
 import CodeEditor from './components/CodeEditor';
+import type { CodeEditorHandle } from './components/CodeEditor';
 import TabBar from './components/TabBar';
 import ContextMenu from './components/ContextMenu';
 import type { ContextMenuItem } from './components/ContextMenu';
@@ -13,12 +14,24 @@ import OutputPanel from './components/OutputPanel';
 import BindingDialog from './components/BindingDialog';
 import HierarchyViewer from './components/HierarchyViewer';
 import SearchDialog from './components/SearchDialog';
-import { compileVerilog, MissingModulesError, YosysCompileError, parseVerilogInstances, validateModuleInterfaces } from './lib/verilog';
+import ShortcutsHelpDialog from './components/ShortcutsHelpDialog';
+import ExamplesDialog from './components/ExamplesDialog';
+import WaveformPanel from './components/WaveformPanel';
+import WindowControls from './components/WindowControls';
+import PromptDialog, { type PromptOptions } from './components/PromptDialog';
+import ConfirmDialog, { type ConfirmOptions } from './components/ConfirmDialog';
+import {
+  Files, Boxes, Network, Sun, Moon, LockOpen, Lock, Play, Pause, AudioWaveform,
+  Library, Save, Hammer, Code, ArrowLeft, Cpu, TriangleAlert,
+} from 'lucide-react';
+import type { VerilogExample } from './lib/examples';
+import { SHORTCUTS, matchesCombo } from './lib/shortcuts';
+import { compileVerilog, MissingModulesError, YosysCompileError, parseVerilogInstances, validateModuleInterfaces, buildViewJson } from './lib/verilog';
 import { fileStore, type FileEntry } from './store/fileStore';
 import { themeStore } from './store/themeStore';
 import { settingsStore, type ViewMode } from './store/settingsStore';
 import { projectConfigStore } from './store/projectConfigStore';
-import { exportSVG, exportPNG, exportCircuitJSON, exportVerilogCode } from './lib/exportUtils';
+import { exportSVG, exportPNG, exportCircuitJSON, exportVerilogCode, exportNetlistVerilog } from './lib/exportUtils';
 
 type Status = 'idle' | 'compiling' | 'done' | 'error';
 
@@ -62,6 +75,41 @@ export default function App() {
 
   // Search dialog state
   const [searchDialogVisible, setSearchDialogVisible] = useState(false);
+
+  // Shortcuts help / examples dialogs
+  const [shortcutsHelpVisible, setShortcutsHelpVisible] = useState(false);
+  const [examplesVisible, setExamplesVisible] = useState(false);
+  const [exampleLoading, setExampleLoading] = useState(false);
+
+  // Simulation control state (digitaljs engine)
+  const [simLocked, setSimLocked] = useState(false); // default: interactive (unchanged from prior behavior); lock is opt-in
+  const [simPaused, setSimPaused] = useState(false);
+      const MIN_SPEED_MS = 5, MAX_SPEED_MS = 200, DEFAULT_SPEED_MS = 10;
+  const [speedMs, setSpeedMs] = useState(DEFAULT_SPEED_MS);
+  const codeEditorRef = useRef<CodeEditorHandle>(null);
+
+  // Hierarchy drill-down: path of module names currently displayed ([] = top).
+  const [viewPath, setViewPath] = useState<string[]>([]);
+
+  // Waveform panel
+  const [waveOpen, setWaveOpen] = useState(false);
+  const [waveEpoch, setWaveEpoch] = useState(0);
+  const waveGetChannels = useCallback(() => canvasRef.current?.getWaveChannels() ?? [], []);
+  const waveGetSample = useCallback(() => canvasRef.current?.getWaveSample() ?? null, []);
+
+  // ---- in-app modal input/confirm (replaces native prompt/confirm) ----
+  type PromptReq = PromptOptions & { resolve: (v: string | null) => void };
+  type ConfirmReq = ConfirmOptions & { resolve: (ok: boolean) => void };
+  const [promptReq, setPromptReq] = useState<PromptReq | null>(null);
+  const [confirmReq, setConfirmReq] = useState<ConfirmReq | null>(null);
+  const askPrompt = useCallback((opts: PromptOptions) =>
+    new Promise<string | null>((resolve) => setPromptReq({ ...opts, resolve })), []);
+  const askConfirm = useCallback((opts: ConfirmOptions) =>
+    new Promise<boolean>((resolve) => setConfirmReq({ ...opts, resolve })), []);
+  const V_NAME_VALIDATE = (v: string) => {
+    const fileName = v.split('/').pop() || v;
+    return /\.(v|sv|vh)$/i.test(fileName) ? null : 'Only .v, .sv, or .vh files are supported.';
+  };
 
   // Sidebar resize state
   const SIDEBAR_WIDTH_KEY = 'verilog-viz-sidebar-width';
@@ -125,6 +173,16 @@ export default function App() {
   }, [files]);
 
   const activeFile = activeFileId ? fileStore.getById(activeFileId) : undefined;
+
+  // Current renderable JSON for the drilled view (top when viewPath is empty).
+  const viewJson = useMemo(
+    () => buildViewJson(activeFile?.circuitJson, viewPath),
+    [activeFile?.circuitJson, viewPath],
+  );
+  // A new compile (or file switch) changes circuitJson identity → drop back to top.
+  useEffect(() => { setViewPath([]); }, [activeFile?.circuitJson]);
+  // Displayed circuit changed (recompile / drill) → clear waveform history.
+  useEffect(() => { setWaveEpoch((e) => e + 1); }, [viewJson]);
 
   // Load project files and config on startup
   useEffect(() => {
@@ -253,12 +311,13 @@ export default function App() {
     try {
       const result = await compileVerilog(fileList, topModule);
       fileStore.updateFile(targetFileId, {
-        circuitJson: result.circuitJson, status: 'compiled',
+        circuitJson: result.circuitJson, netlistVerilog: result.netlistVerilog, srcFileMap: result.srcFileMap, status: 'compiled',
         errorMessage: undefined, missingModules: undefined,
       });
       setStatus('done');
       setMessage('Compiled successfully!');
       setMissingModules(null);
+      setSimPaused(false); // a fresh build always starts running
       setYosysLog((prev) => prev + '\n' + result.yosysLog);
       setOutputPanelVisible(true);
     } catch (err: any) {
@@ -315,6 +374,16 @@ export default function App() {
     setMessage(ok ? 'Verilog source exported.' : 'Export cancelled or no code.');
   }, [activeFile]);
 
+  const handleExportNetlist = useCallback(async () => {
+    if (!activeFile) return;
+    if (!activeFile.netlistVerilog) {
+      setMessage('No synthesized netlist — compile the file first.');
+      return;
+    }
+    const ok = await exportNetlistVerilog(activeFile.netlistVerilog, activeFile.name);
+    setMessage(ok ? 'Synthesized netlist exported.' : 'Export cancelled.');
+  }, [activeFile]);
+
   // ============ File Operations ============
 
   const handleImportFile = useCallback(async () => {
@@ -346,29 +415,31 @@ export default function App() {
     }
   }, [tryCompileAll, defaultViewMode, openFileInTab]);
 
-  const handleCreateFile = useCallback(() => {
-    const name = prompt('Enter file name (e.g. my_module.v or subdir/my_module.v):');
-    if (!name || !name.trim()) return;
-    const trimmed = name.trim();
-    const fileName = trimmed.split('/').pop() || trimmed;
-    if (!fileName.endsWith('.v') && !fileName.endsWith('.sv') && !fileName.endsWith('.vh')) {
-      alert('Only .v, .sv, or .vh files are supported for compilation.');
-      return;
-    }
+  const handleCreateFile = useCallback(async () => {
+    const trimmed = await askPrompt({
+      title: 'New File',
+      label: 'File name (subdir/my_module.v allowed)',
+      defaultValue: 'my_module.v',
+      confirmLabel: 'Create',
+      validate: V_NAME_VALIDATE,
+    });
+    if (!trimmed) return;
     const entry = fileStore.createFile(trimmed);
     openFileInTab(entry.id);
     setSelectedIds(new Set([entry.id]));
     setViewMode('code');
     setStatus('idle');
     setMessage('New file created. Edit and compile to render.');
-  }, [openFileInTab]);
+  }, [openFileInTab, askPrompt]);
 
-  const handleCreateFolder = useCallback(() => {
-    const name = prompt('Enter folder name:');
-    if (!name || !name.trim()) return;
-    fileStore.createFolder(name.trim());
-    setMessage(`Folder '${name.trim()}' created.`);
-  }, []);
+  const handleCreateFolder = useCallback(async () => {
+    const name = await askPrompt({
+      title: 'New Folder', label: 'Folder name', defaultValue: 'my_folder', confirmLabel: 'Create',
+    });
+    if (!name) return;
+    fileStore.createFolder(name);
+    setMessage(`Folder '${name}' created.`);
+  }, [askPrompt]);
 
   const handleRefresh = useCallback(async () => {
     setMessage('Refreshing from disk...');
@@ -384,6 +455,7 @@ export default function App() {
     if (!file) return;
     if (file.status === 'compiled' && file.circuitJson) {
       setStatus('done'); setMessage('Loaded from cache.');
+      setSimPaused(false); // canvas remounts with the new circuit — start fresh
     } else if (file.status === 'missing_deps') {
       setStatus('error'); setMessage(file.errorMessage || 'Missing module implementations');
       if (file.missingModules) setMissingModules(file.missingModules);
@@ -554,6 +626,126 @@ export default function App() {
   const handleToggleTheme = useCallback(() => { themeStore.toggle(); }, []);
   const handleCanvasError = useCallback((msg: string) => { setStatus('error'); setMessage(msg); }, []);
 
+  // ============ Sidebar / dialogs callbacks ============
+
+  const handleToggleSidebar = useCallback(() => setSidebarCollapsed((c) => !c), []);
+
+  const handleOpenExample = useCallback(async (example: VerilogExample) => {
+    setExampleLoading(true);
+    try {
+      // Reuse an existing same-named example file instead of piling up duplicates;
+      // refresh its content if the shipped example source changed between versions.
+      const existing = fileStore.getAll().find((f) => f.name === example.fileName);
+      if (existing && existing.content !== example.source) {
+        fileStore.saveContent(existing.id, example.source);
+      }
+      const entry = existing ?? fileStore.addFile(example.fileName, example.source, example.fileName);
+      openFileInTab(entry.id);
+      setViewMode(defaultViewMode);
+      setExamplesVisible(false);
+      await tryCompileAll(entry.id);
+    } finally {
+      setExampleLoading(false);
+    }
+  }, [openFileInTab, defaultViewMode, tryCompileAll]);
+
+  // ============ Sim control callbacks ============
+
+  const handleToggleSimLock = useCallback(() => {
+    setSimLocked((prev) => {
+      const next = !prev;
+      setMessage(next ? 'View mode — clicks on switches/buttons are ignored. Unlock to simulate.' : 'Interactive mode — click switches to simulate.');
+      return next;
+    });
+  }, []);
+
+  const handleToggleSimPause = useCallback(() => {
+    setSimPaused((prev) => {
+      const next = !prev;
+      setMessage(next ? 'Simulation paused.' : 'Simulation running.');
+      return next;
+    });
+  }, []);
+
+  const handleSpeedChange = useCallback((ms: number) => {
+    setSpeedMs(ms);
+  }, []);
+
+  // ============ Circuit -> source jump (double-click a cell) ============
+
+  const [pendingJump, setPendingJump] = useState<{ fileId: string; line: number } | null>(null);
+
+  const handleSourceJump = useCallback((srcName: string, line: number) => {
+    const map = activeFile?.srcFileMap;
+    const fileName = map?.[srcName];
+    if (!fileName) {
+      setMessage('This element has no source location mapping.');
+      return;
+    }
+    const target = fileStore.getAll().find((f) => f.name === fileName);
+    if (!target) {
+      setMessage(`Source file "${fileName}" is no longer in the project.`);
+      return;
+    }
+    openFileInTab(target.id);
+    setViewMode('code');
+    setPendingJump({ fileId: target.id, line });
+    setMessage(`Jumped to ${fileName}:${line}`);
+  }, [activeFile, openFileInTab]);
+
+  // Run the pending jump after CodeEditor has received the new file content.
+  // Child effects (editor content sync) run before this parent effect, so jumpToLine
+  // always sees the up-to-date document.
+  useEffect(() => {
+    if (pendingJump && viewMode === 'code' && activeFileId === pendingJump.fileId) {
+      codeEditorRef.current?.jumpToLine(pendingJump.line);
+      setPendingJump(null);
+    }
+  }, [pendingJump, viewMode, activeFileId]);
+
+  // ---- code -> circuit: switch to Circuit view and glow the elements defined at
+  // the editor cursor line (reverse direction of double-click jump) ----
+  const pendingSrcGlowRef = useRef<{ path: string; line: number } | null>(null);
+
+  const switchToCircuit = useCallback(() => {
+    // only meaningful when a compiled circuit will actually render
+    if (!activeFile?.circuitJson) {
+      pendingSrcGlowRef.current = null;
+      setViewMode('circuit');
+      return;
+    }
+    const line = codeEditorRef.current?.getCursorLine() ?? null;
+    const map = activeFile.srcFileMap;
+    if (line && map) {
+      const fsPath = Object.keys(map).find((k) => map[k] === activeFile.name);
+      if (fsPath) pendingSrcGlowRef.current = { path: fsPath, line };
+    }
+    setViewMode('circuit');
+  }, [activeFile]);
+
+  const handleCanvasReady = useCallback(() => {
+    const pending = pendingSrcGlowRef.current;
+    if (!pending) return;
+    pendingSrcGlowRef.current = null;
+    const n = canvasRef.current?.highlightSource(pending.path, pending.line) ?? 0;
+    setMessage(n > 0
+      ? `Highlighted ${n} element(s) from line ${pending.line}.`
+      : `No top-level element on line ${pending.line} (may be inside a subcircuit).`);
+  }, []);
+
+  const handleCanvasRunningChange = useCallback((running: boolean) => {
+    if (running && status !== 'compiling') {
+      // engine started (possibly after a prior refused attempt) — clear stale error
+      if (status === 'error' && /floating|looped|not started/i.test(message)) {
+        setStatus('done');
+        setMessage('Simulation running.');
+      }
+    } else if (!running && !simPaused) {
+      setStatus('error');
+      setMessage('Circuit has floating/looped wires — simulation not started.');
+    }
+  }, [simPaused, status, message]);
+
   // ============ Context Menus ============
 
   const handleFileContextMenu = useCallback((e: React.MouseEvent, file: FileEntry) => {
@@ -570,7 +762,7 @@ export default function App() {
             { label: '---', disabled: true, action: () => {} },
             { label: 'Compile', action: async () => { openFileInTab(file.id); await tryCompileAll(file.id); } },
             { label: 'Bind...', action: () => setBindingDialogFile(file) },
-            { label: 'Rename', action: () => { const newName = prompt('Rename file:', file.name); if (newName?.trim()) handleRenameFile(file.id, newName.trim()); } },
+            { label: 'Rename', action: async () => { const newName = await askPrompt({ title: 'Rename File', defaultValue: file.name, confirmLabel: 'Rename', validate: V_NAME_VALIDATE }); if (newName) handleRenameFile(file.id, newName); } },
           ]
         : [
             { label: 'Open', action: () => handleSelectFile(file.id) },
@@ -580,11 +772,11 @@ export default function App() {
             { label: '---', disabled: true, action: () => {} },
             { label: 'Copy', action: () => handleCopy([file.id]) },
             { label: 'Cut', action: () => handleCut([file.id]) },
-            { label: 'Rename', action: () => { const newName = prompt('Rename file:', file.name); if (newName?.trim()) handleRenameFile(file.id, newName.trim()); } },
+            { label: 'Rename', action: async () => { const newName = await askPrompt({ title: 'Rename File', defaultValue: file.name, confirmLabel: 'Rename', validate: V_NAME_VALIDATE }); if (newName) handleRenameFile(file.id, newName); } },
             { label: 'Delete', danger: true, action: () => handleDeleteFile(file.id) },
           ],
     });
-  }, [handleSelectFile, handleRenameFile, handleDeleteFile, handleDeleteFiles, tryCompileAll, handleCopy, handleCut, selectedIds, openFileInTab]);
+  }, [handleSelectFile, handleRenameFile, handleDeleteFile, handleDeleteFiles, tryCompileAll, handleCopy, handleCut, selectedIds, openFileInTab, askPrompt]);
 
   const handleEmptyAreaContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
@@ -606,41 +798,44 @@ export default function App() {
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
-        { label: 'New File...', action: () => {
-          const name = prompt('Enter file name (e.g. my_module.v):');
-          if (!name?.trim()) return;
-          const fullPath = folderPath + '/' + name.trim();
-          const fileName = fullPath.split('/').pop() || name.trim();
-          if (!fileName.endsWith('.v') && !fileName.endsWith('.sv') && !fileName.endsWith('.vh')) {
-            alert('Only .v, .sv, or .vh files are supported.');
-            return;
-          }
+        { label: 'New File...', action: async () => {
+          const name = await askPrompt({
+            title: `New File in ${folderPath}`, label: 'File name', defaultValue: 'my_module.v',
+            confirmLabel: 'Create', validate: V_NAME_VALIDATE,
+          });
+          if (!name) return;
+          const fullPath = folderPath + '/' + name;
           const entry = fileStore.createFile(fullPath);
           openFileInTab(entry.id);
           setViewMode('code');
           setStatus('idle'); setMessage('New file created.');
         }},
-        { label: 'New Folder...', action: () => {
-          const name = prompt('Enter folder name:');
-          if (!name?.trim()) return;
-          fileStore.createFolder(folderPath + '/' + name.trim());
-          setMessage(`Folder '${name.trim()}' created.`);
+        { label: 'New Folder...', action: async () => {
+          const name = await askPrompt({ title: 'New Subfolder', label: 'Folder name', defaultValue: 'child', confirmLabel: 'Create' });
+          if (!name) return;
+          fileStore.createFolder(folderPath + '/' + name);
+          setMessage(`Folder '${name}' created.`);
         }},
         { label: '---', disabled: true, action: () => {} },
         { label: 'Copy Folder', action: () => handleCopyFolder(folderPath) },
         { label: 'Cut Folder', action: () => handleCutFolder(folderPath) },
         { label: 'Paste', action: () => handlePaste(folderPath) },
         { label: '---', disabled: true, action: () => {} },
-        { label: 'Rename Folder', action: () => {
-          const newName = prompt('Rename folder:', folderPath.split('/').pop() || folderPath);
-          if (!newName?.trim()) return;
+        { label: 'Rename Folder', action: async () => {
+          const newName = await askPrompt({ title: 'Rename Folder', defaultValue: folderPath.split('/').pop() || folderPath, confirmLabel: 'Rename' });
+          if (!newName) return;
           const parts = folderPath.split('/');
-          parts[parts.length - 1] = newName.trim();
+          parts[parts.length - 1] = newName;
           fileStore.moveFolder(folderPath, parts.join('/'));
-          setMessage(`Folder renamed to '${newName.trim()}'.`);
+          setMessage(`Folder renamed to '${newName}'.`);
         }},
-        { label: 'Delete Folder', danger: true, action: () => {
-          if (confirm(`Delete folder '${folderPath}' and all its contents?`)) {
+        { label: 'Delete Folder', danger: true, action: async () => {
+          const ok = await askConfirm({
+            title: 'Delete Folder', danger: true, confirmLabel: 'Delete',
+            message: `Delete folder '${folderPath}' and all its contents?`,
+            detail: 'Files inside will be removed from the project.',
+          });
+          if (ok) {
             fileStore.deleteFolder(folderPath);
             setMessage(`Folder '${folderPath}' deleted.`);
           }
@@ -649,59 +844,100 @@ export default function App() {
         { label: 'Refresh from Disk', action: () => handleRefresh() },
       ],
     });
-  }, [handleCopyFolder, handleCutFolder, handlePaste, openFileInTab, handleRefresh]);
+  }, [handleCopyFolder, handleCutFolder, handlePaste, openFileInTab, handleRefresh, askPrompt, askConfirm]);
 
   const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
+    const cell = canvasRef.current?.probeCellAt(e.clientX, e.clientY);
+    const drillItems = (cell?.drillable && cell.celltype)
+      ? [
+          { label: `↵ Enter ${cell.celltype}`, action: () => setViewPath((p) => [...p, cell.celltype]) },
+          { label: '---', disabled: true, action: () => {} },
+        ]
+      : [];
     setContextMenu({
       x: e.clientX, y: e.clientY,
       items: [
+        ...drillItems,
         { label: 'Reset Zoom', action: () => canvasRef.current?.resetZoom() },
         { label: 'Fit to Window', action: () => canvasRef.current?.fitToWindow() },
         { label: '---', disabled: true, action: () => {} },
         { label: 'Export SVG', action: () => handleExportSVG() },
         { label: 'Export PNG', action: () => handleExportPNG() },
         { label: 'Export Circuit JSON', action: () => handleExportJSON() },
+        { label: 'Export Synthesized Netlist', action: () => handleExportNetlist() },
         { label: '---', disabled: true, action: () => {} },
         { label: 'Compile', action: () => handleCompile() },
         { label: 'Import Verilog File...', action: () => handleImportFile() },
       ],
     });
-  }, [handleCompile, handleImportFile, handleExportSVG, handleExportPNG, handleExportJSON]);
+  }, [handleCompile, handleImportFile, handleExportSVG, handleExportPNG, handleExportJSON, handleExportNetlist]);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
-  // ============ Keyboard Shortcuts ============
+  // ============ Keyboard Shortcuts (registry-driven, see src/lib/shortcuts.ts) ============
 
   useEffect(() => {
+    // Ids that must still fire while an input/editor has focus.
+    const EDITOR_SAFE = new Set([
+      'file.import', 'file.new', 'file.save', 'file.compile',
+      'view.sidebar', 'view.output', 'search.global',
+    ]);
+
+    const isEditableTarget = (t: EventTarget | null): boolean => {
+      const el = t as HTMLElement | null;
+      if (!el || typeof el.closest !== 'function') return false;
+      if (el.closest('.cm-editor')) return true;                    // CodeMirror
+      const tag = el.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el.isContentEditable;
+    };
+
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
-        e.preventDefault(); handleImportFile();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault(); handleSave();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
-        e.preventDefault(); setSidebarCollapsed((c) => !c);
-      } else if (e.key === 'F5') {
-        e.preventDefault(); handleCompile();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'n') {
-        e.preventDefault(); handleCreateFile();
-      } else if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'F') {
-        e.preventDefault(); setSearchDialogVisible((v) => !v);
-      } else if (e.key === 'Delete' && selectedIds.size > 0) {
-        e.preventDefault(); handleDeleteFiles(Array.from(selectedIds));
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
-        e.preventDefault(); handleCopy();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'x') {
-        e.preventDefault(); handleCut();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
-        e.preventDefault(); handlePasteFromClipboard();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 'j') {
-        e.preventDefault(); setOutputPanelVisible((v) => !v);
+      // If CodeMirror (or any focused widget) already consumed this exact key press
+      // (its keymaps run with preventDefault before bubbling to the window), do NOT
+      // double-fire the same command.
+      if (e.defaultPrevented) return;
+
+      const editable = isEditableTarget(e.target);
+
+      for (const s of SHORTCUTS) {
+        if (!matchesCombo(e, s.combo)) continue;
+
+        const id = s.id;
+        if (editable && !EDITOR_SAFE.has(id)) return; // canvas/list shortcuts yield to the editor
+
+        const run = (): boolean => {
+          switch (id) {
+            case 'file.import': handleImportFile(); return true;
+            case 'file.new': handleCreateFile(); return true;
+            case 'file.save': handleSave(); return true;
+            case 'file.compile': handleCompile(); return true;
+            case 'view.sidebar': handleToggleSidebar(); return true;
+            case 'view.output': setOutputPanelVisible((v) => !v); return true;
+            case 'view.shortcutsHelp': setShortcutsHelpVisible((v) => !v); return true;
+            case 'search.global': setSearchDialogVisible((v) => !v); return true;
+            case 'edit.selected.copy': if (selectedIds.size > 0) { handleCopy(); return true; } return false;
+            case 'edit.selected.cut': if (selectedIds.size > 0) { handleCut(); return true; } return false;
+            case 'edit.selected.paste': handlePasteFromClipboard(); return true;
+            case 'edit.selected.delete': if (selectedIds.size > 0) { handleDeleteFiles(Array.from(selectedIds)); return true; } return false;
+            case 'canvas.fit': canvasRef.current?.fitToWindow(); return true;
+            case 'editor.undo': codeEditorRef.current?.undo(); return true;
+            case 'editor.redo': codeEditorRef.current?.redo(); return true;
+            case 'editor.find': codeEditorRef.current?.openFind(); return true;
+            case 'editor.zoomIn': settingsStore.increaseFontSize(); return true;
+            case 'editor.zoomOut': settingsStore.decreaseFontSize(); return true;
+            case 'editor.zoomReset': settingsStore.resetFontSize(); return true;
+            default: return false; // combos without an app handler (e.g. Alt+F4) fall through
+          }
+        };
+
+        if (run()) e.preventDefault();
+        return;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleImportFile, handleSave, handleCompile, handleCreateFile, handleDeleteFiles, handleCopy, handleCut, handlePasteFromClipboard, selectedIds]);
+  }, [handleImportFile, handleSave, handleCompile, handleCreateFile, handleDeleteFiles, handleCopy, handleCut, handlePasteFromClipboard, handleToggleSidebar, selectedIds]);
 
   // ============ Render Helpers ============
 
@@ -714,23 +950,7 @@ export default function App() {
 
   return (
     <div className="w-screen h-screen flex flex-col bg-[var(--bg)]">
-      {/* Menu Bar */}
-      <MenuBar
-        onImportFile={handleImportFile}
-        onToggleTheme={handleToggleTheme}
-        onResetZoom={() => canvasRef.current?.resetZoom()}
-        onFitToWindow={() => canvasRef.current?.fitToWindow()}
-        onCreateFile={handleCreateFile}
-        currentTheme={theme}
-        onExportSVG={handleExportSVG}
-        onExportPNG={handleExportPNG}
-        onExportJSON={handleExportJSON}
-        onExportVerilog={handleExportVerilog}
-        onGlobalSearch={() => setSearchDialogVisible(true)}
-        hasCircuit={activeFile?.circuitJson != null}
-      />
-
-      {/* Main area */}
+      {/* Main area — menu bar is fused into the unified title row below (VS Code style) */}
       <div className="flex-1 flex overflow-hidden">
         {/* Activity Bar */}
         <div className="w-[48px] flex flex-col items-center pt-2 pb-2 gap-1 flex-shrink-0"
@@ -738,21 +958,21 @@ export default function App() {
             background: 'var(--sidebar-bg)',
             borderRight: '1px solid var(--border-subtle)',
           }}>
-          <ActivityButton icon="▦" label="Files"
+          <ActivityButton icon={<Files size={19} />} label="Files"
             active={leftPanel === 'files' && !sidebarCollapsed}
             onClick={() => {
               if (leftPanel === 'files' && !sidebarCollapsed) { setSidebarCollapsed(true); }
               else { setLeftPanel('files'); setSidebarCollapsed(false); }
             }}
           />
-          <ActivityButton icon="◫" label="Modules"
+          <ActivityButton icon={<Boxes size={19} />} label="Modules"
             active={leftPanel === 'modules' && !sidebarCollapsed}
             onClick={() => {
               if (leftPanel === 'modules' && !sidebarCollapsed) { setSidebarCollapsed(true); }
               else { setLeftPanel('modules'); setSidebarCollapsed(false); }
             }}
           />
-          <ActivityButton icon="⊞" label="Hierarchy"
+          <ActivityButton icon={<Network size={19} />} label="Hierarchy"
             active={leftPanel === 'hierarchy' && !sidebarCollapsed}
             onClick={() => {
               if (leftPanel === 'hierarchy' && !sidebarCollapsed) { setSidebarCollapsed(true); }
@@ -760,7 +980,7 @@ export default function App() {
             }}
           />
           <div style={{ flex: 1 }} />
-          <ActivityButton icon={theme === 'dark' ? '◎' : '◉'} label="Theme"
+          <ActivityButton icon={theme === 'dark' ? <Moon size={19} /> : <Sun size={19} />} label="Theme"
             active={false} onClick={handleToggleTheme}
           />
         </div>
@@ -813,6 +1033,64 @@ export default function App() {
 
         {/* Main Content Area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          {/* Unified title row: menu + file identity + sim controls + actions (replaces separate menubar/toolbar).
+              data-tauri-drag-region: frameless-window drag (no-op in plain browser). */}
+          <div
+            data-tauri-drag-region
+            style={{
+            display: 'flex', alignItems: 'center', gap: 10, height: 40, flexShrink: 0,
+            padding: '0 0 0 4px',
+            background: 'var(--toolbar-bg)', borderBottom: '1px solid var(--border)',
+          }}>
+            <MenuBar
+              onImportFile={handleImportFile}
+              onToggleTheme={handleToggleTheme}
+              onResetZoom={() => canvasRef.current?.resetZoom()}
+              onFitToWindow={() => canvasRef.current?.fitToWindow()}
+              onCreateFile={handleCreateFile}
+              currentTheme={theme}
+              onExportSVG={handleExportSVG}
+              onExportPNG={handleExportPNG}
+              onExportJSON={handleExportJSON}
+              onExportVerilog={handleExportVerilog}
+              onExportNetlist={handleExportNetlist}
+              onGlobalSearch={() => setSearchDialogVisible(true)}
+              onSave={handleSave}
+              onCompile={handleCompile}
+              onUndo={() => codeEditorRef.current?.undo()}
+              onRedo={() => codeEditorRef.current?.redo()}
+              onFind={() => codeEditorRef.current?.openFind()}
+              onToggleSidebar={handleToggleSidebar}
+              onOpenExamples={() => setExamplesVisible(true)}
+              onShowShortcuts={() => setShortcutsHelpVisible(true)}
+              hasCircuit={activeFile?.circuitJson != null}
+            />
+            <div style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '0 1 auto' }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                background: statusColor,
+                boxShadow: status === 'done' ? '0 0 6px rgba(34, 197, 94, 0.4)' : 'none',
+              }} />
+              <span style={{
+                fontSize: '0.85rem', fontWeight: 600, color: 'var(--text)',
+                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240,
+              }}>
+                {activeFile ? activeFile.name : 'Verilog Visualizer'}
+              </span>
+              {message && (
+                <span style={{
+                  fontSize: '0.78rem', color: 'var(--text-muted)',
+                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                }}>
+                  {message}
+                </span>
+              )}
+            </div>
+            <div data-tauri-drag-region style={{ flex: 1, alignSelf: 'stretch' }} />
+            <WindowControls />
+          </div>
+
           {/* Tab Bar */}
           <TabBar
             openFiles={openFiles}
@@ -822,86 +1100,176 @@ export default function App() {
             onSelectTab={openFileInTab}
             onCloseTab={closeTab}
             onReorderTabs={reorderTabs}
-          />
-
-          {/* Toolbar */}
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 16, padding: '10px 18px',
-            background: 'var(--toolbar-bg)', borderBottom: '1px solid var(--border)',
-            flexShrink: 0, minHeight: 50,
-          }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: statusColor, flexShrink: 0,
-              boxShadow: `0 0 6px ${statusColor}`,
-            }} />
-            <span style={{
-              fontSize: '1.05rem', color: 'var(--text)', flex: 1,
-              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500,
-            }}>
-              {activeFile ? `${activeFile.name} — ${message || 'Ready'}` : message || 'Verilog Visualizer'}
-            </span>
+            rightSlot={<>            {/* Simulation controls — only meaningful with a rendered circuit */}
+            {viewMode === 'circuit' && activeFile?.circuitJson && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+                padding: '4px 10px', background: 'var(--surface)',
+                border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
+              }}>
+                <button
+                  onClick={handleToggleSimLock}
+                  data-testid="sim-lock-toggle"
+                  title={simLocked ? 'Unlock: allow clicking switches' : 'Lock: view-only canvas'}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '4px 10px', border: 'none', borderRadius: 'var(--radius-sm)',
+                    cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                    background: simLocked ? 'var(--surface-hover)' : 'var(--success)',
+                    color: simLocked ? 'var(--text-secondary)' : '#fff',
+                  }}
+                >{simLocked ? <><Lock size={13} /> View</> : <><LockOpen size={13} /> Simulate</>}</button>
+                <button
+                  onClick={handleToggleSimPause}
+                  title={simPaused ? 'Resume simulation' : 'Pause simulation'}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center',
+                    padding: '4px 9px', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer',
+                    background: 'transparent', color: 'var(--text)',
+                  }}
+                >{simPaused ? <Play size={13} /> : <Pause size={13} />}</button>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: '0.72rem', color: 'var(--text-secondary)' }}>
+                  SPEED
+                  {/* range value = "fastness": low ms = fast engine tick */}
+                  <input
+                    type="range" min={0} max={1} step={0.01}
+                    value={(MAX_SPEED_MS - speedMs) / (MAX_SPEED_MS - MIN_SPEED_MS)}
+                    onChange={(e) => {
+                      const t = parseFloat(e.target.value);
+                      handleSpeedChange(Math.round(MAX_SPEED_MS - t * (MAX_SPEED_MS - MIN_SPEED_MS)));
+                    }}
+                    style={{ width: 90, accentColor: 'var(--accent)', cursor: 'pointer' }}
+                  />
+                  <span style={{ minWidth: 46, color: 'var(--text)' }}>{speedMs} ms</span>
+                </label>
+                <button
+                  onClick={() => setWaveOpen((v) => !v)}
+                  data-testid="wave-toggle"
+                  title="Toggle live waveform of named nets"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 5,
+                    padding: '4px 10px', border: '1px solid var(--border)',
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                    background: waveOpen ? 'var(--accent)' : 'transparent',
+                    color: waveOpen ? '#fff' : 'var(--text)',
+                  }}
+                ><AudioWaveform size={13} /> Wave</button>
+              </div>
+            )}
+            <button
+              onClick={() => setExamplesVisible(true)}
+              title="Open example circuits"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '0 14px', height: 30, border: '1px solid var(--border)',
+                borderRadius: 'var(--radius-md)', cursor: 'pointer',
+                fontSize: '0.85rem', background: 'var(--surface)', color: 'var(--text)',
+                flexShrink: 0,
+              }}
+            ><Library size={14} /> Examples</button>
             {activeFile && (
               <>
                 <button onClick={handleSave} title="Save (Ctrl+S)" style={{
-                  padding: '8px 20px', border: '1px solid var(--border)',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '0 14px', height: 30, border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-md)', cursor: 'pointer',
-                  fontSize: '1rem', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500,
-                }}>Save</button>
+                  fontSize: '0.85rem', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500,
+                }}><Save size={14} /> Save</button>
                 <button onClick={handleCompile} disabled={status === 'compiling'} title="Compile (F5)" style={{
-                  padding: '8px 20px', border: 'none', borderRadius: 'var(--radius-md)',
-                  cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '1rem',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '0 14px', height: 30, border: 'none', borderRadius: 'var(--radius-md)',
+                  cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '0.85rem',
                   background: status === 'compiling' ? 'var(--text-muted)' : 'var(--accent)',
                   color: '#fff', fontWeight: 600,
-                }}>{status === 'compiling' ? 'Compiling...' : 'Compile'}</button>
+                }}>{status === 'compiling' ? 'Compiling...' : <><Hammer size={14} /> Compile</>}</button>
                 {hasMissingDeps && (
                   <button onClick={handleCompile} disabled={status === 'compiling'} style={{
-                    padding: '8px 20px', border: 'none', borderRadius: 'var(--radius-md)',
-                    cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '1rem',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '0 14px', height: 30, border: 'none', borderRadius: 'var(--radius-md)',
+                    cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: '0.85rem',
                     background: 'var(--warning)', color: '#000', fontWeight: 600,
-                  }}>Fix Dependencies</button>
+                  }}><TriangleAlert size={14} /> Fix Dependencies</button>
                 )}
               </>
             )}
             {activeFile && (
               <div style={{
-                display: 'flex', gap: 4, marginLeft: 14, background: 'var(--surface)',
-                borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', padding: 4,
+                display: 'flex', gap: 2, marginLeft: 14, background: 'var(--surface)',
+                borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', padding: 3,
               }}>
-                <button onClick={() => setViewMode('circuit')} className="px-6 py-2.5 border-0 rounded-md cursor-pointer font-medium transition-all"
+                <button onClick={switchToCircuit} className="inline-flex items-center gap-1.5 px-3.5 h-[26px] border-0 rounded-md cursor-pointer font-medium transition-all"
+                  title="Switch to circuit view (glows elements defined at the cursor line)"
                   style={{
                     background: viewMode === 'circuit' ? 'var(--accent)' : 'transparent',
                     color: viewMode === 'circuit' ? '#fff' : 'var(--text-secondary)',
-                    fontSize: '1.05rem',
-                  }}>Circuit</button>
-                <button onClick={() => setViewMode('code')} className="px-6 py-2.5 border-0 rounded-md cursor-pointer font-medium transition-all"
+                    fontSize: '0.85rem',
+                  }}><Network size={13} /> Circuit</button>
+                <button onClick={() => setViewMode('code')} className="inline-flex items-center gap-1.5 px-3.5 h-[26px] border-0 rounded-md cursor-pointer font-medium transition-all"
                   style={{
                     background: viewMode === 'code' ? 'var(--accent)' : 'transparent',
                     color: viewMode === 'code' ? '#fff' : 'var(--text-secondary)',
-                    fontSize: '1.05rem',
-                  }}>Code</button>
+                    fontSize: '0.85rem',
+                  }}><Code size={13} /> Code</button>
               </div>
-            )}
-          </div>
+            )}</>}
+          />
 
           {/* Content: Canvas or Code Editor */}
           <div ref={canvasContainerRef} className="flex-1 relative overflow-hidden"
             onContextMenu={handleCanvasContextMenu}>
+            {/* Sub-module breadcrumb — only while drilled in, circuit view */}
+            {viewMode === 'circuit' && viewPath.length > 0 && activeFile?.circuitJson && (
+              <div
+                className="absolute top-2 left-2 z-20 flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[0.82rem] select-none"
+                style={{ background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+              >
+                <button
+                  onClick={() => setViewPath([])}
+                  className="border-0 cursor-pointer p-0.5 rounded hover:opacity-80"
+                  style={{ background: 'transparent', color: 'var(--accent)', display: 'inline-flex' }}
+                  title="Back to top module"
+                ><ArrowLeft size={14} /></button>
+                <button
+                  onClick={() => setViewPath([])}
+                  className="border-0 cursor-pointer px-1 py-0.5 rounded hover:opacity-80"
+                  style={{ background: 'transparent', color: 'var(--text)', fontSize: '0.82rem', fontWeight: 600 }}
+                >
+                  {(activeFile.circuitJson as any)?.name || activeFile.name.replace(/\.(v|sv|vh)$/, '')}
+                </button>
+                {viewPath.map((seg, i) => (
+                  <span key={i} className="flex items-center gap-1">
+                    <span style={{ color: 'var(--text-muted)' }}>›</span>
+                    <button
+                      onClick={() => setViewPath(viewPath.slice(0, i + 1))}
+                      className="border-0 cursor-pointer px-1 py-0.5 rounded hover:opacity-80"
+                      style={{
+                        background: 'transparent', fontSize: '0.82rem',
+                        fontWeight: i === viewPath.length - 1 ? 600 : 400,
+                        color: i === viewPath.length - 1 ? 'var(--text)' : 'var(--accent)',
+                      }}
+                    >{seg}</button>
+                  </span>
+                ))}
+              </div>
+            )}
             {(() => {
               if (!activeFile) {
                 return (
                   <div className="flex flex-col justify-center items-center h-full gap-6 select-none"
                     style={{ color: 'var(--text-secondary)' }}>
-                    <div className="text-6xl font-light opacity-10 leading-none">◈</div>
+                    <div style={{ opacity: 0.12 }}><Cpu size={64} strokeWidth={1} style={{ color: 'var(--text)' }} /></div>
                     <div className="text-lg font-medium" style={{ color: 'var(--text)' }}>No file selected</div>
                     <div className="flex gap-3">
                       <button onClick={handleImportFile} className="px-6 py-2.5 text-sm font-semibold rounded-lg border-0 cursor-pointer text-white transition-all hover:opacity-90 hover:shadow-lg"
                         style={{ background: 'var(--accent)' }}>Import .v File</button>
+                      <button onClick={() => setExamplesVisible(true)} className="px-6 py-2.5 text-sm font-medium rounded-lg cursor-pointer transition-all hover:border-[var(--border)]"
+                        style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>Open Example</button>
                       <button onClick={handleCreateFile} className="px-6 py-2.5 text-sm font-medium rounded-lg cursor-pointer transition-all hover:border-[var(--border)]"
                         style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }}>New File</button>
                     </div>
                     <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      Ctrl+O to import · Ctrl+N to create · F5 to compile
+                      Ctrl+O to import · Ctrl+N to create · F5 to compile · Ctrl+/ for shortcuts
                     </div>
                   </div>
                 );
@@ -910,6 +1278,7 @@ export default function App() {
               if (viewMode === 'code') {
                 return (
                   <CodeEditor
+                    ref={codeEditorRef}
                     code={activeFile.content}
                     fileName={activeFile.name}
                     theme={theme}
@@ -925,9 +1294,15 @@ export default function App() {
                 return (
                   <Canvas
                     ref={canvasRef}
-                    circuitJson={activeFile.circuitJson}
+                    circuitJson={viewJson ?? activeFile.circuitJson}
                     theme={theme}
                     onError={handleCanvasError}
+                    locked={simLocked}
+                    paused={simPaused}
+                    speedMs={speedMs}
+                    onRunningChange={handleCanvasRunningChange}
+                    onSourceJump={handleSourceJump}
+                    onReady={handleCanvasReady}
                   />
                 );
               }
@@ -935,9 +1310,11 @@ export default function App() {
               return (
                 <div className="flex flex-col justify-center items-center h-full gap-5 select-none"
                   style={{ color: 'var(--text-secondary)' }}>
-                  <div className="text-5xl font-light opacity-10">
-                    {activeFile.status === 'missing_deps' ? '△' : '◈'}
-                  </div>
+                    <div style={{ opacity: 0.15, display: 'flex' }}>
+                      {activeFile.status === 'missing_deps'
+                        ? <TriangleAlert size={48} strokeWidth={1} style={{ color: 'var(--text)' }} />
+                        : <Cpu size={48} strokeWidth={1} style={{ color: 'var(--text)' }} />}
+                    </div>
                   <div className="text-base font-medium" style={{ color: 'var(--text)' }}>
                     {activeFile.status === 'missing_deps' ? 'Missing dependencies'
                       : activeFile.status === 'error' ? 'Compilation error' : 'Not compiled'}
@@ -953,6 +1330,16 @@ export default function App() {
               );
             })()}
           </div>
+
+          {/* Waveform panel (circuit view only) */}
+          {waveOpen && viewMode === 'circuit' && activeFile?.circuitJson && (
+            <WaveformPanel
+              getChannels={waveGetChannels}
+              getSample={waveGetSample}
+              resetKey={String(waveEpoch)}
+              onClose={() => setWaveOpen(false)}
+            />
+          )}
         </div>
       </div>
 
@@ -1033,18 +1420,50 @@ export default function App() {
           }}
         />
       )}
+
+      {/* Keyboard Shortcuts Help */}
+      {shortcutsHelpVisible && (
+        <ShortcutsHelpDialog onClose={() => setShortcutsHelpVisible(false)} />
+      )}
+
+      {/* In-app prompt / confirm (replace native dialogs) */}
+      {promptReq && (
+        <PromptDialog
+          title={promptReq.title} label={promptReq.label} defaultValue={promptReq.defaultValue}
+          placeholder={promptReq.placeholder} confirmLabel={promptReq.confirmLabel} validate={promptReq.validate}
+          onAccept={(v) => { promptReq.resolve(v); setPromptReq(null); }}
+          onCancel={() => { promptReq.resolve(null); setPromptReq(null); }}
+        />
+      )}
+      {confirmReq && (
+        <ConfirmDialog
+          title={confirmReq.title} message={confirmReq.message} detail={confirmReq.detail}
+          confirmLabel={confirmReq.confirmLabel} danger={confirmReq.danger}
+          onAccept={() => { confirmReq.resolve(true); setConfirmReq(null); }}
+          onCancel={() => { confirmReq.resolve(false); setConfirmReq(null); }}
+        />
+      )}
+
+      {/* Example Circuits Gallery */}
+      {examplesVisible && (
+        <ExamplesDialog
+          loading={exampleLoading}
+          onClose={() => setExamplesVisible(false)}
+          onOpen={handleOpenExample}
+        />
+      )}
     </div>
   );
 }
 
 /** IDE-style activity bar button */
 function ActivityButton({ icon, label, active, onClick }: {
-  icon: string; label: string; active: boolean; onClick: () => void;
+  icon: ReactNode; label: string; active: boolean; onClick: () => void;
 }) {
   return (
     <button onClick={onClick} title={label} style={{
       width: 38, height: 38, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: '1.15rem', background: active ? 'var(--accent-muted)' : 'transparent',
+      background: active ? 'var(--accent-muted)' : 'transparent',
       border: 'none', borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent',
       cursor: 'pointer', color: active ? 'var(--accent)' : 'var(--text-muted)',
       borderRadius: 0, transition: 'all var(--transition-fast)',

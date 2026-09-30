@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { ChevronRight, ChevronDown, FileText, FolderOpen, ArrowRight } from 'lucide-react';
 import { type FileEntry } from '../store/fileStore';
 import { parseVerilogInstances } from '../lib/verilog';
 
@@ -115,8 +116,8 @@ export default function ModulePanel({
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--menu-hover)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
               >
-                <span style={{ fontSize: '0.69rem', color: 'var(--text-muted)', width: 12 }}>
-                  {isExpanded ? '▾' : '▸'}
+                <span style={{ color: 'var(--text-muted)', width: 14, display: 'inline-flex', alignItems: 'center' }}>
+                  {isExpanded ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
                 </span>
                 <span
                   onClick={(e) => { e.stopPropagation(); onSelectFile(file.id); }}
@@ -132,7 +133,7 @@ export default function ModulePanel({
                   }}
                   title={file.name}
                 >
-                  📄 {file.name}
+                  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FileText size={13} style={{ flexShrink: 0 }} />{file.name}</span>
                 </span>
                 {/* Status badge */}
                 <span
@@ -171,7 +172,7 @@ export default function ModulePanel({
                       }}
                       title={file.filePath}
                     >
-                      📂 {file.filePath}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FolderOpen size={13} style={{ flexShrink: 0 }} />{file.filePath}</span>
                     </div>
                   )}
 
@@ -204,8 +205,8 @@ export default function ModulePanel({
                             >
                               {mod}
                             </code>
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.69rem' }}>
-                              → {file.name}
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.69rem', display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                              <ArrowRight size={11} />{file.name}
                             </span>
                             {file.filePath && file.filePath !== file.name && (
                               <span
@@ -304,7 +305,7 @@ export default function ModulePanel({
                             >
                               <option value="">
                                 {boundFile
-                                  ? `✓ ${boundFile.name}`
+                                  ? `${boundFile.name} (bound)`
                                   : autoMatch
                                   ? `auto: ${autoMatch.name}`
                                   : '-- Select file --'}
@@ -336,7 +337,7 @@ export default function ModulePanel({
                                 }}
                                 title={boundFile.filePath || boundFile.name}
                               >
-                                📂 {boundFile.filePath || boundFile.name}
+                                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FolderOpen size={13} style={{ flexShrink: 0 }} />{boundFile.filePath || boundFile.name}</span>
                               </span>
                             )}
                           </div>
@@ -389,9 +390,9 @@ export default function ModulePanel({
                               </code>
                               <span style={{ color: 'var(--text-muted)', fontSize: '0.69rem' }}>
                                 {boundFile
-                                  ? `→ ${boundFile.name}`
+                                  ? `bound: ${boundFile.name}`
                                   : autoMatch
-                                  ? `→ auto: ${autoMatch.name}`
+                                  ? `auto: ${autoMatch.name}`
                                   : '(unbound)'}
                               </span>
                               {boundFile?.filePath && boundFile.filePath !== boundFile.name && (

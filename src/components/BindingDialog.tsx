@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { ArrowRight, Check } from 'lucide-react';
 import type { FileEntry } from '../store/fileStore';
 import { parseVerilogInstances } from '../lib/verilog';
 
@@ -186,7 +187,7 @@ export default function BindingDialog({
                     }}>
                       {mod}
                     </code>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>→</span>
+                    <span style={{ color: 'var(--text-muted)', display: 'inline-flex' }}><ArrowRight size={14} /></span>
                     <select
                       value={boundFileId || ''}
                       onChange={(e) => handleSelect(mod, e.target.value)}
@@ -213,7 +214,7 @@ export default function BindingDialog({
                     </select>
                     {boundFile && (
                       <span style={{ fontSize: '0.77rem', color: 'var(--success)', whiteSpace: 'nowrap' }}>
-                        ✓ bound
+                        <Check size={12} /> bound
                       </span>
                     )}
                   </div>

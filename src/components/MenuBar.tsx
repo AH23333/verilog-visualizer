@@ -13,8 +13,18 @@ interface MenuBarProps {
   onExportPNG?: () => void;
   onExportJSON?: () => void;
   onExportVerilog?: () => void;
+  onExportNetlist?: () => void;
   onGlobalSearch?: () => void;
   hasCircuit?: boolean;
+  /** Wired-up actions that previously were no-op menu labels */
+  onSave?: () => void;
+  onCompile?: () => void;
+  onUndo?: () => void;
+  onRedo?: () => void;
+  onFind?: () => void;
+  onToggleSidebar?: () => void;
+  onOpenExamples?: () => void;
+  onShowShortcuts?: () => void;
 }
 
 interface MenuState {
@@ -22,7 +32,7 @@ interface MenuState {
   items: { label: string; action: () => void; shortcut?: string }[];
 }
 
-export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFitToWindow, onCreateFile, currentTheme, onExportSVG, onExportPNG, onExportJSON, onExportVerilog, onGlobalSearch, hasCircuit: _hasCircuit }: MenuBarProps) {
+export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFitToWindow, onCreateFile, currentTheme, onExportSVG, onExportPNG, onExportJSON, onExportVerilog, onExportNetlist, onGlobalSearch, hasCircuit: _hasCircuit, onSave, onCompile, onUndo, onRedo, onFind, onToggleSidebar, onOpenExamples, onShowShortcuts }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -47,16 +57,17 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
       items: [
         { label: 'New File...', shortcut: 'Ctrl+N', action: () => { onCreateFile(); setOpenMenu(null); } },
         { label: 'Import Verilog File...', shortcut: 'Ctrl+O', action: () => { onImportFile(); setOpenMenu(null); } },
-        { label: 'Save', shortcut: 'Ctrl+S', action: () => { setOpenMenu(null); } },
-        { label: 'Compile', shortcut: 'F5', action: () => { setOpenMenu(null); } },
+        { label: 'Examples...', action: () => { onOpenExamples?.(); setOpenMenu(null); } },
+        { label: 'Save', shortcut: 'Ctrl+S', action: () => { onSave?.(); setOpenMenu(null); } },
+        { label: 'Compile', shortcut: 'F5', action: () => { onCompile?.(); setOpenMenu(null); } },
       ],
     },
     {
       label: 'Edit',
       items: [
-        { label: 'Undo', shortcut: 'Ctrl+Z', action: () => setOpenMenu(null) },
-        { label: 'Redo', shortcut: 'Ctrl+Y', action: () => setOpenMenu(null) },
-        { label: 'Find / Replace', shortcut: 'Ctrl+F', action: () => setOpenMenu(null) },
+        { label: 'Undo', shortcut: 'Ctrl+Z', action: () => { onUndo?.(); setOpenMenu(null); } },
+        { label: 'Redo', shortcut: 'Ctrl+Y', action: () => { onRedo?.(); setOpenMenu(null); } },
+        { label: 'Find / Replace', shortcut: 'Ctrl+F', action: () => { onFind?.(); setOpenMenu(null); } },
         { label: 'Global Search', shortcut: 'Ctrl+Shift+F', action: () => { onGlobalSearch?.(); setOpenMenu(null); } },
       ],
     },
@@ -67,11 +78,13 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
         { label: 'Export PNG', action: () => { onExportPNG?.(); setOpenMenu(null); } },
         { label: 'Export Circuit JSON', action: () => { onExportJSON?.(); setOpenMenu(null); } },
         { label: 'Export Verilog Source', action: () => { onExportVerilog?.(); setOpenMenu(null); } },
+        { label: 'Export Synthesized Netlist', action: () => { onExportNetlist?.(); setOpenMenu(null); } },
       ],
     },
     {
       label: 'View',
       items: [
+        { label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => { onToggleSidebar?.(); setOpenMenu(null); } },
         { label: 'Reset Zoom', shortcut: 'Ctrl+0', action: () => { onResetZoom(); setOpenMenu(null); } },
         { label: 'Fit to Window', action: () => { onFitToWindow(); setOpenMenu(null); } },
         { label: currentTheme === 'dark' ? 'Switch to Light Theme' : 'Switch to Dark Theme', action: () => { onToggleTheme(); setOpenMenu(null); } },
@@ -88,7 +101,13 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
           const current = settingsStore.getDefaultViewMode();
           settingsStore.setDefaultViewMode(current === 'circuit' ? 'code' : 'circuit');
         }},
-        { label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => setOpenMenu(null) },
+        { label: 'Toggle Sidebar', shortcut: 'Ctrl+B', action: () => { onToggleSidebar?.(); setOpenMenu(null); } },
+      ],
+    },
+    {
+      label: 'Help',
+      items: [
+        { label: 'Keyboard Shortcuts', shortcut: 'Ctrl+/', action: () => { onShowShortcuts?.(); setOpenMenu(null); } },
       ],
     },
   ];
@@ -96,22 +115,19 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
   return (
     <div
       ref={menuRef}
-      className="flex items-center h-[46px] flex-shrink-0 select-none pl-3 gap-2"
-      style={{
-        background: 'var(--menu-bg)',
-        borderBottom: '1px solid var(--border)',
-      }}
+      className="flex items-center h-full flex-shrink-0 select-none gap-0.5"
+      style={{ background: 'transparent' }}
     >
       {menus.map((menu) => (
         <div key={menu.label} className="relative">
           <button
             onClick={() => setOpenMenu(openMenu === menu.label ? null : menu.label)}
             onMouseEnter={() => openMenu !== null && setOpenMenu(menu.label)}
-            className="h-[40px] px-5 border-0 rounded-md cursor-pointer transition-colors"
+            className="h-[26px] px-2.5 border-0 rounded-md cursor-pointer transition-colors"
             style={{
               background: openMenu === menu.label ? 'var(--surface-hover)' : 'transparent',
               color: 'var(--text-secondary)',
-              fontSize: '1.15rem',
+              fontSize: '0.8rem',
               fontWeight: 500,
             }}
           >
@@ -128,15 +144,18 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
                 boxShadow: 'var(--shadow-lg)',
               }}
             >
-              {menu.items.map((item) => (
+              {menu.items.map((item, idx) => (
+                item.label === '---' ? (
+                  <div key={`sep-${idx}`} role="separator" style={{ height: 1, margin: '3px 8px', background: 'var(--border)' }} />
+                ) : (
                 <button
                   key={item.label}
                   onClick={item.action}
-                  className="flex justify-between items-center w-full px-5 py-3.5 border-0 cursor-pointer text-left transition-colors"
+                  className="flex justify-between items-center w-full px-3.5 py-1.5 border-0 cursor-pointer text-left transition-colors"
                   style={{
                     background: 'transparent',
                     color: 'var(--text-secondary)',
-                    fontSize: '1.05rem',
+                    fontSize: '0.85rem',
                   }}
                   onMouseEnter={(e) => {
                     (e.target as HTMLElement).style.background = 'var(--surface)';
@@ -149,11 +168,12 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
                 >
                   <span>{item.label}</span>
                   {item.shortcut && (
-                    <span className="ml-10" style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                    <span className="ml-10" style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>
                       {item.shortcut}
                     </span>
                   )}
                 </button>
+                )
               ))}
             </div>
           )}

@@ -58,6 +58,9 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
       }}
     >
       {items.map((item, i) => (
+        item.label === '---' ? (
+          <div key={i} role="separator" style={{ height: 1, margin: '3px 8px', background: 'var(--border)' }} />
+        ) : (
         <button
           key={i}
           onClick={() => {
@@ -67,13 +70,13 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
             }
           }}
           disabled={item.disabled}
-          className="block w-full px-6 py-3.5 text-left border-0 transition-colors rounded-none"
+          className="block w-full px-3.5 py-1.5 text-left border-0 transition-colors rounded-none"
           style={{
             background: 'transparent',
             color: item.danger ? 'var(--danger)' : item.disabled ? 'var(--text-muted)' : 'var(--text-secondary)',
             cursor: item.disabled ? 'default' : 'pointer',
             opacity: item.disabled ? 0.5 : 1,
-            fontSize: '1.05rem',
+            fontSize: '0.85rem',
           }}
           onMouseEnter={(e) => {
             if (!item.disabled) {
@@ -94,6 +97,7 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
         >
           {item.label}
         </button>
+        )
       ))}
     </div>
   );

@@ -11,6 +11,10 @@ export interface FileEntry {
   filePath?: string;
   content: string;
   circuitJson: Record<string, unknown> | null;
+  /** Synthesized gate-level netlist produced at compile time (not persisted) */
+  netlistVerilog?: string | null;
+  /** Compile-time map: synthesis FS path ('/input_0.v') → real file name (not persisted) */
+  srcFileMap?: Record<string, string> | null;
   importedAt: number;
   status: 'pending' | 'compiled' | 'error' | 'missing_deps';
   errorMessage?: string;
@@ -38,7 +42,7 @@ function loadFilesFromLocalStorage(): FileEntry[] {
     const raw = localStorage.getItem(FILES_STORAGE_KEY);
     if (raw) {
       const data = JSON.parse(raw);
-      return data.map((f: any) => ({ ...f, circuitJson: null, status: 'pending' as const }));
+      return data.map((f: any) => ({ ...f, circuitJson: null, netlistVerilog: null, srcFileMap: null, status: 'pending' as const }));
     }
   } catch {}
   return [];
@@ -56,7 +60,8 @@ function loadFoldersFromLocalStorage(): string[] {
 
 function saveFilesToLocalStorage(files: FileEntry[]): void {
   try {
-    const toSave = files.map(({ circuitJson, ...rest }) => rest);
+    // compile artifacts (circuitJson / netlist / srcFileMap) are session-only, not persisted
+    const toSave = files.map(({ circuitJson, netlistVerilog, srcFileMap, ...rest }) => rest);
     localStorage.setItem(FILES_STORAGE_KEY, JSON.stringify(toSave));
   } catch {}
 }

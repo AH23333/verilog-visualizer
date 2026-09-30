@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
+import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Pencil, Plus, FolderPlus, RefreshCw, PanelLeftClose, Check } from 'lucide-react';
 import type { FileEntry } from '../store/fileStore';
 
 interface SidebarProps {
@@ -304,15 +305,15 @@ export default function Sidebar({
               }
             }}
           >
-            <span style={{ marginRight: 4, fontSize: '0.62rem', width: 10, display: 'inline-block' }}>
-              {isCollapsed ? '▸' : '▾'}
+            <span style={{ marginRight: 4, width: 14, display: 'inline-flex', alignItems: 'center' }}>
+              {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
             </span>
-            <span style={{ marginRight: 4 }}>{isCollapsed ? '📁' : '📂'}</span>
+            <span style={{ marginRight: 4, display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)' }}>{isCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}</span>
             <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {node.name}
             </span>
             {allChildrenSelected && (
-              <span style={{ fontSize: '0.65rem', color: 'var(--accent)', marginLeft: 4 }}>✓</span>
+              <span style={{ color: 'var(--accent)', marginLeft: 4, display: 'inline-flex' }}><Check size={12} /></span>
             )}
           </div>
         )}
@@ -410,7 +411,7 @@ export default function Sidebar({
           }}
         />
         {/* File icon */}
-        <span style={{ flexShrink: 0 }}>📄</span>
+        <span style={{ flexShrink: 0, display: 'inline-flex', color: 'var(--text-muted)' }}><FileText size={14} /></span>
         {/* File name */}
         {isRenaming ? (
           <input
@@ -460,7 +461,7 @@ export default function Sidebar({
             flexShrink: 0,
           }}
         >
-          ✎
+          <Pencil size={12} />
         </button>
       </div>
     );
@@ -492,7 +493,7 @@ export default function Sidebar({
             padding: 4,
           }}
         >
-          ▸
+          <ChevronRight size={14} />
         </button>
       </div>
     );
@@ -517,7 +518,7 @@ export default function Sidebar({
             onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
             onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
-            +
+            <Plus size={14} />
           </button>
           <button
             onClick={onCreateFile}
@@ -527,7 +528,7 @@ export default function Sidebar({
             onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
             onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
-            📄
+            <FileText size={14} />
           </button>
           <button
             onClick={onCreateFolder}
@@ -537,7 +538,7 @@ export default function Sidebar({
             onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
             onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
-            📁
+            <FolderPlus size={14} />
           </button>
           <button
             onClick={onRefresh}
@@ -547,7 +548,7 @@ export default function Sidebar({
             onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
             onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
-            ⟳
+            <RefreshCw size={13} />
           </button>
           <button
             onClick={onToggleCollapse}
@@ -557,7 +558,7 @@ export default function Sidebar({
             onMouseEnter={(e) => { (e.target as HTMLElement).style.background = 'var(--surface-hover)'; (e.target as HTMLElement).style.color = 'var(--text)'; }}
             onMouseLeave={(e) => { (e.target as HTMLElement).style.background = 'transparent'; (e.target as HTMLElement).style.color = 'var(--text-secondary)'; }}
           >
-            −
+            <PanelLeftClose size={14} />
           </button>
         </div>
       </div>

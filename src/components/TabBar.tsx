@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, type ReactNode } from 'react';
 
 interface TabBarProps {
   openFiles: string[];
@@ -8,6 +8,8 @@ interface TabBarProps {
   onSelectTab: (fileId: string) => void;
   onCloseTab: (fileId: string) => void;
   onReorderTabs: (fileIds: string[]) => void;
+  /** Right-aligned actions area (VS Code-style editor toolbar living in the tab row) */
+  rightSlot?: ReactNode;
 }
 
 export default function TabBar({
@@ -18,6 +20,7 @@ export default function TabBar({
   onSelectTab,
   onCloseTab,
   onReorderTabs,
+  rightSlot,
 }: TabBarProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -61,7 +64,7 @@ export default function TabBar({
     dragRef.current = null;
   }, []);
 
-  if (openFiles.length === 0) return null;
+  if (openFiles.length === 0 && !rightSlot) return null;
 
   return (
     <div
@@ -135,7 +138,7 @@ export default function TabBar({
             }}
           >
             <span style={{ fontWeight: isActive ? 600 : 400 }}>
-              {isDirty ? '● ' : ''}{shortName}
+              {isDirty ? <span style={{ width: 7, height: 7, borderRadius: '50%', background: 'var(--accent)', display: 'inline-block', marginRight: 6, verticalAlign: 'middle' }} /> : ''}{shortName}
             </span>
             <button
               onClick={(e) => {
@@ -172,6 +175,13 @@ export default function TabBar({
           </div>
         );
       })}
+      {rightSlot && (
+        <div style={{
+          marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10,
+          padding: '0 10px', flexShrink: 0,
+          position: 'sticky', right: 0, background: 'var(--toolbar-bg)',
+        }}>{rightSlot}</div>
+      )}
     </div>
   );
 }

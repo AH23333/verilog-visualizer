@@ -1,4 +1,5 @@
 // Hierarchy viewer - shows module dependency tree with proper tree lines
+import { ChevronDown, Circle } from 'lucide-react';
 
 import { useMemo } from 'react';
 import type { FileEntry } from '../store/fileStore';
@@ -241,9 +242,9 @@ function TreeNode({
         <span style={{
           width: 16, textAlign: 'center', flexShrink: 0,
           color: hasChildren ? 'var(--text-secondary)' : 'var(--text-muted)',
-          fontSize: '0.7rem',
+          display: 'inline-flex', alignItems: 'center',
         }}>
-          {hasChildren ? '▾' : '○'}
+          {hasChildren ? <ChevronDown size={12} /> : <Circle size={12} />}
         </span>
 
         {/* Module icon */}
