@@ -747,7 +747,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       style={{
         width: '100%',
         height: '100%',
-        background: 'var(--canvas-bg)',
+        backgroundColor: 'var(--canvas-bg)',
         backgroundImage: theme === 'dark'
           ? 'linear-gradient(rgba(255,255,255,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.04) 1px, transparent 1px)'
           : 'linear-gradient(rgba(0,0,0,0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(0,0,0,0.06) 1px, transparent 1px)',

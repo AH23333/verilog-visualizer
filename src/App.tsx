@@ -1426,9 +1426,12 @@ export default function App() {
                     <div
                       onMouseDown={onSplitDividerMouseDown}
                       style={{
-                        width: 4, cursor: 'col-resize', flexShrink: 0,
+                        width: 5, cursor: 'col-resize', flexShrink: 0,
                         background: 'var(--border-subtle)',
+                        position: 'relative', zIndex: 10,
                       }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--border-subtle)'; }}
                     />
                     <div style={{ flex: 1, overflow: 'hidden' }}>
                       {activeFile.circuitJson ? (

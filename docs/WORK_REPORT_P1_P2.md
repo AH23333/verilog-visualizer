@@ -156,6 +156,30 @@ OutputPanel 已具备高度拖拽（`handleDragStart` + localStorage 持久化 `
 
 ---
 
+## 七、第三轮：深色修复 + 分窗 splitter + Quartus 风格（2026-10-01，commit da14b87）
+
+### 1. 子电路下钻深色背景白（根因修复）
+- **根因**：elkjs 异步布局完成后会重建 SVG DOM，新 paper 节点的白色背景覆盖了主题色；JS 运行时 `paper.style.backgroundColor` 在重建后丢失
+- **修复**：`index.css` 加 `.joint-paper, .joint-paper svg { background: transparent !important; }`，让 wrapper 的 `--canvas-bg` + 网格背景直接透出来，不再依赖 JS 时机
+- 截图验证：下钻后电路区保持深色 + 网格，无白色 slab
+
+### 2. 分窗可拖拽 splitter
+- App 加 `splitRatio` state（0.25–0.75），split 模式左右两栏之间加 4px `col-resize` divider
+- mousedown 记录起始位置，window mousemove 实时算比例，mouseup 写 localStorage `verilog-viz-split-ratio`
+- 默认 50%，拖拽范围限制 25%–75%
+
+### 3. Quartus 8 风格渲染增强
+- **图元**：所有 cell `rx=0 ry=0` 去圆角，1px 细边框
+- **标签**：Consolas/JetBrains Mono 9pt 等宽字体
+- **端口**：3px 小圆点，1px 描边
+- **连线**：1.5px stroke，miter join，butt linecap（直角无圆角）
+- **背景**：paper 透明，wrapper 20px 网格点（暗色 4% 白/亮色 6% 黑）
+- **路由**：displayOn 后遍历 links 清空 vertices 并设 `manhattan` router（padding 8），强制正交
+
+**注**：未从零重写 SVG 渲染器内核（月级工程），在 joint/digitaljs 现有渲染管道上做 CSS+路由层增强达到 Quartus 近似视觉。
+
+---
+
 ## 四、已知遗留（非阻塞）
 
 1. **BusGroup label**：dev13 的 label 仍为 dev13（无 net 属性，getConnectedLinks 反查未命中）——但总线上已有 "count" 标签，视觉冗余可接受
