@@ -1053,7 +1053,67 @@ export default function App() {
 
   return (
     <div className="w-screen h-screen flex flex-col bg-[var(--bg)]">
-      {/* Main area — menu bar is fused into the unified title row below (VS Code style) */}
+      {/* Top title bar — full width, always on top (VS Code style) */}
+      <div
+        data-tauri-drag-region
+        style={{
+        display: 'flex', alignItems: 'center', gap: 10, height: 40, flexShrink: 0,
+        padding: '0 0 0 4px',
+        background: 'var(--toolbar-bg)', borderBottom: '1px solid var(--border)',
+      }}>
+        <MenuBar
+          onImportFile={handleImportFile}
+          onToggleTheme={handleToggleTheme}
+          onResetZoom={() => canvasRef.current?.resetZoom()}
+          onFitToWindow={() => canvasRef.current?.fitToWindow()}
+          onCreateFile={handleCreateFile}
+          currentTheme={theme}
+          onExportSVG={handleExportSVG}
+          onExportPNG={handleExportPNG}
+          onExportJSON={handleExportJSON}
+          onExportVerilog={handleExportVerilog}
+          onExportNetlist={handleExportNetlist}
+          onGlobalSearch={() => setSearchDialogVisible(true)}
+          onSave={handleSave}
+          onCompile={handleCompile}
+          onUndo={() => codeEditorRef.current?.undo()}
+          onRedo={() => codeEditorRef.current?.redo()}
+          onFind={() => codeEditorRef.current?.openFind()}
+          onToggleSidebar={handleToggleSidebar}
+          onOpenExamples={() => setExamplesVisible(true)}
+          onShowShortcuts={() => setShortcutsHelpVisible(true)}
+          hasCircuit={activeFile?.circuitJson != null}
+        />
+        <div style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0 }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '0 1 auto' }}>
+          <div
+            className={status === 'compiling' ? 'status-compiling-dot' : ''}
+            style={{
+              width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+              background: statusColor,
+              boxShadow: status === 'done' ? '0 0 6px rgba(34, 197, 94, 0.4)' : 'none',
+            }}
+          />
+          <span style={{
+            fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240,
+          }}>
+            {activeFile ? activeFile.name : 'Verilog Visualizer'}
+          </span>
+          {message && (
+            <span style={{
+              fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
+              overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            }}>
+              {message}
+            </span>
+          )}
+        </div>
+        <div data-tauri-drag-region style={{ flex: 1, alignSelf: 'stretch' }} />
+        <WindowControls />
+      </div>
+
+      {/* Body row: activity bar + sidebar + main content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Activity Bar */}
         <div className="w-[48px] flex flex-col items-center pt-2 pb-2 gap-1 flex-shrink-0"
@@ -1136,67 +1196,6 @@ export default function App() {
 
         {/* Main Content Area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-          {/* Unified title row: menu + file identity + sim controls + actions (replaces separate menubar/toolbar).
-              data-tauri-drag-region: frameless-window drag (no-op in plain browser). */}
-          <div
-            data-tauri-drag-region
-            style={{
-            display: 'flex', alignItems: 'center', gap: 10, height: 40, flexShrink: 0,
-            padding: '0 0 0 4px',
-            background: 'var(--toolbar-bg)', borderBottom: '1px solid var(--border)',
-          }}>
-            <MenuBar
-              onImportFile={handleImportFile}
-              onToggleTheme={handleToggleTheme}
-              onResetZoom={() => canvasRef.current?.resetZoom()}
-              onFitToWindow={() => canvasRef.current?.fitToWindow()}
-              onCreateFile={handleCreateFile}
-              currentTheme={theme}
-              onExportSVG={handleExportSVG}
-              onExportPNG={handleExportPNG}
-              onExportJSON={handleExportJSON}
-              onExportVerilog={handleExportVerilog}
-              onExportNetlist={handleExportNetlist}
-              onGlobalSearch={() => setSearchDialogVisible(true)}
-              onSave={handleSave}
-              onCompile={handleCompile}
-              onUndo={() => codeEditorRef.current?.undo()}
-              onRedo={() => codeEditorRef.current?.redo()}
-              onFind={() => codeEditorRef.current?.openFind()}
-              onToggleSidebar={handleToggleSidebar}
-              onOpenExamples={() => setExamplesVisible(true)}
-              onShowShortcuts={() => setShortcutsHelpVisible(true)}
-              hasCircuit={activeFile?.circuitJson != null}
-            />
-            <div style={{ width: 1, height: 18, background: 'var(--border)', flexShrink: 0 }} />
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0, flex: '0 1 auto' }}>
-              <div
-                className={status === 'compiling' ? 'status-compiling-dot' : ''}
-                style={{
-                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                  background: statusColor,
-                  boxShadow: status === 'done' ? '0 0 6px rgba(34, 197, 94, 0.4)' : 'none',
-                }}
-              />
-              <span style={{
-                fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text)',
-                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 240,
-              }}>
-                {activeFile ? activeFile.name : 'Verilog Visualizer'}
-              </span>
-              {message && (
-                <span style={{
-                  fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
-                  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                }}>
-                  {message}
-                </span>
-              )}
-            </div>
-            <div data-tauri-drag-region style={{ flex: 1, alignSelf: 'stretch' }} />
-            <WindowControls />
-          </div>
-
           {/* Tab Bar */}
           <TabBar
             openFiles={openFiles}
