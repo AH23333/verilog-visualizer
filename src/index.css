@@ -532,6 +532,33 @@ code[class*="language-"] {
 .joint-paper svg rect:first-child {
   fill: transparent !important;
 }
+
+/* ============================================================
+   DigitalJS cell inspector popup (hover cell -> magnifier -> click).
+   This overlay creates its own paper outside our canvas wrapper — give it
+   the dark menu bg so it doesn't show as a white slab.
+   ============================================================ */
+.joint-inspector,
+.joint-cell-inspector,
+.joint-popup,
+.djs-inspector {
+  background: var(--menu-bg) !important;
+}
+.joint-inspector .joint-paper,
+.joint-cell-inspector .joint-paper,
+.joint-popup .joint-paper,
+.djs-inspector .joint-paper,
+.joint-inspector svg,
+.joint-cell-inspector svg,
+.joint-popup svg {
+  background: var(--menu-bg) !important;
+}
+/* Magnifier button itself */
+.joint-magnify,
+.djs-magnify {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
 /* Link paths — make them crisper (Quartus-ish): 1.5px, no rounded corners */
 .joint-paper .connection-wrap,
 .joint-paper .connection {
