@@ -537,6 +537,18 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
         }
       } catch { /* cosmetic only */ }
 
+      // Bus visual: multi-bit wires get thicker stroke so they stand out
+      // from 1-bit signals (Quartus-style: bus = thick line).
+      try {
+        for (const lk of paper.model.getLinks()) {
+          const bits = lk.get('bits');
+          const width = Array.isArray(bits) ? bits.length : (bits > 1 ? bits : 1);
+          if (width > 1) {
+            lk.attr('line/stroke-width', 2.5);
+          }
+        }
+      } catch { /* cosmetic */ }
+
       // Wire value overlay: append live signal value to each named link's label.
       // Lightweight: only writes to joint model when the displayed value changes.
       const valueLabelTimer = setInterval(() => {
