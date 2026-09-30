@@ -690,7 +690,10 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
         try { circuitRef.current.shutdown?.(); } catch {}
         circuitRef.current = null;
       }
-      paperRef.current = null;
+      if (paperRef.current) {
+        try { paperRef.current.remove?.(); } catch {}
+        paperRef.current = null;
+      }
     };
   }, [circuitJson, onError, fitToWindow, applyThemeToPaper, applyFixed, clearSourceHighlight]);
 
