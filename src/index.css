@@ -513,3 +513,52 @@ code[class*="language-"] {
 [data-theme="light"] .token.variable {
   color: #d97706;
 }
+
+/* ============================================================
+   Joint.js / digitaljs paper — force transparent so the wrapper's
+   --canvas-bg + dot-grid show through. Without this, drilling into a
+   subcircuit leaves an opaque white slab on dark theme.
+   ============================================================ */
+.joint-paper,
+.joint-paper svg,
+.djs,
+.djs svg {
+  background: transparent !important;
+}
+/* Link paths — make them crisper (Quartus-ish): 1.5px, no rounded corners */
+.joint-paper .connection-wrap,
+.joint-paper .connection {
+  stroke-width: 1.5;
+}
+.joint-paper .connection:not(.link-tools) {
+  stroke-linejoin: miter;
+  stroke-linecap: butt;
+}
+
+/* ============================================================
+   Quartus-style schematic look: sharp rectangles, monospace labels,
+   thin 1px borders, small port dots.
+   ============================================================ */
+.joint-paper [model-type="basic.Rect"],
+.joint-paper [model-type="standard.Element"] .body,
+.joint-paper [class*="body"] {
+  rx: 0 !important;
+  ry: 0 !important;
+  stroke-width: 1px !important;
+}
+.joint-paper text {
+  font-family: 'Consolas', 'JetBrains Mono', monospace !important;
+  font-size: 9pt !important;
+}
+/* Port dots — small filled circles */
+.joint-paper .port {
+  r: 3px !important;
+  stroke-width: 1px !important;
+}
+/* Subtle grid already on wrapper; make paper itself transparent so grid shows through */
+.joint-paper {
+  background: transparent !important;
+}
+.joint-paper svg {
+  background: transparent !important;
+}

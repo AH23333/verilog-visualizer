@@ -108,6 +108,11 @@ export default function App() {
   // Waveform panel
   const [waveOpen, setWaveOpen] = useState(false);
   const [inputsOpen, setInputsOpen] = useState(false);
+  // Split-view left pane width fraction (0.25–0.75)
+  const [splitRatio, setSplitRatio] = useState(() => {
+    try { const v = parseFloat(localStorage.getItem('verilog-viz-split-ratio') || '0.5'); return isNaN(v) ? 0.5 : Math.min(0.75, Math.max(0.25, v)); } catch { return 0.5; }
+  });
+  const splitDragRef = useRef<{ startX: number; startRatio: number } | null>(null);
   const [waveEpoch, setWaveEpoch] = useState(0);
   const waveGetChannels = useCallback(() => canvasRef.current?.getWaveChannels() ?? [], []);
   const waveGetSample = useCallback(() => canvasRef.current?.getWaveSample() ?? null, []);
@@ -641,6 +646,29 @@ export default function App() {
       }, 2000);
     }
   }, [activeFileId]);
+
+  // ============ Split-view drag splitter ============
+  const onSplitDividerMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    splitDragRef.current = { startX: e.clientX, startRatio: splitRatio };
+    const onMove = (ev: MouseEvent) => {
+      if (!splitDragRef.current) return;
+      const container = (e.currentTarget as HTMLElement).parentElement;
+      if (!container) return;
+      const rect = container.getBoundingClientRect();
+      const dx = ev.clientX - splitDragRef.current.startX;
+      const next = splitDragRef.current.startRatio + dx / rect.width;
+      setSplitRatio(Math.min(0.75, Math.max(0.25, next)));
+    };
+    const onUp = () => {
+      splitDragRef.current = null;
+      localStorage.setItem('verilog-viz-split-ratio', String(splitRatio));
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [splitRatio]);
 
   // ============ Module Binding ============
 
@@ -1383,7 +1411,7 @@ export default function App() {
               if (viewMode === 'split') {
                 return (
                   <div style={{ display: 'flex', width: '100%', height: '100%' }}>
-                    <div style={{ flex: 1, borderRight: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
+                    <div style={{ width: `${splitRatio * 100}%`, borderRight: '1px solid var(--border-subtle)', overflow: 'hidden' }}>
                       <CodeEditor
                         ref={codeEditorRef}
                         code={activeFile.content}
@@ -1395,6 +1423,13 @@ export default function App() {
                         isCompiling={status === 'compiling'}
                       />
                     </div>
+                    <div
+                      onMouseDown={onSplitDividerMouseDown}
+                      style={{
+                        width: 4, cursor: 'col-resize', flexShrink: 0,
+                        background: 'var(--border-subtle)',
+                      }}
+                    />
                     <div style={{ flex: 1, overflow: 'hidden' }}>
                       {activeFile.circuitJson ? (
                         <Canvas
