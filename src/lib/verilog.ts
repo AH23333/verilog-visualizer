@@ -25,6 +25,8 @@ export interface CompileResult {
   yosysLog: string;
   /** Synthesized gate-level netlist from `write_verilog` (null if unavailable) */
   netlistVerilog: string | null;
+  /** Raw yosys write_json output (cached for future signal-tracing / goto-def features) */
+  yosysJson: any;
   /** Maps the synthesis FS path (e.g. '/input_0.v') used inside source_positions back to the real file name */
   srcFileMap: Record<string, string>;
 }
@@ -856,7 +858,7 @@ export async function compileVerilog(
   io_ui(digitaljsCircuit);
   normalizeIoLabels(digitaljsCircuit);
   renameAutoCells(digitaljsCircuit);
-  return { circuitJson: digitaljsCircuit, yosysLog: fullLog, netlistVerilog, srcFileMap };
+  return { circuitJson: digitaljsCircuit, yosysLog: fullLog, netlistVerilog, yosysJson: yosysOutput, srcFileMap };
 }
 
 /**
