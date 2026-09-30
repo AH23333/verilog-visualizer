@@ -128,42 +128,31 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     wrapper.style.transformOrigin = '0 0';
   }, []);
 
-  // Apply theme to the DigitalJS paper element background
+  // Apply theme to the DigitalJS paper element background.
+  // We force paper/SVG transparent so the container's --canvas-bg + dot-grid
+  // show through — no opaque white slab after subcircuit drill-down.
   const applyThemeToPaper = useCallback(() => {
     const wrapper = wrapperRef.current;
     if (!wrapper) return;
-    // Try .joint-paper first, then .djs (DigitalJS adds this class), then any SVG
     const paper =
       (wrapper.querySelector('.joint-paper') as HTMLElement | null) ||
       (wrapper.querySelector('.djs') as HTMLElement | null) ||
       (wrapper.querySelector('svg') as HTMLElement | null);
-    if (!paper) return;
-
-    // Read the theme token instead of hardcoding — the old '#ffffff' light value
-    // made the paper a white slab floating on the #fafafa canvas (visible seam).
-    const bgColor = getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim()
-      || (theme === 'dark' ? '#0d0d13' : '#fafafa');
-    paper.style.backgroundColor = bgColor;
-    paper.style.setProperty('background-color', bgColor, 'important');
-
-    // Also force the inner SVG (joint paper root) to match — elk async re-render
-    // can leave a white SVG slab behind the transparent .joint-paper container.
+    if (paper) {
+      paper.style.backgroundColor = 'transparent';
+      paper.style.setProperty('background-color', 'transparent', 'important');
+    }
     const svg = wrapper.querySelector('svg') as SVGSVGElement | null;
     if (svg) {
-      svg.style.backgroundColor = bgColor;
-      svg.style.setProperty('background-color', bgColor, 'important');
+      svg.style.backgroundColor = 'transparent';
+      svg.style.setProperty('background-color', 'transparent', 'important');
     }
-
-    // Also set the wrapper background as fallback
-    wrapper.style.backgroundColor = bgColor;
-
-    // Toggle theme classes for potential future use
     if (theme === 'dark') {
-      paper.classList.add('joint-theme-dark');
-      paper.classList.remove('joint-theme-default');
+      paper?.classList.add('joint-theme-dark');
+      paper?.classList.remove('joint-theme-default');
     } else {
-      paper.classList.add('joint-theme-default');
-      paper.classList.remove('joint-theme-dark');
+      paper?.classList.add('joint-theme-default');
+      paper?.classList.remove('joint-theme-dark');
     }
   }, [theme]);
 

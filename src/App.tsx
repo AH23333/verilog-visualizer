@@ -650,19 +650,22 @@ export default function App() {
   // ============ Split-view drag splitter ============
   const onSplitDividerMouseDown = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
-    splitDragRef.current = { startX: e.clientX, startRatio: splitRatio };
+    const container = e.currentTarget.parentElement;
+    if (!container) return;
+    const startX = e.clientX;
+    const startRatio = splitRatio;
+    splitDragRef.current = { startX, startRatio };
     const onMove = (ev: MouseEvent) => {
       if (!splitDragRef.current) return;
-      const container = (e.currentTarget as HTMLElement).parentElement;
-      if (!container) return;
       const rect = container.getBoundingClientRect();
       const dx = ev.clientX - splitDragRef.current.startX;
       const next = splitDragRef.current.startRatio + dx / rect.width;
       setSplitRatio(Math.min(0.75, Math.max(0.25, next)));
     };
     const onUp = () => {
+      const finalRatio = splitDragRef.current?.startRatio ?? startRatio;
       splitDragRef.current = null;
-      localStorage.setItem('verilog-viz-split-ratio', String(splitRatio));
+      localStorage.setItem('verilog-viz-split-ratio', String(finalRatio));
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
     };

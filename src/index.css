@@ -515,15 +515,22 @@ code[class*="language-"] {
 }
 
 /* ============================================================
-   Joint.js / digitaljs paper — force transparent so the wrapper's
+   Joint.js / digitaljs paper — force transparent so the container's
    --canvas-bg + dot-grid show through. Without this, drilling into a
    subcircuit leaves an opaque white slab on dark theme.
    ============================================================ */
 .joint-paper,
 .joint-paper svg,
 .djs,
-.djs svg {
+.djs svg,
+.joint-paper .joint-viewport,
+.joint-paper .joint-scroller {
   background: transparent !important;
+  background-color: transparent !important;
+}
+/* Kill any white fill rect joint may paint as paper background */
+.joint-paper svg rect:first-child {
+  fill: transparent !important;
 }
 /* Link paths — make them crisper (Quartus-ish): 1.5px, no rounded corners */
 .joint-paper .connection-wrap,
