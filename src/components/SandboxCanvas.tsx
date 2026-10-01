@@ -31,19 +31,18 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
       if (!paper) { console.warn('[sandbox] no paper'); return; }
       const digitaljs = (window as any).digitaljs;
       const cells = digitaljs?.cells;
-      console.log('[sandbox] cells namespace:', Object.keys(cells || {}).slice(0, 20));
       const CellClass = cells?.[type];
-      if (!CellClass) { console.warn('[sandbox] unknown cell type:', type, 'available:', Object.keys(cells||{}).slice(0,30)); return; }
+      if (!CellClass) { console.warn('[sandbox] unknown cell type:', type); return; }
       try {
         const cell = new CellClass({ bits: 1 });
+        // Fixed position with jitter — avoid paper.scale()/translate() API mismatch
         const rect = wrapperRef.current!.getBoundingClientRect();
-        const sx = paper.scale();
-        const tx = paper.translate();
-        const cx = (rect.width / 2 - tx.tx) / sx + (Math.random() - 0.5) * 100;
-        const cy = (rect.height / 2 - tx.ty) / sx + (Math.random() - 0.5) * 100;
-        cell.setLayoutPosition({ x: cx, y: cy, width: cell.getLayoutSize().width, height: cell.getLayoutSize().height });
+        const cx = rect.width / 2 + (Math.random() - 0.5) * 200;
+        const cy = rect.height / 2 + (Math.random() - 0.5) * 200;
+        const sz = cell.getLayoutSize();
+        cell.setLayoutPosition({ x: cx, y: cy, width: sz.width, height: sz.height });
         paper.model.addCell(cell);
-        console.log('[sandbox] added', type, 'at', cx, cy, 'total cells:', paper.model.getCells().length);
+        console.log('[sandbox] added', type, 'at', cx, cy, 'total:', paper.model.getCells().length);
       } catch (e) { console.error('[sandbox] addCell failed:', e); }
     },
     saveCurrent: () => {
@@ -81,6 +80,7 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
     const paper = circuit.displayOn(wrapper);
     paperRef.current = paper;
     paper.fixed(false);
+    paper.unfreeze();
 
     // Load active file's graph
     if (activeFile && activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
