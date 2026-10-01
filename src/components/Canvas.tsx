@@ -506,26 +506,12 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       const paper = circuit.displayOn(wrapper);
       paperRef.current = paper;
 
-      // Force orthogonal (right-angle) routing on every link.
-      // Use 'orthogonal' router (not 'manhattan') — manhattan generates little
-      // loops when two ports are on the same row and close together. Orthogonal
-      // picks a clean 2-bend path without detours.
+      // Keep elkjs-computed vertices (they already avoid overlaps) but force
+      // miter joints via CSS. Don't clear vertices — that makes the orthogonal
+      // router recompute paths and causes wire overlaps.
       try {
         paper.options = paper.options || {};
         paper.options.defaultRouter = { name: 'orthogonal', args: { padding: 20, step: 15 } };
-        const forceRoute = () => {
-          for (const lk of paper.model.getLinks()) {
-            try {
-              lk.set('vertices', []);
-              lk.set('router', { name: 'orthogonal', args: { padding: 20, step: 15 } });
-            } catch {}
-          }
-        };
-        forceRoute();
-        let routeCount = 0;
-        paper.on?.('render:done', () => {
-          if (routeCount++ < 3) requestAnimationFrame(forceRoute);
-        });
       } catch { /* router cosmetic */ }
 
       // P1-3: rewrite auto-id cell labels (dev0/dev13) to human port/net names.
