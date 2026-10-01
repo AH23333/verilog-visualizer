@@ -1055,15 +1055,6 @@ export default function App() {
 
   const hasMissingDeps = files.some((f) => f.status === 'missing_deps');
 
-  // Sandbox mode is a completely independent system — no MenuBar/ActivityBar/Sidebar.
-  if (viewMode === 'sandbox') {
-    return (
-      <div className="w-screen h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
-        <SandboxCanvas ref={sandboxRef} theme={theme} />
-      </div>
-    );
-  }
-
   return (
     <div className="w-screen h-screen flex flex-col bg-[var(--bg)]">
       {/* Top title bar — full width, always on top (VS Code style) */}
@@ -1165,8 +1156,8 @@ export default function App() {
           />
         </div>
 
-        {/* Left Panel */}
-        {!sidebarCollapsed && (
+        {/* Left Panel — hidden in sandbox mode */}
+        {!sidebarCollapsed && viewMode !== 'sandbox' && (
           <div className="flex-shrink-0 relative flex flex-col"
             style={{
               width: sidebarWidth, minWidth: 180,
@@ -1213,6 +1204,9 @@ export default function App() {
 
         {/* Main Content Area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+          {viewMode === 'sandbox' ? (
+            <SandboxCanvas ref={sandboxRef} theme={theme} />
+          ) : (<>
           {/* Tab Bar */}
           <TabBar
             openFiles={openFiles}
@@ -1563,6 +1557,7 @@ export default function App() {
           {inputsOpen && viewMode === 'circuit' && activeFile?.circuitJson && (
             <InputPanel canvasRef={canvasRef} open={inputsOpen} onClose={() => setInputsOpen(false)} />
           )}
+          </>)}
         </div>
       </div>
 
