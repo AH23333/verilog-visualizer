@@ -412,3 +412,33 @@ facts（复跑采集）：
 
 ### verdict
 **R8 功能判定：PASS（4/4 全绿，两条阻塞回归均修复，开发方自报可信）。** 残留卫生/可移植债务不阻塞功能验收，列入后续清理提交。
+
+## R8.7 收官复检（开发 AI 提交 `cd3c48e`）—— R8 全项闭环
+
+> 复检方式：本机独立核查 `.gitignore`/git 跟踪状态 + 重跑 `tests/r7-p1a-wire.cjs`（收紧后 P1a-2 断言）。
+> 结论先行：**R8 三项残留全部收口，复跑仍 4/4 PASS；P1-a 沙盒连线+删除功能可正式收官，放行进入 P2。**
+
+### 三项残留核对
+
+| 残留项（R8.6） | 开发方动作 | 质检方核查 | 判定 |
+|---|---|---|---|
+| 1. 卫生：`.tmpbuild` PNG 仍被跟踪 | `.gitignore` 加 `.tmpbuild/` + `git rm --cached` 残留 PNG | `.gitignore:51` 含 `.tmpbuild/`；`git ls-files` 不再含该 PNG；`git check-ignore` 命中；`git status` 干净 | ✅ |
+| 2. 可移植：playwright-core 兄弟目录回退 | 保留回退（声明需 `pnpm add -D playwright-core` 才彻底可移植，留作后续） | 现状未变；本机回退仍可用，复跑通过 | ⚠️ 已知债务，非阻塞，留 P2 起步前清理 |
+| 3. P1a-2 断言偏弱 | 显式判 `#03c03c`（含 `rgb(3,192,60)` 两种写法） | 读 `tests/r7-p1a-wire.cjs:133` 确认 | ✅ |
+
+### 复跑结果（收紧断言后，独立代跑）
+
+```
+[4/6] ... magnets: [{port:"out",val:"true"},{port:"in",val:"passive"}]
+  PASS  P1a-1: model links >= 1 — count=1
+       lamp fill: before="#fc7c68" after="#03c03c"
+  PASS  P1a-2: Lamp lights up — fill=#03c03c   ← 收紧后仍 PASS，证明 Lamp 真点亮绿
+  PASS  P1a-3: 0 native dialogs
+  PASS  P1a-4: 0 TypeErrors — total=0
+[6/6] DONE: 4 pass, 0 fail
+```
+→ 收紧后的 P1a-2（必须 `#03c03c`）仍 PASS，彻底排除「值有变化但非点亮」的歧义，坐实 R8.4-2。
+
+### verdict
+**R8 全项闭环：PASS。P1-a 沙盒「连线（magnet 拖拽）+ 选择/删除（Delete 键）」功能全绿收官，放行进入 P2。**
+唯一留债：playwright-core 尚未纳入 devDependency（干净克隆需手动 `pnpm add -D` 或装回退目录），建议 P2 起步前补齐以保 CI 可移植。
