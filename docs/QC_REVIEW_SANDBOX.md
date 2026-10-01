@@ -369,3 +369,46 @@ L74-87 磁点查找同样用 `[magnet="true"]` → 永远找不到 Lamp.in → �
 5. 提交推送、回报 PASS 证据（含 lamp 点亮截图）；质检方复跑同脚本 + 主流程三件套。
 
 > 质检方已就绪：本机会话可**独立代跑**（playwright-core + Edge x86 均可用），验收将按上述模型层断言与真实点击复核。
+
+## R8.6 复检结论（质检方独立代跑 `49b832a`）—— R8 全绿，两条阻塞确认关闭
+
+> 复检方式：本机**独立代跑** `tests/r7-p1a-wire.cjs`（playwright-core + Edge x86）+ 追加决定性 hardening 脚本（断言 link 真实 source/target 端口）。
+> 结论先行：**R8 四项全绿，上轮两条阻塞均已修复；开发方自报与质检方复跑一致（本次无虚假 PASS，区别于 a1c85ee）。**
+
+### 复跑结果（质检方独立执行 `node tests/r7-p1a-wire.cjs`）
+
+| 用例 | 开发方自报 | 质检方复跑 | 判定 |
+|---|---|---|---|
+| P1a-1 model links ≥ 1 | ✅ count=1 | ✅ count=1 | 真连线 |
+| P1a-2 信号传播变色 | ✅ #fc7c68→#03c03c | ✅ #fc7c68→#03c03c | 真传播 |
+| P1a-3 0 原生弹窗 | ✅ | ✅ | 属实 |
+| P1a-4 0 TypeError | ✅ | ✅（total=0） | 属实 |
+
+facts（复跑采集）：
+- `magnets = [{port:"out",val:"true"},{port:"in",val:"passive"}]` —— **passive 输入端口已被接受为目标**（阻塞 1 修复实证）
+- `linkCount = 1`
+- `lampFill before=#fc7c68 after=#03c03c`
+
+### 决定性 hardening（关闭 R8.3 根因）
+
+追加脚本在拖线后直接读 `window.__sandboxPaper.model.getLinks()[0]` 的 source/target：
+```
+{ count:1, srcId:Button, srcPort:"out", tgtId:Lamp, tgtPort:"in", selfLink:false, typeErrors:0 }
+```
+→ 证明连接是**真实的 Button.out → Lamp.in**，非自连/零长/端口内引线；R8.3「只能连 out→out、连不进输入」的根因彻底关闭。
+
+### R8.5 指令执行核对
+
+| 指令 | 判定 |
+|---|---|
+| 1. 修 magnet 匹配回归（非 false 即磁点） | ✅ `SandboxCanvas.tsx:128` `magnetVal !== 'false'`；复跑实证 in/passive 可连 |
+| 2. 修验收脚本（模型层断言 + 非 false + 显式点亮） | ⚠️ 模型层断言 ✅、非 false ✅；但 P1a-2 仍仅判「值变化」未显式判 `#03c03c`（功能已实证点亮，断言口径偏弱，建议收紧） |
+| 3. 真实指针点击 + playwright-core 可移植 | ⚠️ 真实点击 ✅；playwright-core 仍用兄弟目录 `../.tmpbuild/node_modules` 回退（R8.4-3 未改，干净克隆不可移植） |
+
+### 残留非阻塞项（建议同仓后续提交清理）
+
+1. **仓库卫生**：`.tmpbuild/r7-p1a-final.png`（32KB 二进制）仍被跟踪提交；上轮清理指令删了 `r7-out.txt`/`r7-out2.txt` 但 PNG 残留。根因：`.gitignore` 未忽略 `.tmpbuild/`。建议 `git rm --cached .tmpbuild/r7-p1a-final.png` 并在 `.gitignore` 追加 `.tmpbuild/`。
+2. **可移植性**：playwright-core 应改为项目 devDependency（脚本内回退已具备，但干净克隆仍缺包）。
+
+### verdict
+**R8 功能判定：PASS（4/4 全绿，两条阻塞回归均修复，开发方自报可信）。** 残留卫生/可移植债务不阻塞功能验收，列入后续清理提交。
