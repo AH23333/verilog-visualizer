@@ -79,6 +79,9 @@ function SandboxCanvas({ theme }: Props) {
     const paper = circuit.displayOn(wrapper);
     paperRef.current = paper;
     paper.options.interactive = false; // we handle drag manually
+    // Reset paper view — digitaljs may auto-fit on empty model
+    paper.scale(1);
+    paper.translate(0, 0);
 
     // Load active file's graph
     if (activeFile && activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
@@ -114,11 +117,18 @@ function SandboxCanvas({ theme }: Props) {
       document.addEventListener('mouseup', onUp);
     });
 
-    // Size paper
-    const resize = () => paper.setDimensions(wrapper.clientWidth, wrapper.clientHeight);
+    // Size paper — use parent (canvas area) dimensions directly
+    const resize = () => {
+      const parent = wrapper.parentElement!;
+      const w = parent.clientWidth;
+      const h = parent.clientHeight;
+      paper.setDimensions(w, h);
+    };
     resize();
+    requestAnimationFrame(resize);
+    setTimeout(resize, 200);
     const ro = new ResizeObserver(resize);
-    ro.observe(wrapper);
+    ro.observe(wrapper.parentElement!);
 
     wrapper.style.backgroundColor = theme === 'dark' ? '#1e1e2e' : '#ffffff';
 
@@ -229,7 +239,7 @@ function SandboxCanvas({ theme }: Props) {
 
       {/* Canvas */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        <div ref={wrapperRef} data-sandbox-wrapper style={{ width: '100%', height: '100%' }} />
+        <div ref={wrapperRef} data-sandbox-wrapper style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
         {!activeFile && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
