@@ -1423,6 +1423,13 @@ export default function App() {
                         onSave={handleSave}
                         onRecompile={handleCompile}
                         isCompiling={status === 'compiling'}
+                        onCursorLineChange={(line) => {
+                          if (!activeFile?.circuitJson) return;
+                          const map = activeFile.srcFileMap;
+                          if (!map) return;
+                          const fsPath = Object.keys(map).find((k) => map[k] === activeFile.name);
+                          if (fsPath) canvasRef.current?.highlightSource(fsPath, line);
+                        }}
                       />
                     </div>
                     <div

@@ -40,6 +40,8 @@ interface CodeEditorProps {
   onSave: () => void;
   onRecompile: () => void;
   isCompiling: boolean;
+  /** Fired on cursor line change (for live cross-highlight in split view). */
+  onCursorLineChange?: (line: number) => void;
 }
 
 const themeCompartment = new Compartment();
@@ -72,6 +74,8 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
   onSaveRef.current = onSave;
   const onRecompileRef = useRef(onRecompile);
   onRecompileRef.current = onRecompile;
+  const onCursorLineChangeRef = useRef(onCursorLineChange);
+  onCursorLineChangeRef.current = onCursorLineChange;
 
   // ---- Search state ----
   const [searchVisible, setSearchVisible] = useState(false);
@@ -100,6 +104,11 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
     EditorView.updateListener.of((update) => {
       if (update.docChanged) {
         onChangeRef.current(update.state.doc.toString());
+      }
+      if (update.selectionSet && onCursorLineChangeRef.current) {
+        const pos = update.state.selection.main.head;
+        const line = update.state.doc.lineAt(pos).number;
+        onCursorLineChangeRef.current(line);
       }
     }),
     keymap.of([
