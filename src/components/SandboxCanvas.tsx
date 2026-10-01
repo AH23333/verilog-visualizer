@@ -71,6 +71,7 @@ function SandboxCanvas({ theme }: Props) {
     paper.off('render:done');
     paper.scale(1);
     paper.translate(0, 0);
+    circuit.start(); // R7.2: simulation engine must run for signal propagation
 
     // Load saved cells + links
     if (activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
@@ -95,7 +96,7 @@ function SandboxCanvas({ theme }: Props) {
             const srcCell = cellMap.get(src?.id);
             const tgtCell = cellMap.get(tgt?.id);
             if (!srcCell || !tgtCell) continue;
-            const link = new digitaljs.cells.Link({
+            const link = new digitaljs.cells.Wire({
               source: { id: srcCell.id, port: src.port },
               target: { id: tgtCell.id, port: tgt.port },
               signal: 'x',
@@ -127,18 +128,21 @@ function SandboxCanvas({ theme }: Props) {
         evt.stopPropagation();
         evt.preventDefault();
         const sourceCell = cellView.model;
-        const sourcePort = magnet.getAttribute('port');
+        // R7.3: port name may be in dataset, not attribute
+        const sourcePort = magnet.getAttribute('port') || (magnet as HTMLElement).dataset?.port || magnet.getAttribute('data-port');
         // Convert client coords to paper coords
         const rect = wrapper.getBoundingClientRect();
         const sx = evt.clientX - rect.left;
         const sy = evt.clientY - rect.top;
-        // Create a temp link from source cell port to cursor
-        const tempLink = new digitaljs.cells.Link({
+        // Create a temp wire from source cell port to cursor
+        const tempLink = new digitaljs.cells.Wire({
           source: { id: sourceCell.id, port: sourcePort },
           target: { x: sx, y: sy },
           signal: 'x',
         });
         paper.model.addCell(tempLink);
+        // R7.3: temp wire must not block elementFromPoint
+        tempLink.findView(paper).el.style.pointerEvents = 'none';
         const onMove = (e: MouseEvent) => {
           const mx = e.clientX - rect.left;
           const my = e.clientY - rect.top;
@@ -153,13 +157,14 @@ function SandboxCanvas({ theme }: Props) {
           if (targetMagnet && targetMagnet.getAttribute('magnet') !== 'false') {
             const targetCellEl = targetMagnet.closest('[model-id]');
             const targetId = targetCellEl?.getAttribute('model-id');
-            const targetPort = targetMagnet.getAttribute('port');
+            const targetPort = targetMagnet.getAttribute('port') || (targetMagnet as HTMLElement).dataset?.port || targetMagnet.getAttribute('data-port');
             if (targetId && targetId !== sourceCell.id && targetPort) {
               tempLink.set('target', { id: targetId, port: targetPort });
-              return; // keep the link
+              tempLink.findView(paper).el.style.pointerEvents = '';
+              return; // keep the wire
             }
           }
-          // Drop: remove temp link
+          // Drop: remove temp wire
           tempLink.remove();
         };
         document.addEventListener('mousemove', onMove);
