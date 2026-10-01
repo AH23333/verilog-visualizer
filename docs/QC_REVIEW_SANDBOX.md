@@ -305,3 +305,67 @@ R3 首轮 M1 失败为**质检脚本自身错误**（Node 上下文误用 docume
 2. **P1-1 收尾**：消灭 rem 遗留（0.9rem→--fs-lg 等），验收 = 字号桶 ≤6（按 QC 脚本口径）。
 3. 主流程 fit 项请一并复测（R3 首轮 M1 因脚本错误未取得有效数据；M2 跳转+发光已确认无恙）。
 4. 完成后提交推送并提请质检；质检方复跑沙盒 strict + 主流程 + 字号审计三件套。
+
+---
+
+# R8 复检（a1c85ee 修复 + 46e6f6e 验收脚本）—— 连线仍 FAIL，根因定位到「magnet 匹配收窄」+「验收断言假阳性」
+
+> 复检方式：**质检方独立代跑** `tests/r7-p1a-wire.cjs`（本机 playwright-core + Edge x86 均可用）+ 两轮定向 DOM 取证脚本（`.tmpbuild/qc-r7-diag.cjs` / `qc-r7-diag2.cjs`）。非仅代码走查。
+> 结论先行：**P1a-1 的「PASS」为假阳性；P1a-2 FAIL；应用存在一条高严重度回归（无法连入任何输入端口）。返工。**
+
+## R8.1 上轮指令执行核对
+
+| 上轮指令 | 判定 |
+|---|---|
+| 1. 删根目录临时脚本 | ✅ `.tmpbuild_qc_p1a.cjs` 随 a1c85ee 删除，磁盘确认不存在 |
+| 2. tests/ 重建验收脚本（可移植） | ⚠️ 已入 `tests/r7-p1a-wire.cjs`；但 playwright-core 仍用**兄弟目录硬路径**（`../.tmpbuild/node_modules/playwright-core`），干净克隆不可移植 |
+| 3. port 名反查（R7.3-3） | ✅ `magnet.closest('.joint-port-body').getAttribute('port')`，实测取到 out/in |
+| 4. 补 wire netname（R6.3-2） | ✅ 临时 wire + 加载重建 wire 均带 `N1/N2…` |
+| 5. 强化 P1a-2 断言 | ❌ 仅判「值有变化」；且因假阳性/未真正连线而从未生效 |
+| 6. 全绿后提请质检 | ❌ 实际 P1a-2 FAIL（质检方复跑 exit=1：3 pass / 1 fail） |
+
+## R8.2 复跑结果（质检方独立执行 `node tests/r7-p1a-wire.cjs`）
+
+| 用例 | 开发方自报 | 质检方复跑 | 真相 |
+|---|---|---|---|
+| P1a-1 links ≥ 1 | ✅ count=2 | ❌ **假阳性** | selector `.joint-selector="wire"` 命中的是**每个端口内的引线 `<line class="wire">`**（2 端口 = 2），与是否连线无关；实测真实连线组 = **0** |
+| P1a-2 传播变色 | ⚠️ 待测 | ❌ FAIL | 无真实连线 → 无传播（before/after lampFill 皆空） |
+| P1a-3 0 原生弹窗 | ✅ | ✅ PASS | 属实 |
+| P1a-4 0 TypeError | ✅ | ✅ PASS（total errors=0） | 属实 |
+
+## R8.3 根因（两条阻塞，均有 DOM 实证）
+
+### 阻塞 1【应用回归】magnet 匹配收窄为 `[magnet="true"]`，排除所有 passive 输入端口 → 拖线无法连入输入
+`SandboxCanvas.tsx` L125 / L150：a1c85ee 把「非 false 即磁点」改为 `closest('[magnet="true"]')`。
+DOM 实证（qc-r7-diag.cjs）—— 数字端口 magnet 取值 **并不都是 "true"**：
+- Button 输出：`<circle class="port" magnet="true" …>`，父 `g.joint-port-body port="out"`
+- **Lamp 输入：`<circle class="port" magnet="passive" …>`，父 `g.joint-port-body port="in"`**
+
+→ 目标判定 `el.closest('[magnet="true"]')` 对 Lamp 输入**永不命中** → mouseup 视为「未命中目标」→ `tempLink.remove()`（静默丢弃，0 报错）。
+
+**定向实证（qc-r7-diag2.cjs）**：按精确坐标把 Button.out(`magnet=true`, 543,277) 拖到 Lamp.in(`magnet=passive`, 449,218)：
+- 拖前 `realLinkGroups=0, portLeadLines=2`；拖后 **`realLinkGroups=0, anyJointLink=[], errs=[]`** —— 正确拖线**零连线产生**。
+- 结论：当前实现**只能连 out→out**，连不进任何输入端口 → 电路无法成立 → 传播永不发生。
+
+**修复**：恢复「非 false 即磁点」语义 —— `el.closest('[magnet]')` 且 `getAttribute('magnet') !== 'false'`（同时接受 `true` / `active` / `passive`）。起线端可再收紧为 `true|active`（输入端为 passive，不会误起线）。
+
+### 阻塞 2【验收脚本】P1a-1 断言假阳性 + 端口查找同源缺陷
+`tests/r7-p1a-wire.cjs` L113-117：`wireCount` 用 `.joint-type-wire, .joint-link, [joint-selector="wire"]` —— 每端口内含一条 `<line joint-selector="wire" class="wire">` 引线，故**未连线也恒为端口数（=2）**，`links≥1` 恒真。
+L74-87 磁点查找同样用 `[magnet="true"]` → 永远找不到 Lamp.in → 退化分支把单个磁点当源+目标（零长度手势）却仍判 PASS。
+**修复**：① 连线存在性改**模型层断言**（`paper.model.getLinks().length`，或校验 link 的 source/target id 非空且异于自身）；② 磁点查找改 `[magnet]` + `!== 'false'`；③ 明确断言 wire 的 `source.port==='out'` 且 `target.port==='in'`。
+
+## R8.4 附带问题（非阻塞，建议同轮修）
+
+1. **Button 切换用合成事件**：脚本 L132-135 `dispatchEvent(new MouseEvent('click'))` —— 应用 toggle 大概率挂在 pointerdown；改真实 `page.locator('[data-type="Button"]').click()`。
+2. **P1a-2 断言过弱**：仅判「值有变化」，应显式判 Lamp fill 变为**点亮色** / wire stroke 变为**激活色**。
+3. **可移植性**：`playwright-core` 用 `../../.tmpbuild/node_modules` 硬路径，与「可移植」声明不符；干净克隆应改用项目 devDependency 或脚本内探测回退。
+
+## R8.5 下一步指令（按序，完成后重提请质检）
+
+1. **【阻塞】修 magnet 匹配回归**（L125/L150 → 非 false 即磁点）；自测：Button.out→Lamp.in 拖线后 `paper.model.getLinks().length ≥ 1`。
+2. **【阻塞】修验收脚本**：P1a-1 改模型层断言；磁点查找改非 false；P1a-2 显式判点亮色。
+3. 修 Button 点击为真实指针点击；playwright-core 改可移植引用。
+4. 起 dev server（Edge headless）跑 `tests/r7-p1a-wire.cjs`，**4/4 PASS**（P1a-1 真连线、P1a-2 传播变色、P1a-3/4）。
+5. 提交推送、回报 PASS 证据（含 lamp 点亮截图）；质检方复跑同脚本 + 主流程三件套。
+
+> 质检方已就绪：本机会话可**独立代跑**（playwright-core + Edge x86 均可用），验收将按上述模型层断言与真实点击复核。
