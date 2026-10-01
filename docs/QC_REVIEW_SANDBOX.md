@@ -800,3 +800,39 @@ R10 / R10.6 两项 BLOCKED 均已闭合。建议继续 P2 下一项（导出 PNG
 
 ### verdict
 **R13：P2 沙盒「自定义门导入」全绿收官（15/15 PASS）。** 自定义门为 digitaljs 真子电路（Subcircuit），信号实穿越、可保存/加载；PORTS 分类恢复。至此 **R7→R11→R12→R13 全部 P2 沙盒功能点完成**（接线 / 仿真控制 Reset·Pause·Step / 导出 PNG·SVG / 自定义门导入）。建议下一步转 P3 或新模块（如 bus 多位宽门、门参数编辑 UI）。
+
+---
+
+## R14 —— 坐标换算修复：缩放/平移后部件拖拽与连线游离端贴合光标（3/3 全绿）
+
+> 修复文件：`src/components/SandboxCanvas.tsx`（`cell:pointerdown` 内「部件拖拽」与「连线临时端点」两处坐标换算）；验收 `tests/r14-coords.cjs`。
+
+### 现象（用户提供）
+- 连接线路时，**部件位移远大于鼠标位移**（放大后尤为明显）。
+- 点击连线时，**线路另一头（游离端）大幅晃动**。
+
+### 根因
+两处交互都直接把**屏幕像素**（`evt.clientX - rect.left`）当**模型坐标**用，只在 `paper.scale(1)` 且 `paper.translate(0,0)` 时成立：
+- **部件拖拽**（`cell:pointerdown` 的 body 分支）：`origPos`（模型坐标）直接累加屏幕像素增量 `(e.clientX - startX)` → 放大 2× 时部件移动 `2×` 鼠标位移。
+- **连线临时端点**：`target: { x: evt.clientX - rect.left, y: … }` 把屏幕坐标当模型坐标 → 缩放/平移后游离端被放到 `scale×` 远处并随光标大幅跳动。
+
+沙盒使用 jointjs 原生 `paper.scale()`/`paper.translate()`（非 CSS transform），jointjs 的 `Paper.clientToLocalPoint(x, y)` 内部用 `clientMatrix().inverse()` 自动计入缩放、平移与页内偏移，是官方推荐的视口坐标→模型坐标换算。
+
+### 修复
+- 部件拖拽：`startLocal = clientToLocalPoint(down)`、`p = clientToLocalPoint(move)`，`position = origPos + (p - startLocal)`（模型空间增量，与缩放无关）。
+- 连线临时端点：`target = clientToLocalPoint(move)`（起线/跟随同改）。
+- 平移分支（`paper.translate`）本身是视口像素，保持 1:1 不动。
+
+### 复跑结果（tests/r14-coords.cjs）
+```
+[1] Component drag under zoom (scale=2)
+  PASS  drag tracks 1:1 in model space (scale=2) — modelΔx=60.0 ≈ 60   // 屏幕+120 → 模型+60
+[2] Wire loose-end tracks cursor under zoom+pan (scale=2, translate=50,30)
+  PASS  wire loose-end = cursor model coord (no inflate) — Δ=(0.0,0.0)
+  PASS  no pageerror
+[DONE] 3 pass, 0 fail
+```
+- 注：headless 下基于坐标的 Playwright `mouse` 在 `scale≠1` 时命中不到 paper 委托监听（端口/body 同病，R13 在 scale=1 跑故正常），故 R14 改用「在 body / 端口元素上直接派发冒泡 `mousedown` + `mousemove`」来真实触发 `cell:pointerdown` 处理器，再断言模型坐标换算结果。该手法只用于测试触发，修复本身走 `clientToLocalPoint`。
+
+### verdict
+**R14：缩放/平移后坐标换算修复全绿（3/3 PASS）。** 部件拖拽与连线游离端现在都按模型坐标 1:1 跟随光标，不再被缩放倍数放大。回归（单独运行）：R7 4/4、R11 16/16、R12 17/17、R13 15/15、R14 3/3 —— 共 55/55 全绿，0 弹窗 0 TypeError。
