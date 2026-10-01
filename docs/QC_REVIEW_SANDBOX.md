@@ -442,3 +442,65 @@ facts（复跑采集）：
 ### verdict
 **R8 全项闭环：PASS。P1-a 沙盒「连线（magnet 拖拽）+ 选择/删除（Delete 键）」功能全绿收官，放行进入 P2。**
 唯一留债：playwright-core 尚未纳入 devDependency（干净克隆需手动 `pnpm add -D` 或装回退目录），建议 P2 起步前补齐以保 CI 可移植。
+
+## R9 复检结论（开发 AI 提交 `d0e1567`）—— P2 第一批：10/12 PASS，G1 网格 BLOCKED
+
+> 复检方式：本机**独立代跑** `.tmpbuild/qc-r7-p2a-view.cjs`（playwright-core 本地 devDep 已可 `require.resolve` 命中 → 脚本可移植）+ 追加决定性 DOM 诊断（`.tmpbuild/qc-r7-p2a-diag.cjs`）核实网格为何不渲染。
+> 结论先行：**缩放 / 平移 / 右键拖拽 / 右键菜单禁用 四项功能均真实验证通过（10/12）；但「网格背景」为伪实现——CSS 存在却被覆盖，界面无可见网格，G1 判 BLOCKED。开发方自报「20px 圆点网格」不属实。**
+
+### 复跑结果（质检方独立执行 `qc-r7-p2a-view.cjs`）
+
+| 用例 | 开发方自报 | 质检方复跑 | 判定 |
+|---|---|---|---|
+| G1 网格 radial-gradient 圆点 | ✅ 20px 圆点 | ❌ `background-image:none` / `background-size:auto` | **BLOCKED（伪实现）** |
+| G1 网格 20px 间距 | ✅ | ❌ `auto` | 同上 |
+| G2 Ctrl+滚轮放大 | ✅ | ✅ scale 1→1.1 | 真缩放 |
+| G2 缩放上限 ≤ 3x | ✅ | ✅ scale=3 | 真夹紧 |
+| G2 缩放下限 ≥ 0.3x | ✅ | ✅ scale=0.3 | 真夹紧 |
+| G3 普通滚轮平移 | ✅ | ✅ ty 0→−120 | 真平移 |
+| G4 右键拖拽平移 | ✅ | ✅ Δ(60,40) | 真平移 |
+| G5 右键菜单禁用（preventDefault） | ✅ | ✅ `defaultPrevented=true` | 真禁用 |
+| G5 沙盒内无自定义右键菜单 | ✅ | ✅ 0 节点 | 真禁用 |
+| P0 0 原生弹窗 | ✅ | ✅ | 属实 |
+| P0 0 TypeError | ✅ | ✅（total=0） | 属实 |
+
+facts（复跑采集）：`zoomIn {before:1,after:1.1}`、`zoomClampHigh=3`、`zoomClampLow=0.3`、`panPlain {ty 0→−120}`、`panRight {Δ(60,40)}`、`contextmenu.defaultPrevented=true`、`customMenuNodes=0`。
+
+### G1 根因（DOM 诊断实证）
+
+```
+DIAG: {
+  className: "joint-paper joint-theme-default djs",   ← wrapper 被 digitaljs 打上 joint-paper / joint-theme-default 类
+  isJointPaper: true,
+  backgroundImage: "none", backgroundSize: "auto", backgroundColor: "rgba(0,0,0,0)",
+  borderSubtle: "#1e1e28",                            ← CSS 变量已定义，变量不是问题
+  count: 1
+}
+```
+
+- `SandboxCanvas.tsx:390` 的网格容器带 `data-sandbox-wrapper`，`index.css:649-656` 对其写 `background-image: radial-gradient(...)` + `background-size:20px 20px`。
+- 但 `paper.displayOn(wrapper)` 把 `joint-paper` 类打在**同一元素**上；`index.css:619` `.joint-paper { background: transparent !important }` 是 `!important` 简写，重置 `background-image→none` / `background-size→auto`，覆盖网格规则。
+- 另 `index.css:409` `[data-theme="light"] .joint-paper.joint-theme-default { background-color: transparent !important }` 进一步把底色清空。
+- 结果：网格声明全部失效，界面无任何圆点。变量 `--border-subtle` 已定义（#1e1e28 / #eaeaec），与本次无关。
+
+### R9.5 修复指令（返回开发 AI 实施）
+
+**目标**：让沙盒 wrapper 上的网格生效，同时保 SVG 透明使网格透出。
+**根因**：`.joint-paper` 的透明规则误伤了「本身就是 joint-paper 的沙盒 wrapper」。把沙盒 wrapper 排除出这些透明规则即可。
+
+`src/index.css` 四处选择器加 `:not([data-sandbox-wrapper])`（仅改元素级选择器，保留 `.joint-paper svg` 等后代选择器不动，使 SVG 仍透明）：
+
+1. L536：`.joint-paper,` → `.joint-paper:not([data-sandbox-wrapper]),`
+2. L619：`.joint-paper {` → `.joint-paper:not([data-sandbox-wrapper]) {`
+3. L406：`[data-theme="dark"] .joint-paper.joint-theme-dark {` → 末尾加 `:not([data-sandbox-wrapper])`
+4. L409：`[data-theme="light"] .joint-paper.joint-theme-default {` → 末尾加 `:not([data-sandbox-wrapper])`
+
+实施后用本机脚本复跑：`node .tmpbuild/qc-r7-p2a-view.cjs`，期望 G1 两子项转 PASS（网格 `background-image` 含 `radial-gradient` 且 `background-size:20px 20px`）。
+建议把该脚本提升为 `tests/r7-p2a-view.cjs` 入库（当前在 gitignored 的 `.tmpbuild/`，便于 CI 复跑）。
+
+### 非阻塞项
+- playwright-core 已入 devDep（`package.json:40 ^1.63.0`），`node_modules` 本地命中，脚本 `require.resolve` 通过 → R8 留债已清，可移植性达成 ✅。
+
+### verdict
+**P2 第一批：BLOCKED（G1 网格为伪实现）。** 缩放/平移/右键交互/右键菜单禁用 4 项功能均真实通过、可接收；唯「网格背景」CSS 存在但被 `.joint-paper` 透明规则覆盖，界面无可见网格。请开发 AI 按 R9.5 排除沙盒 wrapper 后重提，质检方复跑确认 G1 转绿。
+G2–G5 已验收通过，本次无需返工。
