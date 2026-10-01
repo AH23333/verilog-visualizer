@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { sandboxStore, type SandboxFile } from '../store/sandboxStore';
+import { sandboxStore, customGateStore, type SandboxFile, type CustomGate } from '../store/sandboxStore';
 import { exportPng, exportSvg, exportPngDataUrl, exportSvgString } from '../utils/sandboxExport';
 
 interface Props {
@@ -8,6 +8,100 @@ interface Props {
 
 const GATE_TYPES = ['And', 'Or', 'Not', 'Xor', 'Nand', 'Nor', 'Xnor'];
 const IO_TYPES = ['Button', 'Clock', 'Lamp'];
+// Interface ports — placed to define a custom gate's input/output pins.
+const PORT_TYPES = ['Input', 'Output'];
+
+// (R13) Rebuild a digitaljs Subcircuit's inner graph (its embedded joint graph) from a
+// serialized graph JSON. Inner Input/Output cells are forced to mode 0 (within-subcircuit)
+// so the engine routes signals in/out of the subcircuit; the inner graph's Input/Output
+// `net` becomes the subcircuit's port ids.
+function buildInnerGraph(digitaljs: any, Graph: any, json: any, display3vl?: any) {
+  const inner = new Graph();
+  // Fidelity with digitaljs's Circuit._makeGraph: the inner graph must carry the 3VL
+  // display helper + a subcircuit marker, else IO cells render wrongly and ports collapse.
+  inner._display3vl = display3vl;
+  inner._warnings = 0;
+  inner.set('subcircuit', true);
+  const innerMap = new Map<string, any>();
+  let wn = 0;
+  for (const cc of json?.cells || []) {
+    if (cc.isLink) continue;
+    const C = digitaljs.cells?.[cc.type];
+    if (!C) continue;
+    try {
+      const cell = new C({
+        type: cc.type,
+        position: cc.position || { x: 50, y: 50 },
+        bits: cc.bits || 1,
+        net: cc.net || '',
+      });
+      if (cc.id) cell.set('id', cc.id);
+      if (C === digitaljs.cells.Input || C === digitaljs.cells.Output) {
+        try { cell.set('mode', 0); } catch { /* non-subcircuit IO */ }
+      }
+      inner.addCell(cell);
+      if (cc.id) innerMap.set(cc.id, cell);
+    } catch { /* skip bad inner cell */ }
+  }
+  for (const cc of json?.cells || []) {
+    if (!cc.isLink) continue;
+    try {
+      const sCell = innerMap.get(cc.source?.id);
+      const tCell = innerMap.get(cc.target?.id);
+      if (!sCell || !tCell) continue;
+      const link = new digitaljs.cells.Wire({
+        source: { id: sCell.id, port: cc.source?.port },
+        target: { id: tCell.id, port: cc.target?.port },
+        netname: `N${++wn}`,
+      });
+      inner.addCell(link);
+    } catch { /* skip broken inner link */ }
+  }
+  // (R13) The inner subcircuit graph is a bare joint.dia.Graph (NOT wrapped in a Circuit),
+  // so it lacks the wire-propagation listeners that make a signal flow from a device's
+  // output through a wire to its input. Without these, a custom gate's internal signal
+  // never reaches its output pin and the whole gate reads as "x". Mirror circuit.js's
+  // wiring so the engine can actually simulate the inner graph.
+  inner.listenTo(inner, 'change:outputSignals', (gate: any, sigs: any) => {
+    if (gate && typeof gate._changeOutputSignals === 'function') gate._changeOutputSignals(sigs);
+  });
+  inner.listenTo(inner, 'change:signal', (wire: any, signal: any) => {
+    if (wire && typeof wire._changeSignal === 'function') wire._changeSignal(signal);
+  });
+  return inner;
+}
+
+// (R13) Serialize the paper to a clean JSON. The live Subcircuit `graph` is a circular
+// joint.dia.Graph that breaks JSON.stringify, so we drop it and keep only the serializable
+// `subcircuitGraph` copy. Without this, saving a circuit that contains a custom gate writes
+// broken JSON and the gate is lost on reload.
+function serializePaper(paper: any) {
+  const cells = paper.model.getCells().map((c: any) => {
+    const type = c.get('type');
+    const cell: any = {
+      id: c.id,
+      type,
+      position: c.get('position'),
+      attrs: c.get('attrs'),
+      size: c.get('size'),
+      bits: c.get('bits'),
+      net: c.get('net'),
+      celltype: c.get('celltype'),
+      label: c.get('label'),
+      propagation: c.get('propagation'),
+    };
+    if (type === 'Subcircuit') cell.subcircuitGraph = c.get('subcircuitGraph');
+    if (c.isLink()) {
+      cell.isLink = true;
+      cell.source = c.get('source');
+      cell.target = c.get('target');
+      cell.netname = c.get('netname');
+    }
+    Object.keys(cell).forEach((k) => cell[k] === undefined && delete cell[k]);
+    return cell;
+  });
+  return { cells };
+}
 
 function SandboxCanvas({ theme }: Props) {
   const circuitRef = useRef<any>(null);
@@ -23,9 +117,18 @@ function SandboxCanvas({ theme }: Props) {
   const pendingResetJsonRef = useRef<string | null>(null);
   const runningRef = useRef(true);
   const [, forceUpdate] = useState(0);
+  const [gates, setGates] = useState<CustomGate[]>([]);
+  const [savingGate, setSavingGate] = useState(false);
+  const [gateName, setGateName] = useState('');
+  const [gateError, setGateError] = useState<string | null>(null);
+  const [deleteGateId, setDeleteGateId] = useState<string | null>(null);
 
   const refreshList = useCallback(() => {
     setFiles(sandboxStore.list());
+  }, []);
+
+  const refreshGates = useCallback(() => {
+    setGates(customGateStore.list());
   }, []);
 
   // Create a cell by type at given position (shared by placement + load)
@@ -45,18 +148,27 @@ function SandboxCanvas({ theme }: Props) {
   const doAddCell = useCallback((type: string) => {
     const cx = 100 + Math.round(Math.random() * 200);
     const cy = 100 + Math.round(Math.random() * 200);
-    spawnCell(type, cx, cy);
+    const cell = spawnCell(type, cx, cy);
+    // (R13) Interface ports need unique pin names so a custom gate's Subcircuit
+    // derives distinct, wire-able ports (port id == IO `net`).
+    if (cell && PORT_TYPES.includes(type)) {
+      const paper = paperRef.current;
+      const same = paper ? paper.model.getCells().filter((c: any) => c.get('type') === type).length : 1;
+      const prefix = type === 'Input' ? 'in' : 'out';
+      try { cell.set('net', `${prefix}${same}`); } catch {}
+    }
   }, [spawnCell]);
 
   // Load file list on mount
   useEffect(() => {
     refreshList();
+    refreshGates();
     const activeId = sandboxStore.getActiveId();
     if (activeId) {
       const f = sandboxStore.get(activeId);
       if (f) setActiveFile(f);
     }
-  }, [refreshList]);
+  }, [refreshList, refreshGates]);
 
   // (Re)build paper when active file changes
   useEffect(() => {
@@ -88,11 +200,27 @@ function SandboxCanvas({ theme }: Props) {
       svgString: () => exportSvgString(paperRef.current),
       pngDataUrl: (scale = 2) => exportPngDataUrl(paperRef.current, scale),
     }; // for QC tests // R12: pixel-level verify export actually renders the circuit
+    (window as any).__sandboxGates = {
+      list: () => customGateStore.list(),
+      place: (id: string) => { const g = customGateStore.get(id); if (g) placeCustomGate(g); },
+      saveCurrentAs: (name: string) => {
+        const paper = paperRef.current;
+        if (!paper) return false;
+        const cells = paper.model.getCells();
+        if (!cells.some((c: any) => c.get('type') === 'Input') || !cells.some((c: any) => c.get('type') === 'Output')) return false;
+        customGateStore.save(name, JSON.stringify(serializePaper(paper)));
+        refreshGates();
+        return true;
+      },
+    }; // for QC tests // R13: drive custom-gate import without the naming UI
     paper.options.interactive = false;
     paper.off('render:done');
     paper.scale(1);
     paper.translate(0, 0);
     if (runningRef.current) circuit.start(); // honor pause state
+
+    // (R13) Build a digitaljs Subcircuit's embedded inner graph from a serialized JSON.
+    const Graph = (paper.model as any).constructor;
 
     // Load cells + links. On Reset (pendingResetJsonRef set) we rebuild from the LIVE
     // paper's current topology so an unsaved circuit is NOT wiped; otherwise from saved graphJson.
@@ -106,6 +234,22 @@ function SandboxCanvas({ theme }: Props) {
         for (const c of saved.cells || []) {
           if (c.isLink) continue;
           const pos = c.position || { x: 50, y: 50 };
+          if (c.type === 'Subcircuit') {
+            // Rebuild the embedded inner graph from the serializable `subcircuitGraph`
+            // (a live joint.dia.Graph does NOT survive paper.model.toJSON(), so we keep a
+            // clean JSON copy for persistence), then the Subcircuit wrapper.
+            const inner = buildInnerGraph(digitaljs, Graph, c.subcircuitGraph || c.graph, paper.model._display3vl);
+            const sub = new digitaljs.cells.Subcircuit({
+              type: 'Subcircuit',
+              graph: inner,
+              subcircuitGraph: inner.toJSON(),
+              celltype: c.celltype || '',
+              position: { x: pos.x || 50, y: pos.y || 50 },
+            });
+            paper.model.addCell(sub);
+            if (c.id) { sub.set('id', c.id); cellMap.set(c.id, sub); }
+            continue;
+          }
           const cell = spawnCell(c.type, pos.x || 50, pos.y || 50);
           if (cell && c.id) {
             cell.set('id', c.id);
@@ -307,7 +451,7 @@ function SandboxCanvas({ theme }: Props) {
 
   const handleOpen = (f: SandboxFile) => {
     if (activeFile && paperRef.current) {
-      sandboxStore.save(activeFile.id, JSON.stringify(paperRef.current.model.toJSON()));
+      sandboxStore.save(activeFile.id, JSON.stringify(serializePaper(paperRef.current)));
     }
     sandboxStore.setActiveId(f.id);
     setActiveFile(f);
@@ -316,10 +460,11 @@ function SandboxCanvas({ theme }: Props) {
 
   const handleSave = () => {
     if (!activeFile || !paperRef.current) return;
-    sandboxStore.save(activeFile.id, JSON.stringify(paperRef.current.model.toJSON()));
+    sandboxStore.save(activeFile.id, JSON.stringify(serializePaper(paperRef.current)));
     refreshList();
     forceUpdate(n => n + 1);
   };
+  (window as any).__sandboxSave = handleSave; // R13 QC hook: drive the real save logic without the naming UI
 
   const handleStep = () => {
     const circuit = circuitRef.current;
@@ -331,7 +476,7 @@ function SandboxCanvas({ theme }: Props) {
     // Capture the LIVE topology (so an unsaved circuit is NOT wiped), then bump
     // resetNonce: the effect rebuilds a fresh circuit from this JSON and the sim
     // returns to power-on (gates re-initialized). This is a true reset, not pause/resume.
-    const live = paperRef.current?.model.toJSON();
+    const live = paperRef.current ? serializePaper(paperRef.current) : null;
     pendingResetJsonRef.current = live ? JSON.stringify(live) : (activeFile?.graphJson ?? null);
     try { circuitRef.current?.stop(); } catch {}
     setResetNonce(n => n + 1);
@@ -369,6 +514,66 @@ function SandboxCanvas({ theme }: Props) {
     clearSelection();
     const name = activeFile ? activeFile.name.replace(/\.djs$/i, '') : 'circuit';
     exportSvg(paperRef.current, `${name}.svg`).catch(() => {});
+  };
+
+  // (R13) Place a custom gate as a digitaljs Subcircuit cell. Its inner graph is
+  // rebuilt from the saved gate JSON and embedded in the Subcircuit. We also keep a
+  // serializable `subcircuitGraph` copy (a live joint.dia.Graph won't survive toJSON).
+  const placeCustomGate = useCallback((gate: CustomGate) => {
+    const paper = paperRef.current;
+    const digitaljs = (window as any).digitaljs;
+    if (!paper || !digitaljs) return;
+    let saved: any;
+    try { saved = JSON.parse(gate.graphJson); } catch { return; }
+    const Graph = (paper.model as any).constructor;
+    const inner = buildInnerGraph(digitaljs, Graph, saved, paper.model._display3vl);
+    const cx = 100 + Math.round(Math.random() * 200);
+    const cy = 100 + Math.round(Math.random() * 200);
+    const sub = new digitaljs.cells.Subcircuit({
+      type: 'Subcircuit',
+      graph: inner,
+      // (R13) Store a CLEAN inner-graph JSON (no live joint graph, no Vector3vl wire
+      // signals) so it survives JSON.stringify; the live `graph` would break serialization.
+      subcircuitGraph: serializePaper({ model: inner }),
+      celltype: gate.name,
+      position: { x: cx, y: cy },
+    });
+    paper.model.addCell(sub);
+  }, []);
+
+  // Save the current circuit as a custom gate. Requires at least one Input and one
+  // Output (the interface pins) so the resulting Subcircuit has real ports.
+  const handleSaveGate = () => {
+    const paper = paperRef.current;
+    if (!paper || !activeFile) return;
+    const cells = paper.model.getCells();
+    const hasIn = cells.some((c: any) => c.get('type') === 'Input');
+    const hasOut = cells.some((c: any) => c.get('type') === 'Output');
+    if (!hasIn || !hasOut) {
+      setGateError('Need ≥1 Input and ≥1 Output as interface pins');
+      return;
+    }
+    const name = gateName.trim();
+    if (!name) {
+      setGateError('Enter a gate name');
+      return;
+    }
+    customGateStore.save(name, JSON.stringify(serializePaper(paper)));
+    refreshGates();
+    setSavingGate(false);
+    setGateName('');
+    setGateError(null);
+    forceUpdate(n => n + 1);
+  };
+
+  const handleDeleteGate = (g: CustomGate) => {
+    if (deleteGateId !== g.id) {
+      setDeleteGateId(g.id);
+      return;
+    }
+    customGateStore.remove(g.id);
+    setDeleteGateId(null);
+    refreshGates();
   };
 
   const handleDelete = (f: SandboxFile) => {
@@ -440,11 +645,43 @@ function SandboxCanvas({ theme }: Props) {
                 border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
               {t}</button>
           ))}
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '6px 0 4px', fontWeight: 600 }}>PORTS</div>
+          {PORT_TYPES.map(t => (
+            <button key={t} onClick={() => doAddCell(t)}
+              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '3px 6px',
+                marginBottom: 1, fontSize: 'var(--fs-xs)', background: 'transparent',
+                border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
+              {t}</button>
+          ))}
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>USER</div>
+          {gates.map(g => (
+            <div key={g.id}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: 1, fontSize: 'var(--fs-xs)' }}>
+              <button onClick={() => placeCustomGate(g)}
+                title={`Place custom gate "${g.name}"`}
+                style={{ flex: 1, textAlign: 'left', padding: '3px 6px', background: 'transparent',
+                  border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
+                {g.name}</button>
+              <span
+                onClick={(e) => { e.stopPropagation(); handleDeleteGate(g); }}
+                title="Delete custom gate"
+                style={{ cursor: 'pointer', marginLeft: 4,
+                  color: deleteGateId === g.id ? 'var(--error, #ef4444)' : 'var(--text-muted)',
+                  fontWeight: deleteGateId === g.id ? 700 : 400 }}>
+                {deleteGateId === g.id ? '?' : '×'}
+              </span>
+            </div>
+          ))}
+          {gates.length === 0 && (
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>Save a circuit as a gate</div>
+          )}
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>TIPS</div>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', lineHeight: 1.4 }}>
             · 拖 port 圆点连线<br/>
             · 单击选中，Delete 删除<br/>
-            · 拖 body 移动
+            · 拖 body 移动<br/>
+            · Input/Output 定义自定义门引脚
           </div>
         </div>
 
@@ -489,6 +726,37 @@ function SandboxCanvas({ theme }: Props) {
               fontSize: 'var(--fs-xs)', fontWeight: 600 }}>
             {activeFile ? `Save ${activeFile.name}` : 'Open a file first'}
           </button>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+            {savingGate ? (
+              <>
+                <input
+                  autoFocus
+                  value={gateName}
+                  onChange={(e) => setGateName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveGate(); if (e.key === 'Escape') { setSavingGate(false); setGateName(''); setGateError(null); } }}
+                  placeholder="Gate name"
+                  disabled={!activeFile}
+                  style={{ flex: 1, padding: '4px', fontSize: 'var(--fs-xs)', background: 'var(--surface)',
+                    color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 3 }} />
+                <button onClick={handleSaveGate} title="Confirm save as custom gate"
+                  style={{ padding: '4px 8px', background: 'var(--accent)', color: '#fff', border: 'none',
+                    borderRadius: 3, cursor: 'pointer', fontSize: 'var(--fs-xs)' }}>OK</button>
+                <button onClick={() => { setSavingGate(false); setGateName(''); setGateError(null); }} title="Cancel"
+                  style={{ padding: '4px 8px', background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border-subtle)',
+                    borderRadius: 3, cursor: 'pointer', fontSize: 'var(--fs-xs)' }}>×</button>
+              </>
+            ) : (
+              <button onClick={() => setSavingGate(true)} disabled={!activeFile} title="Save current circuit as a custom gate (needs Input/Output pins)"
+                style={{ flex: 1, padding: '4px', background: activeFile ? 'var(--surface)' : 'var(--border)',
+                  color: activeFile ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border-subtle)',
+                  borderRadius: 3, cursor: activeFile ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-xs)' }}>
+                Save as Gate
+              </button>
+            )}
+          </div>
+          {gateError && (
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--error, #ef4444)', marginTop: 2, marginBottom: 4 }}>{gateError}</div>
+          )}
         </div>
       </div>
 

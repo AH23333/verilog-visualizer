@@ -95,7 +95,6 @@ function downloadBlob(blob: Blob, filename: string) {
 }
 
 function readDims(svgString: string): { width: number; height: number } {
-  const m = svgString.match(/width="(\d+)"\s+height="(\d+)"/) || svgString.match(/width="(\d+)"/);
   const wm = svgString.match(/width="(\d+)"/);
   const hm = svgString.match(/height="(\d+)"/);
   const w = wm ? parseInt(wm[1], 10) : 800;

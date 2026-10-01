@@ -8,8 +8,17 @@ export interface SandboxFile {
   updatedAt: number;
 }
 
+// A user-defined gate: an inner circuit graph (with Input/Output cells as the
+// interface) that can be placed into any sandbox file as a digitaljs Subcircuit.
+export interface CustomGate {
+  id: string;
+  name: string;
+  graphJson: string;  // serialized inner joint graph
+}
+
 const SANDBOX_KEY = 'verilog-viz-sandbox-files';
 const SANDBOX_ACTIVE = 'verilog-viz-sandbox-active';
+const GATES_KEY = 'verilog-viz-sandbox-gates';
 
 function loadAll(): Record<string, SandboxFile> {
   try {
@@ -75,5 +84,43 @@ export const sandboxStore = {
     delete files[id];
     saveAll(files);
     if (localStorage.getItem(SANDBOX_ACTIVE) === id) localStorage.removeItem(SANDBOX_ACTIVE);
+  },
+};
+
+function loadGates(): CustomGate[] {
+  try {
+    const raw = localStorage.getItem(GATES_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+function saveGates(gates: CustomGate[]) {
+  localStorage.setItem(GATES_KEY, JSON.stringify(gates));
+}
+
+export const customGateStore = {
+  list(): CustomGate[] {
+    return loadGates().sort((a, b) => a.name.localeCompare(b.name));
+  },
+
+  get(id: string): CustomGate | null {
+    return loadGates().find(g => g.id === id) ?? null;
+  },
+
+  save(name: string, graphJson: string): CustomGate {
+    const gates = loadGates();
+    const gate: CustomGate = {
+      id: 'gate_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      name,
+      graphJson,
+    };
+    gates.push(gate);
+    saveGates(gates);
+    return gate;
+  },
+
+  remove(id: string) {
+    saveGates(loadGates().filter(g => g.id !== id));
   },
 };
