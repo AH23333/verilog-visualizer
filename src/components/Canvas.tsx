@@ -340,10 +340,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
 
         if (clocks.length === 0) {
           // Pure combinational: advance ONE delta-cycle tick.
-          // Button click already propagated synchronously to wires (wire is red),
-          // but gate outputs are queued. updateGatesNext() processes exactly one
-          // layer of gates per call — that's the "step" the user wants.
-          circuit.updateGatesNext();
+          const count = circuit.updateGatesNext();
+          console.log('[stepOnce] combinational delta-cycle, gates processed:', count);
           return;
         }
 
