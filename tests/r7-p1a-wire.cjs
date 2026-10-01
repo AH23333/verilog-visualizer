@@ -129,9 +129,9 @@ async function waitForServer(timeout = 15000) {
   results.facts.lampFill = { before: beforeFill, after: afterFill };
   console.log('       lamp fill: before=' + JSON.stringify(beforeFill) + ' after=' + JSON.stringify(afterFill));
 
-  // Explicit: Lamp lit (non-empty fill != default)
-  const lit = afterFill && afterFill !== beforeFill && afterFill !== 'none' && afterFill !== '';
-  lit ? ok('P1a-2: Lamp lights up', `fill=${afterFill}`) : bad('P1a-2: Lamp lights up', `before=${beforeFill} after=${afterFill}`);
+  // Explicit: Lamp lit — fill must be the on-state green (#03c03c)
+  const lit = afterFill === '#03c03c' || afterFill === 'rgb(3,192,60)' || afterFill === 'rgb(3, 192, 60)';
+  lit ? ok('P1a-2: Lamp lights up', `fill=${afterFill}`) : bad('P1a-2: Lamp lights up', `expected #03c03c, got ${afterFill}`);
 
   dialogs.length === 0 ? ok('P1a-3: 0 native dialogs') : bad('P1a-3: native dialogs', dialogs.join('; '));
   const typeErrors = errors.filter(e => /TypeError/i.test(e));
