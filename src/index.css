@@ -572,10 +572,12 @@ code[class*="language-"] {
   stroke-linejoin: miter;
   stroke-linecap: butt;
 }
-/* Hide draggable vertex handles — too many edit points clutter the canvas */
+/* Hide draggable vertex handles + dead link tools (monitor magnifier etc.) */
 .joint-paper .vertex,
 .joint-paper .connection-tools,
-.joint-paper .link-tools {
+.joint-paper .link-tools,
+.joint-paper .link-tool,
+.joint-paper [class*="link-tool"] {
   display: none !important;
 }
 
