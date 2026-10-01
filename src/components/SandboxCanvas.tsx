@@ -299,6 +299,18 @@ function SandboxCanvas({ theme }: Props) {
     forceUpdate(n => n + 1);
   };
 
+  const handleStep = () => {
+    const circuit = circuitRef.current;
+    if (!circuit) return;
+    try { circuit.updateGatesNext?.(); } catch {}
+  };
+
+  const handleReset = () => {
+    const circuit = circuitRef.current;
+    if (!circuit) return;
+    try { circuit.stop(); circuit.start(); } catch {}
+  };
+
   const handleDelete = (f: SandboxFile) => {
     if (confirmDeleteId !== f.id) {
       setConfirmDeleteId(f.id);
@@ -377,6 +389,20 @@ function SandboxCanvas({ theme }: Props) {
         </div>
 
         <div style={{ padding: 8, borderTop: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+            <button onClick={handleStep} disabled={!activeFile} title="Step once (delta cycle)"
+              style={{ flex: 1, padding: '4px', background: activeFile ? 'var(--surface)' : 'var(--border)',
+                color: activeFile ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border-subtle)',
+                borderRadius: 3, cursor: activeFile ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-xs)' }}>
+              Step
+            </button>
+            <button onClick={handleReset} disabled={!activeFile} title="Reset simulation"
+              style={{ flex: 1, padding: '4px', background: activeFile ? 'var(--surface)' : 'var(--border)',
+                color: activeFile ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border-subtle)',
+                borderRadius: 3, cursor: activeFile ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-xs)' }}>
+              Reset
+            </button>
+          </div>
           <button onClick={handleSave} disabled={!activeFile}
             style={{ width: '100%', padding: '6px', background: activeFile ? 'var(--accent)' : 'var(--border)',
               color: activeFile ? '#fff' : 'var(--text-muted)', border: 'none', borderRadius: 4, cursor: activeFile ? 'pointer' : 'not-allowed',
