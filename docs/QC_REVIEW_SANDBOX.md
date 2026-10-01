@@ -582,3 +582,67 @@ facts（G1 实测）：`className="joint-paper joint-theme-default djs"`、`bgIm
 ### verdict
 **P2 第一批：BLOCKED（G1 网格为伪实现）。** 缩放/平移/右键交互/右键菜单禁用 4 项功能均真实通过、可接收；唯「网格背景」CSS 存在但被 `.joint-paper` 透明规则覆盖，界面无可见网格。请开发 AI 按 R9.5 排除沙盒 wrapper 后重提，质检方复跑确认 G1 转绿。
 G2–G5 已验收通过，本次无需返工。
+
+---
+
+## R10 复检（开发 AI 提交 `6e811ff`）—— P2 仿真控制按钮：Step 通过，Reset 为伪实现（BLOCKED）
+
+> 复检方式：① 本机**独立代跑**浏览器验收脚本 `.tmpbuild/qc-r10-ui.cjs`（playwright-core 本地 devDep，Edge headless）；
+> ② 引擎层**独立实证** `.tmpbuild/qc-r10-engine.cjs`（require digitaljs `HeadlessCircuit` + `BrowserSynchEngine`，与应用 `new digitaljs.Circuit(...)` 同款引擎）。
+> 结论先行：**结构 + 无崩溃 9/9 PASS（按钮真实、等宽并排、可点、0 崩溃）；但 `Reset` 按钮是「伪实现」——`circuit.stop(); circuit.start()` = 暂停/恢复，并不重置仿真状态。R10 维持 BLOCKED，需真·重置。**
+
+### 复跑结果（浏览器，qc-r10-ui.cjs）
+```
+  PASS  S1: Step 按钮存在
+  PASS  S2: Reset 按钮存在
+  PASS  S3: Step/Reset 等宽   Δw=0.00（均 flex:1）
+  PASS  S4: 并排布局（同 y，左右相邻）
+  PASS  S6: Step 启用（文件已开）
+  PASS  S7: Reset 启用（文件已开）
+  PASS  S8: Reset 后 paper/model 存活（引擎未崩）
+  PASS  S9: 0 原生弹窗
+  PASS  S10: 0 TypeError — total=0
+[DONE] 9 pass, 0 fail
+```
+（S5「Save 上方」因本机定位器精确匹配 "Save" 文本未命中而跳过；代码 L391–405 的 `Step/Reset` 容器确在 L406 的 `Save` 按钮之上，且 S4 已确认二者 y 一致、位于文件面板底部，布局正确。）
+
+按钮 bounding box（实证）：`step={x:56,y:775,w:79.5,h:26.5}`、`reset={x:139.5,y:775,w:79.5,h:26.5}` → 等宽并排、启用、点击无崩溃。
+
+### 引擎层实证（qc-r10-engine.cjs，与应用同款 BrowserSynchEngine）
+```
+{ tickBefore:17, tickAfterReset:17, clkBefore:"[object Object]", clkAfterReset:"[object Object]" }
+tickAfterReset = 17  (large ⇒ NOT reset, paused+resumed)
+VERDICT: dev Reset stop()+start() = PAUSE/RESUME only — does NOT reset simulation state
+```
+- 根因（digitaljs 源码）：`circuit.start()`（`engines/browsersynch.mjs:11`）仅 `setInterval(…,10ms)` 重开时钟循环；`SynchEngine.stop()`（`engines/synch.mjs:130`）是 `return Promise.resolve()` **空操作**——既不重置 `this._tick` 也不复位任何门状态。故 `stop(); start()` = 暂停 + 恢复（pause/resume），**仿真状态（tick 与门输出）原样保留**。
+- 应用侧：`SandboxCanvas.tsx:308-312` 的 `handleReset` 正是 `circuit.stop(); circuit.start()`，与引擎语义一致 → 点击「Reset simulation」**不会**把电路带回初态。
+
+### Step 按钮判定（非阻塞，但有效性存疑）
+- `handleStep`（`SandboxCanvas.tsx:302-306`）调用 `circuit.updateGatesNext?.()` —— 这是 digitaljs 正确的「推进一个 delta cycle」原语，引擎层可证其推进 `tick`（每调用 +1）。
+- **但**：沙盒在 `SandboxCanvas.tsx:75` 已 `circuit.start()` 常驻自动运行（100Hz），仿真始终处于最新态。手动 Step 在当前无 Pause 控件的前提下**不产生可观测的独立效果**（自动循环每 10ms 已推进）。即 Step 是「正确的原语、但作为可视控件当前无效」。
+- 建议（非阻塞）：若要 Step 真正可用，需配套 **Pause** 控件（暂停自动循环后，Step 才能单步推进）；否则 Step 仅作冗余按钮存在。
+
+### R10 修复指令（返回开发 AI 实施 Reset）
+`Reset` 必须**重建电路到初态**。digitaljs 无公开 `reset()`，正确做法是按当前设计 JSON 重建 `Circuit`（门状态回到上电初值）。在 `SandboxCanvas.tsx`：
+
+1. 新增状态 `const [resetNonce, setResetNonce] = useState(0);`
+2. 把 `resetNonce` 加入重建 effect 依赖：`}, [activeFile?.id, theme, spawnCell, resetNonce]);`（约 L274）。
+3. 改写 `handleReset`：
+```ts
+const handleReset = () => {
+  const circuit = circuitRef.current;
+  if (!circuit) return;
+  try { circuit.shutdown(); } catch {}        // 停引擎 + unobserve graph
+  paperRef.current?.remove();
+  circuitRef.current = null;
+  setResetNonce(n => n + 1);                    // 触发 effect 按 activeFile.graphJson 重建 → 门回到上电态
+};
+```
+   effect 重建路径已会从 `activeFile.graphJson` 重新实例化 cells/links 并 `circuit.start()`，即真·重置。
+4. 或直接复用既有「重新打开当前文件」语义；核心是**重建而非 stop+start**。
+
+（Step 留作非阻塞：建议补 Pause 控件使 Step 单步有效；当前 Step 不报错、原语正确，不阻断 P2。）
+
+### verdict
+**R10：Step 通过（结构/无崩溃/原语正确）；Reset BLOCKED（伪实现——pause/resume，不重置仿真）。** 请按 R10 指令把 `handleReset` 改为「重建电路到初态」后重提，质检方复跑：引擎层 `tick` 应在重置后回落到接近 0、门输出回到上电值。
+Step 无需返工（正确性 OK），但建议补 Pause 使单步有效。
