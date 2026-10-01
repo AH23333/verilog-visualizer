@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { sandboxStore, type SandboxFile } from '../store/sandboxStore';
+import { exportPng, exportSvg, exportPngDataUrl, exportSvgString } from '../utils/sandboxExport';
 
 interface Props {
   theme: 'dark' | 'light';
@@ -83,6 +84,10 @@ function SandboxCanvas({ theme }: Props) {
     paperRef.current = paper;
     (window as any).__sandboxPaper = paper; // for QC tests // R7.2: simulation engine must run for signal propagation
     (window as any).__sandboxCircuit = circuit; // for QC tests // R10: read tick / control sim
+    (window as any).__sandboxExport = {
+      svgString: () => exportSvgString(paperRef.current),
+      pngDataUrl: (scale = 2) => exportPngDataUrl(paperRef.current, scale),
+    }; // for QC tests // R12: pixel-level verify export actually renders the circuit
     paper.options.interactive = false;
     paper.off('render:done');
     paper.scale(1);
@@ -341,6 +346,31 @@ function SandboxCanvas({ theme }: Props) {
     try { if (next) c.start(); else c.stop(); } catch {}
   };
 
+  // Clear the current selection's accent outline so it isn't baked into the export
+  // (the inline stroke uses var(--accent), which is meaningless outside the live DOM).
+  const clearSelection = useCallback(() => {
+    if (selectedIdRef.current && paperRef.current) {
+      const prev = paperRef.current.model.getCell(selectedIdRef.current);
+      prev?.attr('body/stroke', null);
+      selectedIdRef.current = null;
+      forceUpdate(n => n + 1);
+    }
+  }, []);
+
+  const handleExportPng = () => {
+    if (!paperRef.current) return;
+    clearSelection();
+    const name = activeFile ? activeFile.name.replace(/\.djs$/i, '') : 'circuit';
+    exportPng(paperRef.current, `${name}.png`, 2).catch(() => {});
+  };
+
+  const handleExportSvg = () => {
+    if (!paperRef.current) return;
+    clearSelection();
+    const name = activeFile ? activeFile.name.replace(/\.djs$/i, '') : 'circuit';
+    exportSvg(paperRef.current, `${name}.svg`).catch(() => {});
+  };
+
   const handleDelete = (f: SandboxFile) => {
     if (confirmDeleteId !== f.id) {
       setConfirmDeleteId(f.id);
@@ -437,6 +467,20 @@ function SandboxCanvas({ theme }: Props) {
                 color: activeFile ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border-subtle)',
                 borderRadius: 3, cursor: activeFile ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-xs)' }}>
               {running ? 'Pause' : 'Play'}
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+            <button onClick={handleExportPng} disabled={!activeFile} title="Export circuit as PNG"
+              style={{ flex: 1, padding: '4px', background: activeFile ? 'var(--surface)' : 'var(--border)',
+                color: activeFile ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border-subtle)',
+                borderRadius: 3, cursor: activeFile ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-xs)' }}>
+              Export PNG
+            </button>
+            <button onClick={handleExportSvg} disabled={!activeFile} title="Export circuit as SVG"
+              style={{ flex: 1, padding: '4px', background: activeFile ? 'var(--surface)' : 'var(--border)',
+                color: activeFile ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border-subtle)',
+                borderRadius: 3, cursor: activeFile ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-xs)' }}>
+              Export SVG
             </button>
           </div>
           <button onClick={handleSave} disabled={!activeFile}
