@@ -1126,28 +1126,31 @@ export default function App() {
             borderRight: '1px solid var(--border-subtle)',
           }}>
           <ActivityButton icon={<Files size={19} />} label="Files"
-            active={leftPanel === 'files' && !sidebarCollapsed}
+            active={viewMode !== 'sandbox' && leftPanel === 'files' && !sidebarCollapsed}
             onClick={() => {
+              if (viewMode === 'sandbox') { setViewMode(defaultViewMode); return; }
               if (leftPanel === 'files' && !sidebarCollapsed) { setSidebarCollapsed(true); }
               else { setLeftPanel('files'); setSidebarCollapsed(false); }
             }}
           />
           <ActivityButton icon={<Boxes size={19} />} label="Modules"
-            active={leftPanel === 'modules' && !sidebarCollapsed}
+            active={viewMode !== 'sandbox' && leftPanel === 'modules' && !sidebarCollapsed}
             onClick={() => {
+              if (viewMode === 'sandbox') { setViewMode(defaultViewMode); return; }
               if (leftPanel === 'modules' && !sidebarCollapsed) { setSidebarCollapsed(true); }
               else { setLeftPanel('modules'); setSidebarCollapsed(false); }
             }}
           />
           <ActivityButton icon={<Network size={19} />} label="Hierarchy"
-            active={leftPanel === 'hierarchy' && !sidebarCollapsed}
+            active={viewMode !== 'sandbox' && leftPanel === 'hierarchy' && !sidebarCollapsed}
             onClick={() => {
+              if (viewMode === 'sandbox') { setViewMode(defaultViewMode); return; }
               if (leftPanel === 'hierarchy' && !sidebarCollapsed) { setSidebarCollapsed(true); }
               else { setLeftPanel('hierarchy'); setSidebarCollapsed(false); }
             }}
           />
           <ActivityButton icon={<Box size={19} />} label="Sandbox"
-            active={(viewMode as string) === 'sandbox'}
+            active={viewMode === 'sandbox'}
             onClick={() => setViewMode('sandbox')}
           />
           <div style={{ flex: 1 }} />
