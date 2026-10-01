@@ -1156,7 +1156,7 @@ export default function App() {
             }}
           />
           <ActivityButton icon={<Box size={19} />} label="Sandbox"
-            active={viewMode === 'sandbox'}
+            active={(viewMode as string) === 'sandbox'}
             onClick={() => setViewMode('sandbox')}
           />
           <div style={{ flex: 1 }} />
@@ -1490,10 +1490,6 @@ export default function App() {
                     </div>
                   </div>
                 );
-              }
-
-              if (viewMode === 'sandbox') {
-                return <SandboxCanvas ref={sandboxRef} theme={theme} />;
               }
 
               if (viewMode === 'code') {
