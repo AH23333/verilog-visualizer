@@ -507,21 +507,21 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       paperRef.current = paper;
 
       // Force orthogonal (right-angle) routing on every link.
-      // Clear all elkjs-baked vertices so manhattan router computes clean
-      // 2-bend paths instead of inheriting elk's many control points.
+      // Use 'orthogonal' router (not 'manhattan') — manhattan generates little
+      // loops when two ports are on the same row and close together. Orthogonal
+      // picks a clean 2-bend path without detours.
       try {
         paper.options = paper.options || {};
-        paper.options.defaultRouter = { name: 'manhattan', args: { padding: 20 } };
+        paper.options.defaultRouter = { name: 'orthogonal', args: { padding: 20, step: 15 } };
         const forceRoute = () => {
           for (const lk of paper.model.getLinks()) {
             try {
               lk.set('vertices', []);
-              lk.set('router', { name: 'manhattan', args: { padding: 20 } });
+              lk.set('router', { name: 'orthogonal', args: { padding: 20, step: 15 } });
             } catch {}
           }
         };
         forceRoute();
-        // elkjs layout is async — re-force after render:done
         let routeCount = 0;
         paper.on?.('render:done', () => {
           if (routeCount++ < 3) requestAnimationFrame(forceRoute);
