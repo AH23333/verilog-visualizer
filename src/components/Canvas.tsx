@@ -506,6 +506,22 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       const paper = circuit.displayOn(wrapper);
       paperRef.current = paper;
 
+      // Disable dragging on all non-IO cells — this is a compiled circuit,
+      // not a manual editor. Dragging cells triggers elkjs re-layout which
+      // causes wires to wildly bend. Only IO cells (Button/Clock/Lamp) stay
+      // clickable.
+      try {
+        const IO_TYPES = new Set(['Button', 'Clock', 'Lamp', 'NumDisplay']);
+        for (const el of paper.model.getCells()) {
+          if (el.isLink()) continue;
+          const type = el.get('type');
+          if (!IO_TYPES.has(type)) {
+            try { el.attr('interactive', false); } catch {}
+            try { el.set('draggable', false); } catch {}
+          }
+        }
+      } catch { /* cosmetic */ }
+
       // digitaljs's from_elkjs splits every corner into two points 10px apart
       // (to give joint room for rounded corners). We post-process: merge pairs
       // of vertices closer than 15px into a single sharp corner, keeping the

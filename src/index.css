@@ -380,6 +380,18 @@ input:focus, select:focus, textarea:focus {
 [data-theme="dark"] svg text {
   fill: #e4e4ec !important;
 }
+/* Cell bodies stay light (white/light-gray) in both themes — schematic look */
+.joint-paper .cell .body,
+.joint-paper [class*="body"] {
+  fill: #f4f4f5 !important;
+  stroke: #52525b !important;
+}
+/* Text inside cells is always black (on light body background) */
+.joint-paper .cell text,
+.joint-paper [class*="body"] + text,
+.joint-paper text.label {
+  fill: #18181b !important;
+}
 [data-theme="dark"] svg .cell {
   stroke: #2a2a35 !important;
 }
