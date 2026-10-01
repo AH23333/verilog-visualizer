@@ -6,12 +6,12 @@ interface Props {
 }
 
 const GATE_TYPES = ['And', 'Or', 'Not', 'Xor', 'Nand', 'Nor', 'Xnor'];
-// P1 待加：Input / Output / Dff（依赖连线功能）
 const IO_TYPES = ['Button', 'Clock', 'Lamp'];
 
 function SandboxCanvas({ theme }: Props) {
   const circuitRef = useRef<any>(null);
   const paperRef = useRef<any>(null);
+  const selectedIdRef = useRef<string | null>(null);
   const [files, setFiles] = useState<SandboxFile[]>([]);
   const [activeFile, setActiveFile] = useState<SandboxFile | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -68,31 +68,120 @@ function SandboxCanvas({ theme }: Props) {
     const paper = circuit.displayOn(wrapper);
     paperRef.current = paper;
     paper.options.interactive = false;
-    paper.off('render:done'); // R4.3: digitaljs re-layouts on every render:done, overriding drag positions
+    paper.off('render:done');
     paper.scale(1);
     paper.translate(0, 0);
 
-    // Load saved cells by re-instantiating (not raw fromJSON — keeps view/model sync)
+    // Load saved cells + links
     if (activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
       try {
         const saved = JSON.parse(activeFile.graphJson);
+        const cellMap = new Map<string, any>();
+        // First pass: re-instantiate all cells
         for (const c of saved.cells || []) {
           if (c.isLink) continue;
-          const t = c.type;
           const pos = c.position || { x: 50, y: 50 };
-          spawnCell(t, pos.x || 50, pos.y || 50);
+          const cell = spawnCell(c.type, pos.x || 50, pos.y || 50);
+          if (cell && c.id) {
+            cell.set('id', c.id);
+            cellMap.set(c.id, cell);
+          }
+        }
+        // Second pass: rebuild links
+        for (const c of saved.cells || []) {
+          if (!c.isLink) continue;
+          try {
+            const src = c.source, tgt = c.target;
+            const srcCell = cellMap.get(src?.id);
+            const tgtCell = cellMap.get(tgt?.id);
+            if (!srcCell || !tgtCell) continue;
+            const link = new digitaljs.cells.Link({
+              source: { id: srcCell.id, port: src.port },
+              target: { id: tgtCell.id, port: tgt.port },
+              signal: 'x',
+            });
+            paper.model.addCell(link);
+          } catch { /* skip broken link */ }
         }
       } catch { /* corrupted save — start fresh */ }
     }
 
-    // Manual drag — drive model directly (view auto-renders via change event)
+    // Click on empty canvas → deselect
+    paper.on('blank:pointerdown', () => {
+      if (selectedIdRef.current) {
+        const prev = paper.model.getCell(selectedIdRef.current);
+        prev?.attr('body/stroke', null);
+        selectedIdRef.current = null;
+        forceUpdate(n => n + 1);
+      }
+    });
+
+    // Cell interaction: magnet→wire, else drag+select
     paper.on('cell:pointerdown', (cellView: any, evt: any) => {
       if (typeof cellView.model.isLink === 'function' && cellView.model.isLink()) return;
       const magnet = evt.target?.closest?.('[magnet]');
-      if (magnet && magnet.getAttribute('magnet') !== 'false') return;
+      const isMagnet = magnet && magnet.getAttribute('magnet') !== 'false';
+
+      if (isMagnet) {
+        // Start wiring
+        evt.stopPropagation();
+        evt.preventDefault();
+        const sourceCell = cellView.model;
+        const sourcePort = magnet.getAttribute('port');
+        // Convert client coords to paper coords
+        const rect = wrapper.getBoundingClientRect();
+        const sx = evt.clientX - rect.left;
+        const sy = evt.clientY - rect.top;
+        // Create a temp link from source cell port to cursor
+        const tempLink = new digitaljs.cells.Link({
+          source: { id: sourceCell.id, port: sourcePort },
+          target: { x: sx, y: sy },
+          signal: 'x',
+        });
+        paper.model.addCell(tempLink);
+        const onMove = (e: MouseEvent) => {
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+          tempLink.set('target', { x: mx, y: my });
+        };
+        const onUp = (e: MouseEvent) => {
+          document.removeEventListener('mousemove', onMove);
+          document.removeEventListener('mouseup', onUp);
+          // Check if mouseup landed on another magnet
+          const el = document.elementFromPoint(e.clientX, e.clientY);
+          const targetMagnet = el?.closest?.('[magnet]');
+          if (targetMagnet && targetMagnet.getAttribute('magnet') !== 'false') {
+            const targetCellEl = targetMagnet.closest('[model-id]');
+            const targetId = targetCellEl?.getAttribute('model-id');
+            const targetPort = targetMagnet.getAttribute('port');
+            if (targetId && targetId !== sourceCell.id && targetPort) {
+              tempLink.set('target', { id: targetId, port: targetPort });
+              return; // keep the link
+            }
+          }
+          // Drop: remove temp link
+          tempLink.remove();
+        };
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+        return;
+      }
+
+      // Not a magnet → drag + select
       evt.stopPropagation();
       evt.preventDefault();
-      // Use model position (paper coords), not DOM transform (which may include scale)
+
+      // Select this cell
+      if (selectedIdRef.current && selectedIdRef.current !== cellView.model.id) {
+        const prev = paper.model.getCell(selectedIdRef.current);
+        prev?.attr('body/stroke', null);
+      }
+      selectedIdRef.current = cellView.model.id;
+      cellView.model.attr('body/stroke', 'var(--accent)');
+      cellView.model.attr('body/stroke-width', 2);
+      forceUpdate(n => n + 1);
+
+      // Drag
       const origPos = cellView.model.position();
       const startX = evt.clientX, startY = evt.clientY;
       const onMove = (e: MouseEvent) => {
@@ -109,6 +198,19 @@ function SandboxCanvas({ theme }: Props) {
       document.addEventListener('mouseup', onUp);
     });
 
+    // Delete key
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Delete' && e.key !== 'Backspace') return;
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') return;
+      if (!selectedIdRef.current) return;
+      const cell = paper.model.getCell(selectedIdRef.current);
+      if (cell) cell.remove();
+      selectedIdRef.current = null;
+      forceUpdate(n => n + 1);
+    };
+    document.addEventListener('keydown', onKey);
+
     const resize = () => {
       const parent = wrapper.parentElement!;
       paper.setDimensions(parent.clientWidth, parent.clientHeight);
@@ -121,6 +223,7 @@ function SandboxCanvas({ theme }: Props) {
     wrapper.style.backgroundColor = theme === 'dark' ? 'var(--surface)' : '#ffffff';
 
     return () => {
+      document.removeEventListener('keydown', onKey);
       ro.disconnect();
       try { circuit.stop(); } catch {}
       paper.remove();
@@ -128,7 +231,6 @@ function SandboxCanvas({ theme }: Props) {
   }, [activeFile?.id, theme, spawnCell]);
 
   const handleNew = () => {
-    // Auto-name with uniqueness check
     let n = files.length + 1;
     let name = `circuit_${n}.djs`;
     while (files.some(f => f.name === name)) { n++; name = `circuit_${n}.djs`; }
@@ -223,6 +325,12 @@ function SandboxCanvas({ theme }: Props) {
                 border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
               {t}</button>
           ))}
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>TIPS</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+            · 拖 port 圆点连线<br/>
+            · 单击选中，Delete 删除<br/>
+            · 拖 body 移动
+          </div>
         </div>
 
         <div style={{ padding: 8, borderTop: '1px solid var(--border-subtle)' }}>
