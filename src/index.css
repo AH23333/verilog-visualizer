@@ -577,6 +577,7 @@ code[class*="language-"] {
 .joint-paper .connection-tools,
 .joint-paper .link-tools,
 .joint-paper .link-tool,
+.joint-paper .joint-tool,
 .joint-paper [class*="link-tool"] {
   display: none !important;
 }
