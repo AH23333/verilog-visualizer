@@ -25,26 +25,24 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
     setFiles(sandboxStore.list());
   }, []);
 
-  useImperativeHandle(ref, () => ({
-    addCell: (type: string) => {
-      const paper = paperRef.current;
-      if (!paper) { console.warn('[sandbox] no paper'); return; }
-      const digitaljs = (window as any).digitaljs;
-      const cells = digitaljs?.cells;
-      const CellClass = cells?.[type];
-      if (!CellClass) { console.warn('[sandbox] unknown cell type:', type); return; }
-      try {
-        const cell = new CellClass({ bits: 1 });
-        // Fixed position with jitter — avoid paper.scale()/translate() API mismatch
-        const rect = wrapperRef.current!.getBoundingClientRect();
-        const cx = rect.width / 2 + (Math.random() - 0.5) * 200;
-        const cy = rect.height / 2 + (Math.random() - 0.5) * 200;
-        const sz = cell.getLayoutSize();
-        cell.setLayoutPosition({ x: cx, y: cy, width: sz.width, height: sz.height });
-        paper.model.addCell(cell);
-        console.log('[sandbox] added', type, 'at', cx, cy, 'total:', paper.model.getCells().length);
-      } catch (e) { console.error('[sandbox] addCell failed:', e); }
-    },
+  const doAddCell = useCallback((type: string) => {
+    const paper = paperRef.current;
+    if (!paper) { console.warn('[sandbox] no paper'); return; }
+    const digitaljs = (window as any).digitaljs;
+    const cells = digitaljs?.cells;
+    const CellClass = cells?.[type];
+    if (!CellClass) { console.warn('[sandbox] unknown cell type:', type); return; }
+    try {
+      const cell = new CellClass({ bits: 1 });
+      const rect = wrapperRef.current!.getBoundingClientRect();
+      const cx = rect.width / 2 + (Math.random() - 0.5) * 200;
+      const cy = rect.height / 2 + (Math.random() - 0.5) * 200;
+      const sz = cell.getLayoutSize();
+      cell.setLayoutPosition({ x: cx, y: cy, width: sz.width, height: sz.height });
+      paper.model.addCell(cell);
+      console.log('[sandbox] added', type, 'total:', paper.model.getCells().length);
+    } catch (e) { console.error('[sandbox] addCell failed:', e); }
+  }, []);
     saveCurrent: () => {
       if (!activeFile || !paperRef.current) return;
       const json = JSON.stringify(paperRef.current.model.toJSON());
@@ -174,7 +172,7 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
         <div style={{ padding: 8, overflowY: 'auto', flex: 1 }}>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>GATES</div>
           {GATE_TYPES.map(t => (
-            <button key={t} onClick={() => ref && (ref as any).current?.addCell?.(t)}
+            <button key={t} onClick={() => doAddCell(t)}
               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '3px 6px',
                 marginBottom: 1, fontSize: 'var(--fs-xs)', background: 'transparent',
                 border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
@@ -182,7 +180,7 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
           ))}
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '6px 0 4px', fontWeight: 600 }}>IO</div>
           {IO_TYPES.map(t => (
-            <button key={t} onClick={() => ref && (ref as any).current?.addCell?.(t)}
+            <button key={t} onClick={() => doAddCell(t)}
               style={{ display: 'block', width: '100%', textAlign: 'left', padding: '3px 6px',
                 marginBottom: 1, fontSize: 'var(--fs-xs)', background: 'transparent',
                 border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
