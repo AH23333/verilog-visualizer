@@ -606,8 +606,7 @@ code[class*="language-"] {
   stroke-width: 1px !important;
 }
 .joint-paper text {
-  font-family: 'Consolas', 'JetBrains Mono', monospace !important;
-  font-size: 9pt !important;
+  font-family: 'Consolas', 'JetBrains Mono', monospace !important;  font-size: 9pt !important;
 }
 /* Port dots — small filled circles */
 .joint-paper .port {
@@ -620,4 +619,24 @@ code[class*="language-"] {
 }
 .joint-paper svg {
   background: transparent !important;
+}
+
+/* ============================================================
+   IO cells (Button / Clock / Input) — bigger, clearer
+   ============================================================ */
+.joint-paper .cell-btn button,
+.joint-paper [class*="btnface"],
+.joint-paper foreignObject button {
+  min-width: 60px !important;
+  min-height: 28px !important;
+  padding: 4px 12px !important;
+  font-size: 12px !important;
+  font-weight: 600 !important;
+  border-radius: 4px !important;
+}
+/* IO port labels (signal names) — bigger */
+.joint-paper .iolabel text,
+.joint-paper text.iolabel {
+  font-size: 10pt !important;
+  font-weight: 600 !important;
 }
