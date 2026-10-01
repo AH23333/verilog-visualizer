@@ -403,10 +403,10 @@ input:focus, select:focus, textarea:focus {
 [data-theme="light"] svg .cell {
   stroke: #e4e4e7 !important;
 }
-[data-theme="dark"] .joint-paper.joint-theme-dark {
+[data-theme="dark"] .joint-paper.joint-theme-dark:not([data-sandbox-wrapper]) {
   background-color: transparent !important;
 }
-[data-theme="light"] .joint-paper.joint-theme-default {
+[data-theme="light"] .joint-paper.joint-theme-default:not([data-sandbox-wrapper]) {
   background-color: transparent !important;
 }
 
@@ -533,7 +533,7 @@ code[class*="language-"] {
    --canvas-bg + dot-grid show through. Without this, drilling into a
    subcircuit leaves an opaque white slab on dark theme.
    ============================================================ */
-.joint-paper,
+.joint-paper:not([data-sandbox-wrapper]),
 .joint-paper svg,
 .djs,
 .djs svg,
@@ -616,7 +616,7 @@ code[class*="language-"] {
   stroke-width: 1px !important;
 }
 /* Subtle grid already on wrapper; make paper itself transparent so grid shows through */
-.joint-paper {
+.joint-paper:not([data-sandbox-wrapper]) {
   background: transparent !important;
 }
 .joint-paper svg {
