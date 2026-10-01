@@ -70,8 +70,8 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
     if (!wrapper) return;
 
     const digitaljs = (window as any).digitaljs;
-    // Empty circuit, no auto-layout
-    const circuit = new digitaljs.Circuit({ cells: [] }, { layoutEngine: false });
+    // Empty circuit, no auto-layout. digitaljs expects {devices, connectors, subcircuits} format.
+    const circuit = new digitaljs.Circuit({ devices: {}, connectors: [], subcircuits: {} }, { layoutEngine: false });
     circuitRef.current = circuit;
     const paper = circuit.displayOn(wrapper);
     paperRef.current = paper;
