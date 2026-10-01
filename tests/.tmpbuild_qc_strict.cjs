@@ -66,11 +66,10 @@ async function main() {
     if (Math.abs(state.sx - (posBefore.sx + 150)) > 12) throw new Error(`reload: x drifted ${state.sx} vs ${Math.round(posBefore.sx + 150)}`);
   });
 
-  await step('VERIFY: fromJSON load error was real (console evidence)', async () => {
-    if (!errors.length) throw new Error('no console errors captured — fromJSON worked after all?');
+  await step('VERIFY: no fromJSON errors (re-instantiation works)', async () => {
     const loadFail = errors.find(e => /Could not find cell constructor/i.test(e));
     R.facts.loadFailEvidence = loadFail || null;
-    if (!loadFail) throw new Error('different error: ' + errors[0]);
+    if (loadFail) throw new Error('fromJSON error still present: ' + loadFail);
   });
 
   console.log('=== STRICT SUMMARY ===');

@@ -235,3 +235,37 @@ OutputPanel 已具备高度拖拽（`handleDragStart` + localStorage 持久化 `
 - shot3：counter 电路（clk/reset/count 命名 + Output/Problems 页签）
 - shot4/5：命令面板打开 + 过滤 "comp"
 - shot6：Output 面板
+
+---
+
+## 六、R5 收官（沙盒 P0 + 五轮质检闭环）
+
+> 从"廉价感"审计 → 根因修复（spacing/fit/拖拽三连）→ 功能波次 → 交接文档 → 52+ 提交 → 五轮质检 → 全绿收官
+
+### 6.1 沙盒模式 P0 落地
+
+- 独立入口（ActivityBar Box 图标），与主模式互斥切换
+- localStorage 文件系统（`verilog-viz-sandbox-files` / `-active`）
+- 7 种门 + 3 种 IO（Button/Clock/Lamp），点击放置
+- 手动拖拽（绕过 digitaljs pointerdown 拦截），保存/加载 `.djs`
+- 两步内联删除确认（零 window.confirm）
+
+### 6.2 拖拽三连根因修复
+
+| 问题 | 根因 | 修复 |
+|---|---|---|
+| 拖拽后 reload 位置丢失 | 裸调 `fromJSON`，view/model 不同步 | 逐 cell `new digitaljs.cells[type]` + `addCell` |
+| 拖拽 delta 不准 | parse DOM transform 含 scale 偏移 | 用 `model.position()` 取原点，mousemove 直接 set model |
+| 拖拽后 cell 弹回原位 | digitaljs `render:done` 自动重布局 | `paper.off('render:done')` |
+
+### 6.3 超契约功能文档化
+
+`docs/FEATURES_BEYOND_PLAN.md` 补齐：分屏视图（split + cross-highlight）、单步仿真（F7/delta-cycle）、连线路由改造（manhattan→orthogonal）。
+
+### 6.4 字号体系终态
+
+6 档 token：`--fs-xs:11 / sm:12 / md:13 / lg:15 / xl:18 / xxl:24`，全部 rem 清零。
+
+### 6.5 提交统计
+
+52+ commits，main 分支推送至 `675b845`。五轮质检（R1–R5）全部收口。
