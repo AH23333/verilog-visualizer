@@ -72,7 +72,8 @@ function SandboxCanvas({ theme }: Props) {
     paper.off('render:done');
     paper.scale(1);
     paper.translate(0, 0);
-    circuit.start(); // R7.2: simulation engine must run for signal propagation
+    circuit.start();
+    (window as any).__sandboxPaper = paper; // for QC tests // R7.2: simulation engine must run for signal propagation
 
     // Load saved cells + links
     if (activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
@@ -122,9 +123,11 @@ function SandboxCanvas({ theme }: Props) {
     // Cell interaction: magnet→wire, body→drag+select
     paper.on('cell:pointerdown', (cellView: any, evt: any) => {
       if (typeof cellView.model.isLink === 'function' && cellView.model.isLink()) return;
-      const magnet = evt.target?.closest?.('[magnet="true"]');
+      const magnet = evt.target?.closest?.('[magnet]');
+      const magnetVal = magnet?.getAttribute('magnet');
+      const isMagnet = magnetVal && magnetVal !== 'false';
 
-      if (magnet) {
+      if (isMagnet) {
         // Start wiring — port name lives on parent .joint-port-body
         evt.stopPropagation();
         evt.preventDefault();
@@ -147,8 +150,9 @@ function SandboxCanvas({ theme }: Props) {
           document.removeEventListener('mousemove', onMove);
           document.removeEventListener('mouseup', onUp);
           const el = document.elementFromPoint(e.clientX, e.clientY);
-          const targetMagnet = el?.closest?.('[magnet="true"]');
-          if (targetMagnet) {
+          const targetMagnet = el?.closest?.('[magnet]');
+          const tMagnetVal = targetMagnet?.getAttribute('magnet');
+          if (targetMagnet && tMagnetVal && tMagnetVal !== 'false') {
             const tPortBody = targetMagnet.closest('.joint-port-body');
             const targetPort = tPortBody?.getAttribute('port');
             const tCellEl = targetMagnet.closest('[model-id]');
