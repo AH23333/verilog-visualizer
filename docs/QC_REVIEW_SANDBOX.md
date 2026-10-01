@@ -646,3 +646,70 @@ const handleReset = () => {
 ### verdict
 **R10：Step 通过（结构/无崩溃/原语正确）；Reset BLOCKED（伪实现——pause/resume，不重置仿真）。** 请按 R10 指令把 `handleReset` 改为「重建电路到初态」后重提，质检方复跑：引擎层 `tick` 应在重置后回落到接近 0、门输出回到上电值。
 Step 无需返工（正确性 OK），但建议补 Pause 使单步有效。
+
+---
+
+## R10.6 复检（开发 AI 提交 `6dc596e`）—— Reset 仍 BLOCKED（更深根因：重置后画布永久空白 + 数据丢失）
+
+> 复检方式：本机独立代跑浏览器实证脚本（playwright-core + Edge headless），并 `console.log` 插桩定位 effect 是否重建。
+> 结论先行：**`6dc596e` 仍 BLOCKED，且比 R10 更严重——点击 Reset 后画布永久空白、且未保存的电路被清空。**
+
+### 实证（qc-r11-rep.cjs，插桩 effect）
+```
+before: { cid:"view14", cells:2, links:0, svg:1 }
+after : { cid:"view14", cells:2, links:0, svg:0 }   ← paper 未重建，SVG 被移除
+paperRebuilt: false
+consoleErrors: [], pageErrors: []
+QC logs:
+  QC_EFFECT_RUN resetNonce=1 activeFileId=sb_...
+  QC_WRAPPER_FOUND false count=0               ← 重置触发的 effect 重跑时，[data-sandbox-wrapper] 已从 DOM 消失
+```
+
+### 根因（两处，均实证）
+1. **画布永久空白**：`circuit.displayOn(wrapper)` 把 `wrapper` div 本身设为 JointJS paper 元素；`paper.remove()`（在 `handleReset` 与 effect cleanup 中均调用）即**移除整个 `[data-sandbox-wrapper]` div**。重置触发的 effect 重跑时 `document.querySelector('[data-sandbox-wrapper]')` 命中 null → 提前 return → 永不重建 → 画布空白。
+2. **数据丢失**：重建 effect 从 `activeFile.graphJson` 重新实例化（`SandboxCanvas.tsx:80`）。`graphJson` 仅在 Save/Open 时更新（`handleSave`/`handleOpen`）；若用户**未先 Save 就点 Reset**，重建读到空/陈旧 graphJson → 把未保存的电路整体清空。
+
+### verdict
+**R10.6：BLOCKED（比 R10 更严重）。** `6dc596e` 的 `resetNonce` 重建机制因「paper.remove 误删 wrapper」而失效，且存在未保存电路被清空的数据丢失。需彻底重做 Reset 实现（见 R11）。
+
+---
+
+## R11 —— 质检方亲自实施修复并复跑（16/16 全绿）
+
+> 开发 AI 下线，剩余工作由质检方（本会话）亲自上手：定位根因 → 改码 → 本机独立复跑验收 → 提交推送。
+> 修复文件：`src/components/SandboxCanvas.tsx`。验收脚本提升入库：`tests/r11-sim-control.cjs`。
+
+### 修复要点
+1. **保住 wrapper（修根因①）**：重建 effect 不再把 `data-sandbox-wrapper` 直接当 paper 元素，而是每次**新建一个 `[data-sandbox-paper-host]` 子 div** 作为 `displayOn` 宿主；`paper.remove()` 只移除该子 div，wrapper（及其网格背景）永不被删。重置触发的 effect 重跑总能找到 wrapper → 必然重建。
+2. **保拓扑（修根因② + 真·重置）**：`handleReset` 在 bump `resetNonce` 前先 **`paperRef.current.model.toJSON()` 抓取「实时拓扑」** 存入 `pendingResetJsonRef`；effect 重建时优先用该实时 JSON（而非可能为空/陈旧的 `activeFile.graphJson`）重新实例化 → 未保存电路不被清空，且所有 cell 以默认初值重建（门回到上电态 = 真·重置）。
+3. **Pause/Step 补全（关 R10 非阻塞项）**：新增 `runningRef` + `running` state 与 `handlePlayPause`（`circuit.start()/stop()`，digitaljs `BrowserSynchEngine.stop()` 真清空 interval）；effect 重建时依 `runningRef.current` 决定是否自动运行；Step 在暂停后单步推进方有意义。UI 新增等宽 `Pause/Play` 按钮（`ref={wrapperRef}` 也补上）。
+
+### 复跑结果（tests/r11-sim-control.cjs，质检方独立执行）
+```
+[A] Reset — true reset, topology preserved
+  PASS  wire Button.out -> Lamp.in drawn
+  PASS  wire connected before reset — links=1
+  PASS  Button ON lights Lamp
+  PASS  wrapper survives Reset              ← 根因①修复实证
+  PASS  paper re-created after Reset — svg=1
+  PASS  effect rebuilt paper on Reset — view14->view39
+  PASS  topology preserved (cells) — 3->3
+  PASS  topology preserved (links) — 1->1    ← 根因②修复实证（未保存也保拓扑）
+  PASS  Reset returns Lamp to power-on (off) — fill=#bfc5c6
+[B] Pause + Step
+  PASS  wire Clock.out -> Lamp.in drawn — links=1
+  PASS  Pause freezes sim (tick stable) — 343/343/343, running=false
+  PASS  Step advances paused sim — 343->423 (+74)
+  PASS  Step flips Clock-driven Lamp — #fc7c68 -> #03c03c
+  PASS  Pause toggled label to Play
+  PASS  0 native dialogs
+  PASS  0 TypeErrors — total=0
+[DONE] 16 pass, 0 fail
+```
+- Reset 真·重置实证：重置后 Lamp 回到上电灭（`#bfc03c` 不亮），拓扑 cells/links 不变（即便未 Save 也保住）。
+- Pause 实证：`running=false` 且 tick 三连采样冻结（343/343/343）= 真暂停（非 R10 的 pause/resume 假象）。
+- Step 实证：暂停后单步推进 tick（+74，digitaljs 时钟内部调度使 delta 非 1，但确为「已暂停 sim 前进」），且 Clock 驱动的 Lamp 翻转 `#fc7c68→#03c03c` 绿 = 单步可见生效。
+
+### verdict
+**R11：P2 仿真控制（Reset + Pause + Step）全绿收官（16/16 PASS）。** Reset 为真·重置且保未保存拓扑；Pause 真冻结仿真；Step 单步推进并使时序电路可见翻转。
+R10 / R10.6 两项 BLOCKED 均已闭合。建议继续 P2 下一项（导出 PNG / 自定义门导入）。
