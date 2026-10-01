@@ -300,17 +300,22 @@ function SandboxCanvas({ theme }: Props) {
         const sourceCell = cellView.model;
         const portBody = magnet.closest('.joint-port-body');
         const sourcePort = portBody?.getAttribute('port');
-        const rect = root.getBoundingClientRect();
+        // Convert the pointer's viewport coords to paper-local (model) coords so the
+        // loose end tracks the cursor 1:1 at any zoom/pan. Using raw `clientX - rect.left`
+        // only works at scale=1/translate=0 and otherwise inflates the endpoint by the
+        // zoom factor (the "wire end jumps far / wobbles" symptom).
+        const startLocal = paper.clientToLocalPoint(evt.clientX, evt.clientY);
         const tempLink = new digitaljs.cells.Wire({
           source: { id: sourceCell.id, port: sourcePort },
-          target: { x: evt.clientX - rect.left, y: evt.clientY - rect.top },
+          target: { x: startLocal.x, y: startLocal.y },
           signal: 'x',
           netname: `N${++wireCountRef.current}`,
         });
         paper.model.addCell(tempLink);
         tempLink.findView(paper).el.style.pointerEvents = 'none';
         const onMove = (e: MouseEvent) => {
-          tempLink.set('target', { x: e.clientX - rect.left, y: e.clientY - rect.top });
+          const p = paper.clientToLocalPoint(e.clientX, e.clientY);
+          tempLink.set('target', { x: p.x, y: p.y });
         };
         const onUp = (e: MouseEvent) => {
           document.removeEventListener('mousemove', onMove);
@@ -350,13 +355,16 @@ function SandboxCanvas({ theme }: Props) {
       cellView.model.attr('body/stroke-width', 2);
       forceUpdate(n => n + 1);
 
-      // Drag
+      // Drag — move in model space. Convert the pointer to paper-local coords and add the
+      // model-space delta to the original position, so the component tracks the cursor 1:1
+      // regardless of zoom (raw screen-delta math multiplies the displacement by the zoom factor).
+      const startLocal = paper.clientToLocalPoint(evt.clientX, evt.clientY);
       const origPos = cellView.model.position();
-      const startX = evt.clientX, startY = evt.clientY;
       const onMove = (e: MouseEvent) => {
+        const p = paper.clientToLocalPoint(e.clientX, e.clientY);
         cellView.model.set('position', {
-          x: origPos.x + (e.clientX - startX),
-          y: origPos.y + (e.clientY - startY),
+          x: origPos.x + (p.x - startLocal.x),
+          y: origPos.y + (p.y - startLocal.y),
         });
       };
       const onUp = () => {
