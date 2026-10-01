@@ -1055,6 +1055,15 @@ export default function App() {
 
   const hasMissingDeps = files.some((f) => f.status === 'missing_deps');
 
+  // Sandbox mode is a completely independent system — no MenuBar/ActivityBar/Sidebar.
+  if (viewMode === 'sandbox') {
+    return (
+      <div className="w-screen h-screen flex flex-col" style={{ background: 'var(--bg)' }}>
+        <SandboxCanvas ref={sandboxRef} theme={theme} />
+      </div>
+    );
+  }
+
   return (
     <div className="w-screen h-screen flex flex-col bg-[var(--bg)]">
       {/* Top title bar — full width, always on top (VS Code style) */}
@@ -1361,13 +1370,6 @@ export default function App() {
                     color: viewMode === 'split' ? '#fff' : 'var(--text-secondary)',
                     fontSize: 'var(--fs-md)',
                   }}><Columns2 size={13} /> Split</button>
-                <button onClick={() => setViewMode('sandbox')} className="inline-flex items-center gap-1.5 px-3.5 h-[26px] border-0 rounded-md cursor-pointer font-medium transition-all"
-                  title="Sandbox: build circuits from scratch"
-                  style={{
-                    background: viewMode === 'sandbox' ? 'var(--accent)' : 'transparent',
-                    color: viewMode === 'sandbox' ? '#fff' : 'var(--text-secondary)',
-                    fontSize: 'var(--fs-md)',
-                  }}><Box size={13} /> Sandbox</button>
               </div>
             )}</>}
           />
