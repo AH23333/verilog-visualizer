@@ -100,3 +100,37 @@
 2. 字号档位按 §11 审计脚本收敛到 ≤6 档（合并亚像素档：统一用 px 整数 token）。
 3. 完成后：SANDBOX_DEV.md 更新坑清单（新增 wrapper 回归条目）、全部工作提交推送、重新提请质检。
 4. 质检方将复跑：沙盒 strict 脚本（拖拽 delta/reload）+ 主流程 15 项 + 字号审计。
+
+---
+
+# R3 复检（05dac2b 之后）
+
+## R3.1 上轮指令执行核对
+
+| 指令 | 判定 |
+|---|---|
+| 1. wrapper 尺寸链 | ✅ CSS 强制 `.joint-paper`/`svg` 100% 后，wrapper 宽 1212 = 画布 1212（±0） |
+| 2. 字号档位 ≤6 | ❌ **实测 8 档**：16px(46)/14.4px(23)/15px(9)/13px(7)/12.8px(8)/12px(5)/11px(5)/11.2px(1)。根因：**rem 遗留与 px token 双体系混用**（如 0.9rem→14.4px 与 --fs-md:13px 并存）。P1-1 未完成 |
+| 3. 坑清单 #11 | ✅ 已追加 |
+| 4. 提交推送 | ✅ 05dac2b 已推送 |
+
+## R3.2 新回归：拖拽完全失效（delta 0,0）
+
+**诊断数据（mid-drag / after-up 对比）**：
+- 拖拽中：cell transform `translate(257,152)→(407,232)`，屏幕位置 258,70→408,150 —— **跟手** ✓
+- mouseup 后：cell transform 保持 (407,232)（**模型正确**），但 **viewport 从 translate(-204,-122) 跳变为 (-354,-202)** —— 恰好 -150/-80，把 cell 的屏幕位置**弹回原点**。
+
+**根因**：mouseup 后某个监听者自动平移 viewport（候选：digitaljs 对 position-change 的 auto-fit/pan、或 SandboxCanvas 自身监听链）。定位方法建议：临时 `paper.on('translate', ...)` 打印调用栈，或二分移除 SandboxCanvas 的 ResizeObserver/resize 监听验证。
+
+**注意**：这正是"手动 DOM transform + 模型 set 双轨"方案的固有脆弱性——若修复成本高，可考虑整体切回 `interactive: true` 并用 joint 原生 cellMove（digitaljs 的连线拦截可改在其 ToolView 层条件化），一次性消除双轨。
+
+## R3.3 质检方脚本勘误
+
+R3 首轮 M1 失败为**质检脚本自身错误**（Node 上下文误用 document），已修正重跑；M2/M3/M4 结论有效。
+
+## R3.4 下一步指令（按序）
+
+1. **修拖拽 viewport 回归**（R3.2）：定位 mouseup 后平移 viewport 的监听者并移除/条件化；或评估切换 joint 原生 cellMove 方案。验收 = 拖拽 delta ±8px 断言通过 + 保存/reload 位置一致（沿用 strict 脚本）。
+2. **P1-1 收尾**：消灭 rem 遗留（0.9rem→--fs-lg 等），验收 = 字号桶 ≤6（按 QC 脚本口径）。
+3. 主流程 fit 项请一并复测（R3 首轮 M1 因脚本错误未取得有效数据；M2 跳转+发光已确认无恙）。
+4. 完成后提交推送并提请质检；质检方复跑沙盒 strict + 主流程 + 字号审计三件套。
