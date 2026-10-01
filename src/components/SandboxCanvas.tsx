@@ -33,8 +33,10 @@ function SandboxCanvas({ theme }: Props) {
     const CellClass = cells?.[type];
     if (!CellClass) { console.warn('[sandbox] unknown cell type:', type); return; }
     try {
-      // Build a proper cell JSON like digitaljs would from a saved file
-      const rect = wrapperRef.current!.getBoundingClientRect();
+      // Find live wrapper from DOM directly
+      const liveWrapper = document.querySelector('[data-sandbox-wrapper]') as HTMLElement;
+      if (!liveWrapper) { console.warn('[sandbox] live wrapper not in DOM'); return; }
+      const rect = liveWrapper.getBoundingClientRect();
       const cx = Math.round(rect.width / 2 + (Math.random() - 0.5) * 200);
       const cy = Math.round(rect.height / 2 + (Math.random() - 0.5) * 200);
       const cellJson = {
@@ -61,8 +63,11 @@ function SandboxCanvas({ theme }: Props) {
 
   // (Re)build paper when active file changes
   useEffect(() => {
-    const wrapper = wrapperRef.current;
+    if (!activeFile) return;
+    // Query DOM directly — wrapperRef may point to a stale detached node
+    const wrapper = document.querySelector('[data-sandbox-wrapper]') as HTMLElement;
     if (!wrapper) return;
+    console.log('[sandbox] useEffect: wrapper connected:', wrapper.isConnected, 'children:', wrapper.children.length);
     const digitaljs = (window as any).digitaljs;
 
     // Cleanup old
@@ -94,6 +99,7 @@ function SandboxCanvas({ theme }: Props) {
     wrapper.style.backgroundColor = theme === 'dark' ? '#1e1e2e' : '#ffffff';
 
     return () => {
+      console.log('[sandbox] cleanup');
       ro.disconnect();
       try { circuit.stop(); } catch {}
       paper.remove();
@@ -199,7 +205,7 @@ function SandboxCanvas({ theme }: Props) {
 
       {/* Canvas */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        <div ref={wrapperRef} style={{ width: '100%', height: '100%' }} />
+        <div ref={wrapperRef} data-sandbox-wrapper style={{ width: '100%', height: '100%' }} />
         {!activeFile && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
