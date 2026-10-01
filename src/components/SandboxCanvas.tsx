@@ -68,6 +68,7 @@ function SandboxCanvas({ theme }: Props) {
     const paper = circuit.displayOn(wrapper);
     paperRef.current = paper;
     paper.options.interactive = false;
+    paper.off('render:done'); // R4.3: digitaljs re-layouts on every render:done, overriding drag positions
     paper.scale(1);
     paper.translate(0, 0);
 

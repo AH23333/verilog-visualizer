@@ -344,8 +344,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
 
         if (clocks.length === 0) {
           // Pure combinational: advance ONE delta-cycle tick.
-          const count = circuit.updateGatesNext();
-          console.log('[stepOnce] combinational delta-cycle, gates processed:', count);
+          circuit.updateGatesNext();
           return;
         }
 
