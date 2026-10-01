@@ -98,6 +98,7 @@ export default function App() {
   // Simulation control state (digitaljs engine)
   const [simLocked, setSimLocked] = useState(false); // default: interactive (unchanged from prior behavior); lock is opt-in
   const [simPaused, setSimPaused] = useState(false);
+  const [debugTick, setDebugTick] = useState(0);
       const MIN_SPEED_MS = 5, MAX_SPEED_MS = 200, DEFAULT_SPEED_MS = 10;
   const [speedMs, setSpeedMs] = useState(DEFAULT_SPEED_MS);
   const codeEditorRef = useRef<CodeEditorHandle>(null);
@@ -1237,15 +1238,22 @@ export default function App() {
                 <button
                   onClick={() => canvasRef.current?.stepOnce()}
                   disabled={!simPaused}
-                  title={simPaused ? 'Step one clock edge' : 'Pause first to step'}
+                  title={simPaused ? 'Step one delta-cycle (F7)' : 'Pause first to step'}
                   style={{
-                    display: 'inline-flex', alignItems: 'center',
-                    padding: '4px 9px', border: '1px solid var(--border)',
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '4px 10px', border: '1px solid var(--accent)',
                     borderRadius: 'var(--radius-sm)', cursor: simPaused ? 'pointer' : 'not-allowed',
-                    background: 'transparent', color: simPaused ? 'var(--text)' : 'var(--text-muted)',
+                    background: simPaused ? 'var(--accent)' : 'transparent',
+                    color: simPaused ? '#fff' : 'var(--text-muted)',
+                    fontSize: 'var(--fs-xs)', fontWeight: 600,
                     opacity: simPaused ? 1 : 0.4,
                   }}
-                ><StepForward size={13} /></button>
+                ><StepForward size={13} /> Step</button>
+                {simPaused && debugTick > 0 && (
+                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--accent)', fontWeight: 600, padding: '0 4px' }}>
+                    tick={debugTick}
+                  </span>
+                )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)' }}>
                   SPEED
                   {/* range value = "fastness": low ms = fast engine tick */}
@@ -1455,6 +1463,7 @@ export default function App() {
                           onRunningChange={handleCanvasRunningChange}
                           onSourceJump={handleSourceJump}
                           onReady={handleCanvasReady}
+                          onTick={(t) => setDebugTick(t)}
                         />
                       ) : (
                         <div style={{
@@ -1495,6 +1504,7 @@ export default function App() {
                     onRunningChange={handleCanvasRunningChange}
                     onSourceJump={handleSourceJump}
                     onReady={handleCanvasReady}
+                    onTick={(t) => setDebugTick(t)}
                   />
                 );
               }

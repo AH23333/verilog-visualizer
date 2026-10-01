@@ -56,10 +56,12 @@ interface CanvasProps {
   onSourceJump?: (srcName: string, line: number, column: number) => void;
   /** Fired once the circuit is built, laid out and fitted (safe point to apply highlights). */
   onReady?: () => void;
+  /** Fired after each engine tick (delta-cycle step) with the current tick number. */
+  onTick?: (tick: number) => void;
 }
 
 const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
-  { circuitJson, theme, onError, locked, paused, speedMs, onRunningChange, onSourceJump, onReady },
+  { circuitJson, theme, onError, locked, paused, speedMs, onRunningChange, onSourceJump, onReady, onTick },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,6 +80,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   const speedRef = useRef(speedMs);
   const onRunningRef = useRef(onRunningChange);
   onRunningRef.current = onRunningChange;
+  const onTickRef = useRef(onTick);
+  onTickRef.current = onTick;
   const onSourceJumpRef = useRef(onSourceJump);
   onSourceJumpRef.current = onSourceJump;
   const onReadyRef = useRef(onReady);
@@ -647,6 +651,13 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       } catch { /* ignore */ }
 
       circuitRef.current = circuit;
+
+      // Report each engine tick to App (for debug tick counter)
+      try {
+        circuit.on?.('postUpdateGates', (tick: number) => {
+          onTickRef.current?.(tick);
+        });
+      } catch { /* noop */ }
 
       // Double-click a cell carrying source_positions → jump to the defining line
       // (joint 4.1.3 has no built-in cell-dblclick event; hit-test via model-id attr)
