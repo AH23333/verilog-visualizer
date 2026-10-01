@@ -26,18 +26,19 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
       if (!paper) return;
       const cells = (window as any).digitaljs.cells;
       const CellClass = (cells as any)[type];
-      if (!CellClass) return;
-      // Position: center of viewport + jitter
-      const rect = wrapperRef.current!.getBoundingClientRect();
-      const sx = paper.scale();
-      const tx = paper.translate();
-      const cx = (rect.width / 2 - tx.tx) / sx + (Math.random() - 0.5) * 100;
-      const cy = (rect.height / 2 - tx.ty) / sx + (Math.random() - 0.5) * 100;
-      const cell = new CellClass({
-        position: { x: cx, y: cy },
-        bits: 1,
-      });
-      paper.model.addCell(cell);
+      if (!CellClass) { console.warn('[sandbox] unknown cell type:', type); return; }
+      try {
+        const cell = new CellClass({ bits: 1 });
+        // Position: center of viewport + jitter
+        const rect = wrapperRef.current!.getBoundingClientRect();
+        const sx = paper.scale();
+        const tx = paper.translate();
+        const cx = (rect.width / 2 - tx.tx) / sx + (Math.random() - 0.5) * 100;
+        const cy = (rect.height / 2 - tx.ty) / sx + (Math.random() - 0.5) * 100;
+        cell.setLayoutPosition({ x: cx, y: cy, width: cell.getLayoutSize().width, height: cell.getLayoutSize().height });
+        paper.model.addCell(cell);
+        console.log('[sandbox] added', type, 'at', cx, cy);
+      } catch (e) { console.error('[sandbox] addCell failed:', e); }
     },
     deleteSelected: () => {
       const paper = paperRef.current;
@@ -78,6 +79,15 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
 
     // Enable interaction — sandbox is editable
     paper.fixed(false);
+    paper.unfreeze();
+
+    // Fit paper to wrapper size
+    const resize = () => {
+      paper.setDimensions(wrapper.clientWidth, wrapper.clientHeight);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(wrapper);
 
     // Dark theme on paper
     wrapper.style.backgroundColor = theme === 'dark' ? '#1e1e2e' : '#ffffff';
@@ -96,6 +106,7 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
 
     return () => {
       window.removeEventListener('keydown', onKey);
+      ro.disconnect();
       try { circuit.stop(); } catch {}
       paper.remove();
       circuitRef.current = null;
