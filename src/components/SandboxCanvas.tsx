@@ -16,6 +16,7 @@ function SandboxCanvas({ theme }: Props) {
   const [files, setFiles] = useState<SandboxFile[]>([]);
   const [activeFile, setActiveFile] = useState<SandboxFile | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [resetNonce, setResetNonce] = useState(0);
   const [, forceUpdate] = useState(0);
 
   const refreshList = useCallback(() => {
@@ -271,7 +272,7 @@ function SandboxCanvas({ theme }: Props) {
       try { circuit.stop(); } catch {}
       paper.remove();
     };
-  }, [activeFile?.id, theme, spawnCell]);
+  }, [activeFile?.id, theme, spawnCell, resetNonce]);
 
   const handleNew = () => {
     let n = files.length + 1;
@@ -306,9 +307,11 @@ function SandboxCanvas({ theme }: Props) {
   };
 
   const handleReset = () => {
-    const circuit = circuitRef.current;
-    if (!circuit) return;
-    try { circuit.stop(); circuit.start(); } catch {}
+    // True reset: shutdown + remove, then effect rebuilds from saved graphJson
+    try { circuitRef.current?.stop(); } catch {}
+    paperRef.current?.remove();
+    circuitRef.current = null;
+    setResetNonce(n => n + 1);
   };
 
   const handleDelete = (f: SandboxFile) => {
