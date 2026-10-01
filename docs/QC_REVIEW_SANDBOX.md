@@ -240,6 +240,40 @@ R5.1 完成提请质检时，质检方将首次把**分屏视图与单步仿真�
 
 ---
 
+# R7 复检（沙盒 P1-a 连线/选中/删除）——连线 FAIL，根因两个均已有确定答案
+
+## R7.1 实测结果
+
+| 用例 | 判定 |
+|---|---|
+| 拖线 Button.out → Lamp.in | ❌ **links=0，未创建** |
+| 选中高亮 + Delete 删除 | ✅ 实测通过 |
+| save/reload 持久（cells） | ✅（QC 脚本断言口径有误——删除后剩 1 cell 是预期，非丢数据） |
+| 原生弹窗/页面错误 | ⚠️ 原生 0；但抓到 **TypeError: digitaljs.cells.Link is not a constructor**（点 magnet 时抛出） |
+
+## R7.2 根因（两个，均已在浏览器 + 源码取证）
+
+1. **类名错误**：`digitaljs.cells` 命名空间里**不存在 Link 类**——实测 keys 中连线类是 **Wire / WireView**。`new digitaljs.cells.Link(...)` 每次点 magnet 都抛 TypeError，temp link 从未创建。
+2. **仿真引擎从未启动**：SandboxCanvas **没有 circuit.start()**（主流程 Canvas.tsx 有，沙盒漏了）——即使连线成功，信号也不会传播（toggle 只改 Button 自身 outputSignals，不扩散到 wire/Lamp）。
+
+## R7.3 修复指令（精确到标识符）
+
+1. **类名**：所有 `new digitaljs.cells.Link(...)` → `new digitaljs.cells.Wire(...)`（2 处：连线起点 + 加载重建）。Wire 的构造参数与 Link 相同（source/target/signal），无需其他改动。
+2. **引擎启动**：paper 就绪后调用 `circuit.start()`（与主流程 Canvas 一致）；沙盒无锁定逻辑，无冲突。验收：拖线成功后点击 Button，**wire 颜色变化 + Lamp 亮**（信号传播实证）。
+3. **port 名取法**（连线成功后仍需修）：实测 `magnet.getAttribute('port') === null`。正确取法：mouseup 命中 magnet 后用 `paper.findMagnet(el)` + cellView 的 port 反查，或取 `cell.model.get('ports')` 数组按最近位置反查。连线成功后需验证 link 的 source/target port 语义正确（否则 digitaljs 引擎不传播）。
+4. **tempLink 挡命中问题预留**：Link 类修好后若 mouseup 命中仍失败（tempLink 自己挡住 elementFromPoint），修复 = 检测前临时隐藏 tempLink 的 SVG（display:none → 检测 → 恢复/删除）。
+
+## R7.4 验收标准（重跑 `.tmpbuild_qc_p1a.cjs`）
+
+1. P1a-1 拖线 → links ≥ 1
+2. P1a-2 点击 Button → wire stroke 变化 + Lamp fill 变化（传播实证）
+3. P1a-3/4 保持 PASS
+4. 原生弹窗 0、TypeError 0
+
+修完提交推送后提请质检；质检方复跑同脚本 + 主流程三件套。
+
+---
+
 # R3 复检（05dac2b 之后）
 
 ## R3.1 上轮指令执行核对
