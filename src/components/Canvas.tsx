@@ -506,13 +506,33 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       const paper = circuit.displayOn(wrapper);
       paperRef.current = paper;
 
-      // Keep elkjs-computed vertices (they already avoid overlaps) but force
-      // miter joints via CSS. Don't clear vertices — that makes the orthogonal
-      // router recompute paths and causes wire overlaps.
+      // digitaljs's from_elkjs splits every corner into two points 10px apart
+      // (to give joint room for rounded corners). We post-process: merge pairs
+      // of vertices closer than 15px into a single sharp corner, keeping the
+      // orthogonal shape without the little "bent" segments.
       try {
-        paper.options = paper.options || {};
-        paper.options.defaultRouter = { name: 'orthogonal', args: { padding: 20, step: 15 } };
-      } catch { /* router cosmetic */ }
+        for (const lk of paper.model.getLinks()) {
+          try {
+            const verts = lk.get('vertices') || [];
+            if (!verts.length) continue;
+            const merged = [verts[0]];
+            for (let i = 1; i < verts.length; i++) {
+              const prev = merged[merged.length - 1];
+              const cur = verts[i];
+              const dx = cur.x - prev.x;
+              const dy = cur.y - prev.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+              if (dist < 15) {
+                // Merge: keep the corner midpoint
+                merged[merged.length - 1] = { x: (prev.x + cur.x) / 2, y: (prev.y + cur.y) / 2 };
+              } else {
+                merged.push(cur);
+              }
+            }
+            lk.set('vertices', merged);
+          } catch {}
+        }
+      } catch { /* cosmetic */ }
 
       // P1-3: rewrite auto-id cell labels (dev0/dev13) to human port/net names.
       // digitaljs's cell initialize() sets label.text = id regardless of the JSON
