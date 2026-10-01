@@ -43,13 +43,6 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
       console.log('[sandbox] added', type, 'total:', paper.model.getCells().length);
     } catch (e) { console.error('[sandbox] addCell failed:', e); }
   }, []);
-    saveCurrent: () => {
-      if (!activeFile || !paperRef.current) return;
-      const json = JSON.stringify(paperRef.current.model.toJSON());
-      sandboxStore.save(activeFile.id, json);
-      refreshList();
-    },
-  }), [activeFile]);
 
   // Load file list on mount
   useEffect(() => {
