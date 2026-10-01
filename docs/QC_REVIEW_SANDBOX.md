@@ -65,3 +65,38 @@
 - `.tmpbuild_qc_sb.cjs`——8 步走查（入口/CRUD/放置/拖拽/重载/IO 可用性/confirm 捕获/模式互斥）
 - `.tmpbuild_qc_strict.cjs`——严格断言（拖拽 delta 精确匹配、reload 完整性、console 证据采集）
 放置于仓库根（`_` 前缀已被 .gitignore 忽略则可保留，否则随 §5-6 一并清理）。
+
+---
+
+# R2 复检（P0 hardening 提交 2bd0c2c 之后）
+
+> 复检方式：14 步综合实测（沙盒修复验证 + 主流程回归 + DOM 字号审计）。
+
+## R2.1 上轮指令执行核对
+
+| 指令 | 判定 |
+|---|---|
+| 1. 修加载（弃裸 fromJSON） | ✅ 逐 cell 重实例化（createCellByType 与放置同源），save→整页 reload→cells persist 实测通过 |
+| 2. 拖拽模型同步（latest 闭包） | ✅ 代码落地；但见 R2.2 |
+| 3. 删除两步内联确认（×→?→再点） | ✅ 实测通过，全程原生 dialog = 0 |
+| 4. IO 库降级为 3 项 | ✅ Input/Output/Dff 已移出面板（实测断言） |
+| 5. 卫生清理 | ✅ console 遗留清零、硬编码改 token（残余见 R2.3） |
+| 6. 文档对齐 + 提交 | ✅ SANDBOX_DEV.md 重写入库、推送属实（origin/main..main=0） |
+
+## R2.2 新发现问题（返工）
+
+**SB-BUG：wrapper shrink-to-fit 回归（拖拽 delta off 的根因）**
+- 实测：放置单门后 `[data-sandbox-wrapper]` 的 getBoundingClientRect().width = **166px**（应为画布区 ~1200px），paper viewport 出现负偏移 translate(-183,-170)——fitToContent 异常未被 scale(1)/translate(0,0) 完全压制，或 setDimensions 链路在新构造路径下未执行。
+- 衍生：拖拽 delta 断言失败（拖动屏幕 150px，cell 位移不等于 150）。
+- 修复方向：检查 SandboxCanvas 尺寸链——L242 wrapper 的 width:100% 为何未生效（父容器塌陷？svg 尺寸回写？），resize()/paper.setDimensions 调用时机；修后拖拽 delta 复测（预期自动通过）。
+- 影响面：仅沙盒模式；主流程回归全绿（5 编译/跳转/发光/下钻/tooltip/命令面板）。
+
+**字号档位实测 9 档（报告称 6 档）**
+- 实测含 rem→px 亚像素档（12.8/14.4/16.8 等）。主要档位已收敛，但 6 档声称未达。修正口径后继续收敛（P1-1 收尾）。
+
+## R2.3 下一步指令（按序）
+
+1. 修 SB-BUG（wrapper 尺寸链），验收 = wrapper 宽 ≈ 画布区宽（±4px）且拖拽 delta 断言通过。
+2. 字号档位按 §11 审计脚本收敛到 ≤6 档（合并亚像素档：统一用 px 整数 token）。
+3. 完成后：SANDBOX_DEV.md 更新坑清单（新增 wrapper 回归条目）、全部工作提交推送、重新提请质检。
+4. 质检方将复跑：沙盒 strict 脚本（拖拽 delta/reload）+ 主流程 15 项 + 字号审计。

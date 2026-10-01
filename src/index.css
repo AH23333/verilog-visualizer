@@ -640,3 +640,18 @@ code[class*="language-"] {
   font-size: 12pt !important;
   font-weight: 600 !important;
 }
+
+/* ============================================================
+   Sandbox canvas — force paper to fill wrapper (size chain fix)
+   ============================================================ */
+[data-sandbox-wrapper] {
+  position: absolute !important;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100% !important;
+  height: 100% !important;
+}
+[data-sandbox-wrapper] .joint-paper,
+[data-sandbox-wrapper] svg {
+  width: 100% !important;
+  height: 100% !important;
+}

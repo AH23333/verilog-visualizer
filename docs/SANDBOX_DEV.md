@@ -127,6 +127,7 @@ new digitaljs.cells[type]({
 | 8  | forwardRef 间接调用 addCell 不工作                      | 按钮点了没反应                                 | 改普通函数组件 + 本地 useCallback                               |
 | 9  | `paper.options.interactive = true` 导致 drag 冲突    | pointerdown 触发但 cell 不动                 | 设 `false` + 手动 mousemove                               |
 | 10 | digitaljs 自动 fit-to-content 缩放                   | cell 在画布极小区域                            | `paper.scale(1); paper.translate(0,0)`                 |
+| 11 | wrapper 尺寸链断裂（`.joint-paper` 自带默认尺寸不继承父宽） | wrapper 宽 ≠ 画布区宽，paper 偏右/留白 | CSS `[data-sandbox-wrapper] .joint-paper, svg { width:100% !important; height:100% !important }` |
 
 
 
