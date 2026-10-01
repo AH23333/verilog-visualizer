@@ -632,11 +632,11 @@ code[class*="language-"] {
 .joint-paper .joint-type-button text,
 .joint-paper .joint-type-clock text,
 .joint-paper .joint-type-numdisplay text {
-  font-size: 12pt !important;
+  font-size: 14pt !important;
   font-weight: 700 !important;
 }
 /* IO port labels (signal names) — bigger */
 .joint-paper text.iolabel {
-  font-size: 10pt !important;
+  font-size: 12pt !important;
   font-weight: 600 !important;
 }
