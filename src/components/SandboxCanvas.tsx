@@ -47,6 +47,7 @@ function SandboxCanvas({ theme }: Props) {
       };
       const cell = new CellClass(cellJson);
       paper.model.addCell(cell);
+      console.log('[sandbox] cell attrs:', JSON.stringify(cell.attr()), 'interactive:', cell.get('interactive'), 'draggable:', cell.get('draggable'));
       console.log('[sandbox] added', type, 'at', cx, cy, 'total:', paper.model.getCells().length);
     } catch (e) { console.error('[sandbox] addCell failed:', e); }
   }, []);
@@ -80,8 +81,7 @@ function SandboxCanvas({ theme }: Props) {
     circuitRef.current = circuit;
     const paper = circuit.displayOn(wrapper);
     paperRef.current = paper;
-    paper.fixed(false);
-    paper.unfreeze();
+    paper.options.interactive = false; // we handle drag manually
 
     // Load active file's graph
     if (activeFile && activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
@@ -89,6 +89,33 @@ function SandboxCanvas({ theme }: Props) {
         paper.model.fromJSON(JSON.parse(activeFile.graphJson));
       } catch (e) { console.warn('[sandbox] load failed:', e); }
     }
+
+    // Manual drag — digitaljs gates intercept pointerdown for wiring
+    paper.on('cell:pointerdown', (cellView: any, evt: any) => {
+      if (typeof cellView.model.isLink === 'function' && cellView.model.isLink()) return;
+      const magnet = evt.target?.closest?.('[magnet]');
+      if (magnet && magnet.getAttribute('magnet') !== 'false') return;
+      evt.stopPropagation();
+      evt.preventDefault();
+      const el = cellView.el as SVGGElement;
+      const t = el.getAttribute('transform') || 'translate(0,0)';
+      const m = t.match(/translate\(([\d.-]+),\s*([\d.-]+)\)/);
+      const startX = evt.clientX, startY = evt.clientY;
+      const origX = m ? parseFloat(m[1]) : 0;
+      const origY = m ? parseFloat(m[2]) : 0;
+      const onMove = (e: MouseEvent) => {
+        const nx = origX + (e.clientX - startX);
+        const ny = origY + (e.clientY - startY);
+        el.setAttribute('transform', `translate(${nx},${ny})`);
+      };
+      const onUp = () => {
+        cellView.model.set('position', { x: origX + (evt.clientX - startX), y: origY + (evt.clientY - startY) });
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
 
     // Size paper
     const resize = () => paper.setDimensions(wrapper.clientWidth, wrapper.clientHeight);
