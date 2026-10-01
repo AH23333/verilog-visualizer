@@ -1146,6 +1146,10 @@ export default function App() {
               else { setLeftPanel('hierarchy'); setSidebarCollapsed(false); }
             }}
           />
+          <ActivityButton icon={<Box size={19} />} label="Sandbox"
+            active={viewMode === 'sandbox'}
+            onClick={() => setViewMode('sandbox')}
+          />
           <div style={{ flex: 1 }} />
           <ActivityButton icon={theme === 'dark' ? <Moon size={19} /> : <Sun size={19} />} label="Theme"
             active={false} onClick={handleToggleTheme}
