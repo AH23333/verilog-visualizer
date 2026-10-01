@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, forwardRef, useImperativeHandle, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { sandboxStore, type SandboxFile } from '../store/sandboxStore';
 
 export interface SandboxHandle {
@@ -13,7 +13,7 @@ interface Props {
 const GATE_TYPES = ['And', 'Or', 'Not', 'Xor', 'Nand', 'Nor', 'Xnor'];
 const IO_TYPES = ['Button', 'Clock', 'Input', 'Output', 'Lamp', 'Dff'];
 
-const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ theme }, ref) {
+function SandboxCanvas({ theme }: Props) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const circuitRef = useRef<any>(null);
   const paperRef = useRef<any>(null);
@@ -206,6 +206,6 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
       </div>
     </div>
   );
-});
+}
 
 export default SandboxCanvas;

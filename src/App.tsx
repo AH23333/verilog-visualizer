@@ -1208,7 +1208,7 @@ export default function App() {
         {/* Main Content Area */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           {viewMode === 'sandbox' ? (
-            <SandboxCanvas ref={sandboxRef} theme={theme} />
+            <SandboxCanvas theme={theme} />
           ) : (<>
           {/* Tab Bar */}
           <TabBar
