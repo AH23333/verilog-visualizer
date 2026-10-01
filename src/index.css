@@ -572,6 +572,12 @@ code[class*="language-"] {
   stroke-linejoin: miter;
   stroke-linecap: butt;
 }
+/* Hide draggable vertex handles — too many edit points clutter the canvas */
+.joint-paper .vertex,
+.joint-paper .connection-tools,
+.joint-paper .link-tools {
+  display: none !important;
+}
 
 /* ============================================================
    Quartus-style schematic look: sharp rectangles, monospace labels,

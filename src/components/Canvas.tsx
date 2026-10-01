@@ -506,14 +506,26 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       const paper = circuit.displayOn(wrapper);
       paperRef.current = paper;
 
-      // Force orthogonal (right-angle) routing on every link — overrides any
-      // curved vertices elkjs may have baked in.
+      // Force orthogonal (right-angle) routing on every link.
+      // Clear all elkjs-baked vertices so manhattan router computes clean
+      // 2-bend paths instead of inheriting elk's many control points.
       try {
         paper.options = paper.options || {};
-        paper.options.defaultRouter = { name: 'manhattan', args: { padding: 8 } };
-        for (const lk of paper.model.getLinks()) {
-          try { lk.set('vertices', []); lk.set('router', { name: 'manhattan', args: { padding: 8 } }); } catch {}
-        }
+        paper.options.defaultRouter = { name: 'manhattan', args: { padding: 20 } };
+        const forceRoute = () => {
+          for (const lk of paper.model.getLinks()) {
+            try {
+              lk.set('vertices', []);
+              lk.set('router', { name: 'manhattan', args: { padding: 20 } });
+            } catch {}
+          }
+        };
+        forceRoute();
+        // elkjs layout is async — re-force after render:done
+        let routeCount = 0;
+        paper.on?.('render:done', () => {
+          if (routeCount++ < 3) requestAnimationFrame(forceRoute);
+        });
       } catch { /* router cosmetic */ }
 
       // P1-3: rewrite auto-id cell labels (dev0/dev13) to human port/net names.
