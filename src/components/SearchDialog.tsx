@@ -1,4 +1,4 @@
-// Global search dialog - searches across all project files
+﻿// Global search dialog - searches across all project files
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { FileEntry } from '../store/fileStore';
@@ -146,7 +146,7 @@ export default function SearchDialog({ files, theme, onClose, onOpenFile }: Sear
               style={{
                 flex: 1,
                 padding: '8px 12px',
-                fontSize: '0.9rem',
+                fontSize: 'var(--fs-md)',
                 background: 'var(--input-bg)',
                 color: 'var(--text)',
                 border: `1px solid var(--input-border)`,

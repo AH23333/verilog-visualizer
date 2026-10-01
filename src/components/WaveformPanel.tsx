@@ -1,4 +1,4 @@
-// Live waveform viewer — samples named nets from the running digitaljs engine
+﻿// Live waveform viewer — samples named nets from the running digitaljs engine
 import { X } from 'lucide-react';
 // (poll link.get('signal') + circuit.tick) and renders a scrolling digital
 // waveform. Self-drawn canvas; no joint/MonitorView coupling (per feasibility doc).
@@ -137,7 +137,7 @@ export default function WaveformPanel({ getChannels, getSample, resetKey, onClos
           Waveform {channels.length === 0 && '— no named nets'}
         </span>
         <button onClick={onClose} title="Close waveform"
-          className="border-0 cursor-pointer px-2 py-0.5 rounded text-[0.9rem]"
+          className="border-0 cursor-pointer px-2 py-0.5 rounded text-[var(--fs-md)]"
           style={{ background: 'transparent', color: 'var(--text-muted)' }}><X size={14} /></button>
       </div>
       <div ref={wrapRef} style={{ overflowY: 'auto', padding: '2px 0' }}>

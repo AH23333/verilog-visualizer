@@ -1,4 +1,4 @@
-// Examples gallery — curated built-in circuits (concept: OpenCircuits SideNav
+﻿// Examples gallery — curated built-in circuits (concept: OpenCircuits SideNav
 import { X } from 'lucide-react';
 // "Examples" + CircuitPreview cards). Thumbnails intentionally not generated:
 // every example requires a Yosys compile, so previews would either be baked
@@ -49,7 +49,7 @@ export default function ExamplesDialog({ loading, onClose, onOpen }: ExamplesDia
           <button
             onClick={onClose}
             title="Close (Esc)"
-            className="px-2 py-0.5 border-0 rounded cursor-pointer text-[1.2rem] leading-none"
+            className="px-2 py-0.5 border-0 rounded cursor-pointer text-[var(--fs-xxl)] leading-none"
             style={{ background: 'transparent', color: 'var(--text-muted)' }}
           >
             <X size={14} />
@@ -69,7 +69,7 @@ export default function ExamplesDialog({ loading, onClose, onOpen }: ExamplesDia
               }}
             >
               <div className="flex items-center justify-between gap-2 mb-1">
-                <span className="text-[0.9rem] font-semibold truncate" style={{ color: 'var(--text)' }}>
+                <span className="text-[var(--fs-md)] font-semibold truncate" style={{ color: 'var(--text)' }}>
                   {ex.title}
                 </span>
                 <span
@@ -82,7 +82,7 @@ export default function ExamplesDialog({ loading, onClose, onOpen }: ExamplesDia
               <div className="text-[var(--fs-sm)] leading-relaxed mb-2" style={{ color: 'var(--text-secondary)' }}>
                 {ex.description}
               </div>
-              <div className="text-[0.7rem] font-mono truncate" style={{ color: 'var(--text-muted)' }}>
+              <div className="text-[var(--fs-xs)] font-mono truncate" style={{ color: 'var(--text-muted)' }}>
                 {ex.fileName}
               </div>
             </button>

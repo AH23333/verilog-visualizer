@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
+﻿import { useState, useRef, useEffect, useSyncExternalStore } from 'react';
 import { type Theme } from '../store/themeStore';
 import { settingsStore } from '../store/settingsStore';
 
@@ -127,7 +127,7 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
             style={{
               background: openMenu === menu.label ? 'var(--surface-hover)' : 'transparent',
               color: 'var(--text-secondary)',
-              fontSize: '0.8rem',
+              fontSize: 'var(--fs-sm)',
               fontWeight: 500,
             }}
           >

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo, useState, useCallback, forwardRef, useImperativeHandle, type CSSProperties } from 'react';
+﻿import { useEffect, useRef, useMemo, useState, useCallback, forwardRef, useImperativeHandle, type CSSProperties } from 'react';
 import { ChevronUp, ChevronDown, X } from 'lucide-react';
 import { EditorState, type Extension, Compartment } from '@codemirror/state';
 import {
@@ -443,7 +443,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
             title="Redo (Ctrl+Y)"
             style={toolbarBtnStyle}
           >&#x21B7;</button>
-          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 4 }}>Verilog</span>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginLeft: 4 }}>Verilog</span>
           <button
             onClick={onRecompile}
             disabled={isCompiling}
@@ -474,7 +474,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
               onKeyDown={handleSearchKeyDown}
               placeholder="Find..."
               style={{
-                width: 180, padding: '3px 8px', fontSize: '0.8rem',
+                width: 180, padding: '3px 8px', fontSize: 'var(--fs-sm)',
                 background: 'var(--input-bg)', color: 'var(--text)',
                 border: '1px solid var(--input-border)', borderRadius: 'var(--radius-sm)',
                 outline: 'none',
@@ -501,7 +501,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
               onKeyDown={handleSearchKeyDown}
               placeholder="Replace..."
               style={{
-                width: 150, padding: '3px 8px', fontSize: '0.8rem',
+                width: 150, padding: '3px 8px', fontSize: 'var(--fs-sm)',
                 background: 'var(--input-bg)', color: 'var(--text)',
                 border: '1px solid var(--input-border)', borderRadius: 'var(--radius-sm)',
                 outline: 'none',

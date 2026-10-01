@@ -1,4 +1,4 @@
-import { TriangleAlert } from 'lucide-react';
+﻿import { TriangleAlert } from 'lucide-react';
 
 interface MissingModulesDialogProps {
   missingModules: string[];
@@ -48,7 +48,7 @@ export default function MissingModulesDialog({
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ display: 'inline-flex', color: 'var(--warning)' }}><TriangleAlert size={20} /></span>
           <div>
-            <div style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--warning)' }}>
+            <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--warning)' }}>
               Missing Module Implementations
             </div>
             <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-secondary)', marginTop: 2 }}>
@@ -91,7 +91,7 @@ export default function MissingModulesDialog({
                 />
                 <code
                   style={{
-                    fontSize: '1rem',
+                    fontSize: 'var(--fs-lg)',
                     fontFamily: 'monospace',
                     color: 'var(--text)',
                     background: 'var(--input-bg)',

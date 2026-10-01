@@ -1,8 +1,7 @@
-import { useState, useCallback, useEffect, useRef, useMemo, useSyncExternalStore, type ReactNode } from 'react';
+﻿import { useState, useCallback, useEffect, useRef, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import Canvas from './components/Canvas';
 import type { CanvasHandle } from './components/Canvas';
 import SandboxCanvas from './components/SandboxCanvas';
-import type { SandboxHandle } from './components/SandboxCanvas';
 import MenuBar from './components/MenuBar';
 import Sidebar from './components/Sidebar';
 import CodeEditor from './components/CodeEditor';
@@ -59,7 +58,6 @@ export default function App() {
   const [clipboard, setClipboard] = useState<ClipboardEntry>(null);
   const lastClickedIndex = useRef<number>(-1);
   const canvasRef = useRef<CanvasHandle>(null);
-  const sandboxRef = useRef<SandboxHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // Missing modules dialog state
@@ -1233,7 +1231,7 @@ export default function App() {
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5,
                     padding: '4px 10px', border: 'none', borderRadius: 'var(--radius-sm)',
-                    cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                    cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 600,
                     background: simLocked ? 'var(--surface-hover)' : 'var(--success)',
                     color: simLocked ? 'var(--text-secondary)' : '#fff',
                   }}
@@ -1288,7 +1286,7 @@ export default function App() {
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 5,
                     padding: '4px 10px', border: '1px solid var(--border)',
-                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600,
+                    borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 600,
                     background: waveOpen ? 'var(--accent)' : 'transparent',
                     color: waveOpen ? '#fff' : 'var(--text)',
                   }}
@@ -1582,7 +1580,7 @@ export default function App() {
       />
 
       {/* Bottom Status Bar */}
-      <div className="flex items-center h-8 px-4 gap-4 text-[0.9rem]"
+      <div className="flex items-center h-8 px-4 gap-4 text-[var(--fs-md)]"
         style={{
           background: 'var(--statusbar-bg)',
           color: 'var(--text-secondary)',

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+﻿import { useState, useMemo } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import type { FileEntry } from '../store/fileStore';
 import { parseVerilogInstances } from '../lib/verilog';
@@ -100,7 +100,7 @@ export default function BindingDialog({
       >
         {/* Header */}
         <div style={{ marginBottom: 16, flexShrink: 0 }}>
-          <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 600, color: 'var(--text)' }}>
+          <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>
             Module Binding: {file.name}
           </h2>
           <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-md)', color: 'var(--text-secondary)' }}>

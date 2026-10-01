@@ -1,4 +1,4 @@
-// Keyboard shortcuts help modal — rendered from the shortcut registry, not a
+﻿// Keyboard shortcuts help modal — rendered from the shortcut registry, not a
 import { X } from 'lucide-react';
 // hand-maintained copy (see src/lib/shortcuts.ts).
 
@@ -39,13 +39,13 @@ export default function ShortcutsHelpDialog({ onClose }: ShortcutsHelpDialogProp
           className="flex items-center justify-between px-5 py-3 border-b sticky top-0"
           style={{ borderColor: 'var(--border)', background: 'var(--menu-bg)' }}
         >
-          <span className="text-[1.05rem] font-semibold" style={{ color: 'var(--text)' }}>
+          <span className="text-[var(--fs-xl)] font-semibold" style={{ color: 'var(--text)' }}>
             Keyboard Shortcuts
           </span>
           <button
             onClick={onClose}
             title="Close (Esc)"
-            className="px-2 py-0.5 border-0 rounded cursor-pointer text-[1.2rem] leading-none"
+            className="px-2 py-0.5 border-0 rounded cursor-pointer text-[var(--fs-xxl)] leading-none"
             style={{ background: 'transparent', color: 'var(--text-muted)' }}
           >
             <X size={14} />

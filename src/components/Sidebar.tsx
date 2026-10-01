@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+﻿import { useState, useMemo, useCallback, useRef } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Pencil, Plus, FolderPlus, RefreshCw, PanelLeftClose, Check } from 'lucide-react';
 import type { FileEntry } from '../store/fileStore';
 
@@ -274,7 +274,7 @@ export default function Sidebar({
             className="flex items-center select-none transition-all cursor-pointer mx-1 rounded-md"
             style={{
               padding: `5px 10px 5px ${6 + depth * 14}px`,
-              fontSize: '0.9rem',
+              fontSize: 'var(--fs-md)',
               color: 'var(--text-secondary)',
               background: dragOverThis ? 'var(--accent-muted)' : 'transparent',
               outline: dragOverThis ? '1px dashed var(--accent)' : 'none',
@@ -387,7 +387,7 @@ export default function Sidebar({
             ? 'var(--surface-hover)'
             : 'transparent',
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
-          fontSize: '0.9rem',
+          fontSize: 'var(--fs-md)',
           color: isActive ? 'var(--text)' : 'var(--text-secondary)',
         }}
         onMouseEnter={(e) => {
@@ -431,7 +431,7 @@ export default function Sidebar({
               border: '1px solid var(--accent)',
               borderRadius: 2,
               padding: '1px 4px',
-              fontSize: '0.9rem',
+              fontSize: 'var(--fs-md)',
             }}
           />
         ) : (
@@ -489,7 +489,7 @@ export default function Sidebar({
             border: 'none',
             color: 'var(--text-muted)',
             cursor: 'pointer',
-            fontSize: '1rem',
+            fontSize: 'var(--fs-lg)',
             padding: 4,
           }}
         >
@@ -508,7 +508,7 @@ export default function Sidebar({
           borderBottom: '1px solid var(--border)',
           color: 'var(--text-secondary)',
         }}>
-        <span className="text-[0.7rem] font-semibold uppercase tracking-[0.08em]">Files</span>
+        <span className="text-[var(--fs-xs)] font-semibold uppercase tracking-[0.08em]">Files</span>
         <div className="flex gap-0.5">
           <button
             onClick={onImportFile}
@@ -587,7 +587,7 @@ export default function Sidebar({
             data-sidebar-empty
             style={{
               padding: 16,
-              fontSize: '0.9rem',
+              fontSize: 'var(--fs-md)',
               color: 'var(--text-muted)',
               textAlign: 'center',
             }}

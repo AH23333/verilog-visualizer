@@ -1,4 +1,4 @@
-import { Component, type ReactNode } from 'react';
+﻿import { Component, type ReactNode } from 'react';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -50,13 +50,13 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             padding: 32,
           }}
         >
-          <div style={{ fontSize: '4rem', opacity: 0.3 }}>!</div>
-          <h2 style={{ fontSize: '1.2rem', fontWeight: 600 }}>
+          <div style={{ fontSize: 'var(--fs-xxl)', opacity: 0.3 }}>!</div>
+          <h2 style={{ fontSize: 'var(--fs-xxl)', fontWeight: 600 }}>
             Something went wrong
           </h2>
           <p
             style={{
-              fontSize: '0.9rem',
+              fontSize: 'var(--fs-md)',
               color: 'var(--text-secondary)',
               maxWidth: 480,
               textAlign: 'center',
@@ -94,7 +94,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
               color: '#fff',
               border: 'none',
               borderRadius: 'var(--radius-md)',
-              fontSize: '0.9rem',
+              fontSize: 'var(--fs-md)',
               fontWeight: 500,
               cursor: 'pointer',
             }}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+﻿import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 
 export interface CanvasHandle {
   resetZoom: () => void;
@@ -460,7 +460,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     const tip = document.createElement('div');
     tip.className = 'net-tip';
     tip.style.cssText = 'position:absolute;display:none;z-index:30;pointer-events:none;'
-      + 'padding:3px 7px;border-radius:6px;white-space:nowrap;font:500 0.72rem/1.35 ui-monospace,monospace;'
+      + 'padding:3px 7px;border-radius:6px;white-space:nowrap;font:500 var(--fs-xs)/1.35 ui-monospace,monospace;'
       + 'background:var(--menu-bg);color:var(--text);border:1px solid var(--border);box-shadow:0 2px 8px rgba(0,0,0,.25)';
     el.appendChild(tip);
     const cleanSig = (s: unknown) => String(s).replace(/^Vector3vl\s+/, '');

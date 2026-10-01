@@ -84,27 +84,23 @@ function SandboxCanvas({ theme }: Props) {
       } catch { /* corrupted save — start fresh */ }
     }
 
-    // Manual drag — record latest coords in closure, onUp uses them
+    // Manual drag — drive model directly (view auto-renders via change event)
     paper.on('cell:pointerdown', (cellView: any, evt: any) => {
       if (typeof cellView.model.isLink === 'function' && cellView.model.isLink()) return;
       const magnet = evt.target?.closest?.('[magnet]');
       if (magnet && magnet.getAttribute('magnet') !== 'false') return;
       evt.stopPropagation();
       evt.preventDefault();
-      const el = cellView.el as SVGGElement;
-      const t = el.getAttribute('transform') || 'translate(0,0)';
-      const m = t.match(/translate\(([\d.-]+),\s*([\d.-]+)\)/);
+      // Use model position (paper coords), not DOM transform (which may include scale)
+      const origPos = cellView.model.position();
       const startX = evt.clientX, startY = evt.clientY;
-      const origX = m ? parseFloat(m[1]) : 0;
-      const origY = m ? parseFloat(m[2]) : 0;
-      let latestX = origX, latestY = origY;
       const onMove = (e: MouseEvent) => {
-        latestX = origX + (e.clientX - startX);
-        latestY = origY + (e.clientY - startY);
-        el.setAttribute('transform', `translate(${latestX},${latestY})`);
+        cellView.model.set('position', {
+          x: origPos.x + (e.clientX - startX),
+          y: origPos.y + (e.clientY - startY),
+        });
       };
       const onUp = () => {
-        cellView.model.set('position', { x: latestX, y: latestY });
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };

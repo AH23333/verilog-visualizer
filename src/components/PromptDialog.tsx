@@ -1,4 +1,4 @@
-// In-app replacement for window.prompt() — consistent styling, keyboard-first.
+﻿// In-app replacement for window.prompt() — consistent styling, keyboard-first.
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 
 export interface PromptOptions {
@@ -45,7 +45,7 @@ export default function PromptDialog({
   const style: CSSProperties = {
     background: 'var(--input-bg)', color: 'var(--text)',
     border: `1px solid ${error ? 'var(--danger)' : 'var(--input-border)'}`,
-    borderRadius: 'var(--radius-md)', padding: '7px 10px', fontSize: '0.9rem', outline: 'none', width: '100%',
+    borderRadius: 'var(--radius-md)', padding: '7px 10px', fontSize: 'var(--fs-md)', outline: 'none', width: '100%',
   };
 
   return (

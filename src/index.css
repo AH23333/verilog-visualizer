@@ -89,6 +89,8 @@ html, body, #root {
   --fs-sm: 12px;
   --fs-md: 13px;
   --fs-lg: 15px;
+  --fs-xl: 18px;
+  --fs-xxl: 24px;
 
   /* Component heights (two canonical tiers) */
   --h-control-sm: 24px;
