@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef, useMemo, useSyncExternalStore, type ReactNode } from 'react';
 import Canvas from './components/Canvas';
 import type { CanvasHandle } from './components/Canvas';
+import SandboxCanvas from './components/SandboxCanvas';
+import type { SandboxHandle } from './components/SandboxCanvas';
 import MenuBar from './components/MenuBar';
 import Sidebar from './components/Sidebar';
 import CodeEditor from './components/CodeEditor';
@@ -26,7 +28,7 @@ import PromptDialog, { type PromptOptions } from './components/PromptDialog';
 import ConfirmDialog, { type ConfirmOptions } from './components/ConfirmDialog';
 import {
   Files, Boxes, Network, Sun, Moon, LockOpen, Lock, Play, Pause, StepForward, AudioWaveform,
-  Library, Save, Hammer, Code, ArrowLeft, Cpu, TriangleAlert, SlidersHorizontal, Columns2,
+  Library, Save, Hammer, Code, ArrowLeft, Cpu, TriangleAlert, SlidersHorizontal, Columns2, Box,
 } from 'lucide-react';
 import type { VerilogExample } from './lib/examples';
 import { SHORTCUTS, matchesCombo } from './lib/shortcuts';
@@ -57,6 +59,7 @@ export default function App() {
   const [clipboard, setClipboard] = useState<ClipboardEntry>(null);
   const lastClickedIndex = useRef<number>(-1);
   const canvasRef = useRef<CanvasHandle>(null);
+  const sandboxRef = useRef<SandboxHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   // Missing modules dialog state
@@ -1354,6 +1357,13 @@ export default function App() {
                     color: viewMode === 'split' ? '#fff' : 'var(--text-secondary)',
                     fontSize: 'var(--fs-md)',
                   }}><Columns2 size={13} /> Split</button>
+                <button onClick={() => setViewMode('sandbox')} className="inline-flex items-center gap-1.5 px-3.5 h-[26px] border-0 rounded-md cursor-pointer font-medium transition-all"
+                  title="Sandbox: build circuits from scratch"
+                  style={{
+                    background: viewMode === 'sandbox' ? 'var(--accent)' : 'transparent',
+                    color: viewMode === 'sandbox' ? '#fff' : 'var(--text-secondary)',
+                    fontSize: 'var(--fs-md)',
+                  }}><Box size={13} /> Sandbox</button>
               </div>
             )}</>}
           />
@@ -1474,6 +1484,10 @@ export default function App() {
                     </div>
                   </div>
                 );
+              }
+
+              if (viewMode === 'sandbox') {
+                return <SandboxCanvas ref={sandboxRef} theme={theme} />;
               }
 
               if (viewMode === 'code') {
