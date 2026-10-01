@@ -105,9 +105,7 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
   }, [activeFile?.id, theme]);  // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleNew = () => {
-    const name = prompt('File name:', `circuit_${files.length + 1}.djs`);
-    if (!name) return;
-    const f = sandboxStore.create(name);
+    const f = sandboxStore.create(`circuit_${files.length + 1}`);
     sandboxStore.setActiveId(f.id);
     setActiveFile(f);
     refreshList();
