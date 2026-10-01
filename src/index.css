@@ -535,7 +535,7 @@ code[class*="language-"] {
    ============================================================ */
 .joint-paper:not([data-sandbox-wrapper]),
 .joint-paper svg,
-.djs,
+.djs:not([data-sandbox-wrapper]),
 .djs svg,
 .joint-paper .joint-viewport,
 .joint-paper .joint-scroller {
@@ -651,8 +651,8 @@ code[class*="language-"] {
   top: 0; left: 0; right: 0; bottom: 0;
   width: 100% !important;
   height: 100% !important;
-  background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px);
-  background-size: 20px 20px;
+  background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
 }
 [data-sandbox-wrapper] .joint-paper,
 [data-sandbox-wrapper] svg {
