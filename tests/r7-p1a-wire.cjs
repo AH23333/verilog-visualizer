@@ -4,10 +4,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 
 const PROJECT_ROOT = path.resolve(__dirname, '..');
-// playwright-core: prefer local install, fall back to workspace sibling
-let PLAYWRIGHT;
-try { PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core')); }
-catch { PLAYWRIGHT = require(path.join(PROJECT_ROOT, '..', '.tmpbuild', 'node_modules', 'playwright-core')); }
+const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1420;
 const URL = `http://localhost:${PORT}/`;
