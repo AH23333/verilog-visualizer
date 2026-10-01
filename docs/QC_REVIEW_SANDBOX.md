@@ -755,3 +755,48 @@ R10 / R10.6 两项 BLOCKED 均已闭合。建议继续 P2 下一项（导出 PNG
 
 ### verdict
 **R12：P2 沙盒「导出 PNG / SVG」全绿收官（17/17 PASS）。** 导出为自包含矢量图（内容自适应取景、白底、不含网格），PNG 经 2× 栅格化且像素级确认电路可见。R11 建议的「导出 PNG」项闭合；剩余 P2 沙盒项为「自定义门导入」（.djs 子电路作为新 cell 类型 + USER 分类）。
+
+---
+
+## R13 —— 质检方实施自定义门导入（Subcircuit）并复跑（15/15 全绿）
+
+> 修复文件：`src/components/SandboxCanvas.tsx`（PORTS 分类恢复 Input/Output + USER 分类实例化 + `buildInnerGraph`/`serializePaper`/`placeCustomGate`/`handleSaveGate`）、`src/store/sandboxStore.ts`（新增 `CustomGate` 注册表）；
+> 验收 `tests/r13-custom-gate.cjs`。
+
+### 功能点（P2 沙盒最后一项，闭合 R11 建议）
+- **PORTS 分类**：原 R7 后误删的 Input/Output 元件恢复，作为自定义门的「接口引脚」（按放置顺序自动命名 `in1/out1`，保证子电路端口不重名）。
+- **保存为自定义门**：当前画布的 Input/Output + 内部连线被 `serializePaper` 存为 `CustomGate`（USER 分类）。
+- **USER 分类实例化**：点击 USER 分类里的门名 → 以 digitaljs `Subcircuit` 形式落到画布，其端口由内部 Input/Output 的 `net` 推导（`in1/out1`）。
+- **真·子电路仿真**：信号穿过自定义门（Button→门.in→内部 Input→内部 Wire→内部 Output→门.out→Lamp），非伪实现。
+
+### 两个关键根因（均踩 digitaljs 内部机制）
+1. **内部图信号不传播**：`Subcircuit` 的嵌入图是裸 `joint.dia.Graph`，没有 `circuit.js` 给外层图挂的连线监听（`change:outputSignals`→`_changeOutputSignals`、`change:signal`→`_changeSignal`）。缺它，内部 Input 的输出永远到不了内部 Wire，整门读成 `x`。修复：在 `buildInnerGraph` 里给内部图镜像挂这两个监听；同时补 `_display3vl`/`_warnings`/`subcircuit:true`（忠实 `Circuit._makeGraph`），使 IO 进入 `mode:0`（子电路内）并正确推导端口。
+2. **保存/加载损坏**：`Subcircuit` 的实时 `graph` 是循环引用的 `joint.dia.Graph`，`model.toJSON()` 经 `JSON.stringify` 抛错 → 含自定义门的电路保存失败、重载丢门。修复：新增 `serializePaper(paper)`，丢弃实时 `graph`、改存可序列化 `subcircuitGraph`（用 `serializePaper({model: inner})` 生成，剔除 Wire 的 `Vector3vl` signal）；`handleSave`/`handleOpen`/`handleReset`/`handleSaveGate`/`__sandboxGates.saveCurrentAs` 全部改用它。
+
+### 复跑结果（tests/r13-custom-gate.cjs）
+```
+[A] Define + save a custom gate
+  PASS  PORTS palette restored (Input/Output placeable)
+  PASS  interface pins auto-named (in1/out1)
+  PASS  inner wire Input.out -> Output.in drawn
+  PASS  inner graph has link
+  PASS  custom gate saved to USER registry — MyGate
+  PASS  saved gate graph has interface (Input/Output)
+[B] Instantiate custom gate + simulate through it
+  PASS  Subcircuit placed with derived ports — in1,out1
+  PASS  outer wires Button->gate.in / gate.out->Lamp drawn
+  PASS  Lamp state changed after Button click — #fc7c68 -> #03c03c
+  PASS  Lamp lights GREEN through custom gate (signal propagated)
+[C] Persist custom gate instance (save/reload)
+  PASS  saved file embeds Subcircuit + inner graph
+  PASS  reload rebuilt Subcircuit + inner graph
+  PASS  reloaded Subcircuit ports preserved — in1,out1
+  PASS  0 native dialogs
+  PASS  0 TypeErrors — total=0
+[DONE] 15 pass, 0 fail
+```
+- 仿真实证：DIAG 显示点击 Button 前内层 Output.in=`x`、点击后内层 Input.out=1 经 Wire 传到 Output.in=1，外层 Lamp 翻转 `#fc7c68→#03c03c`（绿）= 信号真穿过自定义门。
+- 持久化实证：reload 后 `cellCount=5`（`Wire/Wire/Button/Lamp/Subcircuit`），`subJson=1`，端口 `in1/out1` 保留，0 弹窗 0 TypeError。
+
+### verdict
+**R13：P2 沙盒「自定义门导入」全绿收官（15/15 PASS）。** 自定义门为 digitaljs 真子电路（Subcircuit），信号实穿越、可保存/加载；PORTS 分类恢复。至此 **R7→R11→R12→R13 全部 P2 沙盒功能点完成**（接线 / 仿真控制 Reset·Pause·Step / 导出 PNG·SVG / 自定义门导入）。建议下一步转 P3 或新模块（如 bus 多位宽门、门参数编辑 UI）。
