@@ -214,6 +214,42 @@ function SandboxCanvas({ theme }: Props) {
     };
     document.addEventListener('keydown', onKey);
 
+    // Zoom (Ctrl+wheel) and pan (wheel / right-drag)
+    const onWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const curScale = paper.scale().sx || 1;
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const ns = Math.max(0.3, Math.min(3, curScale * delta));
+        paper.scale(ns);
+      } else {
+        e.preventDefault();
+        const t = paper.translate();
+        paper.translate(t.tx - e.deltaX, t.ty - e.deltaY);
+      }
+    };
+    wrapper.addEventListener('wheel', onWheel, { passive: false });
+
+    // Right-drag pan
+    let panning = false, panStartX = 0, panStartY = 0, origTx = 0, origTy = 0;
+    const onPanDown = (e: MouseEvent) => {
+      if (e.button !== 2) return;
+      panning = true;
+      panStartX = e.clientX; panStartY = e.clientY;
+      const t = paper.translate();
+      origTx = t.tx; origTy = t.ty;
+      e.preventDefault();
+    };
+    const onPanMove = (e: MouseEvent) => {
+      if (!panning) return;
+      paper.translate(origTx + (e.clientX - panStartX), origTy + (e.clientY - panStartY));
+    };
+    const onPanUp = () => { panning = false; };
+    wrapper.addEventListener('mousedown', onPanDown);
+    document.addEventListener('mousemove', onPanMove);
+    document.addEventListener('mouseup', onPanUp);
+    wrapper.addEventListener('contextmenu', e => e.preventDefault());
+
     const resize = () => {
       const parent = wrapper.parentElement!;
       paper.setDimensions(parent.clientWidth, parent.clientHeight);
@@ -227,6 +263,10 @@ function SandboxCanvas({ theme }: Props) {
 
     return () => {
       document.removeEventListener('keydown', onKey);
+      wrapper.removeEventListener('wheel', onWheel);
+      wrapper.removeEventListener('mousedown', onPanDown);
+      document.removeEventListener('mousemove', onPanMove);
+      document.removeEventListener('mouseup', onPanUp);
       ro.disconnect();
       try { circuit.stop(); } catch {}
       paper.remove();
