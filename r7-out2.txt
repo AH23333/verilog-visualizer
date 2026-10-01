@@ -1,0 +1,29 @@
+﻿[1/6] starting vite dev server...
+[2/6] launching Edge headless...
+[3/6] entering sandbox, placing Button + Lamp...
+[4/6] dragging wire Button.out → Lamp.in...
+       magnets: [{"x":486,"y":300,"port":"out"}]
+  PASS  P1a-1: links ≥ 1 — count=2
+[5/6] clicking Button, checking signal propagation...
+       before: {"lampFill":""}
+       after:  {"lampFill":""}
+  FAIL  P1a-2: signal propagates — no color change
+  PASS  P1a-3: 0 native dialogs
+  PASS  P1a-4: 0 TypeErrors — total errors=0
+[6/6] DONE: 3 pass, 1 fail
+facts: {
+  "magnets": [
+    {
+      "x": 486,
+      "y": 300,
+      "port": "out"
+    }
+  ],
+  "wireCount": 2,
+  "before": {
+    "lampFill": ""
+  },
+  "after": {
+    "lampFill": ""
+  }
+}
