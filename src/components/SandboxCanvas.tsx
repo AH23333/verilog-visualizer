@@ -33,14 +33,19 @@ function SandboxCanvas({ theme }: Props) {
     const CellClass = cells?.[type];
     if (!CellClass) { console.warn('[sandbox] unknown cell type:', type); return; }
     try {
-      const cell = new CellClass({ bits: 1 });
+      // Build a proper cell JSON like digitaljs would from a saved file
       const rect = wrapperRef.current!.getBoundingClientRect();
-      const cx = rect.width / 2 + (Math.random() - 0.5) * 200;
-      const cy = rect.height / 2 + (Math.random() - 0.5) * 200;
-      const sz = cell.getLayoutSize();
-      cell.setLayoutPosition({ x: cx, y: cy, width: sz.width, height: sz.height });
+      const cx = Math.round(rect.width / 2 + (Math.random() - 0.5) * 200);
+      const cy = Math.round(rect.height / 2 + (Math.random() - 0.5) * 200);
+      const cellJson = {
+        type: type,
+        position: { x: cx, y: cy },
+        bits: 1,
+        size: { width: 60, height: 32 },
+      };
+      const cell = new CellClass(cellJson);
       paper.model.addCell(cell);
-      console.log('[sandbox] added', type, 'total:', paper.model.getCells().length);
+      console.log('[sandbox] added', type, 'at', cx, cy, 'total:', paper.model.getCells().length);
     } catch (e) { console.error('[sandbox] addCell failed:', e); }
   }, []);
 
