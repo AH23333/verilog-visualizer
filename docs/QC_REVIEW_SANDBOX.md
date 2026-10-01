@@ -713,3 +713,45 @@ QC logs:
 ### verdict
 **R11：P2 仿真控制（Reset + Pause + Step）全绿收官（16/16 PASS）。** Reset 为真·重置且保未保存拓扑；Pause 真冻结仿真；Step 单步推进并使时序电路可见翻转。
 R10 / R10.6 两项 BLOCKED 均已闭合。建议继续 P2 下一项（导出 PNG / 自定义门导入）。
+
+---
+
+## R12 —— 质检方实施导出 PNG/SVG 并复跑（17/17 全绿）
+
+> 修复文件：`src/components/SandboxCanvas.tsx`（新增 Export PNG/SVG 按钮 + 导出逻辑）；
+> 新增工具 `src/utils/sandboxExport.ts`（SVG 序列化 + 栅格化）；验收 `tests/r12-export.cjs`。
+
+### 修复要点
+1. **自包含 SVG**：`buildSvgString` 克隆 `paper.svg`，补 `xmlns`/`xmlns:xlink` 与白底 `<rect>`；按 `paper.model.getBBox()` 自适应取景（仅移除「视口层」——即 svg 直接 `<g>` 子节点的变换，cell 自身 translate 不动），`viewBox` 框住全部 cell。导出即所见内容的干净矢量图，**不含网格背景**。
+2. **栅格化 PNG**：`rasterize` 把 SVG Blob 载入 `Image` → 画到 2× 分辨率 canvas（先铺白底）→ `toBlob('image/png')`。digitaljs SVG 无外链图片，canvas 不被污染，`toBlob`/`toDataURL` 可用。
+3. **下载 + QC 钩子**：`exportPng`/`exportSvg` 经 `<a download>` 触发浏览器下载（文件名取当前 `.djs` 基名）；同时暴露 `window.__sandboxExport = { svgString, pngDataUrl }` 供验收做像素级非空校验（与 `__sandboxPaper`/`__sandboxCircuit` 同款 QC 约定）。导出前 `clearSelection` 清掉选中描边，避免把无意义的 `var(--accent)` 内联进 SVG。
+
+### 复跑结果（tests/r12-export.cjs）
+```
+[A] Build a small circuit
+  PASS  wire Button.out -> Lamp.in drawn
+  PASS  cells present before export — cells=3
+[B] Export PNG — real <a download> + pixel check
+  PASS  Export PNG button exists
+  PASS  PNG download filename — circuit_1.png
+  PASS  PNG filename extension
+  PASS  PNG file is valid (magic 89 50 4E 47)
+  PASS  PNG file non-trivial size — 3264B
+  PASS  PNG dataUrl produced
+  PASS  PNG actually renders circuit (non-white px) — nonWhite=11135 156x190
+[C] Export SVG — real <a download> + structure
+  PASS  Export SVG button exists
+  PASS  SVG download filename — circuit_1.svg
+  PASS  SVG filename extension
+  PASS  SVG contains circuit markup (<svg> + cells)
+  PASS  SVG non-trivial size — 5619B
+  PASS  QC hook svgString() has cells — len=5619
+  PASS  0 native dialogs
+  PASS  0 TypeErrors — total=0
+[DONE] 17 pass, 0 fail
+```
+- PNG 实证：真实按钮触发 `<a download>`（文件名 `circuit_1.png`、PNG 魔数正确、3264B），且像素级统计 **11135 个非白像素** = 电路确被渲染（非空白图）。
+- SVG 实证：真实下载 `circuit_1.svg`（5619B，含 `<svg>` + `joint-cell`），QC 钩子 `svgString()` 直读同样含 cells。
+
+### verdict
+**R12：P2 沙盒「导出 PNG / SVG」全绿收官（17/17 PASS）。** 导出为自包含矢量图（内容自适应取景、白底、不含网格），PNG 经 2× 栅格化且像素级确认电路可见。R11 建议的「导出 PNG」项闭合；剩余 P2 沙盒项为「自定义门导入」（.djs 子电路作为新 cell 类型 + USER 分类）。
