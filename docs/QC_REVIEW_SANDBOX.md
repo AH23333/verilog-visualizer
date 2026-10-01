@@ -99,7 +99,44 @@
 1. 修 SB-BUG（wrapper 尺寸链），验收 = wrapper 宽 ≈ 画布区宽（±4px）且拖拽 delta 断言通过。
 2. 字号档位按 §11 审计脚本收敛到 ≤6 档（合并亚像素档：统一用 px 整数 token）。
 3. 完成后：SANDBOX_DEV.md 更新坑清单（新增 wrapper 回归条目）、全部工作提交推送、重新提请质检。
-4. 质检方将复跑：沙盒 strict 脚本（拖拽 delta/reload）+ 主流程 15 项 + 字号审计。
+4. 完成后提交推送并提请质检；质检方复跑沙盒 strict + 主流程 + 字号审计三件套。
+
+---
+
+# R4 复检（da8a1ff 之后）——拖拽回归根因已定位到行号
+
+## R4.1 执行核对
+
+| 指令 | 判定 |
+|---|---|
+| 拖拽改 model.position() 驱动 | ✅ 代码落地（实现方式符合声明） |
+| rem 清零 6 档 token（含新增 --fs-xl/xxl） | ✅ 落地（DOM 档位复测归入下轮） |
+| SandboxHandle/sandboxRef 死代码清理 | ✅ |
+| tsc + 提交推送 da8a1ff | ✅ |
+
+## R4.2 但拖拽**仍然失败**（strict 复跑：dx=0, dy=0；reload 后 x 回原值）——两轮两种实现失败模式一致，指向更高层机制。**QC 方已定位根因**：
+
+`digitaljs/src/index.mjs` **L189-191**：
+```js
+this.listenTo(paper, 'render:done', () => {
+    paper.fitToContent({ padding: 30, allowNewOrigin: 'any' });
+});
+```
+`model.set('position')` → cell 重绘 → `render:done` → **fitToContent(allowNewOrigin:'any') 重算视口** → 刚写入的位移被视口平移抵消（诊断数据：mid-drag 跟手，after-up viewport 平移恰好 -150/-80）。
+
+## R4.3 修复指令（一行级）
+
+在 SandboxCanvas 的 paper 创建后加一行：
+```js
+paper.off('render:done');   // sandbox 不需要 digitaljs 的 auto-fit；主 Canvas 的 paper 是独立实例，不受影响
+```
+（备选：保留监听但拖拽期间置标志位——不推荐，多余状态。）
+
+验收（strict 脚本原样复跑）：DRAG delta ±8px ✅ + SAVE/RELOAD 位置一致 ✅。若仍失败，用 `paper.on('render:done', ...)` 打印调用栈回报。
+
+## R4.4 字号验收归入下轮
+
+--fs-xl/xxl 新增后 DOM 实际档位未复测（本轮聚焦拖拽）。下轮质检三件套含字号审计（口径 ≤6 档）。
 
 ---
 
