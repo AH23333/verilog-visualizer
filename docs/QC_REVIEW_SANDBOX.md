@@ -498,6 +498,55 @@ DIAG: {
 实施后用本机脚本复跑：`node .tmpbuild/qc-r7-p2a-view.cjs`，期望 G1 两子项转 PASS（网格 `background-image` 含 `radial-gradient` 且 `background-size:20px 20px`）。
 建议把该脚本提升为 `tests/r7-p2a-view.cjs` 入库（当前在 gitignored 的 `.tmpbuild/`，便于 CI 复跑）。
 
+## R9.6 复检（开发 AI 提交 `aed2b9d`）—— G1 仍 BLOCKED，R9.5 漏改 `.djs` 选择器
+
+> 复检方式：本机**独立代跑** `.tmpbuild/qc-r7-p2a-view.cjs`（脚本按 R9.5 重建）+ 追加 DOM 诊断读 wrapper 内联 style 与全部 `!important` 透明规则来源。
+> 结论先行：**G2–G5 / P0 仍 6/6 PASS（缩放/平移/右键交互稳定）；但 G1 网格依旧 `background-image=none`，`aed2b9d` 的修复无效——R9.5 只改了 `.joint-paper` 选择器，漏掉了 digitaljs 同步打在 wrapper 上的 `.djs` 类对应的透明规则。G1 维持 BLOCKED。**
+
+### 复跑结果（质检方独立执行 `qc-r7-p2a-view.cjs`）
+```
+  FAIL  G1: dot grid visible — bgImage=none size=auto
+  PASS  G2: zoom + clamps — after=1.10 max=3.00 min=0.300
+  PASS  G3: plain wheel pan — ty 0.0→-120.0
+  PASS  G4: right-drag pan — Δ(60,40)
+  PASS  G5: contextmenu suppressed — defaultPrevented=true
+  PASS  P0: 0 native dialogs
+  PASS  P0: 0 TypeErrors — total=0
+[DONE] 6 pass, 1 fail
+```
+→ 缩放/平移/右键交互全部真实通过，与 `d0e1567` 结论一致、无回归；唯独 G1 仍未转绿。
+
+### G1 根因（二阶定位，DOM 诊断实证）
+```
+DIAG2: {
+  wrapperInlineStyle: "position: relative; top:0; left:0; width:1212px; height:804px; background-color: var(--surface);",
+  wrapperBgInline: "",                       ← 无内联 background 简写（digitaljs 未注入）
+  computedBgImage: "none", computedBgSize: "auto", computedBgColor: "rgba(0,0,0,0)"
+}
+```
+- wrapper 内联 style **只设了 `background-color: var(--surface)`，没有 `background` 简写** → 排除「digitaljs 内联覆盖」假设。
+- 那为何 `background-image` 仍被清空？因为 `index.css:538` 的 `**`.djs`** { background: transparent !important }`（属于 L536–542 选择器组）命中 wrapper——`displayOn` 给 wrapper 打的 class 是 `joint-paper joint-theme-default **djs**`，`.djs` 不在 R9.5 的 `:not([data-sandbox-wrapper])` 排除名单里，故该 `!important` 简写照常把 `background-image→none` / `background-color→transparent`。
+- 其余透明规则核对：`L406/L409`（`.joint-paper.joint-theme-*`）已排除、`L619`（`.joint-paper`）已排除、`L428`（Prism `pre/code`）不命中 wrapper、`L536` 组内 `.joint-paper:not(...)` 已排除；**唯 `.djs`（L538）漏网**。
+- 结论：R9.5 修的是 `.joint-paper` 系，但 wrapper 还带着 `.djs` 类，透明规则从 `.djs` 这条路径依然生效，网格声明被覆盖 → G1 仍伪实现。
+
+### R9.7 修正指令（替代 R9.5 未覆盖处，返回开发 AI 实施）
+在 R9.5 四处基础上，**再补一处 `.djs` 排除**（仅改元素级，保留 `.djs svg` / `.joint-paper svg` 等后代透明不动）：
+
+`src/index.css` L538（选择器组 `.joint-paper:not([data-sandbox-wrapper]), .joint-paper svg, **.djs**, .djs svg, ...`）：
+- `.djs,` → `.djs:not([data-sandbox-wrapper]),`
+
+（`.djs svg` 与 `.joint-paper svg` 保留为透明，使纸张 SVG 透明、网格透出。）
+
+可选加固：把 G1 网格的 `background-image` / `background-size` 也加上 `!important`（防任何未来内联/简写覆盖）：
+```
+[data-sandbox-wrapper] { background-image: radial-gradient(...) !important; background-size: 20px 20px !important; }
+```
+
+实施后复跑 `.tmpbuild/qc-r7-p2a-view.cjs`，期望 G1 转 PASS：`computedBgImage` 含 `radial-gradient` 且 `computedBgSize = 20px 20px`。
+
+### verdict
+**R9（P2 第一批）维持：G1 BLOCKED；G2–G5 / P0 六项 PASS 稳定无回归。** `aed2b9d` 自报「网格透出」不属实——R9.5 漏改 `.djs` 透明规则，网格仍被覆盖。请按 R9.7 补 `.djs` 排除后重提，质检方复跑确认 G1 转绿即收官。
+
 ### 非阻塞项
 - playwright-core 已入 devDep（`package.json:40 ^1.63.0`），`node_modules` 本地命中，脚本 `require.resolve` 通过 → R8 留债已清，可移植性达成 ✅。
 
