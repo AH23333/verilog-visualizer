@@ -329,34 +329,37 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       const circuit = circuitRef.current as any;
       if (!paper || !circuit) return;
       try {
+        // Ensure engine is paused (no auto-running between steps)
+        try { circuit.stop(); } catch {}
+
         // Find every Clock cell (auto-created by io_ui for clk/clock inputs).
         const clocks: any[] = [];
         for (const el of paper.model.getElements()) {
           if (el.get('type') === 'Clock') clocks.push(el);
         }
+
         if (clocks.length === 0) {
-          // No auto-clock (pure combinational) — just propagate once.
-          if (typeof circuit.updateGates === 'function') circuit.updateGates();
+          // Pure combinational: advance ONE delta-cycle tick.
+          // Button click already propagated synchronously to wires (wire is red),
+          // but gate outputs are queued. updateGatesNext() processes exactly one
+          // layer of gates per call — that's the "step" the user wants.
+          circuit.updateGatesNext();
           return;
         }
-        // Rising-edge pulse: force clock low, settle; then force high, settle.
-        // DFFs capture on the rising edge.
+
+        // Sequential: toggle clock, then advance one delta tick.
+        // First, pull clock low and let it settle (one tick).
         for (const clk of clocks) {
           const sig = clk.outputSignals?.out;
-          if (sig?._bvec) {
-            sig._bvec[0] = 0;
-            sig._avec = {};
-          }
+          if (sig?._bvec) { sig._bvec[0] = 0; sig._avec = {}; }
         }
-        if (typeof circuit.updateGates === 'function') circuit.updateGates();
+        circuit.updateGatesNext();
+        // Then, rising edge — clock goes high.
         for (const clk of clocks) {
           const sig = clk.outputSignals?.out;
-          if (sig?._bvec) {
-            sig._bvec[0] = 1;
-            sig._avec = { 0: 1 };
-          }
+          if (sig?._bvec) { sig._bvec[0] = 1; sig._avec = { 0: 1 }; }
         }
-        if (typeof circuit.updateGates === 'function') circuit.updateGates();
+        circuit.updateGatesNext();
       } catch { /* step is cosmetic */ }
     },
     listInputs: () => {
