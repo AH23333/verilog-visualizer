@@ -12,6 +12,7 @@ function SandboxCanvas({ theme }: Props) {
   const circuitRef = useRef<any>(null);
   const paperRef = useRef<any>(null);
   const selectedIdRef = useRef<string | null>(null);
+  const wireCountRef = useRef(0);
   const [files, setFiles] = useState<SandboxFile[]>([]);
   const [activeFile, setActiveFile] = useState<SandboxFile | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -100,6 +101,7 @@ function SandboxCanvas({ theme }: Props) {
               source: { id: srcCell.id, port: src.port },
               target: { id: tgtCell.id, port: tgt.port },
               signal: 'x',
+              netname: `N${++wireCountRef.current}`,
             });
             paper.model.addCell(link);
           } catch { /* skip broken link */ }
@@ -117,54 +119,46 @@ function SandboxCanvas({ theme }: Props) {
       }
     });
 
-    // Cell interaction: magnet→wire, else drag+select
+    // Cell interaction: magnet→wire, body→drag+select
     paper.on('cell:pointerdown', (cellView: any, evt: any) => {
       if (typeof cellView.model.isLink === 'function' && cellView.model.isLink()) return;
-      const magnet = evt.target?.closest?.('[magnet]');
-      const isMagnet = magnet && magnet.getAttribute('magnet') !== 'false';
+      const magnet = evt.target?.closest?.('[magnet="true"]');
 
-      if (isMagnet) {
-        // Start wiring
+      if (magnet) {
+        // Start wiring — port name lives on parent .joint-port-body
         evt.stopPropagation();
         evt.preventDefault();
         const sourceCell = cellView.model;
-        // R7.3: port name may be in dataset, not attribute
-        const sourcePort = magnet.getAttribute('port') || (magnet as HTMLElement).dataset?.port || magnet.getAttribute('data-port');
-        // Convert client coords to paper coords
+        const portBody = magnet.closest('.joint-port-body');
+        const sourcePort = portBody?.getAttribute('port');
         const rect = wrapper.getBoundingClientRect();
-        const sx = evt.clientX - rect.left;
-        const sy = evt.clientY - rect.top;
-        // Create a temp wire from source cell port to cursor
         const tempLink = new digitaljs.cells.Wire({
           source: { id: sourceCell.id, port: sourcePort },
-          target: { x: sx, y: sy },
+          target: { x: evt.clientX - rect.left, y: evt.clientY - rect.top },
           signal: 'x',
+          netname: `N${++wireCountRef.current}`,
         });
         paper.model.addCell(tempLink);
-        // R7.3: temp wire must not block elementFromPoint
         tempLink.findView(paper).el.style.pointerEvents = 'none';
         const onMove = (e: MouseEvent) => {
-          const mx = e.clientX - rect.left;
-          const my = e.clientY - rect.top;
-          tempLink.set('target', { x: mx, y: my });
+          tempLink.set('target', { x: e.clientX - rect.left, y: e.clientY - rect.top });
         };
         const onUp = (e: MouseEvent) => {
           document.removeEventListener('mousemove', onMove);
           document.removeEventListener('mouseup', onUp);
-          // Check if mouseup landed on another magnet
           const el = document.elementFromPoint(e.clientX, e.clientY);
-          const targetMagnet = el?.closest?.('[magnet]');
-          if (targetMagnet && targetMagnet.getAttribute('magnet') !== 'false') {
-            const targetCellEl = targetMagnet.closest('[model-id]');
-            const targetId = targetCellEl?.getAttribute('model-id');
-            const targetPort = targetMagnet.getAttribute('port') || (targetMagnet as HTMLElement).dataset?.port || targetMagnet.getAttribute('data-port');
+          const targetMagnet = el?.closest?.('[magnet="true"]');
+          if (targetMagnet) {
+            const tPortBody = targetMagnet.closest('.joint-port-body');
+            const targetPort = tPortBody?.getAttribute('port');
+            const tCellEl = targetMagnet.closest('[model-id]');
+            const targetId = tCellEl?.getAttribute('model-id');
             if (targetId && targetId !== sourceCell.id && targetPort) {
               tempLink.set('target', { id: targetId, port: targetPort });
               tempLink.findView(paper).el.style.pointerEvents = '';
-              return; // keep the wire
+              return;
             }
           }
-          // Drop: remove temp wire
           tempLink.remove();
         };
         document.addEventListener('mousemove', onMove);
@@ -172,7 +166,7 @@ function SandboxCanvas({ theme }: Props) {
         return;
       }
 
-      // Not a magnet → drag + select
+      // Body click → drag + select
       evt.stopPropagation();
       evt.preventDefault();
 
