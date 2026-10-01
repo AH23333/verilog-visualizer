@@ -28,10 +28,12 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
   useImperativeHandle(ref, () => ({
     addCell: (type: string) => {
       const paper = paperRef.current;
-      if (!paper) return;
-      const cells = (window as any).digitaljs.cells;
-      const CellClass = (cells as any)[type];
-      if (!CellClass) return;
+      if (!paper) { console.warn('[sandbox] no paper'); return; }
+      const digitaljs = (window as any).digitaljs;
+      const cells = digitaljs?.cells;
+      console.log('[sandbox] cells namespace:', Object.keys(cells || {}).slice(0, 20));
+      const CellClass = cells?.[type];
+      if (!CellClass) { console.warn('[sandbox] unknown cell type:', type, 'available:', Object.keys(cells||{}).slice(0,30)); return; }
       try {
         const cell = new CellClass({ bits: 1 });
         const rect = wrapperRef.current!.getBoundingClientRect();
@@ -41,7 +43,8 @@ const SandboxCanvas = forwardRef<SandboxHandle, Props>(function SandboxCanvas({ 
         const cy = (rect.height / 2 - tx.ty) / sx + (Math.random() - 0.5) * 100;
         cell.setLayoutPosition({ x: cx, y: cy, width: cell.getLayoutSize().width, height: cell.getLayoutSize().height });
         paper.model.addCell(cell);
-      } catch (e) { console.error('[sandbox] addCell:', e); }
+        console.log('[sandbox] added', type, 'at', cx, cy, 'total cells:', paper.model.getCells().length);
+      } catch (e) { console.error('[sandbox] addCell failed:', e); }
     },
     saveCurrent: () => {
       if (!activeFile || !paperRef.current) return;
