@@ -1,53 +1,45 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { sandboxStore, type SandboxFile } from '../store/sandboxStore';
 
-export interface SandboxHandle {
-  addCell: (type: string) => void;
-  saveCurrent: () => void;
-}
-
 interface Props {
   theme: 'dark' | 'light';
 }
 
 const GATE_TYPES = ['And', 'Or', 'Not', 'Xor', 'Nand', 'Nor', 'Xnor'];
-const IO_TYPES = ['Button', 'Clock', 'Input', 'Output', 'Lamp', 'Dff'];
+// P1 待加：Input / Output / Dff（依赖连线功能）
+const IO_TYPES = ['Button', 'Clock', 'Lamp'];
 
 function SandboxCanvas({ theme }: Props) {
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const circuitRef = useRef<any>(null);
   const paperRef = useRef<any>(null);
   const [files, setFiles] = useState<SandboxFile[]>([]);
   const [activeFile, setActiveFile] = useState<SandboxFile | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [, forceUpdate] = useState(0);
 
   const refreshList = useCallback(() => {
     setFiles(sandboxStore.list());
   }, []);
 
-  const doAddCell = useCallback((type: string) => {
+  // Create a cell by type at given position (shared by placement + load)
+  const spawnCell = useCallback((type: string, x: number, y: number) => {
     const paper = paperRef.current;
-    if (!paper) { console.warn('[sandbox] no paper'); return; }
+    if (!paper) return null;
     const digitaljs = (window as any).digitaljs;
-    const cells = digitaljs?.cells;
-    const CellClass = cells?.[type];
-    if (!CellClass) { console.warn('[sandbox] unknown cell type:', type); return; }
+    const CellClass = digitaljs?.cells?.[type];
+    if (!CellClass) return null;
     try {
-      // Place at fixed paper coords with jitter (avoid wrapper center calc issues)
-      const cx = 100 + Math.round(Math.random() * 200);
-      const cy = 100 + Math.round(Math.random() * 200);
-      const cellJson = {
-        type: type,
-        position: { x: cx, y: cy },
-        bits: 1,
-        size: { width: 60, height: 32 },
-      };
-      const cell = new CellClass(cellJson);
+      const cell = new CellClass({ type, position: { x, y }, bits: 1, size: { width: 60, height: 32 } });
       paper.model.addCell(cell);
-      console.log('[sandbox] cell attrs:', JSON.stringify(cell.attr()), 'interactive:', cell.get('interactive'), 'draggable:', cell.get('draggable'));
-      console.log('[sandbox] added', type, 'at', cx, cy, 'total:', paper.model.getCells().length);
-    } catch (e) { console.error('[sandbox] addCell failed:', e); }
+      return cell;
+    } catch { return null; }
   }, []);
+
+  const doAddCell = useCallback((type: string) => {
+    const cx = 100 + Math.round(Math.random() * 200);
+    const cy = 100 + Math.round(Math.random() * 200);
+    spawnCell(type, cx, cy);
+  }, [spawnCell]);
 
   // Load file list on mount
   useEffect(() => {
@@ -62,13 +54,10 @@ function SandboxCanvas({ theme }: Props) {
   // (Re)build paper when active file changes
   useEffect(() => {
     if (!activeFile) return;
-    // Query DOM directly — wrapperRef may point to a stale detached node
     const wrapper = document.querySelector('[data-sandbox-wrapper]') as HTMLElement;
     if (!wrapper) return;
-    console.log('[sandbox] useEffect: wrapper connected:', wrapper.isConnected, 'children:', wrapper.children.length);
     const digitaljs = (window as any).digitaljs;
 
-    // Cleanup old
     if (circuitRef.current) {
       try { circuitRef.current.stop(); } catch {}
       paperRef.current?.remove();
@@ -78,19 +67,24 @@ function SandboxCanvas({ theme }: Props) {
     circuitRef.current = circuit;
     const paper = circuit.displayOn(wrapper);
     paperRef.current = paper;
-    paper.options.interactive = false; // we handle drag manually
-    // Reset paper view — digitaljs may auto-fit on empty model
+    paper.options.interactive = false;
     paper.scale(1);
     paper.translate(0, 0);
 
-    // Load active file's graph
-    if (activeFile && activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
+    // Load saved cells by re-instantiating (not raw fromJSON — keeps view/model sync)
+    if (activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
       try {
-        paper.model.fromJSON(JSON.parse(activeFile.graphJson));
-      } catch (e) { console.warn('[sandbox] load failed:', e); }
+        const saved = JSON.parse(activeFile.graphJson);
+        for (const c of saved.cells || []) {
+          if (c.isLink) continue;
+          const t = c.type;
+          const pos = c.position || { x: 50, y: 50 };
+          spawnCell(t, pos.x || 50, pos.y || 50);
+        }
+      } catch { /* corrupted save — start fresh */ }
     }
 
-    // Manual drag — digitaljs gates intercept pointerdown for wiring
+    // Manual drag — record latest coords in closure, onUp uses them
     paper.on('cell:pointerdown', (cellView: any, evt: any) => {
       if (typeof cellView.model.isLink === 'function' && cellView.model.isLink()) return;
       const magnet = evt.target?.closest?.('[magnet]');
@@ -103,13 +97,14 @@ function SandboxCanvas({ theme }: Props) {
       const startX = evt.clientX, startY = evt.clientY;
       const origX = m ? parseFloat(m[1]) : 0;
       const origY = m ? parseFloat(m[2]) : 0;
+      let latestX = origX, latestY = origY;
       const onMove = (e: MouseEvent) => {
-        const nx = origX + (e.clientX - startX);
-        const ny = origY + (e.clientY - startY);
-        el.setAttribute('transform', `translate(${nx},${ny})`);
+        latestX = origX + (e.clientX - startX);
+        latestY = origY + (e.clientY - startY);
+        el.setAttribute('transform', `translate(${latestX},${latestY})`);
       };
       const onUp = () => {
-        cellView.model.set('position', { x: origX + (evt.clientX - startX), y: origY + (evt.clientY - startY) });
+        cellView.model.set('position', { x: latestX, y: latestY });
         document.removeEventListener('mousemove', onMove);
         document.removeEventListener('mouseup', onUp);
       };
@@ -117,43 +112,42 @@ function SandboxCanvas({ theme }: Props) {
       document.addEventListener('mouseup', onUp);
     });
 
-    // Size paper — use parent (canvas area) dimensions directly
     const resize = () => {
       const parent = wrapper.parentElement!;
-      const w = parent.clientWidth;
-      const h = parent.clientHeight;
-      paper.setDimensions(w, h);
+      paper.setDimensions(parent.clientWidth, parent.clientHeight);
     };
     resize();
     requestAnimationFrame(resize);
-    setTimeout(resize, 200);
     const ro = new ResizeObserver(resize);
     ro.observe(wrapper.parentElement!);
 
-    wrapper.style.backgroundColor = theme === 'dark' ? '#1e1e2e' : '#ffffff';
+    wrapper.style.backgroundColor = theme === 'dark' ? 'var(--surface)' : '#ffffff';
 
     return () => {
-      console.log('[sandbox] cleanup');
       ro.disconnect();
       try { circuit.stop(); } catch {}
       paper.remove();
     };
-  }, [activeFile?.id, theme]);  // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeFile?.id, theme, spawnCell]);
 
   const handleNew = () => {
-    const f = sandboxStore.create(`circuit_${files.length + 1}`);
+    // Auto-name with uniqueness check
+    let n = files.length + 1;
+    let name = `circuit_${n}.djs`;
+    while (files.some(f => f.name === name)) { n++; name = `circuit_${n}.djs`; }
+    const f = sandboxStore.create(name);
     sandboxStore.setActiveId(f.id);
     setActiveFile(f);
     refreshList();
   };
 
   const handleOpen = (f: SandboxFile) => {
-    // Save current before switching
     if (activeFile && paperRef.current) {
       sandboxStore.save(activeFile.id, JSON.stringify(paperRef.current.model.toJSON()));
     }
     sandboxStore.setActiveId(f.id);
     setActiveFile(f);
+    setConfirmDeleteId(null);
   };
 
   const handleSave = () => {
@@ -164,21 +158,23 @@ function SandboxCanvas({ theme }: Props) {
   };
 
   const handleDelete = (f: SandboxFile) => {
-    if (!confirm(`Delete ${f.name}?`)) return;
+    if (confirmDeleteId !== f.id) {
+      setConfirmDeleteId(f.id);
+      return;
+    }
     sandboxStore.remove(f.id);
     if (activeFile?.id === f.id) setActiveFile(null);
+    setConfirmDeleteId(null);
     refreshList();
   };
 
   return (
     <div style={{ display: 'flex', height: '100%', width: '100%' }}>
-      {/* Left panel: file list + palette */}
       <div style={{
         width: 180, borderRight: '1px solid var(--border-subtle)',
         display: 'flex', flexDirection: 'column', flexShrink: 0,
         background: 'var(--surface)',
       }}>
-        {/* File list */}
         <div style={{ padding: 8, borderBottom: '1px solid var(--border-subtle)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', fontWeight: 600 }}>FILES</span>
@@ -197,8 +193,15 @@ function SandboxCanvas({ theme }: Props) {
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</span>
-              <span onClick={(e) => { e.stopPropagation(); handleDelete(f); }}
-                style={{ cursor: 'pointer', opacity: 0.5, marginLeft: 4 }}>×</span>
+              <span
+                onClick={(e) => { e.stopPropagation(); handleDelete(f); }}
+                style={{
+                  cursor: 'pointer', marginLeft: 4,
+                  color: confirmDeleteId === f.id ? 'var(--error, #ef4444)' : undefined,
+                  fontWeight: confirmDeleteId === f.id ? 700 : 400,
+                }}>
+                {confirmDeleteId === f.id ? '?' : '×'}
+              </span>
             </div>
           ))}
           {files.length === 0 && (
@@ -206,7 +209,6 @@ function SandboxCanvas({ theme }: Props) {
           )}
         </div>
 
-        {/* Palette */}
         <div style={{ padding: 8, overflowY: 'auto', flex: 1 }}>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginBottom: 4, fontWeight: 600 }}>GATES</div>
           {GATE_TYPES.map(t => (
@@ -226,7 +228,6 @@ function SandboxCanvas({ theme }: Props) {
           ))}
         </div>
 
-        {/* Save button */}
         <div style={{ padding: 8, borderTop: '1px solid var(--border-subtle)' }}>
           <button onClick={handleSave} disabled={!activeFile}
             style={{ width: '100%', padding: '6px', background: activeFile ? 'var(--accent)' : 'var(--border)',
@@ -237,9 +238,8 @@ function SandboxCanvas({ theme }: Props) {
         </div>
       </div>
 
-      {/* Canvas */}
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        <div ref={wrapperRef} data-sandbox-wrapper style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
+        <div data-sandbox-wrapper style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
         {!activeFile && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
