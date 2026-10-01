@@ -17,6 +17,10 @@ function SandboxCanvas({ theme }: Props) {
   const [activeFile, setActiveFile] = useState<SandboxFile | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [resetNonce, setResetNonce] = useState(0);
+  const [running, setRunning] = useState(true);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const pendingResetJsonRef = useRef<string | null>(null);
+  const runningRef = useRef(true);
   const [, forceUpdate] = useState(0);
 
   const refreshList = useCallback(() => {
@@ -56,8 +60,8 @@ function SandboxCanvas({ theme }: Props) {
   // (Re)build paper when active file changes
   useEffect(() => {
     if (!activeFile) return;
-    const wrapper = document.querySelector('[data-sandbox-wrapper]') as HTMLElement;
-    if (!wrapper) return;
+    const root = wrapperRef.current;
+    if (!root) return;
     const digitaljs = (window as any).digitaljs;
 
     if (circuitRef.current) {
@@ -67,19 +71,31 @@ function SandboxCanvas({ theme }: Props) {
 
     const circuit = new digitaljs.Circuit({ devices: {}, connectors: [], subcircuits: {} }, { layoutEngine: false });
     circuitRef.current = circuit;
-    const paper = circuit.displayOn(wrapper);
+    // Host child for the paper: displayOn makes the host the paper element, so
+    // paper.remove() only removes the host — the root wrapper (and its grid) survives
+    // re-builds. This fixes the "blank canvas after Reset" bug.
+    const host = document.createElement('div');
+    host.setAttribute('data-sandbox-paper-host', '');
+    host.style.position = 'absolute';
+    host.style.inset = '0';
+    root.appendChild(host);
+    const paper = circuit.displayOn(host);
     paperRef.current = paper;
+    (window as any).__sandboxPaper = paper; // for QC tests // R7.2: simulation engine must run for signal propagation
+    (window as any).__sandboxCircuit = circuit; // for QC tests // R10: read tick / control sim
     paper.options.interactive = false;
     paper.off('render:done');
     paper.scale(1);
     paper.translate(0, 0);
-    circuit.start();
-    (window as any).__sandboxPaper = paper; // for QC tests // R7.2: simulation engine must run for signal propagation
+    if (runningRef.current) circuit.start(); // honor pause state
 
-    // Load saved cells + links
-    if (activeFile.graphJson && activeFile.graphJson !== JSON.stringify({ cells: [] })) {
+    // Load cells + links. On Reset (pendingResetJsonRef set) we rebuild from the LIVE
+    // paper's current topology so an unsaved circuit is NOT wiped; otherwise from saved graphJson.
+    const sourceJson = pendingResetJsonRef.current ?? activeFile.graphJson ?? null;
+    pendingResetJsonRef.current = null;
+    if (sourceJson && sourceJson !== JSON.stringify({ cells: [] })) {
       try {
-        const saved = JSON.parse(activeFile.graphJson);
+        const saved = JSON.parse(sourceJson);
         const cellMap = new Map<string, any>();
         // First pass: re-instantiate all cells
         for (const c of saved.cells || []) {
@@ -135,7 +151,7 @@ function SandboxCanvas({ theme }: Props) {
         const sourceCell = cellView.model;
         const portBody = magnet.closest('.joint-port-body');
         const sourcePort = portBody?.getAttribute('port');
-        const rect = wrapper.getBoundingClientRect();
+        const rect = root.getBoundingClientRect();
         const tempLink = new digitaljs.cells.Wire({
           source: { id: sourceCell.id, port: sourcePort },
           target: { x: evt.clientX - rect.left, y: evt.clientY - rect.top },
@@ -229,7 +245,7 @@ function SandboxCanvas({ theme }: Props) {
         paper.translate(t.tx - e.deltaX, t.ty - e.deltaY);
       }
     };
-    wrapper.addEventListener('wheel', onWheel, { passive: false });
+    root.addEventListener('wheel', onWheel, { passive: false });
 
     // Right-drag pan
     let panning = false, panStartX = 0, panStartY = 0, origTx = 0, origTy = 0;
@@ -246,26 +262,26 @@ function SandboxCanvas({ theme }: Props) {
       paper.translate(origTx + (e.clientX - panStartX), origTy + (e.clientY - panStartY));
     };
     const onPanUp = () => { panning = false; };
-    wrapper.addEventListener('mousedown', onPanDown);
+    root.addEventListener('mousedown', onPanDown);
     document.addEventListener('mousemove', onPanMove);
     document.addEventListener('mouseup', onPanUp);
-    wrapper.addEventListener('contextmenu', e => e.preventDefault());
+    root.addEventListener('contextmenu', e => e.preventDefault());
 
     const resize = () => {
-      const parent = wrapper.parentElement!;
+      const parent = root.parentElement!;
       paper.setDimensions(parent.clientWidth, parent.clientHeight);
     };
     resize();
     requestAnimationFrame(resize);
     const ro = new ResizeObserver(resize);
-    ro.observe(wrapper.parentElement!);
+    ro.observe(root.parentElement!);
 
-    wrapper.style.backgroundColor = theme === 'dark' ? 'var(--surface)' : '#ffffff';
+    root.style.backgroundColor = theme === 'dark' ? 'var(--surface)' : '#ffffff';
 
     return () => {
       document.removeEventListener('keydown', onKey);
-      wrapper.removeEventListener('wheel', onWheel);
-      wrapper.removeEventListener('mousedown', onPanDown);
+      root.removeEventListener('wheel', onWheel);
+      root.removeEventListener('mousedown', onPanDown);
       document.removeEventListener('mousemove', onPanMove);
       document.removeEventListener('mouseup', onPanUp);
       ro.disconnect();
@@ -307,11 +323,22 @@ function SandboxCanvas({ theme }: Props) {
   };
 
   const handleReset = () => {
-    // True reset: shutdown + remove, then effect rebuilds from saved graphJson
+    // Capture the LIVE topology (so an unsaved circuit is NOT wiped), then bump
+    // resetNonce: the effect rebuilds a fresh circuit from this JSON and the sim
+    // returns to power-on (gates re-initialized). This is a true reset, not pause/resume.
+    const live = paperRef.current?.model.toJSON();
+    pendingResetJsonRef.current = live ? JSON.stringify(live) : (activeFile?.graphJson ?? null);
     try { circuitRef.current?.stop(); } catch {}
-    paperRef.current?.remove();
-    circuitRef.current = null;
     setResetNonce(n => n + 1);
+  };
+
+  const handlePlayPause = () => {
+    const c = circuitRef.current;
+    if (!c) return;
+    const next = !running;
+    runningRef.current = next;
+    setRunning(next);
+    try { if (next) c.start(); else c.stop(); } catch {}
   };
 
   const handleDelete = (f: SandboxFile) => {
@@ -405,6 +432,12 @@ function SandboxCanvas({ theme }: Props) {
                 borderRadius: 3, cursor: activeFile ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-xs)' }}>
               Reset
             </button>
+            <button onClick={handlePlayPause} disabled={!activeFile} title="Play / Pause simulation"
+              style={{ flex: 1, padding: '4px', background: activeFile ? 'var(--surface)' : 'var(--border)',
+                color: activeFile ? 'var(--text)' : 'var(--text-muted)', border: '1px solid var(--border-subtle)',
+                borderRadius: 3, cursor: activeFile ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-xs)' }}>
+              {running ? 'Pause' : 'Play'}
+            </button>
           </div>
           <button onClick={handleSave} disabled={!activeFile}
             style={{ width: '100%', padding: '6px', background: activeFile ? 'var(--accent)' : 'var(--border)',
@@ -416,7 +449,7 @@ function SandboxCanvas({ theme }: Props) {
       </div>
 
       <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-        <div data-sandbox-wrapper style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
+        <div ref={wrapperRef} data-sandbox-wrapper style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
         {!activeFile && (
           <div style={{
             position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
