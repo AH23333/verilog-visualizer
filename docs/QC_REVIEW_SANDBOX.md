@@ -140,6 +140,42 @@ paper.off('render:done');   // sandbox 不需要 digitaljs 的 auto-fit；主 Ca
 
 ---
 
+# R5 补充指令（基于 HEAD f42f903 的仓库核对）
+
+## R5.1 【阻塞·第一优先】R4.3 尚未执行
+
+仓库核对（HEAD=f42f903）：`SandboxCanvas.tsx` 中 **`paper.off('render:done')` 仍不存在**。拖拽回归的修复一行（R4.3）至今未落地——**这是当前唯一阻塞项，先于一切新工作执行**：
+```js
+// SandboxCanvas.tsx，paper 创建后：
+paper.off('render:done');
+```
+自测：复跑 `.tmpbuild_qc_strict.cjs`，DRAG delta ±8px 与 SAVE/RELOAD 两项必须 PASS，然后提交推送。
+
+## R5.2 【文档债】三个超范围交付缺功能文档
+
+`d502174..HEAD` 共 52+ 提交，其中三个功能**超出 P1/P2 契约且无任何文档**：
+1. **分屏视图**（ViewMode='split'、splitRatio 0.25–0.75 可拖拽+localStorage 持久化、光标行→电路 cross-highlight）——实测确认存在，但用法/边界/限制无文档
+2. **单步仿真**（`sim.stepOnce` F7、Canvas.stepOnce 组合逻辑 delta-cycle 推进、debug tick counter）——S0.3 决策项被实现，实现方向正确（stop + 单 delta-cycle），但语义边界（异步引擎 vs EDA 步进）未文档化
+3. **连线路由改造**（manhattan→orthogonal、顶点合并阈值 25px、总线加粗 2.5px、link magnifier 隐藏）
+
+指令：新建 `docs/FEATURES_BEYOND_PLAN.md`，三个功能各一节（现状/用法/已知限制），中文，与 WORK_REPORT 风格一致。
+
+## R5.3 【卫生】
+
+1. `Canvas.tsx` stepOnce 的 `console.log('[stepOnce] ...')` 清理（产品代码禁止调试日志）
+2. 仓库根的 `.tmpbuild_qc*.cjs` 三个 QC 脚本挪至 `tests/`（它们已是受控回归资产，放根目录不规范；挪动后确认 QC_REVIEW §6 的引用路径同步更新）
+3. 推送未推的 `f42f903`（QC R4 评审）
+
+## R5.4 【并行·P1-2 收尾】（与 R5.1 无文件冲突，可同轮做）
+
+- Sidebar 文件树 7 处手写 hover、ModulePanel ~30 处行内样式 → `.icon-btn`/`.text-btn` class（交接文档 P1-2 允许分步，此为剩余大头）
+
+## R5.5 【质检预告】
+
+R5.1 完成提请质检时，质检方将首次把**分屏视图与单步仿真纳入正式质检范围**（新增用例：分屏拖拽 splitter 边界、cross-highlight 双向、F7 步进的 tick 计数验证），请确保 R5.2 文档先行——无文档的功能不质检。
+
+---
+
 # R3 复检（05dac2b 之后）
 
 ## R3.1 上轮指令执行核对
