@@ -756,19 +756,28 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       e.preventDefault();
-      const delta = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.min(5, Math.max(0.1, zoomRef.current * delta));
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (rect) {
-        const mx = e.clientX - rect.left;
-        const my = e.clientY - rect.top;
-        const scale = newZoom / zoomRef.current;
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl+wheel = zoom at cursor
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const newZoom = Math.min(5, Math.max(0.1, zoomRef.current * delta));
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          const mx = e.clientX - rect.left;
+          const my = e.clientY - rect.top;
+          const scale = newZoom / zoomRef.current;
+          panRef.current = {
+            x: mx - scale * (mx - panRef.current.x),
+            y: my - scale * (my - panRef.current.y),
+          };
+        }
+        zoomRef.current = newZoom;
+      } else {
+        // Plain wheel = pan (vertical by default, horizontal with Shift)
         panRef.current = {
-          x: mx - scale * (mx - panRef.current.x),
-          y: my - scale * (my - panRef.current.y),
+          x: panRef.current.x - (e.shiftKey ? e.deltaY : e.deltaX),
+          y: panRef.current.y - (e.shiftKey ? e.deltaX : e.deltaY),
         };
       }
-      zoomRef.current = newZoom;
       applyTransform();
     },
     [applyTransform]
