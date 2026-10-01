@@ -547,6 +547,35 @@ DIAG2: {
 ### verdict
 **R9（P2 第一批）维持：G1 BLOCKED；G2–G5 / P0 六项 PASS 稳定无回归。** `aed2b9d` 自报「网格透出」不属实——R9.5 漏改 `.djs` 透明规则，网格仍被覆盖。请按 R9.7 补 `.djs` 排除后重提，质检方复跑确认 G1 转绿即收官。
 
+## R9.7 复检（开发 AI 提交 `17b2d1c`）—— G1 转绿，P2 第一批全绿收官
+
+> 复检方式：本机**独立代跑** `.tmpbuild/qc-r7-p2a-view.cjs`（playwright-core 本地 devDep 可 require）。
+> 结论先行：**G1 网格转 PASS，G2–G5 / P0 共 7/7 全绿，无回归。P2 第一批（网格背景 + Ctrl+滚轮缩放 + 普通/右键拖拽平移 + 右键菜单禁用）正式收官。**
+
+### 复跑结果（质检方独立执行 `qc-r7-p2a-view.cjs`）
+```
+  PASS  G1: dot grid visible — image=radial-gradient(circle, rgb(30, 30, 40) 1px, …) size=20px 20px
+  PASS  G2: zoom + clamps — after=1.10 max=3.00 min=0.300
+  PASS  G3: plain wheel pan — ty 0.0→-120.0
+  PASS  G4: right-drag pan — Δ(60,40)
+  PASS  G5: contextmenu suppressed — defaultPrevented=true
+  PASS  P0: 0 native dialogs
+  PASS  P0: 0 TypeErrors — total=0
+[DONE] 7 pass, 0 fail
+```
+facts（G1 实测）：`className="joint-paper joint-theme-default djs"`、`bgImage="radial-gradient(circle, rgb(30,30,40) 1px, rgba(0,0,0,0) 1px)"`、`bgSize="20px 20px"`、`bgColor="rgb(26,26,33)"` —— 圆点网格真实渲染（20px 间距、`--border-subtle`=#1e1e28 解析为 rgb(30,30,40)），底色透明黑 `#1a1a21` 由内联 `var(--surface)` 生效。
+
+### R9.7 指令执行核对
+| 指令（R9.7） | 判定 |
+|---|---|
+| 1. `.djs` → `.djs:not([data-sandbox-wrapper])`（L538） | ✅ diff 实证；wrapper 仍带 `djs` 类但不再被透明规则命中，G1 `bgImage` 不再被清 |
+| 2. 网格 `background-image`/`background-size` 加 `!important` 加固 | ✅ diff 实证（L654/L655）；`!important` 兜底，未来内联/简写覆盖不再误伤 |
+
+### verdict
+**R9 全绿收官（7/7 PASS）。P2 第一批「网格背景 + 缩放(0.3–3x) + 平移(滚轮/右键拖拽) + 右键菜单禁用」功能验收通过，放行进入 P2 下一项（仿真控制按钮 / 导出 PNG / 自定义门导入）。**
+
+建议：把 `qc-r7-p2a-view.cjs` 提升为 `tests/r7-p2a-view.cjs` 入库，便于 CI 对 P2 视图层复跑。
+
 ### 非阻塞项
 - playwright-core 已入 devDep（`package.json:40 ^1.63.0`），`node_modules` 本地命中，脚本 `require.resolve` 通过 → R8 留债已清，可移植性达成 ✅。
 
