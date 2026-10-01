@@ -522,7 +522,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
               const dx = cur.x - prev.x;
               const dy = cur.y - prev.y;
               const dist = Math.sqrt(dx * dx + dy * dy);
-              if (dist < 15) {
+              if (dist < 25) {
                 // Merge: keep the corner midpoint
                 merged[merged.length - 1] = { x: (prev.x + cur.x) / 2, y: (prev.y + cur.y) / 2 };
               } else {
