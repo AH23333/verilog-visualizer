@@ -33,12 +33,9 @@ function SandboxCanvas({ theme }: Props) {
     const CellClass = cells?.[type];
     if (!CellClass) { console.warn('[sandbox] unknown cell type:', type); return; }
     try {
-      // Find live wrapper from DOM directly
-      const liveWrapper = document.querySelector('[data-sandbox-wrapper]') as HTMLElement;
-      if (!liveWrapper) { console.warn('[sandbox] live wrapper not in DOM'); return; }
-      const rect = liveWrapper.getBoundingClientRect();
-      const cx = Math.round(rect.width / 2 + (Math.random() - 0.5) * 200);
-      const cy = Math.round(rect.height / 2 + (Math.random() - 0.5) * 200);
+      // Place at fixed paper coords with jitter (avoid wrapper center calc issues)
+      const cx = 100 + Math.round(Math.random() * 200);
+      const cy = 100 + Math.round(Math.random() * 200);
       const cellJson = {
         type: type,
         position: { x: cx, y: cy },
