@@ -1,0 +1,669 @@
+@import "tailwindcss";
+
+/* ============================================================
+   Modern Premium Theme — Verilog Visualizer
+   ============================================================ */
+
+/* NOTE: no unlayered `* { margin/padding: 0 }` reset here.
+   Tailwind v4's preflight (inside @layer base) already zeroes margin/padding
+   and sets box-sizing — while remaining overridable by @layer utilities.
+   An unlayered universal reset silently DEFEATS every Tailwind utility
+   (unlayered styles beat all layers), which previously killed all spacing
+   (px-5/gap-2/py-3 rendered as 0). Never re-add it outside a layer. */
+
+html, body, #root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* ============================================================
+   Dark Theme — Premium neutral palette with subtle blue undertones
+   ============================================================ */
+:root,
+[data-theme="dark"] {
+  /* Core surfaces */
+  --bg: #09090b;
+  --bg-elevated: #111115;
+  --bg-overlay: #16161b;
+  --surface: #1a1a21;
+  --surface-hover: #22222b;
+  /* Borders */
+  --border: #2a2a35;
+  --border-subtle: #1e1e28;
+  --border-glow: rgba(99, 102, 241, 0.15);
+  /* Text */
+  --text: #e4e4ec;
+  --text-secondary: #8b8b9a;
+  --text-muted: #5c5c6e;
+  /* Accent — indigo/blue */
+  --accent: #6366f1;
+  --accent-hover: #818cf8;
+  --accent-muted: rgba(99, 102, 241, 0.12);
+  --accent-glow: rgba(99, 102, 241, 0.25);
+  /* Semantic */
+  --danger: #f43f5e;
+  --danger-hover: #fb7185;
+  --danger-muted: rgba(244, 63, 94, 0.12);
+  --success: #22c55e;
+  --success-muted: rgba(34, 197, 94, 0.12);
+  --warning: #f59e0b;
+  --warning-muted: rgba(245, 158, 11, 0.12);
+  --info: #6366f1;
+  --info-muted: rgba(99, 102, 241, 0.12);
+
+  /* Component surfaces */
+  --sidebar-bg: #09090b;
+  --panel-bg: #111115;
+  --toolbar-bg: #09090b;
+  --canvas-bg: #0d0d13;
+  --input-bg: #0d0d13;
+  --input-border: #2a2a35;
+  --input-focus: #6366f1;
+  --menu-bg: #14141a;
+  --menu-hover: #1e1e28;
+  --dropdown-bg: #14141a;
+  --statusbar-bg: #09090b;
+  --scrollbar-thumb: #2a2a35;
+  --scrollbar-track: transparent;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 0 20px var(--accent-glow);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 14px;
+
+  /* Font-size scale (VS Code-like density).
+     R34: 改为 rem 基准 —— settingsStore 的「界面字体大小」直接调 html 的
+     font-size，此处全部随动缩放（含沙盒侧栏）。默认 16px 根字号下数值
+     与原 px 完全一致，不改变默认观感。 */
+  --fs-xs: 0.6875rem;   /* 11px @16 */
+  --fs-sm: 0.75rem;     /* 12px @16 */
+  --fs-md: 0.8125rem;   /* 13px @16 */
+  --fs-lg: 0.9375rem;   /* 15px @16 */
+  --fs-xl: 1.125rem;    /* 18px @16 */
+  --fs-xxl: 1.5rem;     /* 24px @16 */
+
+  /* Component heights (two canonical tiers) */
+  --h-control-sm: 24px;
+  --h-control-md: 30px;
+  --h-tab: 40px;
+  --h-titlebar: 40px;
+
+  /* Transitions */
+  --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-spring: 300ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ============================================================
+   Light Theme
+   ============================================================ */
+[data-theme="light"] {
+  --bg: #fafafa;
+  --bg-elevated: #ffffff;
+  --bg-overlay: #ffffff;
+  --surface: #f4f4f5;
+  --surface-hover: #eaeaec;
+  --border: #e4e4e7;
+  --border-subtle: #eaeaec;
+  --border-glow: rgba(99, 102, 241, 0.12);
+  --text: #18181b;
+  --text-secondary: #71717a;
+  --text-muted: #a1a1aa;
+  --accent: #4f46e5;
+  --accent-hover: #6366f1;
+  --accent-muted: rgba(99, 102, 241, 0.08);
+  --accent-glow: rgba(99, 102, 241, 0.2);
+  --danger: #e11d48;
+  --danger-hover: #f43f5e;
+  --danger-muted: rgba(225, 29, 72, 0.08);
+  --success: #16a34a;
+  --success-muted: rgba(22, 163, 74, 0.08);
+  --warning: #d97706;
+  --warning-muted: rgba(217, 119, 6, 0.08);
+  --info: #4f46e5;
+  --info-muted: rgba(99, 102, 241, 0.08);
+
+  --sidebar-bg: #fafafa;
+  --panel-bg: #ffffff;
+  --toolbar-bg: #ffffff;
+  --canvas-bg: #fafafa;
+  --input-bg: #f4f4f5;
+  --input-border: #e4e4e7;
+  --input-focus: #4f46e5;
+  --menu-bg: #ffffff;
+  --menu-hover: #f4f4f5;
+  --dropdown-bg: #ffffff;
+  --statusbar-bg: #fafafa;
+  --scrollbar-thumb: #d4d4d8;
+  --scrollbar-track: transparent;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
+  --shadow-glow: 0 0 20px var(--accent-glow);
+}
+
+/* ============================================================
+   Base
+   ============================================================ */
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+
+/* ============================================================
+   Scrollbar — thin, modern
+   ============================================================ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ============================================================
+   Typography
+   ============================================================ */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+code, pre {
+  font-family: 'JetBrains Mono', 'Cascadia Code', 'Fira Code', 'Consolas',
+    'Courier New', monospace;
+}
+
+/* ============================================================
+   Button base — refined
+   ============================================================ */
+button {
+  font-family: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  position: relative;
+}
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* Icon / text button primitives — replace ad-hoc onMouseEnter/Leave hover */
+.icon-btn,
+.text-btn {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+.icon-btn:hover,
+.text-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text);
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--h-control-sm);
+  height: var(--h-control-sm);
+  padding: 0;
+}
+.text-btn {
+  padding: 4px 10px;
+}
+
+/* Activity bar (VS Code style): left accent bar, no rounded corners */
+.activity-btn {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  border-radius: 0;
+  transition: all var(--transition-fast);
+}
+.activity-btn:hover {
+  background: var(--surface-hover);
+  color: var(--text-secondary);
+}
+.activity-btn.active {
+  background: var(--accent-muted);
+  border-left-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ============================================================
+   Input / Select base
+   ============================================================ */
+input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  background: var(--input-bg);
+  color: var(--text);
+  border: 1px solid var(--input-border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  transition: all var(--transition-fast);
+}
+input:focus, select:focus, textarea:focus {
+  outline: none;
+  border-color: var(--input-focus);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+}
+
+/* ============================================================
+   Selection
+   ============================================================ */
+::selection {
+  background: var(--accent-muted);
+  color: var(--text);
+}
+
+/* ============================================================
+   Glassmorphism utility
+   ============================================================ */
+.glass {
+  background: rgba(17, 17, 21, 0.8);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--border);
+}
+[data-theme="light"] .glass {
+  background: rgba(255, 255, 255, 0.8);
+}
+
+/* ============================================================
+   Subtle gradient border utility
+   ============================================================ */
+.gradient-border {
+  position: relative;
+}
+.gradient-border::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(135deg, var(--accent), transparent 60%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ============================================================
+   Animation keyframes
+   ============================================================ */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes pulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.75); }
+}
+.status-compiling-dot {
+  animation: pulseDot 0.8s ease-in-out infinite;
+}
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-8px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes pulseGlow {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50% { box-shadow: 0 0 0 4px var(--accent-glow); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in {
+  animation: fadeIn var(--transition-normal) ease-out;
+}
+.animate-scale-in {
+  animation: scaleIn var(--transition-spring) ease-out;
+}
+.animate-slide-left {
+  animation: slideInLeft var(--transition-normal) ease-out;
+}
+
+/* ============================================================
+   SVG text (DigitalJS)
+   ============================================================ */
+[data-theme="dark"] svg text {
+  fill: #e4e4ec !important;
+}
+/* Cell bodies stay light (white/light-gray) in both themes — schematic look */
+.joint-paper .cell .body,
+.joint-paper [class*="body"] {
+  fill: #f4f4f5 !important;
+  stroke: #52525b !important;
+}
+/* Text inside cells is always black (on light body background) */
+.joint-paper .cell text,
+.joint-paper [class*="body"] + text,
+.joint-paper text.label {
+  fill: #18181b !important;
+}
+[data-theme="dark"] svg .cell {
+  stroke: #2a2a35 !important;
+}
+[data-theme="light"] svg text {
+  fill: #18181b !important;
+}
+[data-theme="light"] svg .cell {
+  stroke: #e4e4e7 !important;
+}
+[data-theme="dark"] .joint-paper.joint-theme-dark:not([data-sandbox-wrapper]) {
+  background-color: transparent !important;
+}
+[data-theme="light"] .joint-paper.joint-theme-default:not([data-sandbox-wrapper]) {
+  background-color: transparent !important;
+}
+
+/* Code -> circuit source highlight (glow only; keeps signal stroke colors) */
+.joint-paper .src-highlight {
+  filter: drop-shadow(0 0 5px var(--accent)) drop-shadow(0 0 2px var(--accent));
+  animation: src-highlight-pulse 1.2s ease-in-out infinite alternate;
+}
+@keyframes src-highlight-pulse {
+  from { filter: drop-shadow(0 0 3px var(--accent)) drop-shadow(0 0 1px var(--accent)); }
+  to   { filter: drop-shadow(0 0 8px var(--accent)) drop-shadow(0 0 3px var(--accent)); }
+}
+
+/* ============================================================
+   Prism.js Verilog Syntax Highlighting
+   ============================================================ */
+pre[class*="language-"],
+code[class*="language-"] {
+  background: transparent !important;
+  text-shadow: none !important;
+}
+code[class*="language-"] {
+  line-height: inherit !important;
+}
+
+/* Dark theme token colors */
+[data-theme="dark"] .token.comment,
+[data-theme="dark"] .token.prolog,
+[data-theme="dark"] .token.doctype,
+[data-theme="dark"] .token.cdata {
+  color: #8b8b9a;
+  font-style: italic;
+}
+[data-theme="dark"] .token.punctuation {
+  color: #e4e4ec;
+}
+[data-theme="dark"] .token.property,
+[data-theme="dark"] .token.tag,
+[data-theme="dark"] .token.boolean,
+[data-theme="dark"] .token.number,
+[data-theme="dark"] .token.constant,
+[data-theme="dark"] .token.symbol,
+[data-theme="dark"] .token.deleted {
+  color: #818cf8;
+}
+[data-theme="dark"] .token.selector,
+[data-theme="dark"] .token.attr-name,
+[data-theme="dark"] .token.string,
+[data-theme="dark"] .token.char,
+[data-theme="dark"] .token.builtin,
+[data-theme="dark"] .token.inserted {
+  color: #a5b4fc;
+}
+[data-theme="dark"] .token.operator,
+[data-theme="dark"] .token.entity,
+[data-theme="dark"] .token.url {
+  color: #818cf8;
+}
+[data-theme="dark"] .token.atrule,
+[data-theme="dark"] .token.attr-value,
+[data-theme="dark"] .token.keyword {
+  color: #fb7185;
+}
+[data-theme="dark"] .token.function,
+[data-theme="dark"] .token.class-name {
+  color: #c4b5fd;
+}
+[data-theme="dark"] .token.regex,
+[data-theme="dark"] .token.important,
+[data-theme="dark"] .token.variable {
+  color: #fbbf24;
+}
+
+/* Light theme token colors */
+[data-theme="light"] .token.comment,
+[data-theme="light"] .token.prolog,
+[data-theme="light"] .token.doctype,
+[data-theme="light"] .token.cdata {
+  color: #a1a1aa;
+  font-style: italic;
+}
+[data-theme="light"] .token.punctuation {
+  color: #18181b;
+}
+[data-theme="light"] .token.property,
+[data-theme="light"] .token.tag,
+[data-theme="light"] .token.boolean,
+[data-theme="light"] .token.number,
+[data-theme="light"] .token.constant,
+[data-theme="light"] .token.symbol,
+[data-theme="light"] .token.deleted {
+  color: #4f46e5;
+}
+[data-theme="light"] .token.selector,
+[data-theme="light"] .token.attr-name,
+[data-theme="light"] .token.string,
+[data-theme="light"] .token.char,
+[data-theme="light"] .token.builtin,
+[data-theme="light"] .token.inserted {
+  color: #3730a3;
+}
+[data-theme="light"] .token.operator,
+[data-theme="light"] .token.entity,
+[data-theme="light"] .token.url {
+  color: #4f46e5;
+}
+[data-theme="light"] .token.atrule,
+[data-theme="light"] .token.attr-value,
+[data-theme="light"] .token.keyword {
+  color: #e11d48;
+}
+[data-theme="light"] .token.function,
+[data-theme="light"] .token.class-name {
+  color: #7c3aed;
+}
+[data-theme="light"] .token.regex,
+[data-theme="light"] .token.important,
+[data-theme="light"] .token.variable {
+  color: #d97706;
+}
+
+/* ============================================================
+   Joint.js / digitaljs paper — force transparent so the container's
+   --canvas-bg + dot-grid show through. Without this, drilling into a
+   subcircuit leaves an opaque white slab on dark theme.
+   ============================================================ */
+.joint-paper:not([data-sandbox-wrapper]),
+.joint-paper svg,
+.djs:not([data-sandbox-wrapper]),
+.djs svg,
+.joint-paper .joint-viewport,
+.joint-paper .joint-scroller {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+/* Kill any white fill rect joint may paint as paper background */
+.joint-paper svg rect:first-child {
+  fill: transparent !important;
+}
+
+/* ============================================================
+   DigitalJS cell inspector popup (hover cell -> magnifier -> click).
+   digitaljs uses jQuery UI dialog — theme it dark.
+   ============================================================ */
+.ui-dialog {
+  background: var(--menu-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,.5) !important;
+}
+.ui-dialog .ui-dialog-titlebar {
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  border: none !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+.ui-dialog .ui-dialog-content {
+  background: var(--menu-bg) !important;
+  color: var(--text) !important;
+}
+.ui-dialog .ui-dialog-content .joint-paper,
+.ui-dialog .ui-dialog-content svg {
+  background: var(--menu-bg) !important;
+}
+.ui-dialog .ui-dialog-titlebar-close {
+  filter: invert(0.8);
+}
+.ui-widget-overlay {
+  background: rgba(0,0,0,.5) !important;
+}
+/* Link paths — make them crisper (Quartus-ish): 1.5px, no rounded corners */
+.joint-paper .connection-wrap,
+.joint-paper .connection {
+  stroke-width: 1.5;
+}
+.joint-paper .connection:not(.link-tools) {
+  stroke-linejoin: miter;
+  stroke-linecap: butt;
+}
+/* Hide draggable vertex handles + dead link tools (monitor magnifier etc.) */
+.joint-paper .vertex,
+.joint-paper .connection-tools,
+.joint-paper .link-tools,
+.joint-paper .link-tool,
+.joint-paper .joint-tool,
+.joint-paper [class*="link-tool"] {
+  display: none !important;
+}
+
+/* ============================================================
+   Quartus-style schematic look: sharp rectangles, monospace labels,
+   thin 1px borders, small port dots.
+   ============================================================ */
+.joint-paper [model-type="basic.Rect"],
+.joint-paper [model-type="standard.Element"] .body,
+.joint-paper [class*="body"] {
+  rx: 0 !important;
+  ry: 0 !important;
+  stroke-width: 1px !important;
+}
+.joint-paper text {
+  font-family: 'Consolas', 'JetBrains Mono', monospace !important;  font-size: 9pt !important;
+}
+/* Port dots — small filled circles */
+.joint-paper .port {
+  r: 3px !important;
+  stroke-width: 1px !important;
+}
+/* Subtle grid already on wrapper; make paper itself transparent so grid shows through */
+.joint-paper:not([data-sandbox-wrapper]) {
+  background: transparent !important;
+}
+.joint-paper svg {
+  background: transparent !important;
+}
+
+/* ============================================================
+   IO cells (Button / Clock / Input) — bigger, clearer
+   ============================================================ */
+.joint-paper .joint-type-button .body,
+.joint-paper .joint-type-clock .body,
+.joint-paper .joint-type-numdisplay .body {
+  stroke-width: 2px !important;
+}
+.joint-paper .joint-type-button text,
+.joint-paper .joint-type-clock text,
+.joint-paper .joint-type-numdisplay text {
+  font-size: 14pt !important;
+  font-weight: 700 !important;
+}
+/* IO port labels (signal names) — bigger */
+.joint-paper text.iolabel {
+  font-size: 12pt !important;
+  font-weight: 600 !important;
+}
+
+/* ============================================================
+   Sandbox canvas — force paper to fill wrapper (size chain fix)
+   ============================================================ */
+[data-sandbox-wrapper] {
+  position: absolute !important;
+  top: 0; left: 0; right: 0; bottom: 0;
+  width: 100% !important;
+  height: 100% !important;
+  background-image: radial-gradient(circle, var(--border-subtle) 1px, transparent 1px) !important;
+  background-size: 20px 20px !important;
+}
+[data-sandbox-wrapper] .joint-paper,
+[data-sandbox-wrapper] svg {
+  width: 100% !important;
+  height: 100% !important;
+}
+/* expand modal spinner (R35b) */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
