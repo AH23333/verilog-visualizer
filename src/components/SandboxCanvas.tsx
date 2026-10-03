@@ -480,6 +480,16 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   const runningRef = useRef(true);
   const [, forceUpdate] = useState(0);
   const [gates, setGates] = useState<CustomGate[]>([]);
+  // gates 的镜像 ref：菜单回调读它，避免 gates 进 useCallback 依赖。
+  // 为什么不能直接依赖 gates：customGateStore.list() 每次返回新数组，refreshGates()
+  // （R37 起插入示例 / 粘贴时都会调用）会让依赖 openBlankMenu 的画布重建 effect
+  // 重跑 —— 刚插入的器件会被旧档 graphJson 整体冲掉（r27 回归根因）。
+  const gatesRef = useRef<CustomGate[]>([]);
+  gatesRef.current = gates;
+  // activeFile 的镜像 ref：commit 落盘要拿当前文件 id，但不能把它进依赖
+  // （否则每次切文件都换 commit 身份 → 画布重建 effect 重跑）。
+  const activeFileRef = useRef<SandboxFile | null>(null);
+  activeFileRef.current = activeFile;
   const [savingGate, setSavingGate] = useState(false);
   const [gateName, setGateName] = useState('');
   const [gateError, setGateError] = useState<string | null>(null);
@@ -767,12 +777,18 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     const h = historyRef.current;
     try {
       const snap = JSON.stringify(serializePaper(paper));
-      if (h.stack[h.idx] === snap) return;
-      h.stack = h.stack.slice(0, h.idx + 1);
-      h.stack.push(snap);
-      if (h.stack.length > 80) h.stack.shift();
-      h.idx = h.stack.length - 1;
-      forceUpdate(n => n + 1);
+      if (h.stack[h.idx] !== snap) {
+        h.stack = h.stack.slice(0, h.idx + 1);
+        h.stack.push(snap);
+        if (h.stack.length > 80) h.stack.shift();
+        h.idx = h.stack.length - 1;
+        forceUpdate(n => n + 1);
+        // R37b：每次变更即刻落盘（此前只进撤销栈，画布内容要等切文件/切面板/
+        // 卸载才持久化 —— reload 直接丢掉未切换过的内容，r34[8] 回归根因）。
+        if (activeFileRef.current && activeFileRef.current.kind !== 'gate') {
+          try { sandboxStore.save(activeFileRef.current.id, stripBoundInlineJson(snap)); } catch { /* best effort */ }
+        }
+      }
     } catch { /* ignore */ }
   }, [showToast]);
 
@@ -1505,13 +1521,13 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
                 })),
               ]),
             }));
-            if (gates.length) {
+            if (gatesRef.current.length) {
               catItems.push({
                 label: '自定义门', hint: '▶',
                 action: () => goto('自定义门', [
                   backItem,
                   { label: '---' },
-                  ...gates.map((g) => ({ label: g.name, hint: '自定义', action: () => placeCustomGateAt(g, { x, y }) })),
+                  ...gatesRef.current.map((g) => ({ label: g.name, hint: '自定义', action: () => placeCustomGateAt(g, { x, y }) })),
                 ]),
               });
             }
@@ -1554,9 +1570,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       { label: '清除选择', action: () => setSelectionRef.current([]) },
     ]);
   }, [openMenuAt, pasteClipboard, placeAt, redo, resetView, selectAll, undo, zoomBy, zoomToFit, spawnCell, commit, showToast, ensureSimRunning,
-      // gates 必须进依赖：否则闭包里永远是挂载时的空数组，
-      // 右键「放置部件」的二级导航里永远不出现「自定义门」分类（R32 用户报告）
-      gates, insertCellsAt]);
+      // gates 不能进依赖（见 gatesRef 注释）：自定义门列表经 gatesRef.current 读取，
+      // 既保证菜单最新（ref 每次渲染同步），又不搅动画布重建 effect 的身份依赖。
+      insertCellsAt]);
 
   useEffect(() => {
     // R37 迁移：旧 GATES_KEY 门存档 + 存量文件内嵌 subcircuitGraph →

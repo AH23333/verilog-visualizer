@@ -58,6 +58,11 @@ export function renameGateDef(id: string, newName: string): number {
       for (const c of j?.cells || []) {
         if (c?.type !== 'Subcircuit') continue;
         if (String(c.celltype || '') === oldName) { c.celltype = newName; hit = true; }
+        // 符号显示标签与 celltype 一同改写，否则持久化档里残留旧名（r37[7]）
+        try {
+          const t = c?.attrs?.type?.text;
+          if (String(t || '') === oldName) { c.attrs.type.text = newName; hit = true; }
+        } catch { /* ignore */ }
         if (c.subcircuitGraph) walk(c.subcircuitGraph, depth + 1);
       }
     };
