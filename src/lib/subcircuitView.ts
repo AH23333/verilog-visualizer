@@ -456,20 +456,31 @@ export function constructCircuit(digitaljs: any, json: any): {
     // 再把僵尸线从图里清掉，避免污染渲染与仿真。
     const reAdd = (graph: any, m: any): number => {
       let skipped = 0;
+      // 端口名模糊匹配：先试指定名，失败则自动试常见端口名
+      const tryPorts = (cell: any, candidates: string[]): string | null => {
+        for (const p of candidates) {
+          try { if (cell.getPort(p)) return p; } catch { /* ignore */ }
+        }
+        return null;
+      };
+      const outCandidates = ['out', 'Y', 'y'];
+      const inCandidates = ['in1', 'in', 'A', 'a', 'in2'];
       for (const conn of m.connectors || []) {
         const srcCell = graph.getCell ? graph.getCell(conn.from?.id) : null;
         const tgtCell = graph.getCell ? graph.getCell(conn.to?.id) : null;
-        if (!srcCell || !tgtCell
-          || typeof srcCell.getPort !== 'function' || typeof tgtCell.getPort !== 'function'
-          || !srcCell.getPort(conn.from?.port) || !tgtCell.getPort(conn.to?.port)) {
-          skipped++;
-          continue;
+        if (!srcCell || !tgtCell || typeof srcCell.getPort !== 'function' || typeof tgtCell.getPort !== 'function') {
+          skipped++; continue;
         }
+        let srcPort = conn.from?.port;
+        let tgtPort = conn.to?.port;
+        try { if (!srcCell.getPort(srcPort)) srcPort = tryPorts(srcCell, outCandidates); } catch { srcPort = null; }
+        try { if (!tgtCell.getPort(tgtPort)) tgtPort = tryPorts(tgtCell, inCandidates); } catch { tgtPort = null; }
+        if (!srcPort || !tgtPort) { skipped++; continue; }
         let w: any = null;
         try {
           w = new digitaljs.cells.Wire({
-            source: { id: conn.from.id, port: conn.from.port, magnet: 'port' },
-            target: { id: conn.to.id, port: conn.to.port, magnet: 'port' },
+            source: { id: conn.from.id, port: srcPort, magnet: 'port' },
+            target: { id: conn.to.id, port: tgtPort, magnet: 'port' },
             netname: conn.name,
             vertices: conn.vertices || [],
             source_positions: conn.source_positions || [],
