@@ -2521,9 +2521,11 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   const syncAfterFsOp = () => { refreshList(); refreshFolders(); };
 
   const handleFileOpen = (f: SandboxFile) => {
-    // 门定义文件不是画布：它是绑定真源，双击实例即可展开查看内部电路
+    // 门定义文件不是画布：它是绑定真源。单击即在内部门查看器里打开它的
+    // 内部电路（与「双击画布实例展开」同一查看器，支持逐层钻取子部件）。
     if (f.kind === 'gate') {
-      showToast(`「${baseName(f.name).replace(/\.gate$/i, '')}」是门定义文件（绑定真源）；在画布上双击该门实例即可展开查看内部电路`);
+      const name = baseName(f.name).replace(/\.gate$/i, '');
+      setInnerCell({ get: (k: string) => (k === 'celltype' ? name : undefined) });
       return;
     }
     handleOpen(f);
