@@ -1,126 +1,168 @@
-// 门定义文件系统 + 部件绑定系统（R37）—— 把编译模式的架构语义迁移到沙盒。
+// 部件（自定义门 / 编译子模块）绑定系统 —— 编译模式文件系统语义在沙盒的落地。
 //
 // 编译模式的架构（fileStore.ts / App.resolveDependencies / buildViewJson）：
 //   - 每个模块是一个文件（definedModules），实例按「模块名」绑定定义文件；
 //   - 编译产物 circuitJson.subcircuits[名] 自带全部子级模块体（层级化）；
-//   - 钻取 = buildViewJson 提升子模块体 → io_ui → Circuit 渲染，从不反向转换。
+//   - 钻取 = 提升子模块体 → 编译渲染管线，从不反向转换。
 //
-// 沙盒旧架构的病根（历次「渲染失败」的结构性原因）：门定义内嵌在每个实例的
-// subcircuitGraph（joint cells 快照）里，渲染前必须 cells→circuit **反向转换**，
-// 任何属性缺失/坏线都会在转换或构造期炸掉。R35/R35b/R36 的净化兜底治标不治本。
+// R37 曾把门定义做成只读 kind:'gate'（编译格式 circuitJson）文件，展开图直渲
+// 零反向转换。但用户要求（2026-10-04）：**复制到沙盒的所有电路（含递归复制的
+// 子部件）都要可编辑**，而不是点开只有只读渲染的展开图；且要用**文件夹**收纳
+// 一个电路的全部子部件，防止文件树被摊平搞乱。
 //
-// 迁移后（用户方案）：
-//   1. 门定义 = 沙盒文件系统里 kind:'gate' 的一等文件（文件树显示 <名>.gate），
-//      内容是编译格式 circuit JSON —— 定义即编译管线原生数据；
-//   2. 绑定：画布 Subcircuit 实例按 celltype 名称绑定定义（同编译模式
-//      moduleBindings 语义）；重命名定义 → 全库重绑定；
-//   3. 递归复制迁移：「复制到沙盒」把编译结果里的子级部件**递归复制**成
-//      门定义文件并绑定（collectFromCircuit）；「保存为自定义门」同样递归入库
-//      嵌套子级（saveGateFromCells）；
-//   4. 展开图 = resolveDefCircuit(名) 合并依赖定义 → renderCircuitView
-//      直接走编译模式钻取管线（零反向转换）；
-//   5. 旧数据迁移：migrateLegacy 把旧 GATES_KEY 存档与文件内嵌 subcircuitGraph
-//      一次性抽取为门定义文件，并在持久化时剥离已绑定的内嵌快照。
+// R39 终态模型 —— 「一切皆可编辑 .djs 文件 + 文件夹作用域绑定」：
+//   - 部件真身 = 沙盒文件系统里 role:'part' 的 .djs 画布文件（cells 格式），
+//     既是独立可编辑画布（可摆器件/连线/仿真/再保存为门），又能被实例绑定；
+//   - 绑定：画布 Subcircuit 实例按 celltype 名 = 「文件名去扩展名」绑定定义，
+//     **同文件夹优先 → 根目录 → 全库**（对齐编译模式模块作用域，且支持
+//     「复制到沙盒」按文件夹隔离同名子部件）；
+//   - 递归复制迁移：「复制到沙盒」把编译结果的子级部件**递归复制**成同文件夹
+//     下的可编辑 .djs 部件文件并按名绑定（collectToFolder）；
+//   - 解析（resolveDefCells）返回**自足 cells 树**：绑定式嵌套实例在解析时
+//     递归物化出各层 subcircuitGraph，下游 buildInnerGraph（放置/装载）、
+//     cellsToCircuitJson→renderCircuitView（展开图）共用这一份表示；
+//   - 兼容：旧 kind:'gate'（编译格式 circuitJson）与旧档内嵌 subcircuitGraph
+//     仍可读，并由 migrateLegacy 一次性迁移。
+//
+// 单一真源：部件文件里的实例只存 celltype（不内联子图），编辑部件文件即改
+// 定义，所有绑定实例随之生效（编译模式 moduleBindings 语义）。
 
-import { sandboxStore, customGateStore, baseName, type SandboxFile } from '../store/sandboxStore';
-import { cellsToCircuitJson } from './subcircuitView';
+import { sandboxStore, baseName, type SandboxFile } from '../store/sandboxStore';
+import { cellsToCircuitJson, circuitJsonToCells } from './subcircuitView';
 
-export interface GateDefView { id: string; name: string; circuitJson: string; }
+/** 绑定名 → 定义文件。scope = 实例所在画布文件的文件夹（优先作用域）。 */
+export interface PartRef { file: SandboxFile; legacy: boolean; }
 
-// ============ 门定义文件 CRUD（文件系统层）============
-
-/** 门名 → 门定义文件（沙盒文件系统里 kind:'gate'） */
-export function getGateDefByName(name: string): GateDefView | null {
-  return customGateStore.getByName(name);
-}
-
-/** upsert 门定义：同名覆盖（绑定语义 —— 定义更新，所有同名实例一同生效） */
-export function upsertGateDef(name: string, circuitJson: string): SandboxFile {
-  return sandboxStore.saveGate(name, circuitJson);
-}
+const dirOf = (f: SandboxFile) => (f.name.includes('/') ? f.name.slice(0, f.name.lastIndexOf('/')) : '');
 
 /**
- * 重命名门定义并**全库重绑定**：扫描所有画布文件（含内嵌子图）与所有门定义
- * （devices 的 celltype、subcircuits 键名），把旧名引用改写为新名。
- * 这是编译模式「模块名即绑定键」语义下重命名的配套动作。
- * 返回被改写的文件数。
+ * 按绑定名 + 作用域查找部件定义文件。
+ * 顺序（打分升序）：scope 内 role:'part' → scope 内任意 .djs → 根 role:'part'
+ * → scope 内 .gate → 根 .djs → 根 .gate → 全库兜底。
  */
-export function renameGateDef(id: string, newName: string): number {
-  const gate = customGateStore.get(id);
-  if (!gate || !newName.trim() || newName === gate.name) return 0;
-  const oldName = gate.name;
+export function resolvePartRef(name: string, scope = ''): PartRef | null {
+  if (!name) return null;
   const files = sandboxStore.list();
-  let changed = 0;
-  const rebindCells = (cells: any[]) => {
-    let hit = false;
-    const walk = (j: any, depth = 0) => {
-      if (!j || depth > 16) return;
-      for (const c of j?.cells || []) {
-        if (c?.type !== 'Subcircuit') continue;
-        if (String(c.celltype || '') === oldName) { c.celltype = newName; hit = true; }
-        // 符号显示标签与 celltype 一同改写，否则持久化档里残留旧名（r37[7]）
-        try {
-          const t = c?.attrs?.type?.text;
-          if (String(t || '') === oldName) { c.attrs.type.text = newName; hit = true; }
-        } catch { /* ignore */ }
-        if (c.subcircuitGraph) walk(c.subcircuitGraph, depth + 1);
-      }
-    };
-    walk({ cells });
-    return hit;
+  const byBase = (f: SandboxFile) => baseName(f.name).replace(/\.(djs|gate|json)$/i, '') === name;
+  const score = (f: SandboxFile): number => {
+    const dir = dirOf(f);
+    const inScope = !!scope && dir === scope;
+    const atRoot = dir === '';
+    if (f.kind === 'gate') return inScope ? 3 : atRoot ? 5 : 8;
+    if (f.role === 'part') return inScope ? 0 : atRoot ? 2 : 6;
+    return inScope ? 1 : atRoot ? 4 : 9; // 任意 .djs 兜底
   };
-  const rebindCircuit = (mod: any, seen = new Set<object>()) => {
-    let hit = false;
-    if (!mod || seen.has(mod)) return hit;
-    seen.add(mod);
-    for (const dev of Object.values<any>(mod.devices || {})) {
-      if (dev?.type === 'Subcircuit' && String(dev.celltype || '') === oldName) {
-        dev.celltype = newName; hit = true;
-      }
-    }
-    const subs = mod.subcircuits || {};
-    if (oldName in subs) { subs[newName] = subs[oldName]; delete subs[oldName]; hit = true; }
-    for (const sub of Object.values<any>(subs)) {
-      if (rebindCircuit(sub, seen)) hit = true;
-    }
-    return hit;
-  };
-  // 1) 画布文件里的实例引用
-  for (const f of files) {
-    if (f.kind === 'gate' || !f.graphJson) continue;
-    try {
-      const obj = JSON.parse(f.graphJson);
-      if (Array.isArray(obj?.cells) && rebindCells(obj.cells)) {
-        sandboxStore.save(f.id, JSON.stringify(obj));
-        changed++;
-      }
-    } catch { /* 坏档跳过 */ }
-  }
-  // 2) 其他门定义里的引用（嵌套绑定）
-  for (const g of customGateStore.list()) {
-    if (g.name === oldName) continue;
-    try {
-      const mod = JSON.parse(g.circuitJson);
-      if (rebindCircuit(mod)) {
-        upsertGateDef(g.name, JSON.stringify(mod));
-        changed++;
-      }
-    } catch { /* ignore */ }
-  }
-  // 3) 门定义文件本身改名
-  sandboxStore.renameGateFile(id, newName);
-  return changed;
+  const cands = files.filter(byBase).sort((a, b) => score(a) - score(b));
+  if (!cands.length) return null;
+  const f = cands[0];
+  return { file: f, legacy: f.kind === 'gate' };
 }
 
-// ============ 绑定解析（同 App.resolveDependencies 语义）============
+/** 定义文件里，一个绑定名对应的 cells（未物化嵌套）。 */
+function partCellsRaw(name: string, scope: string): { cells: any[] } | null {
+  const ref = resolvePartRef(name, scope);
+  if (!ref) return null;
+  if (ref.legacy && ref.file.circuitJson) {
+    // 旧 kind:'gate'：编译格式 → cells（可编辑表示）
+    try { return circuitJsonToCells(JSON.parse(ref.file.circuitJson)); } catch { return null; }
+  }
+  try {
+    const g = JSON.parse(ref.file.graphJson || '{}');
+    return Array.isArray(g?.cells) ? { cells: g.cells } : null;
+  } catch { return null; }
+}
+
+/** 部件定义是否存在（用于「剥离内嵌快照」判定） */
+export function partExists(name: string, scope = ''): boolean {
+  return !!resolvePartRef(name, scope);
+}
 
 /**
- * 重绑定**画布上的活实例**（含内嵌子图里的嵌套实例）。
- * 为什么必须做：改名只重写了存储 —— 打开中的画布仍持有旧 celltype 的活 cell，
- * 任何一次画布持久化（面板切换 / effect 重建的 cleanup）都会用旧名把存储盖回去。
- * 注意：digitaljs 对 Subcircuit 的 celltype 变更有回滚监听（Beta property
- * change support 警告），必须带 {init:true} 选项绕过 —— 这是 digitaljs
- * 预留的初始化通道，普通 set 会被静默还原。
+ * 解析绑定名 → **自足 cells 树**（下游 buildInnerGraph / cellsToCircuitJson
+ * 均可直接消费）。绑定式嵌套实例在解析时递归物化各层 subcircuitGraph：
+ * 遇到 celltype 命中定义、但无内嵌子图的 Subcircuit，就地展开该部件的 cells。
+ *
+ * 这是「可编辑部件」模型能复用展开渲染管线的前提：cellsToCircuitJson 依赖
+ * subcircuitGraph 生成层级 subcircuits，而绑定式存档刻意不内联子图。
+ */
+export function resolveDefCells(name: string, scope = '', seen = new Set<string>()): { cells: any[] } | null {
+  if (seen.has(name)) return null;
+  seen.add(name);
+  const raw = partCellsRaw(name, scope);
+  if (!raw || !raw.cells.length) return null;
+  const out: any[] = [];
+  for (const c of raw.cells) {
+    if (c?.type === 'Subcircuit' && !c.subcircuitGraph?.cells?.length && c.celltype) {
+      const nested = resolveDefCells(String(c.celltype), scope, seen);
+      if (nested?.cells?.length) out.push({ ...c, subcircuitGraph: { cells: nested.cells } });
+      else out.push(c);
+    } else out.push(c);
+  }
+  return { cells: out };
+}
+
+/**
+ * 解析绑定名 → 编译格式电路 JSON（展开图 renderCircuitView 用）。
+ * 内部：自足 cells → cellsToCircuitJson（层级 subcircuits 由已物化的
+ * subcircuitGraph 生成）。旧 .gate 有原生 circuitJson 时直接用（零转换）。
+ */
+export function resolveDefCircuit(name: string, scope = ''): any | null {
+  const ref = resolvePartRef(name, scope);
+  if (!ref) return null;
+  if (ref.legacy && ref.file.circuitJson) {
+    try {
+      const mod = JSON.parse(ref.file.circuitJson);
+      if (mod?.devices) return mod;
+    } catch { /* fall through */ }
+  }
+  const cells = resolveDefCells(name, scope);
+  if (!cells?.cells?.length) return null;
+  const circuit = cellsToCircuitJson(cells);
+  if (!Object.keys(circuit.devices || {}).length) return null;
+  return circuit;
+}
+
+// ============ 部件文件写入（可编辑 .djs）============
+
+/** 唯一 .djs 文件名（store 层去重） */
+function uniqueDjsName(files: SandboxFile[], name: string): string {
+  if (!files.some((f) => f.name === name)) return name;
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 ? name.slice(0, dot) : name;
+  const ext = dot > 0 ? name.slice(dot) : '';
+  let n = 1;
+  while (files.some((f) => f.name === `${stem}_${n}${ext}`)) n++;
+  return `${stem}_${n}${ext}`;
+}
+
+/**
+ * 在 folder 下写入/覆盖一个可编辑部件文件（role:'part'，cells 画布格式）。
+ * 绑定名 = 文件名去扩展名。返回落盘文件。
+ */
+export function savePartFile(name: string, cellsJson: any, folder = ''): SandboxFile {
+  const files = sandboxStore.list();
+  const fname = (folder ? folder + '/' : '') + name + '.djs';
+  const target = uniqueDjsName(files, fname);
+  const cellsText = typeof cellsJson === 'string' ? cellsJson : JSON.stringify(cellsJson);
+  const existing = files.find((f) => f.name === target);
+  if (existing) {
+    sandboxStore.save(existing.id, cellsText);
+    sandboxStore.setRole(existing.id, 'part');
+    return sandboxStore.get(existing.id)!;
+  }
+  const created = sandboxStore.create(target, 'part');
+  sandboxStore.save(created.id, cellsText);
+  return sandboxStore.get(created.id)!;
+}
+
+// ============ 重命名（改名 = 重绑定）============
+
+/**
+ * 重绑定**画布上的活实例**（含内嵌子图里的嵌套实例）。改名只重写了存储，
+ * 打开中的画布仍持有旧 celltype 的活 cell，任何一次画布持久化都会用旧名
+ * 把存储盖回去，所以改名时必须同步活图。
+ * 注意：digitaljs 对 Subcircuit 的 celltype 变更有回滚监听，必须带
+ * {init:true} 选项绕过（digitaljs 预留的初始化通道）。
  * 返回改写的实例数。
  */
 export function rebindLiveGraph(graph: any, oldName: string, newName: string, depth = 0): number {
@@ -131,7 +173,6 @@ export function rebindLiveGraph(graph: any, oldName: string, newName: string, de
     if (String(c.get('celltype') || '') === oldName) {
       try {
         c.set('celltype', newName, { init: true });
-        // attrs.type.text 是符号上方的显示标签，同步改掉
         try { c.attr('type/text', newName); } catch { /* ignore */ }
         n++;
       } catch { /* ignore */ }
@@ -143,55 +184,72 @@ export function rebindLiveGraph(graph: any, oldName: string, newName: string, de
 }
 
 /**
- * 解析门定义 → 自足的 circuit JSON：定义里 Subcircuit 器件引用的嵌套门名
- * 若不在自身 subcircuits 里，从门定义库递归拉取合并（依赖闭包）。
- * 编译产物派生的定义本就自足，此处是无防御性的幂等补全；
- * 手绘门嵌套手绘门的场景靠它把整条依赖链拼齐。
+ * 部件文件改名 = 全库重绑定：扫描所有画布文件与部件文件里的 celltype
+ * 引用（以及符号标签 attrs.type.text），把旧名改写为新名，再改文件名。
+ * 这是「实例按模块名绑定定义」语义下重命名的配套动作。
+ * 返回被改写的存储引用数。
  */
-export function resolveDefCircuit(name: string, seen = new Set<string>()): any | null {
-  if (seen.has(name)) return null;
-  seen.add(name);
-  const def = getGateDefByName(name);
-  if (!def) return null;
-  let mod: any;
-  try { mod = JSON.parse(def.circuitJson); } catch { return null; }
-  if (!mod?.devices) return null;
-  mod.subcircuits = mod.subcircuits || {};
-  const mergeInto = (m: any) => {
-    for (const dev of Object.values<any>(m.devices || {})) {
-      if (dev?.type !== 'Subcircuit') continue;
-      const ref = String(dev.celltype || '');
-      if (ref && !m.subcircuits[ref]) {
-        const sub = resolveDefCircuit(ref, seen);
-        if (sub) m.subcircuits[ref] = sub;
+export function renamePartDef(id: string, newName: string): number {
+  const target = sandboxStore.get(id);
+  if (!target) return 0;
+  newName = newName.trim().replace(/\.(djs|gate|json)$/i, '');
+  if (!newName) return 0;
+  const oldName = baseName(target.name).replace(/\.(djs|gate|json)$/i, '');
+  if (!oldName || newName === oldName) return 0;
+  let changed = 0;
+  const rebindCells = (cells: any[]) => {
+    let hit = false;
+    const walk = (j: any, depth = 0) => {
+      if (!j || depth > 16) return;
+      for (const c of j?.cells || []) {
+        if (c?.type !== 'Subcircuit') continue;
+        if (String(c.celltype || '') === oldName) { c.celltype = newName; hit = true; }
+        try {
+          const t = c?.attrs?.type?.text;
+          if (String(t || '') === oldName) { c.attrs.type.text = newName; hit = true; }
+        } catch { /* ignore */ }
+        if (c.subcircuitGraph) walk(c.subcircuitGraph, depth + 1);
       }
-    }
-    for (const sub of Object.values<any>(m.subcircuits)) mergeInto(sub);
+    };
+    walk({ cells });
+    return hit;
   };
-  mergeInto(mod);
-  return mod;
+  for (const f of sandboxStore.list()) {
+    if (f.id === id || !f.graphJson) continue;
+    try {
+      const obj = JSON.parse(f.graphJson);
+      if (Array.isArray(obj?.cells) && rebindCells(obj.cells)) {
+        sandboxStore.save(f.id, JSON.stringify(obj));
+        changed++;
+      }
+    } catch { /* 坏档跳过 */ }
+  }
+  // 部件文件改名（保持 role，扩展名 .djs）
+  const dir = dirOf(target);
+  const fname = (dir ? dir + '/' : '') + newName + '.djs';
+  const files = sandboxStore.list();
+  if (!files.some((o) => o.id !== id && o.name === fname)) {
+    sandboxStore.rename(id, fname);
+  }
+  return changed;
 }
 
-// ============ 递归复制迁移（编译结果 → 门定义文件）============
+// ============ 递归复制迁移（编译结果 → 文件夹内可编辑部件）============
 
 /**
- * 把编译结果 circuitJson 里的全部子级模块**递归复制**为门定义文件。
- * 内容逐字复制（编译格式，零转换）—— 与编译模式子模块体完全一致，
- * 展开图渲染走同一条 buildViewJson 管线。
- * 返回入库的定义数（同名定义覆盖为编译产物内容）。
+ * 把编译结果 circuitJson 里的全部子级模块**递归复制**为 folder 下的可编辑
+ * .djs 部件文件（cells 格式，子级嵌套仍按 celltype 绑定到各自文件）。
+ * 逐字保留编译产物的位置（elk 布局），打开即可编辑。
+ * 返回入库的部件数。
  */
-export function collectFromCircuit(circuitJson: any): number {
+export function collectToFolder(circuitJson: any, folder: string): number {
   let n = 0;
   const harvest = (mod: any, seen = new Set<object>()) => {
     if (!mod || seen.has(mod)) return;
     seen.add(mod);
     for (const [name, sub] of Object.entries<any>(mod.subcircuits || {})) {
       if (!sub?.devices) continue;
-      upsertGateDef(name, JSON.stringify({
-        devices: sub.devices,
-        connectors: sub.connectors ?? [],
-        subcircuits: sub.subcircuits ?? {},
-      }));
+      savePartFile(name, circuitJsonToCells(sub), folder);
       n++;
       harvest(sub, seen);
     }
@@ -200,28 +258,29 @@ export function collectFromCircuit(circuitJson: any): number {
   return n;
 }
 
+// ============ 「保存为自定义门」（画布 → 可编辑部件文件）============
+
 /**
- * 「保存为自定义门」：cells 快照 → 编译格式定义入库，嵌套子级定义
- * **递归入库并按名绑定**。返回入库的嵌套子级定义数。
+ * 当前画布存为可编辑部件文件；画布上已放置的绑定式子部件递归入库为同文件夹
+ * 部件文件并按名绑定。返回入库的嵌套子部件数。
  */
-export function saveGateFromCells(name: string, cellsJson: any): { nested: number } {
-  const circuit = cellsToCircuitJson(cellsJson);
-  upsertGateDef(name, JSON.stringify(circuit));
+export function saveGateFromCellsToFolder(name: string, cellsJson: any, folder = ''): { nested: number } {
+  savePartFile(name, cellsJson, folder); // 存画布原样（cells），可编辑
   let nested = 0;
-  const harvest = (mod: any, seen = new Set<object>()) => {
-    if (!mod || seen.has(mod)) return;
-    seen.add(mod);
-    for (const [sub, body] of Object.entries<any>(mod.subcircuits || {})) {
-      if (!body?.devices) continue;
-      // 匿名嵌套（无 celltype 合成名 __subN）保持内联 —— 没有绑定键
-      if (!sub.startsWith('__sub')) {
-        upsertGateDef(sub, JSON.stringify(body));
+  const walk = (cells: any[], depth = 0) => {
+    if (!cells || depth > 16) return;
+    for (const c of cells) {
+      if (c?.type !== 'Subcircuit' || !c.celltype) continue;
+      const sub = String(c.celltype);
+      if (sub.startsWith('__sub')) continue; // 匿名内联，跳过
+      if (!resolvePartRef(sub, folder)) {
+        savePartFile(sub, c.subcircuitGraph || { cells: [] }, folder);
         nested++;
       }
-      harvest(body, seen);
+      if (c.subcircuitGraph?.cells) walk(c.subcircuitGraph.cells, depth + 1);
     }
   };
-  harvest(circuit);
+  walk(cellsJson?.cells || []);
   return { nested };
 }
 
@@ -229,10 +288,9 @@ export function saveGateFromCells(name: string, cellsJson: any): { nested: numbe
 
 /**
  * 剥离已绑定实例的内嵌 subcircuitGraph（持久化瘦身 + 单一真源）。
- * 只处理顶层 cells —— 内嵌子图整体属于未绑定实例时原样保留（旧档兼容）。
- * 输入/输出均为 JSON 文本；解析失败原样返回。
+ * 只处理顶层 cells；解析失败原样返回。
  */
-export function stripBoundInlineJson(graphJsonText: string): string {
+export function stripBoundInlineJson(graphJsonText: string, scope = ''): string {
   try {
     const obj = JSON.parse(graphJsonText);
     if (!Array.isArray(obj?.cells)) return graphJsonText;
@@ -240,7 +298,7 @@ export function stripBoundInlineJson(graphJsonText: string): string {
     for (const c of obj.cells) {
       if (c?.type !== 'Subcircuit') continue;
       const name = String(c.celltype || '');
-      if (name && customGateStore.getByName(name) && c.subcircuitGraph) {
+      if (name && partExists(name, scope) && c.subcircuitGraph) {
         delete c.subcircuitGraph;
         touched = true;
       }
@@ -249,10 +307,10 @@ export function stripBoundInlineJson(graphJsonText: string): string {
   } catch { return graphJsonText; }
 }
 
-// ============ 迁移（旧数据 → 门定义文件系统）============
+// ============ 迁移（旧数据 → 可编辑部件文件）============
 
-/** 把一段 cells 快照里引用的门定义递归抽取入库（仅补缺失的定义，不覆盖） */
-export function ensureDefsFromCells(cells: any[]): void {
+/** 把一段 cells 快照里引用的门递归抽取为部件文件（仅补缺失，幂等） */
+export function ensureDefsFromCells(cells: any[], scope = ''): void {
   if (!Array.isArray(cells)) return;
   const walk = (j: any, depth = 0) => {
     if (!j || depth > 16) return;
@@ -260,12 +318,10 @@ export function ensureDefsFromCells(cells: any[]): void {
       if (c?.type !== 'Subcircuit') continue;
       const name = String(c.celltype || '');
       if (c.subcircuitGraph?.cells?.length) {
-        if (name && !getGateDefByName(name)) {
-          try { saveGateFromCells(name, c.subcircuitGraph); } catch { /* ignore */ }
+        if (name && !resolvePartRef(name, scope)) {
+          try { savePartFile(name, c.subcircuitGraph, scope); } catch { /* ignore */ }
         }
         walk(c.subcircuitGraph, depth + 1);
-      } else if (name && !getGateDefByName(name)) {
-        // 只有名字没有内嵌图（新格式存档）—— 定义缺失时无从恢复，跳过
       }
     }
   };
@@ -273,67 +329,61 @@ export function ensureDefsFromCells(cells: any[]): void {
 }
 
 /**
- * 一次性迁移：
- *  1) 旧 GATES_KEY 存档（内嵌 cells 格式）→ 门定义文件；
- *  2) 存量画布文件里的内嵌 subcircuitGraph → 抽取门定义 + 剥离内嵌。
- * 幂等（迁移标记位）；返回迁移的画布文件数。
+ * 一次性迁移（幂等）：
+ *  1) 旧 GATES_KEY 存档 → 可编辑部件文件；
+ *  2) 存量文件内嵌 subcircuitGraph → 抽取部件 + 剥离内嵌；
+ *  3) 旧 kind:'gate' 文件 → 转成可编辑 role:'part' .djs（circuitJson→cells）。
+ * 返回迁移计数（文件数）。
  */
 export function migrateLegacy(): number {
   const MIGRATED_GATES = 'verilog-viz-gates-migrated';
   const MIGRATED_INLINE = 'verilog-viz-inline-migrated';
-  let filesMigrated = 0;
-  // 1) 旧门存档
+  const MIGRATED_GATEFILES = 'verilog-viz-gatefiles-migrated';
+  let n = 0;
+  // 1) 旧门存档（localStorage 数组，内嵌 cells）
   if (!localStorage.getItem(MIGRATED_GATES)) {
     try {
       const arr = JSON.parse(localStorage.getItem('verilog-viz-sandbox-gates') || '[]');
       for (const g of Array.isArray(arr) ? arr : []) {
-        if (!g?.name || !g?.graphJson || getGateDefByName(String(g.name))) continue;
-        try { saveGateFromCells(String(g.name), JSON.parse(String(g.graphJson))); } catch { /* 坏档跳过 */ }
+        if (!g?.name || !g?.graphJson) continue;
+        const name = String(g.name);
+        if (resolvePartRef(name)) continue;
+        try { savePartFile(name, JSON.parse(String(g.graphJson))); } catch { /* 坏档跳过 */ }
       }
     } catch { /* ignore */ }
     localStorage.setItem(MIGRATED_GATES, '1');
   }
-  // 2) 存量文件内嵌快照 → 定义入库 + 剥离
+  // 2) 存量画布文件内嵌快照 → 部件文件 + 剥离
   if (!localStorage.getItem(MIGRATED_INLINE)) {
     for (const f of sandboxStore.list()) {
       if (f.kind === 'gate' || !f.graphJson) continue;
+      const dir = dirOf(f);
       try {
         const obj = JSON.parse(f.graphJson);
         if (!Array.isArray(obj?.cells)) continue;
-        // 先补定义（缺失才补，不覆盖已有定义）
-        const walk = (j: any, depth = 0) => {
-          if (!j || depth > 16) return;
-          for (const c of j?.cells || []) {
-            if (c?.type !== 'Subcircuit') continue;
-            const name = String(c.celltype || '');
-            if (c.subcircuitGraph?.cells?.length) {
-              if (name && !getGateDefByName(name)) {
-                try { saveGateFromCells(name, c.subcircuitGraph); } catch { /* ignore */ }
-              }
-              walk(c.subcircuitGraph, depth + 1);
-            }
-          }
-        };
-        walk(obj);
-        // 再剥离已绑定的顶层内嵌
-        let touched = false;
-        for (const c of obj.cells) {
-          if (c?.type !== 'Subcircuit') continue;
-          const name = String(c.celltype || '');
-          if (name && getGateDefByName(name) && c.subcircuitGraph) {
-            delete c.subcircuitGraph;
-            touched = true;
-          }
-        }
-        if (touched) { sandboxStore.save(f.id, JSON.stringify(obj)); filesMigrated++; }
+        ensureDefsFromCells(obj.cells, dir);
+        const stripped = stripBoundInlineJson(f.graphJson, dir);
+        if (stripped !== f.graphJson) { sandboxStore.save(f.id, stripped); n++; }
       } catch { /* ignore */ }
     }
     localStorage.setItem(MIGRATED_INLINE, '1');
   }
-  return filesMigrated;
-}
-
-/** 门定义文件显示名（剥 .gate 后缀） */
-export function gateDisplay(file: SandboxFile): string {
-  return baseName(file.name).replace(/\.gate$/i, '');
+  // 3) 旧 kind:'gate'（编译格式）→ 可编辑 role:'part' .djs
+  if (!localStorage.getItem(MIGRATED_GATEFILES)) {
+    for (const f of sandboxStore.list()) {
+      if (f.kind !== 'gate' || !f.circuitJson) continue;
+      try {
+        const dir = dirOf(f);
+        const name = baseName(f.name).replace(/\.gate$/i, '');
+        const cells = circuitJsonToCells(JSON.parse(f.circuitJson));
+        if (cells.cells.length) {
+          savePartFile(name, cells, dir);
+          sandboxStore.remove(f.id); // 删旧 .gate
+          n++;
+        }
+      } catch { /* ignore */ }
+    }
+    localStorage.setItem(MIGRATED_GATEFILES, '1');
+  }
+  return n;
 }

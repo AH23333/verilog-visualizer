@@ -26,21 +26,21 @@
 // 摘掉，第一次卸载后 host 已脱离文档 —— 所以 host 内部再套一层 mount 节点。
 
 import { useEffect, useRef, useState } from 'react';
-import { renderCircuitView, renderSubcircuitView, shouldAutoLayout, shouldAutoLayoutCircuit } from '../lib/subcircuitView';
-import { resolveDefCircuit } from '../lib/gateSystem';
+import { renderSubcircuitView, shouldAutoLayout, type SubcircuitViewHandle } from '../lib/subcircuitView';
+import { resolveDefCells } from '../lib/gateSystem';
 import { serializeGraphCells } from '../lib/sandboxSerialize';
 
 type StackEntry = { kind: 'def'; name: string } | { kind: 'inline'; cells: any };
 
-export default function SandboxExpandModal({ cell, theme, onClose }: {
-  cell: any; theme: 'dark' | 'light'; onClose: () => void;
+export default function SandboxExpandModal({ cell, theme, scope = '', onClose }: {
+  cell: any; theme: 'dark' | 'light'; scope?: string; onClose: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const gateName = String(cell?.get?.('celltype') || '');
   const initialInline = (() => { try { return cell.get('subcircuitGraph'); } catch { return null; } })();
 
-  // 钻取栈：栈底是 cell 本身（按 celltype 解析门定义，或旧档内嵌快照），
-  // 钻入的子部件压栈。两种形态覆盖 R37 绑定式与旧档内嵌式。
+  // 钻取栈：栈底是 cell 本身（按 celltype 解析部件文件，或旧档内嵌快照），
+  // 钻入的子部件压栈。两种形态覆盖 R39 绑定式与旧档内嵌式。
   const [stack, setStack] = useState<StackEntry[]>(() => {
     if (gateName) return [{ kind: 'def', name: gateName }];
     if (initialInline?.cells?.length) return [{ kind: 'inline', cells: initialInline }];
@@ -52,7 +52,7 @@ export default function SandboxExpandModal({ cell, theme, onClose }: {
   // 手绘图（位置缺失）自动整理。挂载时按栈底内容判定一次。
   const [autoLayout, setAutoLayout] = useState<boolean>(() => {
     try {
-      if (gateName) { const d = resolveDefCircuit(gateName); if (d) return shouldAutoLayoutCircuit(d); }
+      if (gateName) { const c = resolveDefCells(gateName, scope); if (c) return shouldAutoLayout(c); }
       return shouldAutoLayout(initialInline?.cells?.length ? initialInline : null);
     } catch { return true; }
   });
@@ -62,11 +62,11 @@ export default function SandboxExpandModal({ cell, theme, onClose }: {
   const [skippedDevs, setSkippedDevs] = useState(0);
   const [source, setSource] = useState<'def' | 'inline'>('def');
 
-  // 下钻到某个 Subcircuit：优先按 celltype 解析门定义（R37 绑定式），
+  // 下钻到某个 Subcircuit：优先按 celltype 解析部件文件（R39 绑定式），
   // 否则回退到该实例的内嵌子图（旧档内嵌式）。
   const drillInto = (subCell: any) => {
     const name = String(subCell.get?.('celltype') || '');
-    if (name && resolveDefCircuit(name)) { setStack(s => [...s, { kind: 'def', name }]); return; }
+    if (name && resolveDefCells(name, scope)) { setStack(s => [...s, { kind: 'def', name }]); return; }
     const g = subCell.get?.('graph');
     if (g?.getCells?.()?.length) {
       try { setStack(s => [...s, { kind: 'inline', cells: serializeGraphCells(g) }]); return; } catch {}
@@ -79,8 +79,8 @@ export default function SandboxExpandModal({ cell, theme, onClose }: {
     const host = hostRef.current;
     const digitaljs = (window as any).digitaljs;
     if (!host || !digitaljs) return;
-    let handle: ReturnType<typeof renderCircuitView> = null;
-    let curHandle: ReturnType<typeof renderCircuitView> = null;
+    let handle: SubcircuitViewHandle | null = null;
+    let curHandle: SubcircuitViewHandle | null = null;
     let disposed = false;
     let timer = 0;
     let mountEl: HTMLElement | null = null;
@@ -99,12 +99,12 @@ export default function SandboxExpandModal({ cell, theme, onClose }: {
       host.appendChild(mount);
       mountEl = mount;
       try {
-        // 渲染栈顶：def 名 → 门定义文件（编译格式）→ 合并依赖定义 → 直渲；
-        // inline → 旧档内嵌快照反向转换渲染（兜底）
+        // 渲染栈顶：def 名 → 解析部件文件（自足 cells）→ 反向转换走编译渲染管线；
+        // inline → 旧档内嵌快照同样走该管线（兜底）
         if (top?.kind === 'def') {
-          const defJson = resolveDefCircuit(top.name);
-          if (defJson) { setSource('def'); handle = renderCircuitView(digitaljs, mount, defJson, { autoLayout }); }
-          else { setSource('inline'); setFailMsg(`门定义「${top.name}」不存在或已删除`); }
+          const defCells = resolveDefCells(top.name, scope);
+          if (defCells) { setSource('def'); handle = renderSubcircuitView(digitaljs, mount, defCells, { autoLayout }); }
+          else { setSource('inline'); setFailMsg(`部件定义「${top.name}」不存在或已删除`); }
         } else if (top?.kind === 'inline') {
           setSource('inline');
           handle = renderSubcircuitView(digitaljs, mount, top.cells, { autoLayout });
@@ -166,7 +166,7 @@ export default function SandboxExpandModal({ cell, theme, onClose }: {
       // 测试钩子随弹窗销毁，避免读到旧实例
       try { delete (window as any).__innerPaper; } catch { /* ignore */ }
     };
-  }, [stack, theme, autoLayout]);
+  }, [stack, theme, autoLayout, scope]);
 
   const crumbLabel = (s: StackEntry) => (s.kind === 'def' ? s.name : '内嵌子电路');
 

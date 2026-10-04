@@ -3,10 +3,10 @@
 //  [2] 展开图与编译模式钻取同管线（提升为顶层：djs 类 + Button/Lamp + iolabel 端口名）
 //  [3] 侧栏三个面板右键各有菜单（文件/部件/层次结构）；画布右键仍是画布菜单
 //  [4] 序列化兜底：无 subcircuitGraph 属性的活内图（编译模式场景）也能带出内部电路
-//  [5] 导入 .djs 自动注册内嵌 customGates（门定义随文件走）
+//  [5] 导入 .djs 自动注册内嵌 customParts（可编辑部件随文件走）
 //  [6] 界面字体大小调整后沙盒侧栏文字同步缩放
 //  [7] 全程无页面异常
-//  [8] 子模块右键「保存为自定义门」→ 门库出现新定义（复制到沙盒的绑定闭环）
+//  [8] 子模块右键「保存为部件」→ 部件库出现新的可编辑 .djs（复制到沙盒的绑定闭环）
 //  [9] 「粘贴复制的电路」：import-clipboard 原样插入画布（id 重映射不冲突）
 const { spawn } = require('child_process');
 const path = require('path');
@@ -197,11 +197,11 @@ const subCount = (page) => page.evaluate(
     });
     await sleep(700);
     const carried = await page.evaluate(() => {
-      // R37：门定义注册到沙盒文件系统（kind:'gate' 文件）
+      // R39：部件注册为沙盒文件系统里 role:'part' 的可编辑 .djs 文件
       const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
-      return Object.values(files).some(f => f.kind === 'gate' && f.name === 'CARRIED.gate');
+      return Object.values(files).some(f => f.role === 'part' && f.name === 'CARRIED.djs');
     });
-    (carried) ? ok('[5] 导入 .djs 自动注册内嵌自定义门') : bad('[5] 门定义未随文件注册');
+    (carried) ? ok('[5] 导入 .djs 自动注册内嵌部件（可编辑 .djs）') : bad('[5] 部件未随文件注册');
 
     // ===== [6] 字号联动 =====
     const fsAt16 = await page.evaluate(() => {
@@ -255,19 +255,19 @@ const subCount = (page) => page.evaluate(
       if (!bodyPt) { bad('[8] 画布上没有子模块'); }
       else {
         await page.mouse.click(bodyPt.x, bodyPt.y, { button: 'right' }); await sleep(500);
-        const gateInput = page.locator('input[placeholder="门名"]').first();
-        if (!(await gateInput.count())) { bad('[8] 菜单里没有「保存为自定义门」输入项'); }
+        const gateInput = page.locator('input[placeholder="部件名"]').first();
+        if (!(await gateInput.count())) { bad('[8] 菜单里没有「保存为部件」输入项'); }
         else {
           await gateInput.fill('FROMSUB');
           await page.keyboard.press('Enter'); await sleep(600);
           const saved = await page.evaluate(() => {
-            // R37：门定义 = kind:'gate' 文件（circuitJson.devices）
+            // R39：部件 = role:'part' 的可编辑 .djs 文件（graphJson.cells）
             const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
-            const g = Object.values(files).find(x => x.kind === 'gate' && x.name === 'FROMSUB.gate');
-            return g ? { cells: (() => { try { return Object.keys(JSON.parse(g.circuitJson).devices).length; } catch { return 0; } })() } : null;
+            const g = Object.values(files).find(x => x.role === 'part' && x.name === 'FROMSUB.djs');
+            return g ? { cells: (() => { try { return (JSON.parse(g.graphJson).cells || []).filter(c => !c.isLink).length; } catch { return 0; } })() } : null;
           });
-          (saved && saved.cells > 0) ? ok('[8] 子模块已另存为自定义门（含内部电路）', `devices=${saved.cells}`)
-            : bad('[8] 保存自定义门失败', JSON.stringify(saved));
+          (saved && saved.cells > 0) ? ok('[8] 子模块已另存为可编辑部件（含内部电路）', `cells=${saved.cells}`)
+            : bad('[8] 保存部件失败', JSON.stringify(saved));
         }
         await closeMenu(page);
       }

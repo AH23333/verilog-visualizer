@@ -1,13 +1,13 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { serializePaperCells, serializeGraphCells } from '../lib/sandboxSerialize';
 import { buildInnerGraph } from '../lib/subcircuit';
-import { constructCircuit } from '../lib/subcircuitView';
+import { circuitJsonToCells } from '../lib/subcircuitView';
 import { loadCells } from '../lib/sandboxLoad';
 import SandboxExpandModal from './SandboxExpandModal';
 import { sandboxStore, customGateStore, baseName, type SandboxFile, type CustomGate } from '../store/sandboxStore';
 import {
-  saveGateFromCells, ensureDefsFromCells, stripBoundInlineJson, migrateLegacy,
-  resolveDefCircuit, renameGateDef, rebindLiveGraph, upsertGateDef, getGateDefByName,
+  saveGateFromCellsToFolder, ensureDefsFromCells, stripBoundInlineJson, migrateLegacy,
+  resolveDefCells, savePartFile, renamePartDef, rebindLiveGraph,
 } from '../lib/gateSystem';
 import SandboxFileTree, { type RenameTarget, type CreateTarget } from './SandboxFileTree';
 import { settingsStore, type SandboxSettings } from '../store/settingsStore';
@@ -490,6 +490,14 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   // （否则每次切文件都换 commit 身份 → 画布重建 effect 重跑）。
   const activeFileRef = useRef<SandboxFile | null>(null);
   activeFileRef.current = activeFile;
+  // 当前画布文件所在文件夹 = 部件绑定的优先作用域（R39 文件夹组织）
+  const scope = useMemo(() => {
+    const n = activeFile?.name || '';
+    const i = n.indexOf('/');
+    return i >= 0 ? n.slice(0, i) : '';
+  }, [activeFile?.name]);
+  const scopeRef = useRef<string>('');
+  scopeRef.current = scope;
   const [savingGate, setSavingGate] = useState(false);
   const [gateName, setGateName] = useState('');
   const [gateError, setGateError] = useState<string | null>(null);
@@ -786,7 +794,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         // R37b：每次变更即刻落盘（此前只进撤销栈，画布内容要等切文件/切面板/
         // 卸载才持久化 —— reload 直接丢掉未切换过的内容，r34[8] 回归根因）。
         if (activeFileRef.current && activeFileRef.current.kind !== 'gate') {
-          try { sandboxStore.save(activeFileRef.current.id, stripBoundInlineJson(snap)); } catch { /* best effort */ }
+          try { sandboxStore.save(activeFileRef.current.id, stripBoundInlineJson(snap, scopeRef.current)); } catch { /* best effort */ }
         }
       }
     } catch { /* ignore */ }
@@ -799,7 +807,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     setSelectionRef.current([]);
     try {
       [...paper.model.getCells()].forEach((c: any) => { try { c.remove(); } catch {} });
-      loadCells(paper, digitaljs, json, spawnCell, wireCountRef);
+      loadCells(paper, digitaljs, json, spawnCell, wireCountRef, { scope: scopeRef.current });
     } catch { /* corrupted snapshot — ignore */ }
     scheduleDrcRef.current();
   }, [spawnCell]);
@@ -1383,15 +1391,14 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     }
     if (type === 'Subcircuit') {
       items.push({ label: '查看内部电路', hint: '双击', action: () => setInnerCell(cell) });
-      // 复制到沙盒后的绑定闭环（R37）：把编译产物子模块（或任意子电路）存为
-      // 门定义文件 —— 内容为编译格式 circuit JSON；内部嵌套的门实例递归入库
-      // 并按名绑定。导出 .djs 时依赖闭包自动随行，与文件夹系统联动。
-      items.push({ label: '保存为自定义门', input: {
+      // 绑定闭环（R39）：把该子电路存为**可编辑部件文件**（.djs，同文件夹）——
+      // 内部嵌套的绑定式子部件递归入库并按名绑定。导出 .djs 时闭包自动随行。
+      items.push({ label: '保存为部件（可编辑电路）', input: {
         value: String(cell.get('celltype') || cell.get('label') || ''),
-        placeholder: '门名',
+        placeholder: '部件名',
         onCommit: (v: string) => {
           const name = String(v).trim();
-          if (!name) { showToast('请输入自定义门名称'); return; }
+          if (!name) { showToast('请输入部件名称'); return; }
           let cells: any;
           try {
             const sg = cell.get('subcircuitGraph');
@@ -1400,9 +1407,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
             showToast('保存失败：内部电路无法序列化'); return;
           }
           if (!cells?.cells?.some((c: any) => !c.isLink)) { showToast('内部电路为空，无法保存'); return; }
-          const r = saveGateFromCells(name, cells);
+          const r = saveGateFromCellsToFolder(name, cells, scopeRef.current);
           refreshGates();
-          showToast(`已保存自定义门「${name}」${r.nested ? `，${r.nested} 个子级定义已递归入库绑定` : ''}，可在部件面板与右键菜单中放置`);
+          showToast(`已保存部件「${name}」为可编辑电路${r.nested ? `，${r.nested} 个子部件已递归入库绑定` : ''}，可在部件面板与右键菜单中放置`);
         },
       } });
     }
@@ -1446,8 +1453,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     const paper = paperRef.current;
     const digitaljs = (window as any).digitaljs;
     if (!paper || !digitaljs || !cells.length) return false;
-    // R37：插入内容里若带内嵌门快照，先递归补齐缺失定义（绑定入库，幂等）
-    try { ensureDefsFromCells(cells); refreshGates(); } catch { /* ignore */ }
+    // R39：插入内容里若带内嵌门快照，先递归补齐缺失部件（绑定入库，幂等）
+    try { ensureDefsFromCells(cells, scopeRef.current); refreshGates(); } catch { /* ignore */ }
     // 示例 JSON 用固定 id（exA、exD0…）——同一画布插入两次会 id 冲突：
     // 器件被 addCell 静默丢弃、连线却全部建立并挂到旧器件上（单驱动混乱）。
     // 深拷贝 + 重新生成 id，并把示例中心平移到右键点击处。
@@ -1479,7 +1486,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     data.cells.forEach((c) => {
       if (c.isLink) { c.source.id = idMap.get(c.source.id); c.target.id = idMap.get(c.target.id); }
     });
-    loadCells(paper, digitaljs, JSON.stringify(data), spawnCell, wireCountRef);
+    // id 已在上方内联重映射完毕，这里只传绑定作用域
+    loadCells(paper, digitaljs, JSON.stringify(data), spawnCell, wireCountRef, { scope: scopeRef.current });
     seedGateOutputs(digitaljs, paper); // 反馈环（T 触发器）自举，避免 x 锁定
     // 内存快照回写（数字钟示例的段码 ROM 走这里）——commit 不触发 rebuild，须显式调用
     try { restoreMemoryData(() => paperRef.current); } catch { /* best effort */ }
@@ -1673,7 +1681,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         if (!p) return false;
         const cells = p.model.getCells();
         if (!cells.some((c: any) => c.get('type') === 'Input') || !cells.some((c: any) => c.get('type') === 'Output')) return false;
-        customGateStore.save(name, JSON.stringify(serializePaper(p)));
+        savePartFile(name, serializePaper(p), scopeRef.current);
         refreshGates();
         return true;
       },
@@ -1874,7 +1882,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     const sourceJson = pendingResetJsonRef.current ?? activeFile.graphJson ?? null;
     pendingResetJsonRef.current = null;
     if (sourceJson && sourceJson !== JSON.stringify({ cells: [] })) {
-      try { loadCells(paper, digitaljs, sourceJson, spawnCell, wireCountRef); } catch { /* corrupted */ }
+      try { loadCells(paper, digitaljs, sourceJson, spawnCell, wireCountRef, { scope: scopeRef.current }); } catch { /* corrupted */ }
     }
     // 播种：让交叉耦合的门（锁存器 / 触发器）摆脱 x 锁定，详见 seedGateOutputs
     try { seedGateOutputs(digitaljs, paper); } catch { /* best effort */ }
@@ -2362,7 +2370,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
 
   const handleOpen = (f: SandboxFile) => {
     if (activeFile && paperRef.current) {
-      sandboxStore.save(activeFile.id, stripBoundInlineJson(JSON.stringify(serializePaper(paperRef.current))));
+      sandboxStore.save(activeFile.id, stripBoundInlineJson(JSON.stringify(serializePaper(paperRef.current)), scopeRef.current));
     }
     sandboxStore.setActiveId(f.id);
     setActiveFile(f);
@@ -2370,7 +2378,13 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
 
   const handleSave = () => {
     if (!activeFile || !paperRef.current) return;
-    sandboxStore.save(activeFile.id, stripBoundInlineJson(JSON.stringify(serializePaper(paperRef.current))));
+    const snap = JSON.stringify(serializePaper(paperRef.current));
+    if (activeFile.kind === 'gate') {
+      // 旧 .gate（迁移前遗留）：保存时同步为同文件夹的可编辑部件，实例随之生效
+      try { savePartFile(baseName(activeFile.name).replace(/\.gate$/i, ''), JSON.parse(snap), scopeRef.current); } catch { /* ignore */ }
+    } else {
+      sandboxStore.save(activeFile.id, stripBoundInlineJson(snap, scopeRef.current));
+    }
     refreshList();
     forceUpdate(n => n + 1);
   };
@@ -2438,24 +2452,18 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   };
 
   /** 在指定屏幕坐标处放置自定义门（右键菜单二级导航用）；placeCustomGate 走视口中心。
-   *  R37 绑定放置：门定义（编译格式 circuit JSON）→ Circuit 构造器合成活图
-   *  （端口/IO 由 digitaljs 权威生成，与编译模式同源）→ 实例按 celltype 绑定。 */
+   *  R39 绑定放置：部件文件（可编辑 .djs）→ resolveDefCells（自足 cells）→
+   *  buildInnerGraph 合成活图 → 实例按 celltype 名绑定。 */
   const placeCustomGateAt = useCallback((gate: CustomGate, pos: { x: number; y: number }) => {
     const paper = paperRef.current;
     const digitaljs = (window as any).digitaljs;
     if (!paper || !digitaljs) { showToast('画布尚未就绪，无法放置自定义门'); return; }
-    const defJson = resolveDefCircuit(gate.name);
-    if (!defJson || !Object.keys(defJson.devices || {}).length) {
-      showToast(`自定义门「${gate.name}」存档损坏或为空，请删除后重新保存`);
+    const cellsSnap = resolveDefCells(gate.name, scopeRef.current);
+    if (!cellsSnap?.cells?.length) {
+      showToast(`部件「${gate.name}」内容为空或已损坏，请打开编辑后重新保存`);
       return;
     }
     try {
-      // constructCircuit 兜底链：手绘定义里的坏线（端口不存在等）在裸 ctor 会
-      // 直接抛成「放置失败」—— 降级净化/剥线重建后照常放置（与旧 buildInnerGraph
-      // 逐线跳过语义一致）
-      const { circuit: ckt } = constructCircuit(digitaljs, structuredClone(defJson));
-      const cellsSnap = serializeGraphCells(ckt._graph);
-      try { ckt.shutdown?.(); } catch { /* ignore */ }
       const Graph = (paper.model as any).constructor;
       const inner = buildInnerGraph(digitaljs, Graph, cellsSnap, paper.model._display3vl);
       // R40 修复「found id duplicities in ports」：digitaljs 的 Subcircuit.initialize
@@ -2515,15 +2523,15 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     }
     const name = gateName.trim();
     if (!name) { setGateError('请输入自定义门名称'); return; }
-    // R37 绑定入库：整图 → 编译格式定义；画布上已放置的门实例（嵌套子级）
-    // 递归入库为独立定义并按名绑定 —— 与「复制到沙盒」的递归迁移同语义。
-    const r = saveGateFromCells(name, serializePaper(paper));
+    // R39 绑定入库：整图存为**可编辑部件文件**（.djs，同文件夹）；画布上已放置的
+    // 绑定式子部件递归入库并按名绑定 —— 与「复制到沙盒」递归迁移同语义。
+    const r = saveGateFromCellsToFolder(name, serializePaper(paper), scopeRef.current);
     refreshGates();
     setSavingGate(false);
     setGateName('');
     setGateError(null);
-    showToast(`已保存自定义门「${name}」${r.nested ? `（${r.nested} 个子级定义已递归入库绑定）` : ''}`);
-    forceUpdate(n => n + 1);
+    showToast(`已保存部件「${name}」为可编辑电路${r.nested ? `（${r.nested} 个子部件已递归入库绑定）` : ''}`);
+    forceUpdate(n => 1 + n);
   };
 
   const handleDeleteGate = (g: CustomGate) => {
@@ -2532,7 +2540,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     setDeleteGateId(null);
     refreshGates();
     refreshList();
-    showToast(`已删除门定义「${g.name}」；画布上已放置的同名实例将无法展开（内嵌快照可兜底显示）`);
+    showToast(`已删除部件「${g.name}」；画布上已放置的同名实例将无法展开（内嵌快照可兜底显示）`);
   };
 
   // 删除确认改由右键菜单直接执行（与 IDE 文件系统一致），旧的 × 两步确认已移除
@@ -2541,9 +2549,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
 
   const syncAfterFsOp = () => { refreshList(); refreshFolders(); };
 
+  // R39：部件是可编辑 .djs 画布文件，与普通电路文件一样单击即打开编辑。
+  // 旧 kind:'gate'（迁移前的只读定义）仍走内部查看器兜底。
   const handleFileOpen = (f: SandboxFile) => {
-    // 门定义文件不是画布：它是绑定真源。单击即在内部门查看器里打开它的
-    // 内部电路（与「双击画布实例展开」同一查看器，支持逐层钻取子部件）。
     if (f.kind === 'gate') {
       const name = baseName(f.name).replace(/\.gate$/i, '');
       setInnerCell({ get: (k: string) => (k === 'celltype' ? name : undefined) });
@@ -2586,51 +2594,50 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     return s;
   };
 
-  /** 门定义依赖闭包：从种子门名出发，沿定义里 Subcircuit.celltype 引用
-   *  递归收集（与编译模式 resolveDependencies 同语义），供 .djs 导出随行。 */
-  const walkGateClosure = (seeds: Set<string>): CustomGate[] => {
-    const out: CustomGate[] = [];
+  /** 部件依赖闭包：从种子名出发，沿部件文件里 Subcircuit.celltype 引用递归
+   *  收集（与编译模式 resolveDependencies 同语义），供 .djs 导出随行。
+   *  返回每个部件的 {name, cells}（cells = 该部件文件的可编辑画布内容）。 */
+  const walkGateClosure = (seeds: Set<string>, scope: string): { name: string; cells: any }[] => {
+    const out: { name: string; cells: any }[] = [];
     const seen = new Set<string>();
     const queue = [...seeds];
     while (queue.length) {
       const name = queue.shift()!;
       if (!name || seen.has(name)) continue;
       seen.add(name);
-      const g = customGateStore.getByName(name);
-      if (!g) continue;
-      out.push(g);
-      try {
-        const mod = JSON.parse(g.circuitJson);
-        const collect = (m: any, depth = 0) => {
-          if (!m || depth > 16) return;
-          for (const dev of Object.values<any>(m.devices || {})) {
-            if (dev?.type === 'Subcircuit' && dev.celltype && !seen.has(String(dev.celltype))) queue.push(String(dev.celltype));
-          }
-          for (const sub of Object.values<any>(m.subcircuits || {})) collect(sub, depth + 1);
-        };
-        collect(mod);
-      } catch { /* ignore */ }
+      const cells = resolveDefCells(name, scope);
+      if (!cells) continue;
+      out.push({ name, cells });
+      const collect = (cs: any[], depth = 0) => {
+        if (!cs || depth > 16) return;
+        for (const c of cs) {
+          if (c?.type !== 'Subcircuit' || !c.celltype) continue;
+          if (!seen.has(String(c.celltype))) queue.push(String(c.celltype));
+        }
+      };
+      collect(cells.cells);
     }
     return out;
   };
 
   const handleExportDjs = (f: SandboxFile) => {
     const cur = sandboxStore.get(f.id) ?? f;
-    // 门定义随文件走（R34/R37）：把电路引用到的门定义**依赖闭包**一并发出
-    // （新格式 circuitJson），外部共享时打开即自动补注册，不依赖本机定义。
+    // 部件随文件走（R39）：把电路引用到的部件**依赖闭包**一并发出（cells 画布
+    // 格式），外部共享时打开即自动补注册为可编辑部件，不依赖本机定义。
+    const dir = cur.name.includes('/') ? cur.name.slice(0, cur.name.lastIndexOf('/')) : '';
     let payload: string;
     let carried = 0;
     if (cur.kind === 'gate' && cur.circuitJson) {
-      // 门定义文件本身导出：直接导出定义内容
+      // 旧 .gate 定义文件本身导出：直接导出定义内容
       payload = cur.circuitJson;
     } else {
       payload = cur.graphJson;
       try {
         const obj = JSON.parse(cur.graphJson);
         const used = gateNamesInJson(cur.graphJson);
-        const defs = walkGateClosure(used);
+        const defs = walkGateClosure(used, dir);
         if (defs.length) {
-          obj.customGates = defs.map((g) => ({ name: g.name, circuitJson: g.circuitJson }));
+          obj.customParts = defs;
           payload = JSON.stringify(obj);
           carried = defs.length;
         }
@@ -2642,7 +2649,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     a.download = baseName(cur.name);
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    showToast(carried ? `已导出 ${baseName(cur.name)}（含 ${carried} 个自定义门定义）` : `已导出 ${baseName(cur.name)}`);
+    showToast(carried ? `已导出 ${baseName(cur.name)}（含 ${carried} 个部件定义）` : `已导出 ${baseName(cur.name)}`);
   };
 
   const handlePasteInto = (folder: string) => {
@@ -2674,12 +2681,13 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     if (!name) return;
     const f = sandboxStore.get(t.key);
     if (!f) return;
-    if (f.kind === 'gate') {
-      // 门定义改名 = 重绑定：实例按 celltype 名称绑定定义（编译模式语义），
-      // 改名后全库扫描改写引用，展开/放置继续命中新定义。
-      const base = name.replace(/\.gate$/i, '');
-      const oldName = baseName(f.name).replace(/\.gate$/i, '');
-      const n = renameGateDef(t.key, base);
+    const isPart = f.role === 'part';
+    if (isPart || f.kind === 'gate') {
+      // 部件改名 = 重绑定：实例按 celltype 名称绑定部件文件（编译模式语义），
+      // 改名后全库扫描改写引用，展开/放置继续命中新部件。
+      const base = name.replace(/\.(djs|gate|json)$/i, '');
+      const oldName = baseName(f.name).replace(/\.(djs|gate|json)$/i, '');
+      const n = renamePartDef(t.key, base);
       // 必须在 refreshGates（会触发画布 effect 重建 → cleanup 持久化）之前
       // 同步活画布：否则画布上仍是旧 celltype 的活实例会把存储盖回去。
       let live = 0;
@@ -2739,50 +2747,61 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   const handleImportDjsFiles = async (list: FileList | null) => {
     if (!list || !list.length) return;
     let imported = 0;
-    let gatesCarried = 0;
+    let partsCarried = 0;
     for (const file of Array.from(list)) {
       try {
         const text = await file.text();
         const obj = JSON.parse(text);
-        // R37：门定义文件（.gate，内容 = 编译格式 circuitJson）也直接导入为门定义
+        // 目标文件：与源文件同名（保留文件夹结构由用户后续移动）
+        const name = uniqueDjsName(sandboxStore.list(), file.name.replace(/\.(json|djs)$/i, '') + '.djs');
+        const dir = name.includes('/') ? name.slice(0, name.lastIndexOf('/')) : '';
+        // R39：.djs 内嵌的 customParts（cells）自动注册为同文件夹的可编辑部件；
+        // 兼容旧 customGates（circuitJson / graphJson）。
+        if (Array.isArray(obj.customParts)) {
+          for (const p of obj.customParts) {
+            if (!p?.name) continue;
+            const cells = p.cells || (p.graphJson ? tryParse(p.graphJson) : null);
+            if (cells) { savePartFile(String(p.name), cells, dir); partsCarried++; }
+          }
+          delete obj.customParts; // 仅作传输载体，落库不重复存储（绑定式存档）
+        }
+        if (Array.isArray(obj.customGates)) {
+          for (const g of obj.customGates) {
+            if (!g?.name) continue;
+            if (g.circuitJson) {
+              try { savePartFile(String(g.name), circuitJsonToCells(JSON.parse(String(g.circuitJson))), dir); partsCarried++; } catch { /* ignore */ }
+            } else if (g.graphJson) {
+              const cj = tryParse(String(g.graphJson));
+              if (cj) { savePartFile(String(g.name), cj, dir); partsCarried++; }
+            }
+          }
+          delete obj.customGates;
+        }
         if (!Array.isArray(obj?.cells)) {
-          const gateName = file.name.replace(/\.(gate\.json|gate|json)$/i, '');
+          // 旧 .gate 定义文件（编译格式）也直接导入为可编辑部件
+          const gname = file.name.replace(/\.(gate\.json|gate|json)$/i, '');
           if (obj?.devices) {
-            upsertGateDef(gateName, JSON.stringify(obj));
-            gatesCarried++;
+            savePartFile(gname, circuitJsonToCells(obj), dir);
+            partsCarried++;
             continue;
           }
           throw new Error('not a circuit');
         }
-        // 门定义随文件走（R34/R37）：.djs 内嵌的 customGates 自动注册缺失的
-        // 同名门（新格式 circuitJson；旧档 graphJson 内嵌 cells 自动转换），
-        // 与文件夹系统联动 —— 文件搬到哪，门定义就跟到哪。
-        if (Array.isArray(obj.customGates)) {
-          for (const g of obj.customGates) {
-            if (!g?.name || getGateDefByName(String(g.name))) continue;
-            if (g.circuitJson) {
-              upsertGateDef(String(g.name), String(g.circuitJson));
-              gatesCarried++;
-            } else if (g.graphJson) {
-              try { saveGateFromCells(String(g.name), JSON.parse(String(g.graphJson))); gatesCarried++; } catch { /* ignore */ }
-            }
-          }
-          delete obj.customGates; // 仅作传输载体，落库不重复存储（绑定式存档）
-        }
         // 内嵌快照里引用的定义先补齐（仅补缺失），再落库（save 走绑定剥离）
-        ensureDefsFromCells(obj.cells);
-        const name = uniqueDjsName(sandboxStore.list(), file.name.replace(/\.(json|djs)$/i, '') + '.djs');
+        ensureDefsFromCells(obj.cells, dir);
         const f = sandboxStore.create(name);
-        sandboxStore.save(f.id, stripBoundInlineJson(JSON.stringify(obj)));
+        sandboxStore.save(f.id, stripBoundInlineJson(JSON.stringify(obj), dir));
         imported++;
       } catch {
         showToast(`导入失败：${file.name} 不是有效的电路文件`);
       }
     }
-    if (gatesCarried) { refreshGates(); showToast(`已从文件导入 ${gatesCarried} 个自定义门定义`); }
+    if (partsCarried) { refreshGates(); showToast(`已从文件导入 ${partsCarried} 个部件定义`); }
     if (imported) showToast(`已导入 ${imported} 个电路文件`);
     syncAfterFsOp();
   };
+
+  const tryParse = (s: string): any | null => { try { return JSON.parse(s); } catch { return null; } };
 
   const handleFileCtx = (e: React.MouseEvent, f: SandboxFile) => {
     e.preventDefault();
@@ -2859,10 +2878,10 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       { label: '展开全部分组', action: () => setOpenGroups(new Set(PALETTE.map(g => g.group))) },
       { label: '折叠全部分组', action: () => setOpenGroups(new Set()) },
       { label: '---' },
-      { label: '新建自定义门', action: () => setSavingGate(true) },
-      { label: '放置自定义门', hint: '▶', action: () => {
-        setTimeout(() => openMenuAt(e.clientX, e.clientY, '放置自定义门', gates.length
-          ? gates.map(g => ({ label: g.name, hint: '自定义', action: () => placeCustomGate(g) }))
+      { label: '新建部件（保存当前电路）', action: () => setSavingGate(true) },
+      { label: '放置部件', hint: '▶', action: () => {
+        setTimeout(() => openMenuAt(e.clientX, e.clientY, '放置部件', gates.length
+          ? gates.map(g => ({ label: g.name, hint: '部件', action: () => placeCustomGate(g) }))
           : [{ label: '（暂无自定义门）', disabled: true }]), 0);
       } },
     ]);
@@ -3150,16 +3169,17 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
             );
           })}
 
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>自定义门</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>部件（可编辑电路）</div>
           {gates.map(g => (
             <div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               marginBottom: 1, fontSize: 'var(--fs-xs)' }}>
-              <button onClick={() => placeCustomGate(g)} title={`放置自定义门“${g.name}”`}
+              <button onClick={() => placeCustomGate(g)} title={`放置部件“${g.name}”（点击也可在文件面板打开编辑）`}
                 style={{ flex: 1, textAlign: 'left', padding: '3px 6px', background: 'transparent',
                   border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
                 {g.name}
+                {g.folder ? <span style={{ color: 'var(--text-muted)', marginLeft: 4, fontSize: '0.5625rem' }}>{g.folder}/</span> : null}
               </button>
-              <span onClick={(e) => { e.stopPropagation(); handleDeleteGate(g); }} title="删除自定义门"
+              <span onClick={(e) => { e.stopPropagation(); handleDeleteGate(g); }} title="删除部件"
                 style={{ cursor: 'pointer', marginLeft: 4,
                   color: deleteGateId === g.id ? 'var(--error, #ef4444)' : 'var(--text-muted)',
                   fontWeight: deleteGateId === g.id ? 700 : 400 }}>
@@ -3168,7 +3188,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
             </div>
           ))}
           {gates.length === 0 && (
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>把当前电路保存为门后可复用</div>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>把当前电路保存为部件后可复用；「复制到沙盒」的子部件也在此列出，均可打开编辑</div>
           )}
           </>)}
 
@@ -3350,6 +3370,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
           <SandboxExpandModal
             cell={innerCell}
             theme={theme}
+            scope={scope}
             onClose={() => setInnerCell(null)}
           />
         )}

@@ -10,31 +10,11 @@
 
 import { buildInnerGraph } from './subcircuit';
 import { serializeGraphCells } from './sandboxSerialize';
-import { resolveDefCircuit } from './gateSystem';
-import { constructCircuit } from './subcircuitView';
-
-/**
- * R37 绑定加载：实例没有内嵌快照（绑定式存档的标准形态）时，按 celltype
- * 解析门定义文件 → 编译格式 circuit JSON → 用 Circuit 构造器合成活图
- * （端口/IO 器件由 digitaljs 权威生成，与编译模式同源）→ 白名单序列化成
- * cells 快照喂给 buildInnerGraph。
- * 构造走 constructCircuit 兜底链 —— 手绘定义里的坏线不能让整个实例装不出来
- * （裸 ctor 一条坏线就抛，坏线门会直接「放置失败」）。
- * 定义缺失/坏档返回 null（调用方兜底）。
- */
-function innerCellsFromDef(digitaljs: any, celltype: string): any | null {
-  if (!celltype) return null;
-  const defJson = resolveDefCircuit(celltype);
-  if (!defJson) return null;
-  try {
-    const { circuit } = constructCircuit(digitaljs, structuredClone(defJson));
-    const snap = serializeGraphCells(circuit._graph);
-    try { circuit.shutdown?.(); } catch { /* ignore */ }
-    return snap;
-  } catch { return null; }
-}
+import { resolveDefCells } from './gateSystem';
 
 export interface LoadCellsOptions {
+  /** 绑定作用域：本画布文件所在文件夹（部件解析优先同文件夹，R39） */
+  scope?: string;
   /** id 重映射：oldId → newId（粘贴/多次插入防 id 冲突） */
   idMap?: Map<string, string>;
   /** 位置偏移（模型坐标） */
@@ -52,7 +32,7 @@ export function loadCells(
 ) {
   const saved = JSON.parse(json);
   const Graph = (paper.model as any).constructor;
-  const { idMap, dx = 0, dy = 0 } = opts;
+  const { idMap, dx = 0, dy = 0, scope = '' } = opts;
   const mapId = (id: any) => (idMap && id != null && idMap.has(String(id))) ? idMap.get(String(id)) : id;
   const cellMap = new Map<string, any>();
   for (const c of saved.cells || []) {
@@ -62,10 +42,11 @@ export function loadCells(
     const py = (pos.y || 50) + dy;
     const cid = mapId(c.id);
     if (c.type === 'Subcircuit') {
-      // R37 绑定加载：优先内嵌快照（旧档/未迁移），否则按 celltype 解析门定义
+      // R39 绑定加载：优先内嵌快照（旧档/未迁移），否则按 celltype 解析部件文件
+      // （resolveDefCells 递归物化嵌套 → 自足 cells，buildInnerGraph 可直接消费）
       let innerSrc = c.subcircuitGraph || c.graph;
       if (!innerSrc?.cells?.length) {
-        innerSrc = innerCellsFromDef(digitaljs, String(c.celltype || '')) || undefined;
+        innerSrc = resolveDefCells(String(c.celltype || ''), scope) || undefined;
       }
       const GraphCtor2 = Graph;
       const inner = innerSrc

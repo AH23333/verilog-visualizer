@@ -39,7 +39,7 @@ import { themeStore } from './store/themeStore';
 import { settingsStore, type ViewMode } from './store/settingsStore';
 import { projectConfigStore } from './store/projectConfigStore';
 import { sandboxStore } from './store/sandboxStore';
-import { collectFromCircuit, stripBoundInlineJson } from './lib/gateSystem';
+import { collectToFolder, stripBoundInlineJson } from './lib/gateSystem';
 import { exportSVG, exportPNG, exportCircuitJSON, exportVerilogCode, exportNetlistVerilog } from './lib/exportUtils';
 
 type Status = 'idle' | 'compiling' | 'done' | 'error';
@@ -759,16 +759,20 @@ export default function App() {
     console.log('[copy2sb] graphJson len=', graphJson ? graphJson.length : 'null');
     if (!graphJson) { setMessage('无法导出当前电路图。'); return; }
     const base = (activeFile.name || 'circuit').replace(/\.(v|sv|vh)$/i, '');
-    const f = sandboxStore.create(`${base}_sandbox`);
-    // R37 递归复制迁移 + 绑定（用户方案落地）：
-    //  1) 编译结果里的全部子级部件按模块名**递归复制**为门定义文件
-    //     （kind:'gate'，内容 = 编译格式 circuit JSON，零转换）；
-    //  2) 画布快照里的子模块实例按 celltype 名称绑定定义（同编译模式
-    //     moduleBindings 语义），持久化时剥离内嵌快照 —— 单一真源。
+    // R39 文件夹组织 + 可编辑子部件（用户方案）：
+    //  1) 为本次复制建一个同名文件夹，把主电路与**全部递归子部件**收进去，
+    //     文件树不再被摊平的一堆 .djs/.gate 搞乱；
+    //  2) 子级部件递归复制为该文件夹下的**可编辑 .djs 部件文件**
+    //     （cells 画布格式，打开即可编辑/连线/仿真），按 celltype 名绑定；
+    //  3) 主电路快照里的子模块实例按 celltype 名称绑定（同文件夹优先解析），
+    //     持久化时剥离内嵌快照 —— 单一真源。
+    const folder = base;
+    sandboxStore.createFolder(folder);
+    const f = sandboxStore.create(`${folder}/${base}_sandbox`);
     let bound = 0;
-    try { bound = collectFromCircuit(activeFile.circuitJson); } catch { /* ignore */ }
+    try { bound = collectToFolder(activeFile.circuitJson, folder); } catch { /* ignore */ }
     let storedJson = graphJson;
-    try { storedJson = stripBoundInlineJson(graphJson); } catch { /* ignore */ }
+    try { storedJson = stripBoundInlineJson(graphJson, folder); } catch { /* ignore */ }
     sandboxStore.save(f.id, storedJson);
     sandboxStore.setActiveId(f.id);
     // R35：同时暂存到「复制剪贴板」——用户也可以不打开自动建好的文件，
@@ -780,7 +784,7 @@ export default function App() {
     // R34：子模块（Subcircuit）的内部电路已随序列化一并携带，不再丢部件/线路
     let mods = 0;
     try { mods = (JSON.parse(storedJson)?.cells || []).filter((c: any) => c.type === 'Subcircuit').length; } catch { /* ignore */ }
-    setMessage(`已把「${activeFile.name}」的电路复制到沙盒「${f.name}」${mods ? `（含 ${mods} 个子模块实例，${bound ? `共 ${bound} 个子级部件已递归入库为门定义并绑定，` : ''}展开图与编译模式钻取同管线）` : ''}，可继续摆放与连线；也可在任意沙盒文件中右键「粘贴复制的电路」。`);
+    setMessage(`已把「${activeFile.name}」的电路复制到沙盒文件夹「${folder}/」：主电路「${f.name.split('/').pop()}」${mods ? `含 ${mods} 个子模块实例；` : ''}${bound ? `${bound} 个子级部件已递归复制为该文件夹下的可编辑电路并按名绑定，` : ''}所有电路（含子部件）均可直接打开编辑；也可在任意沙盒文件中右键「粘贴复制的电路」。`);
   }, [activeFile, viewMode]);
 
   // ============ Circuit -> source jump (double-click a cell) ============

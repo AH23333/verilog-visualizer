@@ -93,6 +93,68 @@ export function cellsToCircuitJson(json: { cells?: AnyCell[] } | null | undefine
 }
 
 /**
+ * cellsToCircuitJson 的**逆运算**：编译格式电路 JSON → cells 白名单快照。
+ *
+ * R39「复制到沙盒的子部件也要可编辑」：递归复制进来的子模块体是编译格式
+ * （{devices, connectors, subcircuits}），要落成沙盒里**可编辑的 .djs 画布
+ * 文件**，必须先转成 cells 快照（沙盒唯一的一等公民格式）。转换后该子模块
+ * 就是普通沙盒文件，可打开、可摆放器件、可连线、可仿真、可再保存为门。
+ *
+ * 语义对齐：
+ *  - device 字段按 cellsToCircuitJson 的正向映射逐字段回填（子集对称）；
+ *  - connectors → isLink 单元格（netname 保留，vertices 保留布局拐点）；
+ *  - **嵌套 Subcircuit device 不内联 subcircuitGraph** —— 它们按 celltype
+ *    名称绑定到各自的文件（与顶层实例同语义），内联会与「单一真源」打架；
+ *    加载时由 loadCells 的绑定分支按 celltype 解析。
+ */
+export function circuitJsonToCells(mod: any): { cells: AnyCell[] } {
+  const cells: AnyCell[] = [];
+  for (const [key, dev0] of Object.entries<any>(mod?.devices || {})) {
+    const dev: any = dev0 || {};
+    // 器件 id：优先 dev.id，否则用 devices 的键（yosys2digitaljs 产物两者等价，
+    // 但不少子模块体只在键上带 id —— 只认 dev.id 会把整个子模块丢空）
+    const id = dev.id || key;
+    if (!id) continue;
+    const c: any = { id, type: dev.type };
+    if (dev.type === 'Subcircuit') {
+      // 只保留绑定名（celltype），内图由文件解析（单一真源）
+      c.celltype = dev.celltype || '';
+    } else if (dev.celltype) {
+      c.celltype = dev.celltype;
+    }
+    if (dev.label != null) c.label = dev.label;
+    if (dev.bits != null) c.bits = dev.bits;
+    if (dev.net != null) c.net = dev.net;
+    if (dev.position) c.position = dev.position;
+    if (dev.size) c.size = dev.size;
+    if (dev.propagation != null) c.propagation = dev.propagation;
+    if (dev.angle != null) c.angle = dev.angle;
+    if (dev.constant != null) c.constant = dev.constant;
+    if (dev.polarity != null) c.polarity = dev.polarity;
+    if (dev.initial != null) c.initial = dev.initial;
+    if (Array.isArray(dev.groups)) c.groups = dev.groups;
+    if (dev.slice) c.slice = dev.slice;
+    if (dev.abits != null) c.abits = dev.abits;
+    if (Array.isArray(dev.rdports)) c.rdports = dev.rdports;
+    if (Array.isArray(dev.wrports)) c.wrports = dev.wrports;
+    cells.push(c);
+  }
+  for (const conn of mod?.connectors || []) {
+    if (!conn?.from?.id || !conn?.to?.id) continue;
+    const l: any = {
+      isLink: true,
+      source: { id: conn.from.id, port: conn.from.port },
+      target: { id: conn.to.id, port: conn.to.port },
+      netname: conn.name || 'N',
+    };
+    if (Array.isArray(conn.vertices) && conn.vertices.length) l.vertices = conn.vertices;
+    cells.push(l);
+  }
+  return { cells };
+}
+
+
+/**
  * 展开图默认是否该自动整理布局：
  *  - 编译产物 / 复制到沙盒的电路：elk 布局位置被快照携带，x 值多样 → 保留
  *    原位（零 elk 开销，与编译模式钻取一致）。

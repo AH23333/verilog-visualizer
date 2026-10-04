@@ -9,21 +9,27 @@ export interface SandboxFile {
   /**
    * R37 门定义文件系统（迁移编译模式文件系统语义）：
    *  - kind 缺省 = 'circuit'（普通 .djs 画布文件）；
-   *  - kind='gate' = 门定义文件（文件树显示为 <名>.gate），circuitJson 存
-   *    编译格式电路 JSON {devices, connectors, subcircuits}，子级部件以
-   *    celltype 名称绑定（与编译模式 subcircuits[name] 同构）。
+   *  - kind='gate' = 旧版门定义文件（编译格式 circuitJson，只读），R39 起
+   *    迁移为可编辑的 role='part' .djs，此字段仅作兼容读取。
    */
   kind?: 'gate';
   circuitJson?: string;
+  /**
+   * R39 部件语义（对齐编译模式「每个模块一个文件、实例按模块名绑定」）：
+   *  - 缺省/'circuit' = 普通可编辑电路文件；
+   *  - 'part' = **可编辑部件文件**（.djs，画布格式）—— 复制到沙盒的子部件、
+   *    「保存为自定义门」产出的自定义部件都落成这种：既是独立可编辑画布，
+   *    又可被同文件夹（优先）/全局的实例按「文件名（去扩展名）」绑定引用。
+   */
+  role?: 'circuit' | 'part';
 }
 
-// A user-defined gate: 门定义（R37 起为编译格式 circuit JSON，不再是内嵌
-// joint cells）。customGateStore 是「门定义文件」的薄门面 —— 真身住在
-// 沙盒文件系统里（kind:'gate' 文件），与编译模式「每个模块一个文件」对齐。
+// 一个「部件」（自定义门 / 编译子模块）。R39 起部件真身是可编辑的 role='part'
+// .djs 画布文件；folder 记录它所在的沙盒文件夹（绑定解析的优先作用域）。
 export interface CustomGate {
   id: string;
-  name: string;
-  circuitJson: string;  // 编译格式 circuit JSON
+  name: string;   // 绑定名（= 文件名去扩展名）
+  folder: string; // 所在文件夹路径（'' = 根目录）
 }
 
 const SANDBOX_KEY = 'verilog-viz-sandbox-files';
@@ -79,7 +85,7 @@ export const sandboxStore = {
     else localStorage.removeItem(SANDBOX_ACTIVE);
   },
 
-  create(name: string): SandboxFile {
+  create(name: string, role?: 'circuit' | 'part'): SandboxFile {
     const files = loadAll();
     const id = 'sb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const file: SandboxFile = {
@@ -87,6 +93,7 @@ export const sandboxStore = {
       name: name.endsWith('.djs') ? name : name + '.djs',
       graphJson: JSON.stringify({ cells: [] }),
       updatedAt: Date.now(),
+      ...(role ? { role } : {}),
     };
     files[id] = file;
     saveAll(files);
@@ -97,6 +104,15 @@ export const sandboxStore = {
     const files = loadAll();
     if (!files[id]) return;
     files[id].graphJson = graphJson;
+    files[id].updatedAt = Date.now();
+    saveAll(files);
+  },
+
+  /** 标记/取消部件角色（role:'part'）—— store 无通用 patch，读写全表 */
+  setRole(id: string, role?: 'circuit' | 'part') {
+    const files = loadAll();
+    if (!files[id]) return;
+    if (role) files[id].role = role; else delete files[id].role;
     files[id].updatedAt = Date.now();
     saveAll(files);
   },
@@ -244,61 +260,9 @@ export const sandboxStore = {
     return copy;
   },
 
-  // ============ 门定义文件（R37：编译模式文件系统语义迁移）============
-
-  /** 新建门定义文件（<名>.gate）；同名定义已存在时返回 null（由调用方 upsert） */
-  createGate(name: string, circuitJson: string): SandboxFile | null {
-    const files = loadAll();
-    const fileName = name + '.gate';
-    if (Object.values(files).some((f) => f.name === fileName)) return null;
-    const file: SandboxFile = {
-      id: 'sb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
-      name: fileName,
-      graphJson: '',
-      updatedAt: Date.now(),
-      kind: 'gate',
-      circuitJson,
-    };
-    files[file.id] = file;
-    saveAll(files);
-    return file;
-  },
-
-  /** 按「门名」（非文件名）找门定义文件 */
-  getGateFile(name: string): SandboxFile | null {
-    const fileName = name + '.gate';
-    return Object.values(loadAll()).find((f) => f.kind === 'gate' && f.name === fileName) ?? null;
-  },
-
-  /** 写入门定义内容（文件已存在则覆盖） */
-  saveGate(name: string, circuitJson: string): SandboxFile {
-    const existing = this.getGateFile(name);
-    if (existing) {
-      const files = loadAll();
-      files[existing.id].circuitJson = circuitJson;
-      files[existing.id].updatedAt = Date.now();
-      saveAll(files);
-      return files[existing.id];
-    }
-    const f = this.createGate(name, circuitJson);
-    return f!;
-  },
-
-  /** 门定义文件改名（保持 kind:'gate' 与 .gate 后缀；目标重名返回 null） */
-  renameGateFile(id: string, newName: string): SandboxFile | null {
-    newName = newName.trim().replace(/\.gate$/i, '');
-    if (!newName) return null;
-    const files = loadAll();
-    const f = files[id];
-    if (!f || f.kind !== 'gate') return null;
-    const fileName = newName + '.gate';
-    if (f.name === fileName) return f;
-    if (Object.values(files).some((o) => o.id !== id && o.name === fileName)) return null;
-    f.name = fileName;
-    f.updatedAt = Date.now();
-    saveAll(files);
-    return f;
-  },
+  // ============ 部件文件（R39：可编辑 .djs 部件）============
+  // 部件 = role:'part' 的 .djs 画布文件。绑定名 = 文件名去扩展名。
+  // 旧 kind:'gate'（编译格式 circuitJson）仅作读取兼容，迁移见 gateSystem.migrateLegacy。
 
   /** 同目录创建副本（右键「创建副本」），返回新文件 */
   duplicate(id: string): SandboxFile | null {
@@ -311,43 +275,38 @@ export const sandboxStore = {
 };
 
 /**
- * 自定义门注册表（R37 起为「门定义文件」的薄门面）。
- *
- * 旧版把门定义存成独立 localStorage 数组（GATES_KEY，内嵌 joint cells），
- * 与沙盒文件系统完全脱节。现在门定义 = kind:'gate' 的沙盒文件，与编译模式
- * 「每个模块一个文件、实例按模块名绑定」同构；旧存档由 gateSystem.migrateLegacy
- * 一次性迁移成门定义文件（本门面只读写新格式）。
+ * 部件（自定义门 / 编译子模块）注册表 —— role:'part' 的 .djs 文件 + 旧 .gate。
+ * 真身住在沙盒文件系统；绑定解析与递归物化在 lib/gateSystem.ts。
  */
 export const customGateStore = {
   list(): CustomGate[] {
-    return Object.values(loadAll())
-      .filter((f) => f.kind === 'gate' && f.circuitJson)
-      .map((f) => ({ id: f.id, name: baseName(f.name).replace(/\.gate$/i, ''), circuitJson: f.circuitJson! }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    const out: CustomGate[] = [];
+    const seen = new Set<string>();
+    for (const f of sandboxStore.list()) {
+      const isPart = f.role === 'part';
+      const isGate = f.kind === 'gate';
+      if (!isPart && !isGate) continue;
+      const name = baseName(f.name).replace(/\.(djs|gate|json)$/i, '');
+      const dir = f.name.includes('/') ? f.name.slice(0, f.name.lastIndexOf('/')) : '';
+      if (seen.has(name)) continue;
+      seen.add(name);
+      out.push({ id: f.id, name, folder: dir });
+    }
+    return out.sort((a, b) => a.name.localeCompare(b.name));
   },
 
   get(id: string): CustomGate | null {
     const f = loadAll()[id];
-    if (!f || f.kind !== 'gate' || !f.circuitJson) return null;
-    return { id: f.id, name: baseName(f.name).replace(/\.gate$/i, ''), circuitJson: f.circuitJson };
-  },
-
-  getByName(name: string): CustomGate | null {
-    const f = sandboxStore.getGateFile(name);
-    if (!f || !f.circuitJson) return null;
-    return { id: f.id, name, circuitJson: f.circuitJson };
-  },
-
-  /** 保存/覆盖同名门定义（绑定语义：定义内容变了，所有同名实例一同更新） */
-  save(name: string, circuitJson: string): CustomGate {
-    const f = sandboxStore.saveGate(name, circuitJson);
-    return { id: f.id, name, circuitJson: f.circuitJson! };
+    if (!f) return null;
+    if (f.role !== 'part' && f.kind !== 'gate') return null;
+    return {
+      id: f.id,
+      name: baseName(f.name).replace(/\.(djs|gate|json)$/i, ''),
+      folder: f.name.includes('/') ? f.name.slice(0, f.name.lastIndexOf('/')) : '',
+    };
   },
 
   remove(id: string) {
-    const files = loadAll();
-    const f = files[id];
-    if (f && f.kind === 'gate') delete files[id];
-    saveAll(files);
+    sandboxStore.remove(id);
   },
 };

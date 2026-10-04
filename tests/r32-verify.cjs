@@ -124,16 +124,16 @@ const sidebarTitle = (page) => page.evaluate(() => {
     await page.locator('input[placeholder="自定义门名称"]').fill('MyGate32');
     await page.locator('button[title="确认保存为自定义门"]').first().click(); await sleep(600);
     const gateSaved = await page.evaluate(() => {
-      // R37：门定义 = 沙盒文件系统里 kind:'gate' 的文件（内容为编译格式 circuitJson）
+      // R39：部件 = 沙盒文件系统里 role:'part' 的可编辑 .djs 文件（cells 画布格式）
       const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
-      const g = Object.values(files).find(f => f.kind === 'gate' && f.name === 'MyGate32.gate');
+      const g = Object.values(files).find(f => f.role === 'part' && /MyGate32\.djs$/.test(f.name));
       if (!g) return null;
-      let types = []; try { types = Object.values(JSON.parse(g.circuitJson).devices || {}).map(d => d.type); } catch {}
-      return { name: 'MyGate32', types };
+      let types = []; try { types = (JSON.parse(g.graphJson).cells || []).filter(c => !c.isLink).map(c => c.type); } catch {}
+      return { name: 'MyGate32', name2: g.name, types };
     });
     (gateSaved && gateSaved.types.includes('Input') && gateSaved.types.includes('Output'))
-      ? ok('[3b] 自定义门保存：门定义文件含内部电路（编译格式）', `${gateSaved.types.length} devices`)
-      : bad('[3b] 自定义门保存异常', JSON.stringify(gateSaved));
+      ? ok('[3b] 部件保存：可编辑 .djs 部件文件含内部电路', `${gateSaved.name2} · ${gateSaved.types.length} cells`)
+      : bad('[3b] 部件保存异常', JSON.stringify(gateSaved));
 
     // ========== [4] 右键二级分类导航 + 自定义门分组 ==========
     await page.mouse.click(760, 460, { button: 'right' }); await sleep(500);
