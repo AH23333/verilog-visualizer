@@ -376,6 +376,35 @@ export function renderCircuitView(
       }
     }
   } catch { /* cosmetic */ }
+  // 展开图交互：ctrl+wheel 以光标为中心缩放，wheel 垂直平移，shift+wheel 水平平移
+  try {
+    const pw = paper as any;
+    pw.options.scroll = true;
+    mount.addEventListener('wheel', (ev: WheelEvent) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      if (ev.ctrlKey || ev.metaKey) {
+        const cur = pw.scale();
+        const factor = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
+        const ns = Math.max(0.1, Math.min(5, cur.sx * factor));
+        const rect = mount.getBoundingClientRect();
+        const cx = ev.clientX - rect.left;
+        const cy = ev.clientY - rect.top;
+        const t = pw.translate();
+        pw.translate(
+          t.tx + cx - (cx - t.tx) * (ns / cur.sx),
+          t.ty + cy - (cy - t.ty) * (ns / cur.sy),
+        );
+        pw.scale(ns, ns);
+      } else if (ev.shiftKey) {
+        const t = pw.translate();
+        pw.translate(t.tx - ev.deltaY, t.ty);
+      } else {
+        const t = pw.translate();
+        pw.translate(t.tx, t.ty - ev.deltaY);
+      }
+    }, { passive: false });
+  } catch { /* ignore */ }
   return { circuit, paper, skippedWires, skippedDevices };
 }
 
