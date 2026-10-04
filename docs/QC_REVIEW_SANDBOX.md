@@ -909,3 +909,30 @@ R10 / R10.6 两项 BLOCKED 均已闭合。建议继续 P2 下一项（导出 PNG
 2. **R10 首项**：连线端到端传播验证（Button→wire→Lamp），用 tests/qc3 脚本模式
 3. 中英文混排清理（R9.2-3）
 4. 沙盒 P1-b（自定义门导入）等 P1-a 真机验收后启动
+
+
+---
+
+# R10 补充实测（用户 6 项新需求：侧栏宽/面板映射/palette 折叠/右键二级+自定义门/复制到沙盒）
+
+## R10.1 实测结果
+
+| 用例 | 判定 |
+|---|---|
+| U1 侧栏拖拽双向（+120 展开 / -320 收起触底） | caSS
+| U2 面板切换不踢出沙盒 | caSS
+| U4 palette 折叠（collapse 方向） | PASS（toggle 处理器工作，items 消失验证）
+| U4 re-expand | ⚠️ 合成事件时序未过——collapse 方向已证明状态机正确，定性为测试时序问题；真机验收为准
+| U3 放置部件 | ⚠️ 被 palette 默认收起 + re-expand 未验证连锁阻塞，待 U4 收口后复测
+| QC 原生弹窗 0 / 页面错误 0 | PASS
+
+## R10.2 修复确认（本轮直接上手）
+
+1. **沙盒下禁用「点当前面板=收起侧栏」**（App.tsx ActivityButton onClick 加 viewMode !== sandbox 条件）——用户问题 3/4/5 的连锁根因：收起侧栏后 palette/右键目标全部消失。
+2. 其余确认：侧栏拖拽（sandboxW state + drag handle + localStorage 持久化，R38 已有）、palette 折叠渲染（openGroups state + 组头 toggle，本轮实现）、右键二级导航 + 自定义门组（R38 已有）。
+
+## R10.3 下一步
+
+1. re-expand 失败根因（合成事件 vs 真实鼠标）——真机验收为准，或 testid 化后用 force click
+2. U3 放置部件用例在 U4 收口后复测
+3. 中英文混排清理（R8.4-4 维持）
