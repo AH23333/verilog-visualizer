@@ -20,7 +20,10 @@ export function serializeGraphCells(graph: any): { cells: any[] } {
 }
 
 function serializeCellsOf(getCells: () => any[]): any[] {
-  return getCells().map((c: any) => {
+  const all = getCells();
+  const linkCount = all.filter((c: any) => (typeof c.isLink === 'function' && c.isLink()) || /^(link|wire|djs\.wire)$/i.test(String(c.get('type')))).length;
+  console.log('[serialize] total cells:', all.length, 'links detected:', linkCount, 'sample types:', [...new Set(all.map((c: any) => c.get('type')))].slice(0, 10));
+  return all.map((c: any) => {
     const type = c.get('type');
     const cell: any = {
       id: c.id,
@@ -66,7 +69,8 @@ function serializeCellsOf(getCells: () => any[]): any[] {
         });
       } catch { /* ignore */ }
     }
-    if (c.isLink()) {
+    const isLink = (typeof c.isLink === 'function' && c.isLink()) || /^(link|wire|djs\.wire)$/i.test(String(type));
+    if (isLink) {
       cell.isLink = true;
       cell.source = c.get('source');
       cell.target = c.get('target');

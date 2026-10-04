@@ -104,11 +104,15 @@ export function loadCells(
       cellMap.set(cid ?? cell.id, cell);
     }
   }
+  let wireTotal = 0, wireSkipNoSrc = 0, wireSkipNoTgt = 0, wireOk = 0;
   for (const c of saved.cells || []) {
     if (!c.isLink) continue;
+    wireTotal++;
     try {
       const srcCell = cellMap.get(mapId(c.source?.id));
       const tgtCell = cellMap.get(mapId(c.target?.id));
+      if (!srcCell) wireSkipNoSrc++;
+      if (!tgtCell) wireSkipNoTgt++;
       if (!srcCell || !tgtCell) continue;
       const srcPort = c.source?.port;
       const tgtPort = c.target?.port;
@@ -123,6 +127,8 @@ export function loadCells(
       if (c.vertices) linkArgs.vertices = c.vertices;
       const link = new digitaljs.cells.Wire(linkArgs);
       paper.model.addCell(link);
+      wireOk++;
     } catch { /* skip broken link */ }
   }
+  console.log('[loadCells] wire stats:', { wireTotal, wireOk, wireSkipNoSrc, wireSkipNoTgt, cellsInMap: cellMap.size, sampleCellIds: [...cellMap.keys()].slice(0,3), sampleWireSrc: saved.cells.filter(c=>c.isLink).slice(0,3).map(c=>c.source?.id) });
 }
