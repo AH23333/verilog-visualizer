@@ -667,3 +667,8 @@ code[class*="language-"] {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
 }
+
+/* 沙盒文件树：与编译模式 Sidebar 对齐的悬停/重命名按钮反馈（R40） */
+.sb-file-row:hover { background: var(--surface-hover) !important; color: var(--text) !important; }
+.sb-file-row:hover .sb-rename-btn { opacity: 1 !important; }
+.sb-rename-btn:hover { color: var(--text) !important; }

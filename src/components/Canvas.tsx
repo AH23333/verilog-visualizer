@@ -65,10 +65,16 @@ interface CanvasProps {
   onReady?: () => void;
   /** Fired after each engine tick (delta-cycle step) with the current tick number. */
   onTick?: (tick: number) => void;
+  /**
+   * 子部件「快捷查看展开图」：拦截 digitaljs 内置的 open:subcircuit 弹窗，
+   * 改交由 App 用统一的**只读**预览视图渲染（R40：展开图不提供拖动/开关
+   * 交互，只保留点击继续钻取子部件）。入参是该子模块的编译格式电路体。
+   */
+  onPreviewSubcircuit?: (circuitJson: any, name: string) => void;
 }
 
 const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
-  { circuitJson, theme, onError, locked, paused, speedMs, onRunningChange, onSourceJump, onReady, onTick },
+  { circuitJson, theme, onError, locked, paused, speedMs, onRunningChange, onSourceJump, onReady, onTick, onPreviewSubcircuit },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -91,6 +97,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   onTickRef.current = onTick;
   const onSourceJumpRef = useRef(onSourceJump);
   onSourceJumpRef.current = onSourceJump;
+  const onPreviewSubcircuitRef = useRef(onPreviewSubcircuit);
+  onPreviewSubcircuitRef.current = onPreviewSubcircuit;
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
@@ -697,6 +705,56 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
           });
         }
       } catch { /* listener attach is best-effort; paper el is replaced on rebuild */ }
+
+      // R40：拦截 digitaljs 内置的 open:subcircuit 弹窗（它会往 body 插一个
+      // 裸 jQuery 弹窗，可拖动元件、可点开关），改交 App 用统一只读预览渲染。
+      // 关掉内置监听后，a.zoom 点击只走我们自己的捕获阶段命中逻辑。
+      try {
+        if (onPreviewSubcircuitRef.current) {
+          // yosys2digitaljs 的 subcircuits 是**扁平**模块表：顶层列全部模块，
+          // 而各子模块自身的 subcircuits 多为空。digitaljs 构造 Subcircuit 器件
+          // 时会去读 subcircuits[celltype].devices —— 缺失就抛
+          // "Cannot read properties of undefined"。所以这里按引用把依赖模块体
+          // 递归挂进预览用的自足 circuit，钻取子部件才能继续渲染。
+          const root = circuitJson as any;
+          const selfContained = (mod: any, seen = new Set<string>()): any => {
+            if (!mod?.devices) return mod;
+            const subs: Record<string, any> = {};
+            for (const d of Object.values<any>(mod.devices || {})) {
+              const ct = d?.type === 'Subcircuit' ? String(d.celltype || '') : '';
+              if (!ct || seen.has(ct)) continue;
+              const body = mod.subcircuits?.[ct] || root?.subcircuits?.[ct];
+              if (body?.devices) { seen.add(ct); subs[ct] = selfContained(body, seen); }
+            }
+            return { devices: mod.devices, connectors: mod.connectors ?? [], subcircuits: subs };
+          };
+          const firePreview = (model: any) => {
+            const name = String(model?.get?.('celltype') || '');
+            const body = root?.subcircuits?.[name];
+            if (body?.devices) onPreviewSubcircuitRef.current?.(selfContained(body), name);
+          };
+          paper.off('open:subcircuit');
+          paper.on('open:subcircuit', firePreview);
+          // 兜底：joint 在 pointerdown 里 preventDefault，open:subcircuit 未必
+          // 触发；用捕获阶段几何命中放大镜补一条（与沙盒展开图同一套逻辑）。
+          const paperEl: HTMLElement | undefined = paper.el || paper.$el?.[0];
+          if (paperEl) {
+            paperEl.addEventListener('click', (e: MouseEvent) => {
+              const subs = paper.model.getCells().filter((c: any) => c.get('type') === 'Subcircuit');
+              for (const c of subs) {
+                const v = c.findView(paper);
+                const za = v?.el?.querySelector?.('a.zoom');
+                if (!za) continue;
+                const r = za.getBoundingClientRect();
+                if (e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom) {
+                  firePreview(c);
+                  return;
+                }
+              }
+            }, true);
+          }
+        }
+      } catch { /* best-effort */ }
 
       // DEV-only read-only debug hook for automated smoke probes (stripped in prod builds)
       if (import.meta.env.DEV) {

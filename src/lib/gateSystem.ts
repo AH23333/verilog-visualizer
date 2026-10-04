@@ -28,7 +28,10 @@
 // 定义，所有绑定实例随之生效（编译模式 moduleBindings 语义）。
 
 import { sandboxStore, baseName, type SandboxFile } from '../store/sandboxStore';
-import { cellsToCircuitJson, circuitJsonToCells } from './subcircuitView';
+import { cellsToCircuitJson, circuitJsonToCells, constructCircuit } from './subcircuitView';
+import { serializeGraphCells } from './sandboxSerialize';
+import { normalizeIoLabels } from './verilog';
+import { io_ui } from 'yosys2digitaljs/core';
 
 /** 绑定名 → 定义文件。scope = 实例所在画布文件的文件夹（优先作用域）。 */
 export interface PartRef { file: SandboxFile; legacy: boolean; }
@@ -237,24 +240,120 @@ export function renamePartDef(id: string, newName: string): number {
 // ============ 递归复制迁移（编译结果 → 文件夹内可编辑部件）============
 
 /**
+ * 把一个编译子模块体跑一遍**编译模式渲染管线**，产出带真实坐标与连线路由的
+ * cells 快照（可直接当可编辑画布落盘）。
+ *
+ * 为什么必须走这一步（用户报告「部件和线路全部堆叠在一起」的根因）：
+ * yosys2digitaljs 的 subcircuits 是**扁平模块体**——devices 上**根本没有
+ * position**，connectors 也没有 vertices。直接 cellsToCircuitJson 落盘的话，
+ * 所有器件坐标缺失 → 全部叠在原点，连线没有路由拐点 → 既看不到布局也画不出
+ * 线路。编译模式之所以正常，是因为它 `new Circuit({layoutEngine:'elkjs'})`
+ * 让 elk 现场算坐标。部件文件是「静态存档」，必须在落盘前把这次布局**固化**。
+ *
+ * 流程与编译模式同源：normalizeIoLabels（端口名）→ new Circuit → displayOn
+ * → serializeGraphCells（拿真实 position/size）。
+ * 注意不做 io_ui 的**还原**：io_ui 会把 Input/Output 变成 Button/Lamp（只读
+ * 展示用），而部件文件要是**可编辑**电路，必须保留 Input/Output 引脚器件
+ * —— 所以布局时借 io_ui，序列化后再映射回 Input/Output。
+ * 嵌套 Subcircuit 只借布局算出自身框位，随后剥掉内联空内图（维持按名绑定）。
+ *
+ * **为什么用 dagre 而不是 elkjs**（实测坑）：digitaljs 的 elk_layout 是
+ * `elk.layout().then(from_elkjs)` —— 异步 fire-and-forget，且结果写在
+ * layoutPosition（joint 4 无 getLayoutPosition 读法）。displayOn 返回时
+ * position 仍是 {0,0}，部件落盘就**全部堆叠在原点且无连线**（用户报告）。
+ * dagre 走 DirectedGraph.layout 同步算完，返回即可用。
+ */
+function layoutModuleCells(mod: any, pool: Map<string, any>): any {
+  const cellsFallback = () => circuitJsonToCells(mod);
+  const djs = (window as any).digitaljs;
+  if (!djs || !mod?.devices) return cellsFallback();
+  try {
+    // 只带上本模块**实际引用**的子模块体：给 Subcircuit 器件真实内图，ctor
+    // 才能一次成功（不触发降级剥线），elk 也就能给所有器件算出坐标与线路拐点。
+    const subcircuits: Record<string, any> = {};
+    for (const dev of Object.values<any>(mod.devices || {})) {
+      const ct = dev?.type === 'Subcircuit' ? String(dev.celltype || '') : '';
+      if (ct && pool.has(ct) && !subcircuits[ct]) {
+        subcircuits[ct] = { devices: structuredClone(pool.get(ct).devices ?? {}), connectors: structuredClone(pool.get(ct).connectors ?? []), subcircuits: {} };
+      }
+    }
+    const view: any = {
+      devices: structuredClone(mod.devices),
+      connectors: structuredClone(mod.connectors ?? []),
+      subcircuits,
+    };
+    try { normalizeIoLabels(view); } catch { /* 端口名可选 */ }
+    // 布局前先 io_ui：把 Input/Output 变成 Button/Lamp。**elk 只对转换后的
+    // 器件正常布局** —— 实测直接布局原始 Input/Output 会 laid_out=true 但所有
+    // 坐标保持 0（elkwf 对引脚器件退化），这正是「部件全堆叠在原点」的成因。
+    // 落盘时再把 Button/Lamp/Clock 映射回 Input/Output（见 snapshotForPart），
+    // 保证部件文件仍是**可编辑的引脚电路**而非只读展示形态。
+    try { io_ui(view); } catch { /* 保留原始 IO */ }
+    // 布局引擎选择：**dagre**（同步）而非 elkjs。
+    // 实测 digitaljs 的 elk_layout 是 `elk.layout().then(from_elkjs)` —— 异步
+    // fire-and-forget，displayOn 返回时坐标尚未写回（position 仍是 {0,0}），
+    // 部件落盘就全堆在原点。dagre 走 DirectedGraph.layout 同步算完，返回即可用。
+    let circuit: any;
+    try {
+      circuit = new djs.Circuit(view, { layoutEngine: 'dagre' });
+    } catch {
+      circuit = constructCircuit(djs, view).circuit;
+    }
+    // 关键：布局在 **displayOn** 里触发（ctor 只建图）。dagre 是同步的，
+    // displayOn 返回时坐标已就绪，直接序列化即可。
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed;left:0;top:0;width:1400px;height:900px;opacity:0;pointer-events:none;z-index:-1;';
+    document.body.appendChild(host);
+    let snap: any;
+    try {
+      const paper = circuit.displayOn(host);
+      try { paper.updateViews(); } catch { /* ignore */ }
+      snap = serializeGraphCells(circuit._graph);
+      try { paper.remove(); } catch { /* ignore */ }
+    } finally {
+      host.remove();
+      try { circuit.shutdown?.(); } catch { /* ignore */ }
+    }
+    const nodes = (snap?.cells || []).filter((c: any) => !c.isLink);
+    if (!nodes.length) return cellsFallback();
+    // 后处理：①剥掉嵌套实例的内联子图（单一真源 = 各自部件文件，按 celltype
+    // 绑定；保留 position/size —— 布局算出的框位决定观感）；②把布局用的
+    // Button/Lamp/Clock 还原成可编辑的 Input/Output 引脚器件。
+    for (const c of snap.cells) {
+      if (c?.type === 'Subcircuit') { delete c.subcircuitGraph; continue; }
+      // io_ui 方向反推：Button/Clock 是输入引脚，Lamp 是输出引脚
+      if (c?.type === 'Button' || c?.type === 'Clock') c.type = 'Input';
+      else if (c?.type === 'Lamp') c.type = 'Output';
+    }
+    return snap;
+  } catch {
+    return cellsFallback();
+  }
+}
+
+/**
  * 把编译结果 circuitJson 里的全部子级模块**递归复制**为 folder 下的可编辑
  * .djs 部件文件（cells 格式，子级嵌套仍按 celltype 绑定到各自文件）。
- * 逐字保留编译产物的位置（elk 布局），打开即可编辑。
+ * 每个子模块都跑一遍 elk 布局固化坐标与连线路由（见 layoutModuleCells）。
  * 返回入库的部件数。
  */
 export function collectToFolder(circuitJson: any, folder: string): number {
-  let n = 0;
-  const harvest = (mod: any, seen = new Set<object>()) => {
+  // yosys2digitaljs 的 subcircuits 是**扁平**模块表（子模块的 subcircuits 多为
+  // 空），布局时要用到「按名字找任意模块」的能力 —— 先把整棵树收进名字池。
+  const pool = new Map<string, any>();
+  const index = (mod: any, seen = new Set<object>()) => {
     if (!mod || seen.has(mod)) return;
     seen.add(mod);
     for (const [name, sub] of Object.entries<any>(mod.subcircuits || {})) {
-      if (!sub?.devices) continue;
-      savePartFile(name, circuitJsonToCells(sub), folder);
-      n++;
-      harvest(sub, seen);
+      if (sub?.devices) { if (!pool.has(name)) pool.set(name, sub); index(sub, seen); }
     }
   };
-  harvest(circuitJson);
+  index(circuitJson);
+  let n = 0;
+  for (const [name, sub] of pool) {
+    savePartFile(name, layoutModuleCells(sub, pool), folder);
+    n++;
+  }
   return n;
 }
 

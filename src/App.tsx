@@ -2,6 +2,7 @@
 import Canvas from './components/Canvas';
 import type { CanvasHandle } from './components/Canvas';
 import SandboxCanvas from './components/SandboxCanvas';
+import SandboxExpandModal from './components/SandboxExpandModal';
 import SettingsPanel from './components/SettingsPanel';
 import MenuBar from './components/MenuBar';
 import Sidebar from './components/Sidebar';
@@ -116,6 +117,16 @@ export default function App() {
 
   // Hierarchy drill-down: path of module names currently displayed ([] = top).
   const [viewPath, setViewPath] = useState<string[]>([]);
+  // R40 子部件「快捷查看展开图」（编译模式）：只读预览，可逐层钻取，不提供
+  // 拖动 / 开关交互。拦截 digitaljs 内置 open:subcircuit 弹窗后由它接管。
+  const [previewSub, setPreviewSub] = useState<{ circuit: any; name: string } | null>(null);
+  // Esc 关闭只读预览（沙盒侧由 SandboxCanvas 的全局 Esc 处理，编译模式在这里补）
+  useEffect(() => {
+    if (!previewSub) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setPreviewSub(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [previewSub]);
 
   // Waveform panel
   const [waveOpen, setWaveOpen] = useState(false);
@@ -1549,6 +1560,7 @@ export default function App() {
                           onSourceJump={handleSourceJump}
                           onReady={handleCanvasReady}
                           onTick={(t) => setDebugTick(t)}
+                          onPreviewSubcircuit={(cj, nm) => setPreviewSub({ circuit: cj, name: nm })}
                         />
                       ) : (
                         <div style={{
@@ -1590,6 +1602,7 @@ export default function App() {
                     onSourceJump={handleSourceJump}
                     onReady={handleCanvasReady}
                     onTick={(t) => setDebugTick(t)}
+                    onPreviewSubcircuit={(cj, nm) => setPreviewSub({ circuit: cj, name: nm })}
                   />
                 );
               }
@@ -1625,6 +1638,18 @@ export default function App() {
               getSample={waveGetSample}
               resetKey={String(waveEpoch)}
               onClose={() => setWaveOpen(false)}
+            />
+          )}
+
+          {/* R40 子部件「快捷查看展开图」（编译模式）：只读预览，可逐层钻取。
+              拦截了 digitaljs 内置的 open:subcircuit 弹窗（可拖动/可点开关）。 */}
+          {previewSub && (
+            <SandboxExpandModal
+              cell={null}
+              initialCircuit={previewSub.circuit}
+              initialName={previewSub.name}
+              theme={theme}
+              onClose={() => setPreviewSub(null)}
             />
           )}
 

@@ -3059,6 +3059,12 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
                 onFolderContextMenu={handleFolderCtx}
                 onRootContextMenu={handleRootCtx}
                 onMoveFiles={handleMoveFiles}
+                onMoveFolder={(path, newPath) => {
+                  sandboxStore.moveFolder(path, newPath);
+                  if (activeFile?.id) setActiveFile(sandboxStore.get(activeFile.id));
+                  syncAfterFsOp();
+                  showToast(`已移动文件夹 ${path} → ${newPath}`);
+                }}
                 onRenameCommit={(t, name) => t.kind === 'file'
                   ? handleFileRenameCommit(t, name)
                   : handleFolderRenameCommit(t, name)}

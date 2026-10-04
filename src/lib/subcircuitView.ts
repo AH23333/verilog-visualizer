@@ -326,6 +326,11 @@ export function renderCircuitView(
   (window as any).__expandStages = stages;
   mark('entry');
   const json = structuredClone(circuitJson);
+  // 防御性归一化：yosys2digitaljs 的子模块体可能只有 {devices, connectors}，
+  // 缺 connectors/subcircuits；下游 io_ui / digitaljs ctor 会直接读
+  // `json.subcircuits[x].devices` 而抛 "Cannot read properties of undefined"。
+  if (!Array.isArray(json.connectors)) json.connectors = [];
+  if (!json.subcircuits || typeof json.subcircuits !== 'object') json.subcircuits = {};
   mark('clone');
   // 与 buildViewJson 完全一致的三步后处理 —— IO 变 Button/Lamp、标签换成端口名
   try { io_ui(json); } catch { /* keep raw IO */ }

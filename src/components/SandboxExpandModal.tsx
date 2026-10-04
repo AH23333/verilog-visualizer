@@ -26,22 +26,35 @@
 // 摘掉，第一次卸载后 host 已脱离文档 —— 所以 host 内部再套一层 mount 节点。
 
 import { useEffect, useRef, useState } from 'react';
-import { renderSubcircuitView, shouldAutoLayout, type SubcircuitViewHandle } from '../lib/subcircuitView';
+import {
+  renderSubcircuitView, renderCircuitView, shouldAutoLayout, shouldAutoLayoutCircuit,
+  type SubcircuitViewHandle,
+} from '../lib/subcircuitView';
 import { resolveDefCells } from '../lib/gateSystem';
 import { serializeGraphCells } from '../lib/sandboxSerialize';
 
-type StackEntry = { kind: 'def'; name: string } | { kind: 'inline'; cells: any };
+type StackEntry =
+  | { kind: 'def'; name: string }
+  | { kind: 'inline'; cells: any }
+  | { kind: 'circuit'; name: string; circuit: any };
 
-export default function SandboxExpandModal({ cell, theme, scope = '', onClose }: {
-  cell: any; theme: 'dark' | 'light'; scope?: string; onClose: () => void;
+export default function SandboxExpandModal({ cell, theme, scope = '', initialCircuit, initialName = '', onClose }: {
+  cell: any; theme: 'dark' | 'light'; scope?: string;
+  /** 编译模式传入：子模块的编译格式电路体（自带 subcircuits，可继续钻取）。 */
+  initialCircuit?: any; initialName?: string;
+  onClose: () => void;
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const styleElRef = useRef<HTMLStyleElement | null>(null);
   const gateName = String(cell?.get?.('celltype') || '');
   const initialInline = (() => { try { return cell.get('subcircuitGraph'); } catch { return null; } })();
 
-  // 钻取栈：栈底是 cell 本身（按 celltype 解析部件文件，或旧档内嵌快照），
-  // 钻入的子部件压栈。两种形态覆盖 R39 绑定式与旧档内嵌式。
+  // 钻取栈：栈底是初始对象，钻入的子部件压栈。
+  //  - circuit：编译模式（编译格式电路体，钻取走自带 subcircuits）
+  //  - def：沙盒部件文件（cells，按名绑定）
+  //  - inline：旧档内嵌快照（兜底）
   const [stack, setStack] = useState<StackEntry[]>(() => {
+    if (initialCircuit?.devices) return [{ kind: 'circuit', name: initialName || '子部件', circuit: initialCircuit }];
     if (gateName) return [{ kind: 'def', name: gateName }];
     if (initialInline?.cells?.length) return [{ kind: 'inline', cells: initialInline }];
     return [];
@@ -52,6 +65,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', onClose }:
   // 手绘图（位置缺失）自动整理。挂载时按栈底内容判定一次。
   const [autoLayout, setAutoLayout] = useState<boolean>(() => {
     try {
+      if (initialCircuit?.devices) return shouldAutoLayoutCircuit(initialCircuit);
       if (gateName) { const c = resolveDefCells(gateName, scope); if (c) return shouldAutoLayout(c); }
       return shouldAutoLayout(initialInline?.cells?.length ? initialInline : null);
     } catch { return true; }
@@ -62,10 +76,16 @@ export default function SandboxExpandModal({ cell, theme, scope = '', onClose }:
   const [skippedDevs, setSkippedDevs] = useState(0);
   const [source, setSource] = useState<'def' | 'inline'>('def');
 
-  // 下钻到某个 Subcircuit：优先按 celltype 解析部件文件（R39 绑定式），
-  // 否则回退到该实例的内嵌子图（旧档内嵌式）。
+  // 下钻到某个 Subcircuit。按当前栈顶形态依次尝试：
+  //  1) 编译模式：栈顶 circuit 自带 subcircuits[name] → 直接压栈（自足层级）；
+  //  2) 沙盒：按 celltype 解析部件文件（绑定式）；
+  //  3) 兜底：该实例的内嵌子图（旧档内嵌式）。
   const drillInto = (subCell: any) => {
     const name = String(subCell.get?.('celltype') || '');
+    if (name && top?.kind === 'circuit') {
+      const body = top.circuit?.subcircuits?.[name];
+      if (body?.devices) { setStack(s => [...s, { kind: 'circuit', name, circuit: body }]); return; }
+    }
     if (name && resolveDefCells(name, scope)) { setStack(s => [...s, { kind: 'def', name }]); return; }
     const g = subCell.get?.('graph');
     if (g?.getCells?.()?.length) {
@@ -99,9 +119,14 @@ export default function SandboxExpandModal({ cell, theme, scope = '', onClose }:
       host.appendChild(mount);
       mountEl = mount;
       try {
-        // 渲染栈顶：def 名 → 解析部件文件（自足 cells）→ 反向转换走编译渲染管线；
-        // inline → 旧档内嵌快照同样走该管线（兜底）
-        if (top?.kind === 'def') {
+        // 渲染栈顶：circuit（编译格式，编译模式）→ renderCircuitView 直渲；
+        // def（沙盒部件文件，自足 cells）→ 反向转换走同一编译渲染管线；
+        // inline（旧档内嵌快照）→ 同一管线兜底
+        if (top?.kind === 'circuit') {
+          setSource('def');
+          handle = renderCircuitView(digitaljs, mount, top.circuit, { autoLayout });
+          if (!handle) setFailMsg(`部件「${top.name}」没有可渲染的器件`);
+        } else if (top?.kind === 'def') {
           const defCells = resolveDefCells(top.name, scope);
           if (defCells) { setSource('def'); handle = renderSubcircuitView(digitaljs, mount, defCells, { autoLayout }); }
           else { setSource('inline'); setFailMsg(`部件定义「${top.name}」不存在或已删除`); }
@@ -113,7 +138,30 @@ export default function SandboxExpandModal({ cell, theme, scope = '', onClose }:
         curHandle = handle;
         setSkipped(handle.skippedWires);
         setSkippedDevs(handle.skippedDevices ?? 0);
-        handle.paper.setInteractivity(false);
+        // R40 只读化（用户要求：展开图不需要组件拖动和开关交互，只保留点击
+        // 继续钻取）。digitaljs 的开关是 `click .btnface` 的 **jQuery 委托**
+        // （cells/io.mjs），会绕过 joint 的 setInteractivity —— 所以除了
+        // setInteractivity(false)，还要对 .btnface 单独断 pointer-events。
+        // 不用整层 pointer-events:none：那会把子电路的放大镜 a.zoom 也一起
+        // 打死，导致「点击继续钻取」失效。
+        try { handle.paper.setInteractivity(false); } catch { /* ignore */ }
+        try { handle.paper.fixed?.(true); } catch { /* ignore */ }
+        try {
+          for (const el of handle.paper.model.getElements()) {
+            try { el.set('draggable', false); } catch { /* ignore */ }
+            try { el.attr('interactive', false); } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
+        // 屏蔽开关点击面（Button/Lamp/Clock 的 .btnface）
+        // joint 重绘会重建 SVG 子元素并重置 inline style，所以不能只在渲染后
+        // 改一次 —— 注入一条 scoped CSS 规则，由样式表持续约束，稳。
+        if (!styleElRef.current) {
+          const st = document.createElement('style');
+          st.setAttribute('data-ro-part', '1');
+          st.textContent = '[data-inner-host] .btnface{pointer-events:none !important}';
+          document.head.appendChild(st);
+          styleElRef.current = st;
+        }
         // R38：几何命中放大镜 → 下钻，不依赖 digitaljs 交互态（弹窗保持只读）
         clickHandler = (ev: MouseEvent) => {
           const ip = curHandle?.paper; if (!ip) return;
@@ -168,7 +216,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', onClose }:
     };
   }, [stack, theme, autoLayout, scope]);
 
-  const crumbLabel = (s: StackEntry) => (s.kind === 'def' ? s.name : '内嵌子电路');
+  const crumbLabel = (s: StackEntry) => (s.kind === 'inline' ? '内嵌子电路' : s.name);
 
   return (
     <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
