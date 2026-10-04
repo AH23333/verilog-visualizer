@@ -44,7 +44,8 @@ export function cellsToCircuitJson(json: { cells?: AnyCell[] } | null | undefine
   let subSeq = 0;
   let wireSeq = 0;
   for (const c of json?.cells || []) {
-    if (c.isLink) {
+    // 兼容旧格式：有 source+target 的是 wire
+    if (c.isLink || (c.source && c.target && c.source.id && c.target.id)) {
       connectors.push({
         from: { id: c.source?.id, port: c.source?.port },
         to: { id: c.target?.id, port: c.target?.port },

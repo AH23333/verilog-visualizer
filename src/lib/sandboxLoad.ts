@@ -38,7 +38,8 @@ export function loadCells(
   const mapId = (id: any) => (idMap && id != null && idMap.has(String(id))) ? idMap.get(String(id)) : id;
   const cellMap = new Map<string, any>();
   for (const c of saved.cells || []) {
-    if (c.isLink) continue;
+    // 兼容旧格式：有 source+target 的是 wire，跳过
+    if (c.isLink || (c.source && c.target && c.source.id && c.target.id)) continue;
     const pos = c.position || { x: 50, y: 50 };
     const px = (pos.x || 50) + dx;
     const py = (pos.y || 50) + dy;
@@ -108,7 +109,9 @@ export function loadCells(
   }
   let wireTotal = 0, wireSkipNoSrc = 0, wireSkipNoTgt = 0, wireOk = 0;
   for (const c of saved.cells || []) {
-    if (!c.isLink) continue;
+    // 兼容旧格式：isLink 标记缺失但有 source+target 的也当 wire 处理
+    const isWire = c.isLink || (c.source && c.target && c.source.id && c.target.id);
+    if (!isWire) continue;
     wireTotal++;
     try {
       const srcCell = cellMap.get(mapId(c.source?.id));
