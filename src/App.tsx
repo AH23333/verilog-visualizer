@@ -1180,7 +1180,9 @@ export default function App() {
               <ActivityButton key={key} icon={meta.icon} label={meta.label} dataKey={key}
                 active={cur === key && !sidebarCollapsed}
                 onClick={() => {
-                  if (cur === key && !sidebarCollapsed) { setSidebarCollapsed(true); }
+                  // 沙盒模式下禁用「点当前面板=收起侧栏」——收起会连带 palette/右键目标
+                  // 全部消失（用户实测问题 3/4/5 的连锁根因），面板切换照常。
+                  if (cur === key && !sidebarCollapsed && viewMode !== 'sandbox') { setSidebarCollapsed(true); }
                   else {
                     if (viewMode === 'sandbox') setSandboxPanel(key); else setLeftPanel(key);
                     setSidebarCollapsed(false);

@@ -2458,6 +2458,27 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       try { ckt.shutdown?.(); } catch { /* ignore */ }
       const Graph = (paper.model as any).constructor;
       const inner = buildInnerGraph(digitaljs, Graph, cellsSnap, paper.model._display3vl);
+      // R40 修复「found id duplicities in ports」：digitaljs 的 Subcircuit.initialize
+      // 用 IO cell 的 `net` 属性作为 port id（subcircuit.mjs L50/L53）—— 门定义里两个
+      // 引脚同名（默认都未命名）时 ports id 重复，放置直接失败。这里在构建 inner 后
+      // 对 IO 引脚做唯一化命名（in1/in2…、out1/out2…）。
+      try {
+        const ioCells = inner.getCells().filter((c: any) => ['Input', 'Output'].includes(c.get('type')));
+        const used = new Set<string>();
+        let inN = 0, outN = 0;
+        for (const c of ioCells) {
+          const isInput = c.get('type') === 'Input';
+          let net = String(c.get('net') || '').trim();
+          if (!net || used.has(net)) {
+            net = (isInput ? `in${++inN}` : `out${++outN}`);
+            while (used.has(net)) net += '_';
+            c.set('net', net);
+            // 同步 ioname（digitaljs IO cell 的显示/端口名来源）
+            try { c.attr('ioname/text', net); c.set('ioname', net); } catch { /* older builds */ }
+          }
+          used.add(net);
+        }
+      } catch { /* best effort — dedup is defensive */ }
       const sub = new digitaljs.cells.Subcircuit({
         type: 'Subcircuit',
         graph: inner,
