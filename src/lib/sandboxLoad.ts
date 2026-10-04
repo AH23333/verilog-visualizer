@@ -135,5 +135,5 @@ export function loadCells(
       wireOk++;
     } catch { /* skip broken link */ }
   }
-  console.log('[loadCells] wire stats:', { wireTotal, wireOk, wireSkipNoSrc, wireSkipNoTgt, cellsInMap: cellMap.size, sampleCellIds: [...cellMap.keys()].slice(0,3), sampleWireSrc: saved.cells.filter(c=>c.isLink).slice(0,3).map(c=>c.source?.id) });
+  console.log('[loadCells] wire stats:', { wireTotal, wireOk, wireSkipNoSrc, wireSkipNoTgt, cellsInMap: cellMap.size, sampleCellIds: [...cellMap.keys()].slice(0,3), sampleWireSrc: saved.cells.filter((c:any)=>c.isLink).slice(0,3).map((c:any)=>c.source?.id) });
 }
