@@ -198,17 +198,38 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
             handle!.paper.scaleContentToFit({ padding: 24, maxScale: 3, minScale: 0.1 });
           } catch { /* ignore */ }
         });
-        // 滚轮缩放（ctrl+wheel）+ 右键平移，与主画布一致
+        // 交互：ctrl+wheel=缩放（以光标为中心），wheel=垂直平移，shift+wheel=水平平移
         try {
           const pw = handle.paper;
+          // 开启 paper 滚动条
+          try { pw.options.scroll = true; } catch {}
           const onWheel = (ev: WheelEvent) => {
-            if (!ev.ctrlKey && !ev.metaKey) return;
             ev.preventDefault();
             ev.stopPropagation();
-            const cur = pw.scale();
-            const factor = ev.deltaY < 0 ? 1.1 : 1/1.1;
-            const ns = Math.max(0.1, Math.min(5, cur.sx * factor));
-            pw.scale(ns, ns);
+            if (ev.ctrlKey || ev.metaKey) {
+              // 缩放
+              const cur = pw.scale();
+              const factor = ev.deltaY < 0 ? 1.1 : 1/1.1;
+              const ns = Math.max(0.1, Math.min(5, cur.sx * factor));
+              // 以光标为中心缩放
+              const rect = mount.getBoundingClientRect();
+              const cx = ev.clientX - rect.left;
+              const cy = ev.clientY - rect.top;
+              const t = pw.translate();
+              pw.translate(
+                t.tx + cx - (cx - t.tx) * (ns / cur.sx),
+                t.ty + cy - (cy - t.ty) * (ns / cur.sy),
+              );
+              pw.scale(ns, ns);
+            } else if (ev.shiftKey) {
+              // 水平平移
+              const t = pw.translate();
+              pw.translate(t.tx - ev.deltaX, t.ty);
+            } else {
+              // 垂直平移
+              const t = pw.translate();
+              pw.translate(t.tx, t.ty - ev.deltaY);
+            }
           };
           mount.addEventListener('wheel', onWheel, { passive: false });
         } catch { /* ignore */ }
