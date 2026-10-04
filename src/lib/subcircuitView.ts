@@ -351,6 +351,10 @@ export function renderCircuitView(
   const paper = circuit.displayOn(mount);
   mark('displayOn-done');
   mergeWireVertices(paper);
+  // 诊断：打印渲染结果（开发期定位「只渲染器件不渲染连线」用）
+  const linkCount = paper.model.getLinks().length;
+  const elementCount = paper.model.getElements().length;
+  console.log(`[renderCircuitView] devices=${Object.keys(json.devices).length} connectors=${json.connectors.length} rendered_elements=${elementCount} rendered_links=${linkCount} skippedWires=${skippedWires} skippedDevices=${skippedDevices}`);
   mark('done');
   // R35：digitaljs 的 cell 构造把 label 文本硬设为器件 id（dev0/dev13…），
   // JSON 里的 label 不生效 —— 编译视图（Canvas.tsx）在 displayOn 后对 IO/总线

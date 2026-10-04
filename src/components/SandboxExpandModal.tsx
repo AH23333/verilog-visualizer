@@ -187,7 +187,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
             requestAnimationFrame(() => {
               try {
                 handle!.paper.setDimensions(host.clientWidth || 720, host.clientHeight || 420);
-                handle!.paper.scaleContentToFit({ padding: 24, maxScale: 1.6, minScale: 0.3 });
+                handle!.paper.scaleContentToFit({ padding: 24, maxScale: 3, minScale: 0.1 });
               } catch { /* ignore */ }
             });
           }
@@ -195,9 +195,23 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
         requestAnimationFrame(() => {
           try {
             handle!.paper.setDimensions(host.clientWidth || 720, host.clientHeight || 420);
-            handle!.paper.scaleContentToFit({ padding: 24, maxScale: 1.6, minScale: 0.3 });
+            handle!.paper.scaleContentToFit({ padding: 24, maxScale: 3, minScale: 0.1 });
           } catch { /* ignore */ }
         });
+        // 滚轮缩放（ctrl+wheel）+ 右键平移，与主画布一致
+        try {
+          const pw = handle.paper;
+          const onWheel = (ev: WheelEvent) => {
+            if (!ev.ctrlKey && !ev.metaKey) return;
+            ev.preventDefault();
+            ev.stopPropagation();
+            const cur = pw.scale();
+            const factor = ev.deltaY < 0 ? 1.1 : 1/1.1;
+            const ns = Math.max(0.1, Math.min(5, cur.sx * factor));
+            pw.scale(ns, ns);
+          };
+          mount.addEventListener('wheel', onWheel, { passive: false });
+        } catch { /* ignore */ }
       } catch (e) {
         console.warn('[内部电路] 渲染失败:', e);
         setFailMsg(String((e as Error)?.message || e));
