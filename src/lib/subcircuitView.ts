@@ -396,6 +396,11 @@ export function constructCircuit(digitaljs: any, json: any): {
   try {
     return { circuit: new digitaljs.Circuit(json, { layoutEngine: 'elkjs' }), skippedWires, skippedDevices };
   } catch (e) {
+    console.error('[constructCircuit] 正常路径失败，进入降级:', e);
+    console.error('[constructCircuit] 失败的 json keys:', Object.keys(json.devices || {}), 'connectors:', (json.connectors || []).length);
+    for (const conn of json.connectors || []) {
+      console.error('[constructCircuit] connector:', JSON.stringify(conn));
+    }
     // 降级 1：器件级净化（类型未知/构造即炸的器件剔除；嵌套模块后序净化）
     try {
       const GraphCtor = new digitaljs.Circuit({ devices: {}, connectors: [] })._graph.constructor;
