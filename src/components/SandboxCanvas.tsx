@@ -24,6 +24,16 @@ function buildInnerGraph(digitaljs: any, Graph: any, json: any, display3vl?: any
   inner.set('subcircuit', true);
   const innerMap = new Map<string, any>();
   let wn = 0;
+  // (R14b) Detect missing/identical positions → auto-grid-layout so all cells don't
+  // stack at (50,50). Happens when a gate was saved without positions (e.g. old saves).
+  const nodes = (json?.cells || []).filter((c: any) => !c.isLink);
+  const xs = new Set(nodes.map((c: any) => Math.round(c.position?.x ?? 50)));
+  const needAutoLayout = xs.size < Math.min(nodes.length, 3);
+  nodes.forEach((c: any, i: number) => {
+    if (needAutoLayout && !c.position) {
+      c.position = { x: 80 + (i % 6) * 80, y: 60 + Math.floor(i / 6) * 60 };
+    }
+  });
   for (const cc of json?.cells || []) {
     if (cc.isLink) continue;
     const C = digitaljs.cells?.[cc.type];
