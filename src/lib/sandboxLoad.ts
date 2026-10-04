@@ -31,6 +31,8 @@ export function loadCells(
   opts: LoadCellsOptions = {},
 ) {
   const saved = JSON.parse(json);
+  const wireCells = (saved.cells || []).filter((c: any) => c.isLink);
+  console.log('[loadCells] saved cells total:', (saved.cells||[]).length, 'isLink=true:', wireCells.length, 'sample wire:', wireCells[0], 'sample non-link type:', (saved.cells||[]).find((c:any)=>!c.isLink)?.type);
   const Graph = (paper.model as any).constructor;
   const { idMap, dx = 0, dy = 0, scope = '' } = opts;
   const mapId = (id: any) => (idMap && id != null && idMap.has(String(id))) ? idMap.get(String(id)) : id;

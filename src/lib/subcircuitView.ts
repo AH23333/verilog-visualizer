@@ -439,10 +439,13 @@ export function constructCircuit(digitaljs: any, json: any): {
     } catch { /* 净化失败则交给下一步 */ }
     // 降级 2：剥掉全层级连线重建 —— 嵌套模块的坏线在器件构造期就炸，
     // 只剥顶层是不够的（这正是「渲染失败」的根因）
-    const strip = (m: any): any => ({
-      devices: m.devices, connectors: [],
-      subcircuits: Object.fromEntries(Object.entries(m.subcircuits || {}).map(([k, v]: [string, any]) => [k, strip(v)])),
-    });
+    const strip = (m: any): any => {
+      if (!m || typeof m !== 'object') return { devices: {}, connectors: [], subcircuits: {} };
+      return {
+        devices: m.devices || {}, connectors: [],
+        subcircuits: Object.fromEntries(Object.entries(m.subcircuits || {}).map(([k, v]: [string, any]) => [k, strip(v)])),
+      };
+    };
     let circuit: any;
     try {
       circuit = new digitaljs.Circuit(strip(json), { layoutEngine: 'elkjs' });
