@@ -1534,4 +1534,38 @@ R113 给 `tests/_ui.cjs` 的 `menuClick` 加固时（防「命中上一次残留
   新格 `r114-const-fold-gate` 首跑即 11/11 绿；qc-preview 族走 ensureFreshDist 自动重编判绿。
 - 专项闸门 11/11 + 一次性真机取证 5/5（真实 Edge/浏览器 bundle/设置往返）双轨全绿。
 - tsc 0 错；临时探针与一次性取证脚本已全部自行清理。
+---
+
+## 卷十七（2026-10-08）：R115 两模式左栏视觉统一 + 调试条胶囊（R99 项4/5 收官）
+
+### ① 取证先行（R99 项4 点名要截图 diff）
+
+- 一次性取证脚本对两模式三面板（文件/模块/部件/层次）左栏做 getComputedStyle 并排读数 + 截图。
+- 抓到三处分叉：容器外沿 `--border` vs `--border-subtle`；默认宽 240 vs 200（拖拽区间 180–500 vs 160–420）；
+  ModulePanel/HierarchyViewer 头自成一套（8px padding / fs-sm·fs-md / 0.6px·0.05em / --border-subtle）**且头文本英文残留**（Modules/Hierarchy）。
+
+### ② 闸门抓出的真 bug（本卷核心）
+
+- IDE「文件」头实测 16px 而沙盒同名头 11px。根因：**Tailwind 对 `text-[var(--fs-xs)]` 这类任意值
+  无法判定 color/length，规则根本不生成**（@tailwindcss/vite v4 同样受此约束）——字号静默回落到继承值。
+- R101 注释宣称的「与编译模式 Sidebar 同一套」只对了字重字距，字号一直悬空。修复＝`text-[length:var(--fs-xs)]` 显式类型。
+- **同类死类登记另批**（本批不动，全量字号漂移需专门视觉审计）：`text-[var(--fs-*)]` 在 App/WaveformPanel/
+  ConfirmDialog/ShortcutsHelpDialog/ExamplesDialog/PromptDialog 共 26 处。
+
+### ③ 对齐落地（六组头 css 全等 + 容器同款）
+
+- 标杆＝R101 那套（padding 10/14、--fs-xs、fw600、0.08em、--border 下沿）；ModulePanel/HierarchyViewer 头改 inline 同款并中文化（模块/层次结构）；
+  沙盒侧栏外沿 --border-subtle→--border、默认宽 240、拖拽区间 180–500（与 App.sidebarWidth 同参数）；
+  沙盒标题 span 补 textTransform:uppercase（中文不可见，但让「同一套」可被断言）。
+- R115b：沙盒调试条容器改编译侧同款胶囊（padding 4/10、bg --surface、border --border、radius-md），
+  速度滑条两侧同宽 90px；data-sandbox-debug-bar 与 title 锚点原样保留（r11/r44/r53/r62/r76 依赖）。
+- r32 宽度断言按新设计意图同步（200/160 → 240/180，收紧非放宽）。
+
+### ④ 证据链
+
+- 新闸门 `tests/r115-sidebar-align-gate.cjs` **9/9**：六组头 css 全等 / 头文本无英文残留（防回潮）/ 两模式外沿一致 /
+  默认宽一致 / 编译侧胶囊↔沙盒调试条互比（含真编译夹具 adder.v+full_adder.v）/ 滑条同宽 / 全程无页面异常。
+  判据全部 computed-style 互比，不硬编码主题色值（换主题不碎）。
+- 全量 63 格：RED=0 ENVRED=0 GREEN=63 NOVERDICT=0（`tests/.out-run-all-r115.txt`）。tsc 0 错。
+- 一次性取证/诊断脚本与截图全部自清。
 

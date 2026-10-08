@@ -61,6 +61,7 @@
 | Problems 页签 | 编译错误跳行 |
 | 命令面板 | Ctrl+Shift+P |
 | Onboarding 首启引导 | 首次打开弹窗引导 |
+| 左栏视觉统一（R115） | 两模式三面板头共用一套令牌（10/14 padding、`--fs-xs`+0.08em、`--border` 外沿、默认宽 240、区间 180–500）；IDE 面板头中文化收口（Modules→模块 / Hierarchy→层次结构）；Tailwind `text-[var(--fs-xs)]` 死类改 `text-[length:]` 真修 |
 
 ---
 
