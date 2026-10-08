@@ -12,6 +12,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1489;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1489)); } catch { }
+const UI = require('./_ui.cjs');
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -37,7 +39,9 @@ const clickMenuItem = (page, prefix) => page.evaluate((p) => {
   return true;
 }, prefix);
 /** 菜单里的内联输入框：全选清空 → 输入 + 回车（输入项不是 button，须直接聚焦 input）
- *  placeholder 用于在多个输入项的菜单里精确定位（如「新建文件/新建文件夹」同菜单） */
+ *  placeholder 用于在多个输入项的菜单里精确定位（如「新建文件/新建文件夹」同菜单）
+ *  ⚠ R101 起沙盒的「新建 / 重命名」改成**弹窗**（照抄编译模式），菜单里不再有内联输入，
+ *    所以新增下面的 commitDialog；这条老函数保留只是为了兼容仍在用内联输入的其它菜单。 */
 const commitMenuInput = async (page, text, placeholder) => {
   await page.evaluate((ph) => {
     const menus = Array.from(document.querySelectorAll('div'))
@@ -51,6 +55,19 @@ const commitMenuInput = async (page, text, placeholder) => {
   await page.keyboard.press('ControlOrMeta+a'); await sleep(80);
   await page.keyboard.type(text); await sleep(120);
   await page.keyboard.press('Enter'); await sleep(500);
+};
+/** R101：点菜单项后弹出的 PromptDialog —— 全选清空 → 输入 → 回车（Enter 即提交） */
+const commitDialog = async (page, text, expectTitle) => {
+  const dlg = page.locator('[role="dialog"]').last();
+  await dlg.waitFor({ timeout: 6000 });
+  if (expectTitle) {
+    const t = (await dlg.textContent().catch(() => '')) || '';
+    if (!t.includes(expectTitle)) console.log('    ⚠ 弹窗标题不含「' + expectTitle + '」:', t.slice(0, 60));
+  }
+  await dlg.locator('input').first().click();
+  await page.keyboard.press('ControlOrMeta+a'); await sleep(80);
+  await page.keyboard.type(text); await sleep(120);
+  await page.keyboard.press('Enter'); await sleep(600);
 };
 const expandAllGroups = async (page) => {
   await clickActivity(page, 'modules'); await sleep(400);
@@ -77,9 +94,10 @@ const expandAllGroups = async (page) => {
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
 
     await clickActivity(page, 'sandbox'); await sleep(900);
-    await page.locator('button[title="新建文件"]').first().click(); await sleep(900);
+    await UI.newSandboxFile(page);
     await expandAllGroups(page);
     for (const t of ['Input', 'Output', 'And']) {
+      await require('./_ui.cjs').ensurePalette(page);
       await page.locator(`button[data-gate="${t}"]`).first().click(); await sleep(320);
     }
     // 保存为自定义门 G1
@@ -135,15 +153,17 @@ const expandAllGroups = async (page) => {
       await page.locator('button[title="关闭"]').first().click(); await sleep(400);
     }
 
-    // [3] 切到文件面板 → 右键文件树空白处 → 新建文件 / 新建文件夹（菜单内联输入）
+    // [3] 切到文件面板 → 右键文件树空白处 → 新建文件 / 新建文件夹（R101：点菜单项后**弹窗**填写）
     await page.locator('button[data-activity="files"]').first().click(); await sleep(600);
     const treeBox = await page.locator('[data-sandbox-filetree]').boundingBox();
     if (!treeBox) { bad('[3] 未找到文件树容器'); }
     else {
       await page.mouse.click(treeBox.x + treeBox.width / 2, treeBox.y + treeBox.height - 14, { button: 'right' }); await sleep(450);
-      await commitMenuInput(page, 'alpha.djs', '新文件名.djs');
+      await clickMenuItem(page, '新建文件'); await sleep(400);
+      await commitDialog(page, 'alpha.djs', '新建文件');
       await page.mouse.click(treeBox.x + treeBox.width / 2, treeBox.y + treeBox.height - 14, { button: 'right' }); await sleep(450);
-      await commitMenuInput(page, '项目A', '文件夹名');
+      await clickMenuItem(page, '新建文件夹'); await sleep(400);
+      await commitDialog(page, '项目A', '新建文件夹');
     }
     const t3 = await page.evaluate(() => {
       const fs = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
@@ -155,9 +175,10 @@ const expandAllGroups = async (page) => {
       ? ok('[3] 右键新建文件 / 新建文件夹')
       : bad('[3] 新建异常', JSON.stringify(t3));
 
-    // [4] 重命名（右键菜单内联输入）+ 创建副本
+    // [4] 重命名（R101：菜单项就叫「重命名」，点了弹窗填）+ 创建副本
     await page.locator('[data-sbfile="alpha.djs"]').first().click({ button: 'right' }); await sleep(450);
-    await commitMenuInput(page, 'beta.djs');
+    await clickMenuItem(page, '重命名'); await sleep(400);
+    await commitDialog(page, 'beta.djs', '重命名文件');
     await page.locator('[data-sbfile="beta.djs"]').first().click({ button: 'right' }); await sleep(450);
     await clickMenuItem(page, '创建副本'); await sleep(600);
     const t4 = await page.evaluate(() => {
@@ -188,18 +209,27 @@ const expandAllGroups = async (page) => {
       ? ok('[5] 复制粘贴到文件夹 + 拖拽移动')
       : bad('[5] 粘贴/拖拽异常', JSON.stringify(t5));
 
-    // [6a] 批量删除：ctrl+多选 beta 副本与 alpha（项目A 内），右键删除
-    // 简化：直接右键「项目A」文件夹删除（文件移至根目录）→ 再右键文件删除
+    // [6a] 删除文件夹（R101 照抄编译模式）：右键 → 弹确认框（须说明"会一并删除内部文件"）
+    //      → 确认后文件夹与其下文件**一起消失**（旧实现是"文件移回根目录"）
     await page.locator('[data-sbfolder="项目A"]').first().click({ button: 'right' }); await sleep(450);
-    await clickMenuItem(page, '删除文件夹'); await sleep(500);
+    await clickMenuItem(page, '删除文件夹'); await sleep(600);
+    // ⚠ ConfirmDialog 的 role 是 **alertdialog**（PromptDialog 才是 dialog），两个都要选
+    const dlg6 = page.locator('[role="alertdialog"], [role="dialog"]').last();
+    let confirmText = '';
+    try {
+      await dlg6.waitFor({ timeout: 5000 });
+      confirmText = (await dlg6.textContent().catch(() => '')) || '';
+      await dlg6.locator('button:has-text("删除")').first().click(); await sleep(700);
+    } catch (e) { console.log('    删除确认弹窗没出来:', String(e).slice(0, 100)); }
     const t6 = await page.evaluate(() => {
       const fs = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
       const fd = JSON.parse(localStorage.getItem('verilog-viz-sandbox-folders') || '[]');
       return { names: Object.values(fs).map((f) => f.name), folders: fd };
     });
-    (t6.names.includes('beta.djs') && t6.names.some(n => n.startsWith('beta_')) && !t6.folders.includes('项目A'))
-      ? ok('[6a] 删除文件夹（文件移回根目录，重名自动去重）')
-      : bad('[6a] 删除文件夹异常', JSON.stringify(t6));
+    const warned = /一并删除|一并|内部文件|无法撤销/.test(confirmText);
+    (!t6.folders.includes('项目A') && !t6.names.some(n => n.startsWith('项目A/')) && warned)
+      ? ok('[6a] 删除文件夹：弹确认说明会一并删除内部文件，确认后文件夹与内部文件一起删除')
+      : bad('[6a] 删除文件夹异常', JSON.stringify({ ...t6, confirmText: confirmText.slice(0, 80) }));
     // [6b] 导入 .djs（直接对隐藏 input setInputFiles）
     const djs = JSON.stringify({ cells: [{ id: 'imp1', type: 'Input', position: { x: 40, y: 40 }, bits: 1 }] });
     await page.setInputFiles('input[type="file"][accept=".djs,.json"]', {

@@ -1,5 +1,6 @@
 // QC：验证连续放置多个部件是否堆叠在同一位置（R11 2 次失败的疑似根因）
 const { spawn } = require('child_process');
+const UI = require('./_ui.cjs');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
@@ -29,8 +30,7 @@ const clickGate = async (page, label) => {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k=>localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+    await UI.newSandboxFile(page);
 
     for (const t of ['Button', 'Lamp', 'And']) await clickGate(page, t);
     await sleep(600);

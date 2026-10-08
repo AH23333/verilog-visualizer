@@ -11,6 +11,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1427;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1427)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const results = { pass: 0, fail: 0 };
@@ -22,10 +23,7 @@ async function waitForServer(t = 15000) {
   while (Date.now() < d) { try { const r = await fetch(URL); if (r.ok) return true; } catch {} await sleep(500); }
   return false;
 }
-const clickGate = async (page, label) => {
-  await page.evaluate((l) => document.querySelector('button[data-gate="' + l + '"]')?.click(), label);
-  await sleep(450);
-};
+const clickGate = (page, label) => require('./_ui.cjs').clickGate(page, label);   // 旧的本地版用 ?.click() 静默空转
 // 关闭「吸附到网格」：否则拖拽终点会被量化到网格整数倍（60→64），测不出纯坐标换算精度。
 // 精确定位：取文本恰为「吸附到网格」的叶子 div，其父的下一个兄弟里就是开关按钮。
 async function disableSnap(page) {
@@ -72,16 +70,21 @@ const portCenter = async (page, type, port) => page.evaluate(({ type, port }) =>
   return null;
 }, { type, port });
 async function boot(page) {
-  await page.goto(URL, { waitUntil: 'networkidle' });
+  // ⚠ 不用 networkidle：dev 服务器上首页 37 条脚本 + HMR WebSocket 让网络永不空闲，
+  // 实测 r14 就是这么 `page.goto: Timeout 30000ms exceeded` → exit=2 整片红（夹具病）。
+  // 就绪判据改成「确实画出界面骨架」。口径同 _ui.cjs 的 boot()。
+  await page.goto(URL, { waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => !!document.querySelector('button[data-activity]'), null, { timeout: 30000 });
   await page.evaluate(() => {
     localStorage.removeItem('verilog-viz-sandbox-files');
     localStorage.removeItem('verilog-viz-sandbox-active');
     localStorage.removeItem('verilog-viz-sandbox-gates');
   });
-  await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForFunction(() => !!document.querySelector('button[data-activity]'), null, { timeout: 30000 });
+  await sleep(1200);
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+  await require('./_ui.cjs').newSandboxFile(page);
 }
 
 (async () => {
@@ -136,7 +139,7 @@ async function boot(page) {
 
     // ===== Phase 2: 缩放 + 平移后，连线游离端贴合光标（模型坐标）=====
     console.log('[2] Wire loose-end tracks cursor under zoom+pan (scale=2, translate=50,30)');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+    await require('./_ui.cjs').newSandboxFile(page);
     await clickGate(page, 'Input'); await clickGate(page, 'Output'); await sleep(300);
     await page.evaluate(() => { window.__sandboxPaper.scale(2); window.__sandboxPaper.translate(50, 30); });
     await sleep(150);

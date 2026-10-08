@@ -49,11 +49,13 @@ const clickBody = async (page, id) => {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     // 放 Input + Output，都改成 4 位
-    await page.locator('button[data-gate="Input"]').click(); await sleep(500);
-    await page.locator('button[data-gate="Output"]').click(); await sleep(500);
+    await require('./_ui.cjs').ensurePalette(page);
+const UI = require('./_ui.cjs');
+    await page.locator('button[data-gate="Input"]').first().click(); await sleep(500);
+    await require('./_ui.cjs').ensurePalette(page);
+    await page.locator('button[data-gate="Output"]').first().click(); await sleep(500);
     const ids = await page.evaluate(() => {
       const p = window.__sandboxPaper; const by = {};
       p.model.getCells().filter(c => !c.isLink()).forEach(c => { const t = c.get('type'); (by[t] = by[t] || []).push(c.id); });

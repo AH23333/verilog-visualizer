@@ -39,22 +39,24 @@ const snap = (page) => page.evaluate(() => {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
 
     // 文件 A：插入半加器 + 放 Memory + 保存
     await page.mouse.click(1100, 700, { button: 'right' }); await sleep(500);
     await menuClick(page, '插入示例', false);
     await menuClick(page, '半加器', false);
     await sleep(900);
-    await page.locator('button[data-gate="Memory"]').click(); await sleep(600);
+    await require('./_ui.cjs').ensurePalette(page);
+const UI = require('./_ui.cjs');
+    await page.locator('button[data-gate="Memory"]').first().click(); await sleep(600);
     await page.keyboard.press('Control+s'); await sleep(900);
     const snapA = await snap(page);
     console.log('    文件 A:', JSON.stringify(snapA));
 
     // 文件 B：新建，放 Lamp + 保存
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
-    await page.locator('button[data-gate="Lamp"]').click(); await sleep(600);
+    await UI.newSandboxFile(page);
+    await require('./_ui.cjs').ensurePalette(page);
+    await page.locator('button[data-gate="Lamp"]').first().click(); await sleep(600);
     await page.keyboard.press('Control+s'); await sleep(900);
     const snapB = await snap(page);
     console.log('    文件 B:', JSON.stringify(snapB));
@@ -72,7 +74,6 @@ const snap = (page) => page.evaluate(() => {
         : bad('[2a] 文件串台/内容缺失', `A=${JSON.stringify(backA)} 期望=${JSON.stringify(snapA)}`);
       // 刷新后 A 仍在（localStorage 持久化）
       await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
-      await page.locator('button[title="沙盒"]').click(); await sleep(1000);
       const afterReload = await snap(page);
       console.log('    刷新后:', JSON.stringify(afterReload));
       (afterReload.n === snapA.n && afterReload.links === snapA.links)

@@ -11,17 +11,21 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1492;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1492)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, unver = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
 const bad = (n, d = '') => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };
+// 跳过 ≠ 通过：夹具自己没把激励送到那颗器件上时，输出读数不能算产品的判定
+const skip = (n, d = '') => { unver++; console.log(`  UNVERIFIED  ${n}${d ? ' — ' + d : ''}`); };
 async function waitForServer(t = 15000) {
   const d = Date.now() + t;
   while (Date.now() < d) { try { const r = await fetch(URL); if (r.ok) return true; } catch {} await sleep(500); }
   return false;
 }
 const realClickGate = async (page, label) => {
+  await require('./_ui.cjs').ensurePalette(page);
   const btn = page.locator(`button[data-gate="${label}"]`);
   await btn.scrollIntoViewIfNeeded().catch(() => {});
   await btn.click(); await sleep(500);
@@ -55,8 +59,7 @@ const READ_FN = `function vec(v){ if(v==null) return 'n/a'; try{ if(typeof v.toB
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
 
     // ===== [1] 放置 Mux =====
     console.log('\n===== [1] 放置多路选择器 =====');
@@ -108,7 +111,7 @@ const READ_FN = `function vec(v){ if(v==null) return 'n/a'; try{ if(typeof v.toB
 
     // ===== [3] 比较器 =====
     console.log('\n===== [3] 比较器 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     const ids3 = await page.evaluate(() => {
       const p = window.__sandboxPaper, dj = window.digitaljs;
       const add = (C, args) => { const c = new dj.cells[C](args); p.model.addCell(c); return c.id; };
@@ -130,19 +133,74 @@ const READ_FN = `function vec(v){ if(v==null) return 'n/a'; try{ if(typeof v.toB
     w3.push(await wire(page, ids3.b3, 'out', ids3.gt, 'in1'));
     w3.push(await wire(page, ids3.b2, 'out', ids3.gt, 'in2'));
     await sleep(1000);
+    // 先证"激励真送到了这颗比较器的两个输入端"，再判输出。
+    // 上游 Compare.operation 的读数是"任一路输入含 x/z ⇒ out = x"（bundle @2309422），
+    // 所以 gt 读 x 有两种完全不同的下落：产品算错，或夹具那两根拖线根本没接到 gt。
+    // 不先分这一刀，就会把夹具的账记到产品头上（r23 那三格 x 当年也是这一族）。
+    const WANT3 = [['a', 'out', 'eq', 'in1'], ['b2', 'out', 'eq', 'in2'], ['b3', 'out', 'lt', 'in1'],
+      ['b2', 'out', 'lt', 'in2'], ['b3', 'out', 'gt', 'in1'], ['b2', 'out', 'gt', 'in2']];
+    const feed3 = await page.evaluate(({ ids, want }) => {
+      const p = window.__sandboxPaper;
+      const sh = (x) => String(x).slice(0, 8);
+      const key = (s, sp, t, tp) => `${sh(s)}.${sp}→${sh(t)}.${tp}`;
+      const links = p.model.getLinks().map((l) => key(l.get('source').id, l.get('source').port, l.get('target').id, l.get('target').port));
+      const missing = want.filter(([si, sp, ti, tp]) => !links.includes(key(ids[si], sp, ids[ti], tp)))
+        .map(([si, sp, ti, tp]) => `${si}.${sp}→${ti}.${tp}`);
+      return { links, missing };
+    }, { ids: ids3, want: WANT3 });
+    console.log('    连线清单:', JSON.stringify(feed3.links));
+    (feed3.missing.length === 0 ? ok : bad)(
+      '[3a] 六根拖线确实接到了各自的比较器端口（夹具喂到了）',
+      feed3.missing.length ? `没接上 = ${JSON.stringify(feed3.missing)}` : `${feed3.links.length} 根线`);
+    if (feed3.missing.length) {
+      // 夹具的账不挡产品的路：缺的线用模型补上，让 [3b] 仍能判产品本身
+      await page.evaluate(({ ids, want }) => {
+        const p = window.__sandboxPaper, dj = window.digitaljs;
+        for (const [si, sp, ti, tp] of want) {
+          const s = p.model.getCell(ids[si]), t = p.model.getCell(ids[ti]);
+          if (!s || !t || !t.getPort?.(tp)) continue;
+          const has = p.model.getLinks().some((l) => l.get('source').id === ids[si] && l.get('source').port === sp && l.get('target').id === ids[ti] && l.get('target').port === tp);
+          if (!has) p.model.addCell(new dj.cells.Wire({ source: { id: ids[si], port: sp }, target: { id: ids[ti], port: tp }, bits: 4, netname: `FX${tp}` }));
+        }
+      }, { ids: ids3, want: WANT3 });
+      await sleep(900);
+    }
     const cmp = await page.evaluate((ids) => {
       const p = window.__sandboxPaper;
       const rd = (id) => { const o = p.model.getCell(id)?.get('outputSignals'); const v = o?.out; if (!v) return 'n/a'; try { if (typeof v.toBigInt === 'function') { const b = v.toBigInt(); if (b != null && Number.isFinite(Number(b))) return String(b); } } catch (e) {} return v.toString(); };
       return { eq: rd(ids.eq), lt: rd(ids.lt), gt: rd(ids.gt) };
     }, ids3);
     console.log('    比较结果:', JSON.stringify(cmp), ' 连线:', JSON.stringify(w3));
+    // gt=x 而 lt=0（同一对操作数 3 vs 2）⇒ 差异只能在 gt 自己那一侧。上游
+    // `Wire._propagateSignal` 写的是 `this.get('warning') ? e._clearInput(port) : e._setInput(...)`
+    // （bundle @2285659）—— 线宽与端口宽不一致时，**线里有值也会被清成 x**。
+    // 所以这里逐颗打：每个输入端的位宽、驱动它的线的 bits/signal/warning。
+    const wires3 = await page.evaluate((ids) => {
+      const p = window.__sandboxPaper;
+      const sh = (v) => (v == null ? '—' : String(v));
+      const one = (id, name) => {
+        const c = p.model.getCell(ids[name]);
+        if (!c) return { [name]: '缺器件' };
+        const ports = {};
+        for (const pt of (c.get('ports')?.items || [])) if (pt.dir === 'in') ports[pt.id] = pt.bits;
+        const drv = (p.model.getLinks() || []).filter((l) => l.get('target')?.id === c.id)
+          .map((l) => ({
+            to: l.get('target').port, wireBits: l.get('bits') ?? null, signal: sh((l.get('signal') || {}).value ?? l.get('signal')),
+            warning: l.get('warning') ?? null, from: String(l.get('source').id).slice(0, 6) + '.' + l.get('source').port,
+            seen: sh((c.get('inputSignals') || {})[l.get('target').port]),
+          }));
+        return { [name]: { inBits: ports, out: sh((c.get('outputSignals') || {}).out), drv } };
+      };
+      return [one(ids.eq, 'eq'), one(ids.lt, 'lt'), one(ids.gt, 'gt')];
+    }, ids3);
+    console.log('    逐颗端口/线宽/warning:', JSON.stringify(wires3, null, 0));
     (cmp.eq === '1' && cmp.lt === '0' && cmp.gt === '1')
-      ? ok('[3] 比较器 Eq/Lt/Gt 输出正确', JSON.stringify(cmp))
-      : bad('[3] 比较器输出异常', JSON.stringify(cmp));
+      ? ok('[3b] 比较器 Eq/Lt/Gt 输出正确（2=2→1、3<2→0、3>2→1）', JSON.stringify(cmp))
+      : bad('[3b] 比较器输出异常', JSON.stringify(cmp));
 
     // ===== [4] 移位 + 取负 =====
     console.log('\n===== [4] 移位与取负 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     const ids4 = await page.evaluate(() => {
       const p = window.__sandboxPaper, dj = window.digitaljs;
       const add = (C, args) => { const c = new dj.cells[C](args); p.model.addCell(c); return c.id; };
@@ -172,7 +230,7 @@ const READ_FN = `function vec(v){ if(v==null) return 'n/a'; try{ if(typeof v.toB
 
     // ===== [5] 右键编辑常量值 =====
     console.log('\n===== [5] 右键编辑常量值 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     await realClickGate(page, 'Constant'); await realClickGate(page, 'Lamp');
     const ids5 = await page.evaluate(() => {
       const p = window.__sandboxPaper; const by = {};
@@ -205,7 +263,7 @@ const READ_FN = `function vec(v){ if(v==null) return 'n/a'; try{ if(typeof v.toB
     } else bad('[5] 右键菜单没有常量值输入');
 
     console.log('\n  pageerrors:', JSON.stringify(errors.slice(0, 4)));
-    console.log(`\n===== R21 DONE: ${pass} pass, ${fail} fail =====`);
+    console.log(`\n===== R21 DONE: ${pass} pass, ${fail} fail, ${unver} unverified =====`);
     await browser.close();
   } catch (e) { console.log('FATAL', String(e)); fail++; }
   finally { try { server?.kill('SIGKILL'); } catch {} process.exit(0); }

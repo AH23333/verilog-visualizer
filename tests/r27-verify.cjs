@@ -12,6 +12,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1474;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1474)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -42,8 +43,7 @@ const TABLE = ['01111110','00110000','01101101','01111001','00110011','01011011'
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
 
     // [1] 插入数字钟示例
     await page.mouse.click(1150, 760, { button: 'right' }); await sleep(500);
@@ -77,7 +77,8 @@ const TABLE = ['01111110','00110000','01101101','01111001','00110011','01011011'
     for (const n of ['逻辑门', '输入 / 输出', '时序', '运算', '比较', '选择 / 移位', '总线', '存储', '显示']) {
       try { await page.getByText(n, { exact: true }).first().click({ timeout: 800 }); await sleep(120); } catch {}
     }
-    await page.locator('button[data-gate="Constant"]').click(); await sleep(800); // 真实用户操作触发 commit+flush
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'Constant'); await sleep(800); // 真实用户操作触发 commit+flush
     const seen = new Set();
     for (let i = 0; i < 8; i++) {
       const v = await page.evaluate(() => {

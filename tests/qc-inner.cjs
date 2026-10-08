@@ -1,5 +1,6 @@
 // 定位「自定义门展开图为空」：检查弹窗 host / paper / 图的实际状态
 const { spawn } = require('child_process');
+const UI = require('./_ui.cjs');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
@@ -38,8 +39,7 @@ async function wire(page, s, sp, t, tp) {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k=>localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
 
     await clickGate(page, 'Input'); await clickGate(page, 'Output'); await sleep(400);
     const io = await page.evaluate(() => {
@@ -51,7 +51,7 @@ async function wire(page, s, sp, t, tp) {
     await page.locator('button[title^="将当前电路保存为自定义门"]').click(); await sleep(400);
     await page.fill('input[placeholder="自定义门名称"]', 'Q'); await sleep(200);
     await page.locator('button[title="确认保存为自定义门"]').click(); await sleep(700);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     await page.evaluate(() => { const g = window.__sandboxGates.list()[0]; if (g) window.__sandboxGates.place(g.id); });
     await sleep(900);
 

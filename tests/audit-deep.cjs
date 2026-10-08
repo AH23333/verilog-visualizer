@@ -3,6 +3,7 @@
 //  exp2: dump engine 对 bus 的监听与队列状态
 //  exp3: 最小 loadCells 复现（Input×4→BusGroup→BusUngroup→Lamp 全走 loadCells，无手动拖线）
 const { spawn } = require('child_process');
+const UI = require('./_ui.cjs');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
@@ -27,8 +28,7 @@ async function waitForServer(t = 20000) {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
 
     // 问题场景：插入数字钟示例（含 BusGroup/Memory/Display7）
     await page.mouse.click(1150, 760, { button: 'right' }); await sleep(500);

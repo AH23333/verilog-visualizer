@@ -14,6 +14,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1491;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1491)); } catch { }
+const UI = require('./_ui.cjs');
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -82,7 +84,7 @@ const subCount = (page) => page.evaluate(
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
 
     await clickActivity(page, 'sandbox'); await sleep(900);
-    await page.locator('button[title="新建文件"]').first().click(); await sleep(900);
+    await UI.newSandboxFile(page);
     await clickActivity(page, 'modules'); await sleep(500);
 
     // ===== [1] 放置 BAD（重复 net 的门）=====
@@ -144,7 +146,15 @@ const subCount = (page) => page.evaluate(
       return { x: r.left + r.width / 2, y: r.bottom + 14 };
     });
     await page.mouse.click(titleBox.x, titleBox.y, { button: 'right' }); await sleep(450);
-    const t3a = await topMenuTitle(page);
+    // R100：文件面板右键菜单与编译模式一模一样 ⇒ 无标题头，首项＝「打开」
+    const t3a = await page.evaluate(() => {
+      const menus = Array.from(document.querySelectorAll('div'))
+        .filter(d => getComputedStyle(d).position === 'fixed' && d.querySelector('button, input'));
+      const m = menus[menus.length - 1];
+      if (!m) return null;
+      const b = m.querySelector('button');
+      return b ? ('[首按钮] ' + b.textContent.trim()) : null;
+    });
     await closeMenu(page);
     // 3b: 部件面板右键 —— R35 新增「部件」菜单
     await clickActivity(page, 'modules'); await sleep(500);
@@ -153,15 +163,37 @@ const subCount = (page) => page.evaluate(
     await closeMenu(page);
     // 3c: 层次结构面板右键 —— R35 新增「层次结构」菜单
     await clickActivity(page, 'hierarchy'); await sleep(500);
-    await page.mouse.click(titleBox.x, titleBox.y, { button: 'right' }); await sleep(450);
-    const t3c = await topMenuTitle(page);
+    // ⚠ 原先用「标题栏下方 14px」这个坐标：层次结构面板内容长短一变，这点就会落在
+    //   器件行上（行吃掉右键 ⇒ 菜单不弹）。改点面板中部空白——探针
+    //   （tests/.tmp-r101-hier-probe.cjs）单独复现时菜单一直在 ⇒ 不是产品回归。
+    const hierBox = await page.evaluate(() => {
+      const bar = document.querySelector('[data-sandbox-sidebar]');
+      const r = bar.getBoundingClientRect();
+      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+    });
+    await page.mouse.click(hierBox.x, hierBox.y, { button: 'right' }); await sleep(450);
+    let t3c = await topMenuTitle(page);
+    if (!t3c) {
+      await page.keyboard.press('Escape'); await sleep(350);
+      await page.mouse.click(hierBox.x, hierBox.y, { button: 'right' }); await sleep(600);
+      t3c = await topMenuTitle(page);
+    }
     await closeMenu(page);
-    // 3d: 画布空白右键 —— 必须仍是画布菜单
-    await page.mouse.click(900, 500, { button: 'right' }); await sleep(450);
+    // 3d: 画布空白右键 —— 必须仍是画布菜单。⚠ 别写死 (900,500)：R101 起画布区被顶部
+    //     按钮栏占一行，器件摆放的屏幕位置整体移动，写死坐标会落在器件上（实测弹出了
+    //     「自定义门」菜单）。改成现取画布右下角空白。
+    const blank = await page.evaluate(() => {
+      const p = window.__sandboxPaper;
+      const r = p.el.getBoundingClientRect();
+      return { x: r.right - 40, y: r.bottom - 40 };
+    });
+    await page.mouse.click(blank.x, blank.y, { button: 'right' }); await sleep(450);
     const t3d = await topMenuTitle(page);
     await closeMenu(page);
-    (t3a === '沙盒文件' && t3b === '部件' && t3c === '层次结构' && t3d === '画布')
-      ? ok('[3] 侧栏三面板右键各有菜单，画布右键弹画布菜单', `文件="${t3a}" 部件="${t3b}" 层次="${t3c}" 画布="${t3d}"`)
+    // R101：文件面板空白处右键菜单改为**照抄编译模式**的顺序（新建文件 / 新建文件夹 /
+    // 导入文件… / 粘贴 / 刷新），首按钮不再是「导入文件...」
+    (t3a === '[首按钮] 新建文件' && t3b === '部件' && t3c === '层次结构' && t3d === '画布')
+      ? ok('[3] 侧栏三面板右键各有菜单（文件面板＝编译同款无标题头），画布右键弹画布菜单', `文件="${t3a}" 部件="${t3b}" 层次="${t3c}" 画布="${t3d}"`)
       : bad('[3] 右键菜单归属异常', JSON.stringify({ t3a, t3b, t3c, t3d }));
 
     // ===== [4] 序列化兜底：无 subcircuitGraph 的活内图也能带出 =====

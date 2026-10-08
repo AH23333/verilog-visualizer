@@ -33,11 +33,13 @@ const menuClick = async (page, label, exact = true) => {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     // 放一个 Memory + 插入两个示例（覆盖所有新器件渲染路径）
-    await page.locator('button[data-gate="Memory"]').click(); await sleep(600);
-    await page.locator('button[data-gate="Display7"]').click(); await sleep(600);
+    await require('./_ui.cjs').ensurePalette(page);
+const UI = require('./_ui.cjs');
+    await page.locator('button[data-gate="Memory"]').first().click(); await sleep(600);
+    await require('./_ui.cjs').ensurePalette(page);
+    await page.locator('button[data-gate="Display7"]').first().click(); await sleep(600);
     await page.mouse.click(1100, 700, { button: 'right' }); await sleep(500);
     await menuClick(page, '插入示例', false);
     await menuClick(page, '4 位二进制计数器', false);
@@ -63,7 +65,7 @@ const menuClick = async (page, label, exact = true) => {
     errors.length === 0 ? ok('[3c] 导出全程无页面异常') : bad('[3c] 导出产生页面异常', errors.slice(0, 2).join('|').slice(0, 200));
 
     // 空文件导出（健壮性）
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     const dlEmpty = page.waitForEvent('download', { timeout: 8000 }).then(() => 'download').catch(() => null);
     await page.locator('button[title="导出 PNG"]').click();
     const empty = await dlEmpty;

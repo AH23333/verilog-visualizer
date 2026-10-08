@@ -9,6 +9,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1478;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1478)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -57,12 +58,11 @@ const clickBody = async (page, id) => {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
 
     // 确保有 activeFile（无文件时 Ctrl+S 不保存）
     if ((await page.locator('button[title="新建文件"]').count()) === 1) {
-      await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+      await require('./_ui.cjs').newSandboxFile(page);
     }
 
     // [1] 打开内存编辑器
@@ -72,7 +72,8 @@ const clickBody = async (page, id) => {
     for (const n of ['逻辑门', '输入 / 输出', '时序', '运算', '比较', '选择 / 移位', '总线', '存储', '显示']) {
       try { await page.getByText(n, { exact: true }).first().click({ timeout: 800 }); await sleep(120); } catch {}
     }
-    await page.locator('button[data-gate="Memory"]').click(); await sleep(700);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'Memory'); await sleep(700);
     const memId = await page.evaluate(() => window.__sandboxPaper.model.getCells().find(c => c.get('type') === 'Memory')?.id);
     const pt = await bodyCenter(page, memId);
     await page.mouse.click(pt.x, pt.y, { button: 'right' }); await sleep(500);
@@ -129,7 +130,7 @@ const clickBody = async (page, id) => {
     await page.locator('[data-memory-view] button[title="关闭"]').click(); await sleep(500);
     await page.keyboard.press('Control+s'); await sleep(900);
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
-    await page.locator('button[title="沙盒"]').click(); await sleep(900);
+  await require('./_ui.cjs').backToSandbox(page);   // reload 后画布不是同步重建的（r63 之后补的等待）
     // 打开弹窗（文件重开后 Memory id 保持）
     const memId2 = await page.evaluate(() => window.__sandboxPaper.model.getCells().find(c => c.get('type') === 'Memory')?.id);
     const pt2 = await bodyCenter(page, memId2);

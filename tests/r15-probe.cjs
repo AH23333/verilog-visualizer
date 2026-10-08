@@ -3,6 +3,7 @@
 // 选中高亮是否生效（item5）、连线能否被选中/删除（item6）、reset 后是否丢属性。
 // 用法: node tests/r15-probe.cjs
 const { spawn } = require('child_process');
+const UI = require('./_ui.cjs');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
@@ -28,8 +29,7 @@ async function boot(page) {
   });
   await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+  await UI.newSandboxFile(page);
 }
 (async () => {
   let server, browser;

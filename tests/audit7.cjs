@@ -33,10 +33,11 @@ const menuClick = async (page, label, exact = true) => {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
 
     // 构造：Input → Output（直通）；Constant('0101') → Lamp；BusGroup 单独放一个
+    await require('./_ui.cjs').ensurePalette(page);
+const UI = require('./_ui.cjs');
     for (const t of ['Input', 'Output', 'Constant', 'Lamp', 'BusGroup']) await page.locator(`button[data-gate="${t}"]`).click().catch(() => {}); await sleep(500);
     // 设 Constant 值
     const cst = await page.evaluate(() => window.__sandboxPaper.model.getCells().find(c => c.get('type') === 'Constant')?.id);

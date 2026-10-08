@@ -15,6 +15,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1498;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1498)); } catch { }
+const UI = require('./_ui.cjs');
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -189,9 +191,10 @@ endmodule
     await page.keyboard.press('Escape'); await sleep(500);
 
     // ===== [4] 保存为部件（画布含实例）→ 嵌套递归入库 =====
-    await page.locator('button[title="新建文件"]').first().click(); await sleep(900);
+    await UI.newSandboxFile(page);
     await clickActivity(page, 'modules'); await sleep(500);
     for (const n of ['输入 / 输出', '运算', '比较']) { try { await page.getByText(n, { exact: true }).first().click({ timeout: 600 }); await sleep(100); } catch {} }
+    await require('./_ui.cjs').ensurePalette(page);
     for (const t of ['Input', 'Output']) { await page.locator(`button[data-gate="${t}"]`).first().click(); await sleep(300); }
     // 放置 sub1 实例（部件面板）
     await page.locator('[data-sandbox-sidebar] button:has-text("sub1")').first().click(); await sleep(900);
@@ -302,8 +305,15 @@ endmodule
     else {
       const oldPath = sub1Sb, newPath = sub1Sb.replace(/sub1\.djs$/, 'sub1r.djs');
       await page.locator(`[data-sbfile="${oldPath}"]`).first().click({ button: 'right' }); await sleep(450);
-      await commitMenuInput(page, 'sub1r');
-      await sleep(600);
+      // R101：「重命名」改为编译同款**弹窗**（菜单里不再有内联输入框）
+      const rnItem = page.locator('[data-context-menu] button:has-text("重命名")').first();
+      await rnItem.click(); await sleep(450);
+      const dlg7 = page.locator('[role="dialog"]').last();
+      await dlg7.waitFor({ timeout: 6000 });
+      await dlg7.locator('input').first().click();
+      await page.keyboard.press('ControlOrMeta+a'); await sleep(80);
+      await page.keyboard.type('sub1r'); await sleep(120);
+      await page.keyboard.press('Enter'); await sleep(600);
       const rebind = await page.evaluate(() => {
         const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
         const names = Object.values(files).map(f => f.name);

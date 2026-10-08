@@ -42,6 +42,8 @@ lerna-debug.log*
 # Scrach / temp files
 1.md
 log-current.txt
+tests/.out-*
+tests/.tmp-*
 
 # OS files
 Thumbs.db

@@ -16,6 +16,8 @@ async function waitForServer(t = 20000) {
   return false;
 }
 const realClickGate = async (page, label) => {
+  await require('./_ui.cjs').ensurePalette(page);
+const UI = require('./_ui.cjs');
   const btn = page.locator(`button[data-gate="${label}"]`);
   await btn.scrollIntoViewIfNeeded().catch(() => {});
   await btn.click(); await sleep(500);
@@ -51,8 +53,7 @@ async function wire(page, s, sp, t, tp) {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
 
     // ===== [8] 改位宽 × 已连线 =====
     console.log('\n===== [8] 已连线上改位宽 =====');

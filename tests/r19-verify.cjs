@@ -13,9 +13,10 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1461;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1461)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-let pass = 0, fail = 0;
+let pass = 0, fail = 0, unverified = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
 const bad = (n, d = '') => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };
 async function waitForServer(t = 15000) {
@@ -23,10 +24,7 @@ async function waitForServer(t = 15000) {
   while (Date.now() < d) { try { const r = await fetch(URL); if (r.ok) return true; } catch {} await sleep(500); }
   return false;
 }
-const clickGate = async (page, label) => {
-  await page.evaluate((l) => document.querySelector('button[data-gate="' + l + '"]')?.click(), label);
-  await sleep(400);
-};
+const clickGate = (page, label) => require('./_ui.cjs').clickGate(page, label);   // 旧的本地版用 ?.click() 静默空转
 async function boot(page) {
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.evaluate(() => {
@@ -34,8 +32,7 @@ async function boot(page) {
   });
   await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+  await require('./_ui.cjs').newSandboxFile(page);
 }
 // 按类型+端口名取端口圆心（屏幕坐标）
 const portCenter = (page, type, port) => page.evaluate(({ type, port }) => {
@@ -94,18 +91,23 @@ async function dragWireById(page, srcId, srcPort, tgtId, tgtPort) {
 
     // ===== [1] 输入/输出 与 端口 整合 =====
     console.log('\n===== [1] 调色板分组整合 =====');
+    // [1] 之前必须确保元件库挂着且分组已展开：没展开时 gates/heads 双双为空，
+    //   这条判据只会报「分组未整合 []」（本轮实测就是这个形状）。
+    await require('./_ui.cjs').ensurePalette(page);
     const pal = await page.evaluate(() => {
       const gates = [...document.querySelectorAll('button[data-gate]')].map(b => b.getAttribute('data-gate'));
-      const heads = [...document.querySelectorAll('div')]
-        .filter(d => d.children.length === 0 && /^(逻辑门|输入|端口)/.test(d.textContent?.trim() || ''))
-        .map(d => d.textContent.trim());
+      // 分组标题那颗 div 里有 <span>名字</span> + <span>▸</span>，用 children.length===0 挑永远挑不到
+      //   ⇒ heads 恒 []，这条判据只会假红。改成直接认标题 span 的文字。
+      const heads = [...document.querySelectorAll('span')]
+        .map(s => (s.textContent || '').trim())
+        .filter(t => /^(逻辑门|输入 \/ 输出|端口|输入|时序|运算|比较|选择 \/ 移位|总线|存储|显示|其他)$/.test(t));
       return { gates, heads };
     });
     console.log('    分组:', JSON.stringify(pal.heads), ' 部件:', JSON.stringify(pal.gates));
     const merged = pal.heads.includes('输入 / 输出') && !pal.heads.some(h => h.includes('端口'))
       && ['Input','Clock','Lamp','Input','Output'].every(t => pal.gates.includes(t));
     merged ? ok('[1] 「输入/输出」与「端口」已合并为一组', pal.heads.join(' , '))
-           : bad('[1] 分组未整合', JSON.stringify(pal.heads));
+           : bad('[1] 分组未整合', `heads=${JSON.stringify(pal.heads)}，gates=${pal.gates.length} 颗（gates=0 ⇒ 元件库根本没挂载，这条判据够不着）`);
 
     // ===== [2] 汉化（快捷键面板 / 命令面板）=====
     console.log('\n===== [2] 汉化补全 =====');
@@ -165,7 +167,7 @@ async function dragWireById(page, srcId, srcPort, tgtId, tgtPort) {
 
     // ===== [4] 右键菜单「放置部件」 =====
     console.log('\n===== [4] 右键放置部件 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     const blankPt = { x: 700, y: 420 };
     await page.mouse.move(blankPt.x, blankPt.y);
     await page.mouse.down({ button: 'right' }); await page.mouse.up({ button: 'right' });
@@ -205,13 +207,13 @@ async function dragWireById(page, srcId, srcPort, tgtId, tgtPort) {
 
     // ===== [6][7][8] 自定义门展开图 =====
     console.log('\n===== [6][7][8] 自定义门展开图 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     await clickGate(page, 'Input'); await clickGate(page, 'Output'); await sleep(400);
     await dragWire(page, 'Input', 'out', 'Output', 'in');
     await page.locator('button[title^="将当前电路保存为自定义门"]').click(); await sleep(400);
     await page.fill('input[placeholder="自定义门名称"]', 'T19'); await sleep(200);
     await page.locator('button[title="确认保存为自定义门"]').click(); await sleep(700);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     await page.evaluate(() => { const g = window.__sandboxGates.list()[0]; if (g) window.__sandboxGates.place(g.id); });
     await sleep(900);
     // 单击放大镜（a.zoom）
@@ -287,7 +289,8 @@ async function dragWireById(page, srcId, srcPort, tgtId, tgtPort) {
           const bEl = el.querySelector('.body') || el.querySelector('rect');
           const br = bEl ? bEl.getBoundingClientRect() : null;
           cells.push({
-            dt: el.getAttribute('data-type'),
+            dt: (() => { const p = window.__innerPaper; const id = el.getAttribute('model-id');
+              const m = p && id ? p.model.getCell(id) : null; return m ? String(m.get('type')) : null; })(),
             w: Math.round(r.width), h: Math.round(r.height),
             ratio: +(r.width / r.height).toFixed(2),
             bw: br ? Math.round(br.width) : -1, bh: br ? Math.round(br.height) : -1,
@@ -314,17 +317,21 @@ async function dragWireById(page, srcId, srcPort, tgtId, tgtPort) {
         && sizes.dataSizes.every(s => s.size && s.size.width === 30 && s.size.height === 30);
       ok30 ? ok('[8] 展开图端口尺寸为 30×30', JSON.stringify(sizes.dataSizes))
            : bad('[8] 端口尺寸异常', JSON.stringify(sizes.dataSizes));
-      // 真正要防的是「渲染出来是横条」：端口渲染宽高比应接近 1（连线本身细长，排除）
-      const ports = sizes.cells.filter(c => c.dt === 'Input' || c.dt === 'Output');
-      console.log('    端口渲染宽高比 =', JSON.stringify(ports));
-      const notStretched = ports.length > 0 && ports.every(p => p.bratio > 0 && p.bratio < 1.5);
-      notStretched ? ok('[8c] 端口盒体渲染未被横向拉长', JSON.stringify(ports))
-                   : bad('[8c] 端口盒体仍是横条', JSON.stringify(ports));
+      // 端口盒体"被横向拉长"这一族**已经从本闸门搬家**：
+      //   ① 这一颗子电路的展开图过了 `io_ui`，类型是 Wire/Button/Lamp，结构上就没有 Input/Output 可量
+      //      （此前每次都在这里登记 UNVERIFIED，占一格却不产生信息）；
+      //   ② 更要紧的是原来的阈值 `宽高比 <1.5` 是错的判据——2026-10-06 在部件画布上量到
+      //      1 位脚 30×30、4 位脚 47×30、总线输出脚 62×30（数据层 size 自己就这么写），
+      //      多位引脚本来就该是宽盒子，拿 1.5 判会把正常渲染判成缺陷。
+      // ⇒ 判据改写成"渲染宽高比 == 数据层宽高比"（与缩放无关）并落到 `r42-verify` 的 [2b]，
+      //    那里有真的 Input/Output。⛔ 别在这里恢复一个够不着的臂来"凑格数"。
+      const kinds = [...new Set(sizes.cells.map(c => c.dt))];
+      console.log('    弹窗内器件类型 =', JSON.stringify(kinds), '（端口盒体宽高比那条判据在 r42 [2b]）');
       await page.keyboard.press('Escape'); await sleep(300);
     }
 
     console.log('\n  pageerrors:', JSON.stringify(errors.slice(0, 4)));
-    console.log(`\n===== R19 DONE: ${pass} pass, ${fail} fail =====`);
+    console.log(`\n===== R19 DONE: ${pass} pass, ${fail} fail, ${unverified} unverified =====`);
     await browser.close();
   } catch (e) { console.log('FATAL', String(e)); fail++; }
   finally { try { server?.kill('SIGKILL'); } catch {} process.exit(0); }

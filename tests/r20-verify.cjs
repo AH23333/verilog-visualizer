@@ -10,6 +10,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1482;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1482)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -21,9 +22,11 @@ async function waitForServer(t = 15000) {
   return false;
 }
 const realClickGate = async (page, label) => {
-  const btn = page.locator(`button[data-gate="${label}"]`);
-  await btn.scrollIntoViewIfNeeded().catch(() => {});
-  await btn.click(); await sleep(500);
+  // 走共用夹具：它会先展开分组、按 .first() 点，点不到就抛。
+  //   ⚠ 原来这里对 `button[data-gate]` 用严格模式 .click()：时序组里「D 触发器」与「寄存器 EN/RST」
+  //   两颗的 data-gate 都是 Dff ⇒ strict mode violation，整颗闸门直接崩（本轮实测）。
+  await require('./_ui.cjs').clickGate(page, label);
+  await sleep(300);
 };
 const portCenter = (page, id, port) => page.evaluate(({ id, port }) => {
   const p = window.__sandboxPaper; const c = p.model.getCell(id); const v = c?.findView(p); if (!v) return null;
@@ -66,12 +69,11 @@ const vecStr = (v) => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('pageerror', e => errors.push(String(e)));
-    await page.goto(URL, { waitUntil: 'networkidle' });
+    await require('./_ui.cjs').boot(page, URL);
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
-    await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
+    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1200 });
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
 
     // ===== [1] 调色板放置 D 触发器 =====
     console.log('\n===== [1] 放置 D 触发器 =====');
@@ -118,7 +120,7 @@ const vecStr = (v) => {
 
     // ===== [3] 加法器 2+3=5 =====
     console.log('\n===== [3] 加法器 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     const placed = await page.evaluate(() => {
       const p = window.__sandboxPaper, dj = window.digitaljs;
       const add = (C, args) => { const c = new dj.cells[C](args); p.model.addCell(c); return c.id; };
@@ -151,7 +153,7 @@ const vecStr = (v) => {
 
     // ===== [4] 七段数码管 =====
     console.log('\n===== [4] 七段数码管 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     const d4 = await page.evaluate(() => {
       const p = window.__sandboxPaper, dj = window.digitaljs;
       const c1 = new dj.cells.Constant({ type: 'Constant', constant: '10101010', position: { x: 150, y: 220 } }); p.model.addCell(c1);
@@ -175,14 +177,20 @@ const vecStr = (v) => {
 
     // ===== [5] 持久化：Dff 的 clk 端口（polarity）保存/重载 =====
     console.log('\n===== [5] D 触发器持久化 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     await realClickGate(page, 'Dff'); await sleep(400);
     await page.evaluate(() => { const p = window.__sandboxPaper; const c = p.model.getCells().find(x => x.get('type') === 'Dff'); c.set('position', { x: 300, y: 200 }); });
-    await page.locator('button[title^="保存"]').first().click().catch(() => {});
+    await page.locator('button[title^="保存"]').first().click();
     await sleep(800);
-    await page.reload({ waitUntil: 'networkidle' }); await sleep(2500);
+    await require('./_ui.cjs').boot(page, URL, { reload: true });
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(1500);
+    // 重载后落在默认视图（电路/代码），沙盒要夹具自己再进一次；且**不能**用 enterSandbox
+    // —— 它读不到 paper 会新建文件，把「持久化」的前置抹掉。r20 原版在这里直接
+    // `p.model` → `Cannot read properties of undefined (reading 'model')`（夹具病，非产品）。
+    await page.locator('button[data-activity="sandbox"]').click();
+    const restored = await page.waitForFunction(() => !!window.__sandboxPaper, null, { timeout: 15000 }).then(() => true).catch(() => false);
+    if (!restored) bad('[5] 重载后 D 触发器仍带 clk 端口（polarity 持久化）', '重载后回到沙盒却没恢复出任何文件：活动文件没被带回来');
+    else {
     const dff2 = await page.evaluate(() => {
       const p = window.__sandboxPaper;
       const c = p.model.getCells().find(x => x.get('type') === 'Dff');
@@ -192,6 +200,7 @@ const vecStr = (v) => {
     (dff2 && dff2.ports.includes('clk'))
       ? ok('[5] 重载后 D 触发器仍带 clk 端口（polarity 持久化）', dff2.ports.join(','))
       : bad('[5] 重载后 D 触发器丢失 clk 端口', JSON.stringify(dff2));
+    }
 
     console.log('\n  pageerrors:', JSON.stringify(errors.slice(0, 4)));
     console.log(`\n===== R20 DONE: ${pass} pass, ${fail} fail =====`);

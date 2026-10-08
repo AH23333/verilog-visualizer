@@ -16,6 +16,8 @@ async function waitForServer(t = 20000) {
   return false;
 }
 const realClickGate = async (page, label) => {
+  await require('./_ui.cjs').ensurePalette(page);
+const UI = require('./_ui.cjs');
   const btn = page.locator(`button[data-gate="${label}"]`);
   await btn.scrollIntoViewIfNeeded().catch(() => {});
   await btn.click(); await sleep(500);
@@ -42,8 +44,7 @@ const menuClick = async (page, label, exact = true) => {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
 
     // ===== [A] 插入示例 → 撤销 → 重做 =====
     console.log('\n===== [A] 示例的撤销/重做 =====');
@@ -85,11 +86,10 @@ const menuClick = async (page, label, exact = true) => {
       localStorage.setItem('verilog-viz-sandbox-settings', JSON.stringify({ gridSize: 16, showGrid: true, snapToGrid: true, wireStyle: 'metro', defaultBits: 1, autoStartSim: false }));
     });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
     // 重新打开之前保存过的文件？未保存 —— 新建后重插
     const files = await page.evaluate(() => JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '[]').length);
     console.log('    存档文件数（应为 0，[A] 未保存）:', files);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     await page.mouse.click(1100, 700, { button: 'right' }); await sleep(500);
     await menuClick(page, '插入示例', false);
     await menuClick(page, '4 位二进制计数器', false);

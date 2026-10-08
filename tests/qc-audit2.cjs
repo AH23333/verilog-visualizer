@@ -9,6 +9,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1442;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1442)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -20,18 +21,20 @@ async function waitForServer(t = 15000) {
   return false;
 }
 const clickGate = async (page, label) => {
-  await page.evaluate((l) => document.querySelector('button[data-gate="' + l + '"]')?.click(), label);
+  await require('./_ui.cjs').clickGate(page, label);   // 原来是 `?.click()`：放不到就静默，后面整格读起来像产品坏了
   await sleep(400);
 };
 async function boot(page) {
-  await page.goto(URL, { waitUntil: 'networkidle' });
+  // 死锚点两处（实测 FATAL `reading 'model'`）：networkidle 在 dev 服务器上永不满足；
+  // 而 `button[title="新建文件"]` 在编译视图点下去弹 PromptDialog（`fixed inset-0 z-[2100]`），
+  // 遮罩不关 ⇒ 沙盒根本没进去。改走共用夹具。
+  await require('./_ui.cjs').boot(page, URL);
   await page.evaluate(() => {
     ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k));
   });
-  await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
+  await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1200 });
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+  await require('./_ui.cjs').newSandboxFile(page);
 }
 const snapFlag = (page) => page.evaluate(() => {
   const raw = localStorage.getItem('verilog-viz-sandbox-settings');
@@ -66,28 +69,15 @@ async function dragUnderZoom(page) {
   if (!after) return { err: 'drag failed' };
   return { beforeX: before.x, afterX: after.x, modelDx: after.x - before.x, mod16: after.x % 16 };
 }
-// 精确定位「吸附到网格」那一行的开关并切换
+// 精确定位「吸附到网格」那一行的开关并切换 —— 实现只许有一份（_ui.cjs 的 setSandboxToggle）。
+// 两颗闸门各自复制一份定位代码，就是 qc-audit 那份飘掉而这里没飘的原因。
 async function setSnap(page, want) {
-  await page.evaluate(() => document.querySelector('button[data-sandbox-settings]')?.click());
-  await sleep(700);
-  await page.evaluate(() => { const b = [...document.querySelectorAll('button')].find(x => x.textContent?.trim() === '沙盒'); b?.click(); });
-  await sleep(400);
   const before = await snapFlag(page);
-  if (before !== want) {
-    const clicked = await page.evaluate(() => {
-      const label = [...document.querySelectorAll('div')].find(d => d.children.length === 0 && d.textContent?.trim() === '吸附到网格');
-      const btn = label?.parentElement?.nextElementSibling?.querySelector('button');
-      if (!btn) return false;
-      btn.click();
-      return true;
-    });
-    if (!clicked) console.log('    !! 未能定位到「吸附到网格」开关');
-    await sleep(500);
-  }
-  await page.keyboard.press('Escape'); await sleep(400);
+  const flip = await require('./_ui.cjs').setSandboxToggle(page, '吸附到网格', want);
   const after = await snapFlag(page);
-  return { before, after };
+  return { before, after, flip };
 }
+
 
 (async () => {
   let server, browser;
@@ -131,14 +121,19 @@ async function setSnap(page, want) {
 
     // ================= B) 切主题（先放部件，再切）=================
     console.log('\n===== [B] 切主题：网格重绘 + 部件保留（先放置部件）=====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1200);
-    await clickGate(page, 'Button'); await clickGate(page, 'Lamp'); await clickGate(page, 'And'); await sleep(500);
+    await require('./_ui.cjs').newSandboxFile(page);
+    // ⚠ 原来放的是 'Button'：元件库里**没有**这颗（PALETTE 的「输入 / 输出」是 Clock/Lamp/Input/
+    //   Output/Constant/源，见 SandboxCanvas.tsx:206），clickGate 现在会响亮地抛 ⇒ 整格 FATAL。
+    //   这一格判的是"切主题不丢件"，用库里真有的三颗就够，且要**非零**才不空转。
+    await clickGate(page, 'Input'); await clickGate(page, 'Lamp'); await clickGate(page, 'And'); await sleep(500);
     const cellsBefore = await page.evaluate(() => window.__sandboxPaper.model.getCells().map(c => c.get('type')));
     const gridBefore = await page.evaluate(() => {
       const g = document.querySelector('[data-sandbox-grid]');
       return g ? getComputedStyle(g).backgroundImage : null;
     });
-    await page.locator('button[title="主题"]').click(); await sleep(1200);
+    // ⚠ `button[title="主题"]` 这棵锚点早就不存在（实测就是 30 s 超时把整格拖成 FATAL）：
+    // 主题开关在活动栏上，按 data-activity 认（口径同绿的 r61）。
+    await page.locator('button[data-activity="主题"]').first().click(); await sleep(1200);
     const cellsAfter = await page.evaluate(() => window.__sandboxPaper.model.getCells().map(c => c.get('type')));
     const gridAfter = await page.evaluate(() => {
       const g = document.querySelector('[data-sandbox-grid]');
@@ -146,8 +141,8 @@ async function setSnap(page, want) {
     });
     console.log('    部件 before =', JSON.stringify(cellsBefore), ' after =', JSON.stringify(cellsAfter));
     console.log('    网格颜色变化:', String(gridBefore).slice(0, 60), '->', String(gridAfter).slice(0, 60));
-    (cellsBefore.length >= 3 && cellsAfter.length === cellsBefore.length && cellsAfter.includes('Button') && cellsAfter.includes('Lamp'))
-      ? ok('[B1] 切主题后部件真实保留', `${cellsBefore.length} 个 -> ${cellsAfter.length} 个`)
+    (cellsBefore.length >= 3 && cellsAfter.length === cellsBefore.length && cellsAfter.includes('Input') && cellsAfter.includes('Lamp') && cellsAfter.includes('And'))
+      ? ok('[B1] 切主题后部件真实保留（颗数与种类都在）', `${cellsBefore.length} 个 -> ${cellsAfter.length} 个`)
       : bad('[B1] 切主题后部件丢失', `${JSON.stringify(cellsBefore)} -> ${JSON.stringify(cellsAfter)}`);
     (gridBefore && gridAfter && gridBefore !== gridAfter)
       ? ok('[B2] 切主题后网格颜色确实重绘')
@@ -157,5 +152,5 @@ async function setSnap(page, want) {
     console.log(`\n===== QC2 DONE: ${pass} pass, ${fail} fail =====`);
     await browser.close();
   } catch (e) { console.log('FATAL', String(e)); fail++; }
-  finally { try { server?.kill('SIGKILL'); } catch {} process.exit(0); }
+  finally { try { server?.kill('SIGKILL'); } catch {} process.exit(fail > 0 ? 1 : 0); }
 })();

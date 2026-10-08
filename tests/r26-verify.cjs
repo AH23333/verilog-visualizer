@@ -11,6 +11,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1477;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1477)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -35,8 +36,7 @@ async function waitForServer(t = 20000) {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
 
     const exportV = async () => {
       const dl = page.waitForEvent('download', { timeout: 8000 });
@@ -84,7 +84,8 @@ async function waitForServer(t = 20000) {
     dffCount === 4 ? ok('[2] 4 个 D 触发器全部转换', `always×${dffCount}`) : bad('[2] Dff 数量异常', String(dffCount));
 
     // [3] 常量：放一个 Constant 并导出
-    await page.locator('button[data-gate="Constant"]').click(); await sleep(500);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'Constant'); await sleep(500);
     await page.evaluate(() => {
       const c = window.__sandboxPaper.model.getCells().filter(x => x.get('type') === 'Constant').pop();
       if (c) c.set('constant', '0101');

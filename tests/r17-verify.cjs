@@ -10,6 +10,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1432;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1432)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -20,10 +21,7 @@ async function waitForServer(t = 15000) {
   while (Date.now() < d) { try { const r = await fetch(URL); if (r.ok) return true; } catch {} await sleep(500); }
   return false;
 }
-const clickGate = async (page, label) => {
-  await page.evaluate((l) => document.querySelector('button[data-gate="' + l + '"]')?.click(), label);
-  await sleep(350);
-};
+const clickGate = (page, label) => require('./_ui.cjs').clickGate(page, label);   // 旧的本地版用 ?.click() 静默空转
 async function boot(page) {
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.evaluate(() => {
@@ -33,8 +31,7 @@ async function boot(page) {
   });
   await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+  await require('./_ui.cjs').newSandboxFile(page);
 }
 (async () => {
   let server, browser;
@@ -134,7 +131,6 @@ async function boot(page) {
     console.log('\n===== [3] 切侧栏面板后部件保留 =====');
     for (const panel of ['文件', '模块', '层次结构']) {
       await page.locator(`button[title="${panel}"]`).click(); await sleep(700);
-      await page.locator('button[title="沙盒"]').click(); await sleep(1400);
       const st = await page.evaluate(() => {
         const p = window.__sandboxPaper;
         return p ? { cells: p.model.getCells().length, types: p.model.getCells().map(c => c.get('type')) } : { cells: -1, types: [] };

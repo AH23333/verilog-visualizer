@@ -8,8 +8,10 @@ const { spawn } = require('child_process');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
+const UI = require('./_ui.cjs');   // clickZoomInto：放大镜这一族的落点 owner
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1494;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1494)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -64,23 +66,19 @@ endmodule
     for (let i = 0; i < 40; i++) { await sleep(500); const c = await page.evaluate(async (id) => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getById(id); return !!(f && f.status === 'compiled' && f.circuitJson); }, fileId); if (c) break; }
 
     // ===== [4] 编译模式子部件快捷展开图（只读预览）=====
-    const findZoom = () => page.evaluate(() => {
-      const els = Array.from(document.querySelectorAll('[model-id]'));
-      for (const el of els) {
-        const za = el.querySelector?.('a.zoom');
-        if (!za) continue;
-        const r = za.getBoundingClientRect();
-        if (r.width > 0) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-      }
-      return null;
-    });
-    let subPt = null;
-    for (let a = 0; a < 10 && !subPt; a++) { subPt = await findZoom(); if (!subPt) await sleep(600); }
-    if (!subPt) bad('[4] 编译模式画布上找不到子部件放大镜');
+    // ⚠ 落点**不许缓存**，也**不许换成 locator.click**（两种读数的解释都写在
+    //   tests/_ui.cjs 的 clickZoomInto 文件头）：编译就绪后画布还要做一次"适应窗口"，
+    //   旧写法量完 rect 再去点 ⇒ 点空；同一颗夹具两次跑出两种脸（一次 modal:false、
+    //   一次连工具栏的「复制到沙盒」都等不到）。locator 那条则是 4/4 超时：放大镜在
+    //   joint 工具层里 computed visibility=hidden，Playwright 的动作性检查过不去。
+    const zoomCount = () => page.evaluate(() => Array.from(document.querySelectorAll('a.zoom'))
+      .filter((a) => a.getBoundingClientRect().width > 0).length);
+    let zoomsSeen = 0;
+    for (let a = 0; a < 10; a++) { zoomsSeen = await zoomCount(); if (zoomsSeen > 0) break; await sleep(600); }
+    if (!zoomsSeen) bad('[4] 编译模式画布上找不到子部件放大镜', `可见 a.zoom=${zoomsSeen}`);
     else {
-      await page.mouse.click(subPt.x, subPt.y);
-      // 弹窗是异步渲染（30ms 骨架 + 布局），轮询等它就绪
-      for (let a = 0; a < 12; a++) { await sleep(400); if (await page.evaluate(() => !!document.querySelector('[data-inner-host] svg'))) break; }
+      const z = await UI.clickZoomInto(page);
+      console.log(`  [4] 放大镜第 ${z.tries} 次${z.opened ? '起窗' : '仍没起窗'}${z.why.length ? ' ｜ ' + z.why.join(' ｜ ') : ''}`);
       const cm = await page.evaluate(() => {
         const host = document.querySelector('[data-inner-host]');
         if (!host) return { modal: false };
@@ -105,24 +103,21 @@ endmodule
       (cm.modal && cm.devs > 0 && cm.draggable && cm.btnfaceBlocked && cm.renderedConns > 0)
         ? ok('[4] 编译模式子部件展开图=只读预览（禁拖动/禁开关）+ 线路渲染', `devs=${cm.devs} conns=${cm.renderedConns} btnfaceBlocked=${cm.btnfaceBlocked} draggable=${cm.draggable}`)
         : bad('[4] 编译模式只读预览异常', JSON.stringify(cm));
-      // 钻取下级 sub2
+      // 钻取下级 sub2（同一套"等画面停 + 现量现点"，弹窗内那张画布也要适应窗口）
       if (cm.subs > 0) {
-        const p2 = await page.evaluate(() => {
-          const ip = window.__innerPaper; if (!ip) return null;
-          const s2 = ip.model.getCells().find(c => c.get('type') === 'Subcircuit');
-          if (!s2) return null; const v = s2.findView(ip); const za = v.el?.querySelector?.('a.zoom');
-          if (!za) return null; const r = za.getBoundingClientRect();
-          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-        });
-        if (p2) {
-          await page.mouse.click(p2.x, p2.y); await sleep(1300);
+        const crumbUp = () => page.evaluate(() => Array.from(document.querySelectorAll('button'))
+          .some((b) => (b.textContent || '').trim() === 'sub2'));
+        const z2 = await UI.clickZoomInto(page, { within: '[data-inner-host]', openedSelector: crumbUp });
+        console.log(`  [4b] 内层放大镜第 ${z2.tries} 次${z2.opened ? '钻下去' : '没钻下去'}${z2.why.length ? ' ｜ ' + z2.why.join(' ｜ ') : ''}`);
+        if (z2.opened) {
+          await sleep(600);
           const cm2 = await page.evaluate(() => {
             const paper = window.__innerPaper; if (!paper) return null;
             return { devs: paper.model.getElements().length, crumb: Array.from(document.querySelectorAll('button')).map(b => b.textContent.trim()).filter(t => t === 'sub2').length };
           });
           (cm2 && cm2.crumb >= 1) ? ok('[4b] 编译模式展开图可继续钻取子部件（面包屑）', `devs=${cm2.devs}`)
             : bad('[4b] 编译模式钻取失败', JSON.stringify(cm2));
-        } else bad('[4b] 找不到 sub2 放大镜');
+        } else bad('[4b] 内层放大镜点不动（重试都没钻下去）', JSON.stringify(z2.why));
       }
       await page.keyboard.press('Escape'); await sleep(500);
     }

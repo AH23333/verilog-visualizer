@@ -6,8 +6,14 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 4174;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(4174)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+// 跑批只认 PASS/FAIL 行：本格原来通篇 `>>>` 叙述、一条断言都不打 ⇒ NOVERDICT 被 FATAL 盖成 RED，
+// 谁也没法说它到底判了什么。下面把三条真实交互结论各钉一颗判据。
+let pass = 0, fail = 0;
+const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
+const bad = (n, d = '') => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };
 async function waitForServer(t = 20000) {
   const d = Date.now() + t;
   while (Date.now() < d) { try { const r = await fetch(URL); if (r.ok) return true; } catch {} await sleep(500); }
@@ -15,6 +21,7 @@ async function waitForServer(t = 20000) {
 }
 // 真实鼠标点击调色板按钮（不用 JS click）
 async function realClickGate(page, label) {
+  await require('./_ui.cjs').ensurePalette(page);
   const btn = page.locator(`button[data-gate="${label}"]`);
   await btn.scrollIntoViewIfNeeded().catch(() => {});
   await btn.click();           // Playwright 真实鼠标点击
@@ -43,18 +50,21 @@ const lampState = (page, id) => page.evaluate((id) => {
   let server, browser;
   try {
     try { require('child_process').execSync(`powershell -Command "Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"`); } catch {}
+    // 这一格量的是**构建产物**：先证明 dist 不比 src 旧，否则读的是上一版的壳（#265 一族）。
+    console.log('产物新鲜度:', require('./_ui.cjs').ensureFreshDist(PROJECT_ROOT));
     server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { cwd: PROJECT_ROOT, shell: true, stdio: 'pipe' });
     console.log('preview:', (await waitForServer()) ? 'OK' : 'FAIL');
     browser = await PLAYWRIGHT.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('pageerror', e => errors.push(String(e)));
-    await page.goto(URL, { waitUntil: 'networkidle' });
+    await require('./_ui.cjs').boot(page, URL);
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates'].forEach(k=>localStorage.removeItem(k)); localStorage.setItem('verilog-viz-sandbox-settings', JSON.stringify({gridSize:16,showGrid:true,snapToGrid:true,wireStyle:'metro',defaultBits:1,autoStartSim:false})); });
-    await page.reload({ waitUntil: 'networkidle' }); await sleep(2500);
+    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1500 });
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(1000);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1500);
+    // ⚠ 死锚点（实测遮罩拦点击）：`button[title="新建文件"]` 在**编译视图**点下去弹的是
+    // PromptDialog（`fixed inset-0 z-[2100]`），不填就不关 ⇒ 后面每次真鼠标点击都被它拦住。
+    await require('./_ui.cjs').newSandboxFile(page);
 
     console.log('===== 真实鼠标放置 + 连线 =====');
     await realClickGate(page, 'Input'); await realClickGate(page, 'Input');
@@ -69,7 +79,9 @@ const lampState = (page, id) => page.evaluate((id) => {
     await wire(page, ids.Input[0], 'out', ids.And[0], inPorts[0]);
     await wire(page, ids.Input[1], 'out', ids.And[0], inPorts[1]);
     await wire(page, ids.And[0], 'out', ids.Lamp[0], 'in');
-    console.log('    links =', await page.evaluate(() => window.__sandboxPaper.model.getLinks().length));
+    const nLinks = await page.evaluate(() => window.__sandboxPaper.model.getLinks().length);
+    console.log('    links =', nLinks);
+    (nLinks >= 3 ? ok : bad)('[1] 生产包下真鼠标放置 + 三根连线都接上', `links=${nLinks}`);
 
     // 真实点击两个输入引脚（点盒体中心，不借助内部选择器）
     for (const iId of ids.Input) {
@@ -82,15 +94,49 @@ const lampState = (page, id) => page.evaluate((id) => {
     }
     const s1 = await lampState(page, ids.Lamp[0]);
     console.log('    点击两个输入后 灯:', JSON.stringify(s1));
+    // R112 判据更新：本 gate 显式设了 `autoStartSim:false`（见 localStorage 初始化）
+    //   ⇒ 电路**从不启动引擎**。用户规则「非运行状态下用户与部件交互，禁止组件传输信号」
+    //   正是这个场景 ⇒ 期望「输入值可改、但信号不往下游传，灯不亮」。
+    //   旧判据（要求灯亮）编码的是改动前"无条件 updateGates"的行为，与新规则冲突。
+    //   ⚠ 产品侧同步修正：R103 把规则实现成"直接拒绝改输入值"，会让用户在未运行态
+    //     **永远设不了输入初值**（r50 三格全红：rst 拨不动、单步没 clk）。
+    //     R112 改为「值照改，只是不调 updateGates」。
     const lit1 = /3, 192, 60|#03c03c/.test(s1.led);
-    console.log(lit1 ? '  >>> 真实交互下与门正常点亮' : '  >>> 真实交互下灯不亮！');
+    (!lit1 ? ok : bad)('[2] 非运行态（autoStartSim:false）：拨输入**不点亮**灯 —— 信号被禁止传输', `${JSON.stringify(s1)}（links=${nLinks}）`);
+    // 输入值本身必须已经改了（证明是"不传播"，不是"拒绝交互"）
+    const inpVals = await page.evaluate((list) => list.map((id) => {
+      const c = window.__sandboxPaper.model.getCell(id);
+      const o = c.get('outputSignals'); const v = o && (o.out ?? Object.values(o)[0]);
+      return v == null ? 'null' : String(v).replace(/^Vector3vl\s+/, '');
+    }), ids.Input);
+    (inpVals.some((v) => /1/.test(v)) ? ok : bad)
+      ('[2a] 非运行态下**输入值仍可改**（只是不传播）', JSON.stringify(inpVals));
+
+    // 点「运行」⇒ 引擎启动 ⇒ 传播恢复，灯应点亮
+    try {
+      const toggle = page.locator('button[title="运行 / 暂停仿真"]').first();
+      if (await toggle.count()) {
+        await toggle.click({ force: true }); await sleep(1400);
+        const sRun = await lampState(page, ids.Lamp[0]);
+        const litRun = /3, 192, 60|#03c03c/.test(sRun.led);
+        (litRun ? ok : bad)('[2b] 点「运行」启动引擎 → 与门点亮灯（传播恢复）', `${JSON.stringify(sRun)}`);
+        await toggle.click({ force: true }); await sleep(600);            // 复位成暂停
+      } else console.log('    [2b] 跳过：找不到「运行 / 暂停仿真」按钮');
+    } catch (e) { console.log('    [2b] 跳过:', String(e).slice(0, 80)); }
 
     console.log('\n===== 保存 → 刷新 → 重开 =====');
-    await page.locator('button[title^="保存"]').first().click().catch(async () => { await page.keyboard.press('Control+s'); });
+    await page.locator('button[title^="保存"]').first().click();
     await sleep(900);
-    await page.reload({ waitUntil: 'networkidle' }); await sleep(2500);
+    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1500 });
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(1500);
+    // 重载后落在默认视图（电路/代码）：沙盒必须由夹具再进去。刻意不用 enterSandbox ——
+    // 它读不到 paper 会**新建文件**，那正好把"持久化"这颗判据的前置抹掉。
+    await page.locator('button[data-activity="sandbox"]').click();
+    const restored = await page.waitForFunction(() => !!window.__sandboxPaper, null, { timeout: 15000 }).then(() => true).catch(() => false);
+    if (!restored) {
+      bad('[3] 刷新后活动沙盒文件自动带回', '回到沙盒却没有 paper：活动文件没被恢复');
+      bad('[4] 刷新后与门仍响应真鼠标点击', '前置没成（没有画布），不作数');
+    } else {
     const ids2 = await page.evaluate(() => {
       const p = window.__sandboxPaper; if (!p) return null;
       const by = {};
@@ -98,8 +144,12 @@ const lampState = (page, id) => page.evaluate((id) => {
       return by;
     });
     console.log('    重开后的部件:', JSON.stringify(Object.fromEntries(Object.entries(ids2 || {}).map(([k,v])=>[k,v.length]))));
-    if (ids2 && ids2.And && ids2.Input) {
-      // 重开后再点一次第一个输入引脚（1→0），灯应变红/灭
+    const kept = !!(ids2 && ids2.And && ids2.Input && ids2.Input.length >= 2 && ids2.Lamp);
+    kept ? ok('[3] 刷新后与门/两个输入/灯都带回来了', JSON.stringify(Object.fromEntries(Object.entries(ids2).map(([k, v]) => [k, v.length]))))
+         : bad('[3] 刷新后部件丢失', JSON.stringify(ids2));
+    if (kept) {
+      // 重开后再点一次第一个输入引脚（0→1，另一个仍 0）⇒ 与门输出 0，灯必须**跟着变**，
+      // 这一格判的是"重开后的连线还活着"，不预设灯色（预设就是没见过的读数）。
       const pt = await page.evaluate((id) => {
         const p = window.__sandboxPaper; const v = p.model.getCell(id).findView(p);
         const r = v.el.getBoundingClientRect();
@@ -108,14 +158,16 @@ const lampState = (page, id) => page.evaluate((id) => {
       await page.mouse.click(pt.x, pt.y); await sleep(700);
       const s2 = await lampState(page, ids2.Lamp[0]);
       console.log('    重开后点击输入 灯:', JSON.stringify(s2));
-      console.log(/3, 192, 60|#03c03c/.test(s2.led) || /252, 124, 104|#fc7c68/.test(s2.led)
-        ? '  >>> 持久化后与门仍正常响应'
-        : '  >>> 持久化后与门无响应！');
+      (/3, 192, 60|#03c03c|252, 124, 104|#fc7c68/.test(String(s2.led)) && s2.in !== 'n/a')
+        ? ok('[4] 刷新后与门仍响应真鼠标点击（灯被重画、端口有读数）', `${JSON.stringify(s2)}`)
+        : bad('[4] 刷新后与门无响应', JSON.stringify(s2));
     } else {
-      console.log('  >>> 重开后部件丢失（持久化问题）');
+      bad('[4] 刷新后与门仍响应真鼠标点击', '前置没成（部件丢失），不作数');
+    }
     }
     console.log('pageerrors:', JSON.stringify(errors.slice(0, 5)));
+    console.log(`\n===== QC-PAUSED DONE: ${pass} pass, ${fail} fail =====`);
     await browser.close();
-  } catch (e) { console.log('FATAL', String(e)); }
-  finally { try { server?.kill('SIGKILL'); } catch {} process.exit(0); }
+  } catch (e) { console.log('FATAL', String(e)); fail++; }
+  finally { try { server?.kill('SIGKILL'); } catch {} process.exit(fail > 0 ? 1 : 0); }
 })();

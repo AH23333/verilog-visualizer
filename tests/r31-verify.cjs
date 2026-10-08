@@ -11,6 +11,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1477;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1477)); } catch { }
+const UI = require('./_ui.cjs');
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -63,7 +65,7 @@ const portPoint = (page, type, port, which) => page.evaluate(({ type, port, whic
     const exited = !(await inSandbox());
     await clickActivity(page, 'sandbox'); await sleep(900); // 重新进入
     const reEntered = await inSandbox();
-    await page.locator('button[title="新建文件"]').first().click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     const exitBtn = page.locator('button[data-sandbox-exit]');
     const hasExitBtn = await exitBtn.count();
     if (hasExitBtn) { await exitBtn.click(); await sleep(900); }
@@ -75,7 +77,7 @@ const portPoint = (page, type, port, which) => page.evaluate(({ type, port, whic
 
     // 回到沙盒继续后续用例
     await clickActivity(page, 'sandbox'); await sleep(1000);
-    await page.locator('button[title="新建文件"]').first().click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     await clickActivity(page, 'modules'); await sleep(400);
     // R32 起部件库分组默认折叠 —— 展开全部，后面才能点到 Constant / Lamp / NumDisplay / BusUngroup
     for (const n of ['逻辑门', '输入 / 输出', '时序', '运算', '比较', '选择 / 移位', '总线', '存储', '显示']) {
@@ -111,8 +113,10 @@ const portPoint = (page, type, port, which) => page.evaluate(({ type, port, whic
     }));
     console.log('    器件库诊断:', JSON.stringify(paletteDiag));
     if (!paletteDiag.gates) { await clickActivity(page, 'modules'); await sleep(500); }
-    await page.locator('button[data-gate="Constant"]').first().click(); await sleep(400);
-    await page.locator('button[data-gate="Lamp"]').first().click(); await sleep(400);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'Constant'); await sleep(400);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'Lamp'); await sleep(400);
     const src = await portPoint(page, 'Constant', 'out', 'last');
     const dst = await portPoint(page, 'Lamp', 'in', 'last');
     await page.mouse.move(src.x + 9, src.y + 7);
@@ -137,7 +141,8 @@ const portPoint = (page, type, port, which) => page.evaluate(({ type, port, whic
       : bad('[3] 磁吸连线失败', JSON.stringify(snapLink));
 
     // [4] 位宽自动转换：1 位常量 → 4 位数值显示
-    await page.locator('button[data-gate="NumDisplay"]').first().click(); await sleep(500);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'NumDisplay'); await sleep(500);
     const s2 = await portPoint(page, 'Constant', 'out', 'last');
     const d2 = await portPoint(page, 'NumDisplay', 'in', 'last');
     const beforeConv = await page.evaluate(() => {
@@ -166,7 +171,8 @@ const portPoint = (page, type, port, which) => page.evaluate(({ type, port, whic
       : bad('[4] 位宽自动转换异常', JSON.stringify({ beforeConv, conv }));
 
     // [5] 分线器放下即弹位宽方案对话框
-    await page.locator('button[data-gate="BusUngroup"]').first().click(); await sleep(600);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'BusUngroup'); await sleep(600);
     const dlg = await page.evaluate(() => !!document.querySelector('[data-bus-width-dialog]'));
     if (dlg) {
       await page.locator('[data-bus-width-dialog] button:text-is("8 位")').first().click(); await sleep(250);

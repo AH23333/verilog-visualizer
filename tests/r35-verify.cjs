@@ -13,6 +13,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1497;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1497)); } catch { }
+const UI = require('./_ui.cjs');
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -24,12 +26,15 @@ async function waitForServer(t = 20000) {
   return false;
 }
 function badWireGate() {
+  // 这条线**真的坏**：目标器件不存在。
+  // （历史坑：本夹具原来写的是 `n1.in1`，而 digitaljs 的 Not 门输入端口叫 `in`
+  //  —— 于是「合法线」其实也是坏线，闸门断言的降级路径与数据对不上。）
   return { cells: [
     { id: 'i1', type: 'Input', position: { x: 40, y: 40 }, bits: 1, net: 'a' },
     { id: 'n1', type: 'Not', position: { x: 140, y: 40 }, bits: 1 },
     { id: 'o1', type: 'Output', position: { x: 240, y: 40 }, bits: 1, net: 'y' },
-    { id: 'w1', isLink: true, source: { id: 'i1', port: 'out' }, target: { id: 'n1', port: 'in1' }, netname: 'N1', bits: 1 },
-    { id: 'w2', isLink: true, source: { id: 'n1', port: 'out' }, target: { id: 'o1', port: 'in' }, netname: 'N2', bits: 1 },
+    { id: 'w1', isLink: true, source: { id: 'i1', port: 'out' }, target: { id: 'n1', port: 'in' }, netname: 'N1', bits: 1 },
+    { id: 'w2', isLink: true, source: { id: 'n1', port: 'out' }, target: { id: 'ghost', port: 'in' }, netname: 'N2', bits: 1 },
   ] };
 }
 function handDrawnGate() {
@@ -55,15 +60,18 @@ function validNestedGate() {
     { id: 'n_w2', isLink: true, source: { id: 'n_sub', port: 'y' }, target: { id: 'n_o1', port: 'in' }, netname: 'z', bits: 1 },
   ] };
 }
-// R36: 嵌套坏线门 —— 内含 BADWIRE（其内部 w1 引用 Not 门的不存在端口 in1）
+// R36: 嵌套坏线门 —— 内层 BADWIRE 有一条引用不存在器件的线，外层这条引用实例
+// 上不存在的端口；两层都必须走降级并各自计数
 function badNestedGate() {
+  // 内层 BADWIRE 自带一条坏线；外层这条也引用了实例上不存在的端口 —— 降级要
+  // 同时发生在「嵌套层」和「外层」，且不许把坏线猜接到别的脚上。
   return { cells: [
     { id: 'b_i1', type: 'Input', position: { x: 40, y: 40 }, bits: 1, net: 'x' },
     { id: 'b_sub', type: 'Subcircuit', position: { x: 200, y: 40 }, celltype: 'BADWIRE',
       subcircuitGraph: badWireGate() },
     { id: 'b_o1', type: 'Output', position: { x: 360, y: 40 }, bits: 1, net: 'z' },
     { id: 'b_w1', isLink: true, source: { id: 'b_i1', port: 'out' }, target: { id: 'b_sub', port: 'a' }, netname: 'x', bits: 1 },
-    { id: 'b_w2', isLink: true, source: { id: 'b_sub', port: 'y' }, target: { id: 'b_o1', port: 'in' }, netname: 'z', bits: 1 },
+    { id: 'b_w2', isLink: true, source: { id: 'b_sub', port: 'nope' }, target: { id: 'b_o1', port: 'in' }, netname: 'z', bits: 1 },
   ] };
 }
 async function openExpand(page, gateName) {
@@ -127,7 +135,7 @@ async function openExpand(page, gateName) {
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
     await page.locator('button[data-activity="sandbox"]').first().click(); await sleep(900);
-    await page.locator('button[title="新建文件"]').first().click(); await sleep(900);
+    await UI.newSandboxFile(page);
     await page.locator('button[data-activity="modules"]').first().click(); await sleep(500);
     await page.locator('[data-sandbox-sidebar] button:has-text("BADWIRE")').first().click(); await sleep(1200);
     await page.locator('[data-sandbox-sidebar] button:has-text("HAND")').first().click(); await sleep(1200);

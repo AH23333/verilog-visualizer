@@ -14,6 +14,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1433;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1433)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -24,10 +25,7 @@ async function waitForServer(t = 15000) {
   while (Date.now() < d) { try { const r = await fetch(URL); if (r.ok) return true; } catch {} await sleep(500); }
   return false;
 }
-const clickGate = async (page, label) => {
-  await page.evaluate((l) => document.querySelector('button[data-gate="' + l + '"]')?.click(), label);
-  await sleep(400);
-};
+const clickGate = (page, label) => require('./_ui.cjs').clickGate(page, label);   // 旧的本地版用 ?.click() 静默空转
 async function boot(page) {
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.evaluate(() => {
@@ -38,8 +36,7 @@ async function boot(page) {
   });
   await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(900);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+  await require('./_ui.cjs').newSandboxFile(page);
 }
 const portCenterClient = async (page, cellId, portId) => page.evaluate(([id, p]) => {
   const paper = window.__sandboxPaper;
@@ -140,7 +137,7 @@ const portCenterClient = async (page, cellId, portId) => page.evaluate(([id, p])
 
     // ================= [4] 自定义门：端口布局 + 展开内部图 =================
     console.log('\n===== [4] 自定义门 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+    await require('./_ui.cjs').newSandboxFile(page);
     await clickGate(page, 'Input'); await clickGate(page, 'And'); await clickGate(page, 'Output');
     await sleep(400);
     const gateSetup = await page.evaluate(() => {
@@ -164,7 +161,7 @@ const portCenterClient = async (page, cellId, portId) => page.evaluate(([id, p])
     await page.keyboard.press('Enter'); await sleep(900);
     const gateCount = await page.evaluate(() => window.__sandboxGates.list().length);
     console.log('    已保存自定义门数量 =', gateCount);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+    await require('./_ui.cjs').newSandboxFile(page);
     await page.evaluate(() => { const g = window.__sandboxGates.list()[0]; if (g) window.__sandboxGates.place(g.id); });
     await sleep(900);
     const subGeom = await page.evaluate(() => {

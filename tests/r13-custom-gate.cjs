@@ -9,6 +9,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1427;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1427)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const results = { pass: 0, fail: 0 };
@@ -48,10 +49,7 @@ async function wirePort(page, srcType, srcPort, tgtType, tgtPort) {
   await page.mouse.up(); await sleep(400);
   return true;
 }
-const clickGate = async (page, label) => {
-  await page.evaluate((l) => document.querySelector('button[data-gate="' + l + '"]')?.click(), label);
-  await sleep(450);
-};
+const clickGate = (page, label) => require('./_ui.cjs').clickGate(page, label);   // 旧的本地版用 ?.click() 静默空转
 async function boot(page) {
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.evaluate(() => {
@@ -61,8 +59,7 @@ async function boot(page) {
   });
   await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+  await require('./_ui.cjs').newSandboxFile(page);
 }
 
 (async () => {
@@ -106,10 +103,13 @@ async function boot(page) {
     (gateList.length === 1 && gateList[0].name === 'MyGate')
       ? ok('custom gate saved to USER registry', `name=${gateList[0].name}`)
       : bad('gate saved', JSON.stringify(gateList.map(g => g.name)));
-    const gateJson = await page.evaluate(() => {
-      const g = window.__sandboxGates.list()[0];
-      const j = JSON.parse(g.graphJson);
-      return j.cells.map(c => c.type);
+    // ⚠ 部件真身在 R39 之后就是**沙盒文件**（role:'part'），`__sandboxGates.list()` 里的条目
+    //   只有 {id,name,folder}，没有 graphJson —— 原来 JSON.parse(undefined) 直接 SyntaxError。
+    const gateJson = await page.evaluate(async () => {
+      const { sandboxStore } = await import('/src/store/sandboxStore.ts');
+      const f = sandboxStore.list().find((x) => x.role === 'part');
+      if (!f || !f.graphJson) return [];
+      try { return JSON.parse(f.graphJson).cells.map((c) => c.type); } catch { return []; }
     });
     (gateJson.includes('Input') && gateJson.includes('Output'))
       ? ok('saved gate graph has interface (Input/Output)', gateJson.join(','))
@@ -117,7 +117,7 @@ async function boot(page) {
 
     // ===== Phase B: 实例化自定义门并验证真仿真（信号穿越子电路）=====
     console.log('[B] Instantiate custom gate + simulate through it');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+    await require('./_ui.cjs').newSandboxFile(page);
     await clickGate(page, 'Input'); await clickGate(page, 'Lamp'); await sleep(300);
     await page.evaluate(() => { const g = window.__sandboxGates.list()[0]; if (g) window.__sandboxGates.place(g.id); }); await sleep(600); // 通过 USER 注册表实例化自定义门
     const subInfo = await page.evaluate(() => {
@@ -199,7 +199,6 @@ async function boot(page) {
 
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(1500);
     // DIAG: what did we actually persist + what reopened?
     const diagReload = await page.evaluate(() => {
       const lsKey = 'verilog-viz-sandbox-files';
@@ -218,6 +217,8 @@ async function boot(page) {
     console.log('DIAG reload:', JSON.stringify(diagReload));
     // active file auto-reopens after reload; if not, open it from the FILES list
     let reloaded = await page.evaluate(() => {
+      // reload 之后应用默认回到编译视图，paper 不一定已经重建 —— 别在这直接 .model 炸掉整颗闸门
+      if (!window.__sandboxPaper) return { sub: false, noPaper: true };
       const subs = window.__sandboxPaper.model.getCells().filter(c => c.get('type') === 'Subcircuit');
       if (!subs.length) return { sub: false };
       const inner = subs[0].get('graph');
@@ -225,10 +226,30 @@ async function boot(page) {
       return { sub: true, innerTypes, ports: subs[0].get('ports').items.map(p => p.id) };
     });
     if (!reloaded.sub) {
-      await page.locator('span').filter({ hasText: /\.djs$/ }).first().click(); await sleep(1200);
+      const sbx = page.locator('button[data-activity="sandbox"]');
+      if (await sbx.count()) { await sbx.first().click(); await sleep(800); }
+      // ⚠ reload 之后"第一个 .djs"很可能点是**部件文件**（MyGate.djs），那张画布里当然没有
+      //   Subcircuit —— 上一轮 FAIL 的 {"sub":false} 就是这个形状。要开的是装着那颗子电路的主文件。
+      const mainName = await page.evaluate(async () => {
+        const { sandboxStore } = await import('/src/store/sandboxStore.ts');
+        for (const f of sandboxStore.list()) {
+          try {
+            const j = JSON.parse(f.graphJson || 'null');
+            if (j && Array.isArray(j.cells) && j.cells.some((c) => c.type === 'Subcircuit')) return f.name;
+          } catch { /* 不是 JSON 就跳过 */ }
+        }
+        return null;
+      });
+      const row = mainName
+        ? page.locator('span', { hasText: mainName }).first()
+        : page.locator('span').filter({ hasText: /\.djs$/ }).first();
+      if (!(await row.count())) throw new Error(`reload 后找不到要打开的文件行（mainName=${mainName}）`);
+      await row.click(); await sleep(1600);
+      await page.waitForFunction(() => !!window.__sandboxPaper, null, { timeout: 20000 });
       reloaded = await page.evaluate(() => {
+        if (!window.__sandboxPaper) return { sub: false, noPaper: true };
         const subs = window.__sandboxPaper.model.getCells().filter(c => c.get('type') === 'Subcircuit');
-        if (!subs.length) return { sub: false };
+        if (!subs.length) return { sub: false, cellTypes: window.__sandboxPaper.model.getCells().map(c => String(c.get('type'))) };
         const inner = subs[0].get('graph');
         const innerTypes = inner.getCells().map(c => c.get('type'));
         return { sub: true, innerTypes, ports: subs[0].get('ports').items.map(p => p.id) };

@@ -7,6 +7,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1427;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1427)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const results = { pass: 0, fail: 0 };
@@ -38,21 +39,20 @@ async function dragWire(page) {
   return true;
 }
 async function lampFill(page) {
-  return page.evaluate(() => {
-    const el = document.querySelector('[data-type="Lamp"]');
-    if (!el) return '';
-    return el.querySelector('circle')?.getAttribute('fill') || el.querySelector('rect')?.getAttribute('fill') || el.querySelector('.body')?.getAttribute('fill') || '';
-  });
+  // ⚠ 旧版找 `[data-type="Lamp"]`：src 里根本没有这个属性 ⇒ 恒返回 ''，"灯亮没亮"从来没被量到过。
+  //   现在从 paper 的模型出发回到那颗视图；画布上没有 Lamp 就直接抛，别让 null 冒充一种颜色。
+  const f = await require('./_ui.cjs').cellFill(page, 'Lamp');
+  if (f === null) throw new Error('lampFill: 画布上没有 Lamp 器件，这条判据够不着');
+  return f;
 }
 const isLit = (f) => f === '#03c03c' || f === 'rgb(3,192,60)' || f === 'rgb(3, 192, 60)';
-const clickGate = async (page, label) => { await page.evaluate((l) => document.querySelector('button[data-gate="' + l + '"]')?.click(), label); await sleep(400); };
+const clickGate = (page, label) => require('./_ui.cjs').clickGate(page, label);   // 旧的本地版用 ?.click() 静默空转
 async function boot(page) {
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.evaluate(() => { localStorage.removeItem('verilog-viz-sandbox-files'); localStorage.removeItem('verilog-viz-sandbox-active'); });
   await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+  await require('./_ui.cjs').newSandboxFile(page);
 }
 
 (async () => {
@@ -72,7 +72,8 @@ async function boot(page) {
     await clickGate(page, 'Input'); await clickGate(page, 'Lamp'); await sleep(300);
     const w1 = await dragWire(page);
     const before = await page.evaluate(() => { const p = window.__sandboxPaper; return { cells: p.model.getCells().length, links: p.model.getLinks().length, cid: p.cid }; });
-    const btnPos = await page.evaluate(() => { const b = document.querySelector('[data-type="Input"]'); const r = b.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    const btnPos = await require('./_ui.cjs').cellRect(page, 'Input');
+    if (!btnPos) throw new Error('找不到 Input 的盒体（器件没放上去，后面的点击不作数）');
     await page.mouse.click(btnPos.x, btnPos.y); await sleep(500);
     const lampOn = await lampFill(page);
     w1 ? ok('wire Button.out -> Lamp.in drawn') : bad('wire Button.out -> Lamp.in drawn');
@@ -95,7 +96,7 @@ async function boot(page) {
     !isLit(lampAfterReset) ? ok('Reset returns Lamp to power-on (off)', `fill=${lampAfterReset}`) : bad('Reset returns Lamp to power-on', `fill=${lampAfterReset}`);
 
     console.log('[B] Pause + Step');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+    await require('./_ui.cjs').newSandboxFile(page);
     await clickGate(page, 'Clock'); await clickGate(page, 'Lamp'); await sleep(300);
     const w2 = await dragWire(page);
     const linksB = await page.evaluate(() => window.__sandboxPaper.model.getLinks().length);
@@ -103,15 +104,32 @@ async function boot(page) {
 
     await page.locator('button[title="运行 / 暂停仿真"]').click(); await sleep(300);
     const runningAfterPause = await page.evaluate(() => window.__sandboxCircuit?.running ?? null);
-    const tA = await page.evaluate(() => window.__sandboxCircuit?.tick ?? -1); await sleep(250);
-    const tB = await page.evaluate(() => window.__sandboxCircuit?.tick ?? -1); await sleep(250);
-    const tC = await page.evaluate(() => window.__sandboxCircuit?.tick ?? -1);
-    (tA === tB && tB === tC) ? ok('Pause freezes sim (tick stable)', `${tA}/${tB}/${tC}, running=${runningAfterPause}`) : bad('Pause freezes sim', `${tA}/${tB}/${tC}, running=${runningAfterPause}`);
+    // ⚠ 上游没有公开的 tick 读数：字段是 `_tick`（bundle：`this._tick = t+1|0`）。
+    //   原来读 `?.tick ?? -1` 恒为 -1 ⇒ "暂停后 tick 不动"三颗相等＝空过，而"单步会推进"必然假红。
+    //   读不到就判红，不再让 null 冒充"稳定"。
+    const tickOf = () => page.evaluate(() => {
+      const c = window.__sandboxCircuit;
+      if (!c) return null;
+      // 引擎是 Circuit._engine（bundle：`this._engine=new e(this._graph,i)`），`_tick` 住在那颗上，
+      // 读 circuit._tick 恒 undefined ⇒ 两格判据够不着（这轮实测就是 null/null/null）。
+      const e = c._engine || c;
+      return typeof e._tick === 'number' ? e._tick : null;
+    });
+    const tA = await tickOf(); await sleep(250);
+    const tB = await tickOf(); await sleep(250);
+    const tC = await tickOf();
+    (tA === null || tB === null || tC === null)
+      ? bad('Pause freezes sim (tick stable)', `_tick 读不到：${tA}/${tB}/${tC} —— 这条判据够不着，不许空过`)
+      : ((tA === tB && tB === tC) ? ok('Pause freezes sim (tick stable)', `${tA}/${tB}/${tC}, running=${runningAfterPause}`)
+        : bad('Pause freezes sim', `${tA}/${tB}/${tC}, running=${runningAfterPause}`));
     const lampBefore = await lampFill(page);
     await page.locator('button[title="单步执行"]').click(); await sleep(400);
-    const tAfter = await page.evaluate(() => window.__sandboxCircuit?.tick ?? -1);
+    const tAfter = await tickOf();
     const lampAfter = await lampFill(page);
-    (tAfter > tC) ? ok('Step advances paused sim', `${tC}->${tAfter} (+${tAfter - tC})`) : bad('Step advances paused sim', `${tC}->${tAfter}`);
+    (tAfter === null || tC === null)
+      ? bad('Step advances paused sim', `_tick 读不到：${tC}->${tAfter}，这条判据够不着`)
+      : ((tAfter > tC) ? ok('Step advances paused sim', `${tC}->${tAfter} (+${tAfter - tC})`)
+        : bad('Step advances paused sim', `${tC}->${tAfter}`));
     (lampBefore !== lampAfter) ? ok('Step flips Clock-driven Lamp', `${lampBefore} -> ${lampAfter}`) : bad('Step flips Clock-driven Lamp', `${lampBefore} -> ${lampAfter}`);
     const pauseLabel = await page.locator('button[title="运行 / 暂停仿真"]').textContent();
     pauseLabel.trim() === '运行' ? ok('Pause toggled label to 运行') : bad('Pause label', pauseLabel);

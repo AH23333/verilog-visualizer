@@ -1,4 +1,5 @@
 const { spawn } = require('child_process');
+const UI = require('./_ui.cjs');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
@@ -26,10 +27,9 @@ async function waitForServer(t = 15000) {
     await page.evaluate(() => { localStorage.clear(); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(1000);
     console.log('after sandbox click, errors=', JSON.stringify(errors.slice(0, 5)));
     console.log('data-gate buttons =', await page.evaluate(() => document.querySelectorAll('[data-gate]').length));
-    await page.locator('button[title="新建文件"]').click(); await sleep(1500);
+    await UI.newSandboxFile(page);
     console.log('activePaper =', await page.evaluate(() => !!window.__sandboxPaper));
     console.log('cells =', await page.evaluate(() => window.__sandboxPaper ? window.__sandboxPaper.model.getCells().length : -1));
     await page.evaluate(() => document.querySelector('button[data-gate="Button"]')?.click());

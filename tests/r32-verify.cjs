@@ -13,6 +13,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1482;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1482)); } catch { }
+const UI = require('./_ui.cjs');
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -105,12 +107,12 @@ const sidebarTitle = (page) => page.evaluate(() => {
       : bad('[1] 侧栏调宽异常', JSON.stringify({ w0, w1, w2 }));
 
     // ========== [3] 新建文件 + 放 IO + 保存自定义门 ==========
-    await page.locator('button[title="新建文件"]').first().click(); await sleep(1000);
+    await UI.newSandboxFile(page);
     await clickActivity(page, 'modules'); await sleep(500);
     // 「输入 / 输出」分组默认折叠 → 点组头展开
     await page.getByText('输入 / 输出', { exact: true }).first().click(); await sleep(400);
-    await page.locator('button[data-gate="Input"]').first().click(); await sleep(400);
-    await page.locator('button[data-gate="Output"]').first().click(); await sleep(400);
+    await require('./_ui.cjs').clickGate(page, 'Input'); await sleep(400);
+    await require('./_ui.cjs').clickGate(page, 'Output'); await sleep(400);
     const io = await page.evaluate(() => {
       const p = window.__sandboxPaper;
       const by = {};
@@ -232,36 +234,45 @@ const sidebarTitle = (page) => page.evaluate(() => {
     // 收起 [3] 里展开过的「输入 / 输出」，恢复到默认只有「逻辑门」展开的状态
     await page.getByText('输入 / 输出', { exact: true }).first().click(); await sleep(400);
     const collapsed2 = await page.evaluate(() => {
-      const GROUPS = ['逻辑门','输入 / 输出','时序','运算','比较','选择 / 移位','总线','存储','显示'];
       const bar = document.querySelector('[data-sandbox-sidebar]');
-      // 组头 = 第一个 span 文本恰好是组名、且带 ▸ 指示符的 div（嵌套包装 div 会重复匹配，用 Set 去重）
-      const names = new Set();
-      for (const d of bar.querySelectorAll('div')) {
-        const s = d.querySelector('span');
-        const tri = d.querySelector('span:last-child');
-        if (s && tri && GROUPS.includes((s.textContent || '').trim()) && (tri.textContent || '').includes('▸')) {
-          names.add((s.textContent || '').trim());
-        }
-      }
-      const visible = Array.from(bar.querySelectorAll('button[data-gate]')).map(b => b.getAttribute('data-gate'));
-      return { headers: names.size, visible };
+      // 组头自己带 title="收起分组"/"展开分组"，它的 parent 就是那一组的容器 ⇒
+      // 「哪组开着 / 开着的组里有几颗」全部**从 DOM 现算**，不抄成员表。
+      const heads = Array.from(bar.querySelectorAll('div[title="收起分组"], div[title="展开分组"]'));
+      const groups = heads.map((h) => ({
+        name: (h.querySelector('span')?.textContent || '').trim(),
+        open: h.getAttribute('title') === '收起分组',
+        items: Array.from(h.parentElement ? h.parentElement.querySelectorAll(':scope > button[data-gate]') : [])
+          .map((b) => b.getAttribute('data-gate')),
+      }));
+      const visible = Array.from(bar.querySelectorAll('button[data-gate]')).map((b) => b.getAttribute('data-gate'));
+      return { headers: new Set(groups.map((g) => g.name)).size, groups, visible };
     });
-    console.log('    折叠面板:', JSON.stringify(collapsed2));
-    const LOGIC = ['And','Or','Not','Xor','Nand','Nor','Xnor'];
-    (collapsed2 && collapsed2.headers === 9 && collapsed2.visible.length === LOGIC.length
-      && LOGIC.every(t => collapsed2.visible.includes(t)))
-      ? ok('[6] 部件库默认折叠，仅「逻辑门」展开（7 项）')
-      : bad('[6] 折叠面板异常', JSON.stringify(collapsed2));
+    console.log('    折叠面板:', JSON.stringify({ headers: collapsed2.headers, open: collapsed2.groups.filter((g) => g.open).map((g) => g.name), visible: collapsed2.visible }));
+    // ⚠ 本格原来钉的是「逻辑门 = 7 项」这张**成员表**。批次 R68/R76 往同一组里加了缓冲器（Repeater）
+    // 之后它就红了——红的是我把形状钉死在成员数上（过钉），分组折叠这件事本身没坏。
+    // 判据改成说自己的射程：只有一组开着、开着的正是「逻辑门」、库里可见的颗数==那一组的颗数
+    // （其余组一颗都不许漏出来），且不少于 7 颗（防止"组是空的所以全绿"）。
+    const opened = collapsed2.groups.filter((g) => g.open);
+    const shapeOk = collapsed2.headers >= 8 && opened.length === 1 && opened[0].name === '逻辑门'
+      && collapsed2.visible.length >= 7 && collapsed2.visible.length === opened[0].items.length;
+    shapeOk
+      ? ok('[6] 默认只展开「逻辑门」一组：库里可见颗数恰好等于该组颗数，其余组一颗不漏（成员随调色板定义，不钉死）',
+        `组头 ${collapsed2.headers} 个，开着=${opened[0].name}(${opened[0].items.length} 颗)，可见=${collapsed2.visible.length}`)
+      : bad('[6] 分组折叠形状异常', JSON.stringify({ headers: collapsed2.headers, opened, visible: collapsed2.visible }));
+    const baseVisible = collapsed2.visible.length;
     await page.getByText('显示', { exact: true }).first().click(); await sleep(400);
     const displayVisible = await page.evaluate(() => {
       const bar = document.querySelector('[data-sandbox-sidebar]');
       return bar.querySelectorAll('button[data-gate]').length;
     });
-    (displayVisible > LOGIC.length) ? ok('[6b] 点组头可展开「显示」分组') : bad('[6b] 展开分组失败', `visible=${displayVisible}`);
+    // ⚠ 这一臂原来比的是 `> LOGIC.length`（7）。同组加了缓冲器之后库里本来就 8 颗，
+    // 「显示」没点开也会 8 > 7 ⇒ 判据自己烂成了一个恒真式。改成比**同一屏的展开前基线**。
+    (displayVisible > baseVisible) ? ok('[6b] 点组头把「显示」分组的项加进库里', `${baseVisible} → ${displayVisible}`)
+      : bad('[6b] 展开分组后库里颗数没变', `基线=${baseVisible} 展开后=${displayVisible}`);
 
     // ========== [7] 主模式编译电路 → 一键复制到沙盒 ==========
     await clickActivity(page, 'sandbox'); await sleep(700);  // 退出沙盒（回到 circuit 视图）
-    await page.locator('button:has-text("Examples")').first().click(); await sleep(800);
+    await page.locator('button[data-tool="examples"]').first().click(); await sleep(800);
     await page.locator('button:has-text("Adder")').first().click({ timeout: 4000 }).catch(async () => {
       // 兜底：点第一个示例
       await page.locator('button:has-text(".v")').first().click();
@@ -296,7 +307,7 @@ const sidebarTitle = (page) => page.evaluate(() => {
       // 复制出的电路可二次编辑：再放一个器件（复制后落在「文件」面板，先切「部件」并展开分组）
       await clickActivity(page, 'modules'); await sleep(400);
       await page.getByText('输入 / 输出', { exact: true }).first().click(); await sleep(400);
-      await page.locator('button[data-gate="Lamp"]').first().click(); await sleep(500);
+      await require('./_ui.cjs').clickGate(page, 'Lamp'); await sleep(500);
       const editable = await page.evaluate(() => {
         const p = window.__sandboxPaper;
         return p.model.getCells().filter(c => !c.isLink() && c.get('type') === 'Lamp').length;

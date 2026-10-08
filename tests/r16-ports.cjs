@@ -2,6 +2,7 @@
 // 在真实渲染的 SVG 上测量：wire path 的首/末点 vs 端口 magnet 圆心的 paper-local 坐标差。
 // 用法: node tests/r16-ports.cjs
 const { spawn } = require('child_process');
+const UI = require('./_ui.cjs');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
@@ -27,8 +28,7 @@ async function boot(page) {
   });
   await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+  await UI.newSandboxFile(page);
 }
 (async () => {
   let server, browser;

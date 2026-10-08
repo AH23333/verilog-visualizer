@@ -10,6 +10,8 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1476;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1476)); } catch { }
+const UI = require('./_ui.cjs');
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -38,7 +40,7 @@ const clickActivity = async (page, label) => {
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
     await clickActivity(page, '沙盒'); await sleep(900);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
 
     // [1] 沙盒内切换三个左栏面板 —— 必须仍留在沙盒
     const stillSandbox = async () => await page.evaluate(() => !!document.querySelector('[data-sandbox-wrapper]'));
@@ -72,6 +74,7 @@ const clickActivity = async (page, label) => {
     const NEW_PARTS = ['ZeroExtend', 'SignExtend', 'NumDisplay', 'NumEntry', 'Division', 'Ne', 'Mux1Hot', 'AndReduce'];
     const placed = {};
     for (const t of NEW_PARTS) {
+      await require('./_ui.cjs').ensurePalette(page);
       const btn = page.locator(`button[data-gate="${t}"]`).first();
       if (!(await btn.count())) { placed[t] = null; continue; }
       await btn.click(); await sleep(320);
@@ -101,7 +104,8 @@ const clickActivity = async (page, label) => {
       p.model.getCells().filter(c => !c.isLink()).forEach(c => { try { c.remove(); } catch {} });
     });
     await sleep(300);
-    await page.locator('button[data-gate="Constant"]').first().click(); await sleep(300);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'Constant'); await sleep(300);
     const build = await page.evaluate(() => {
       const dj = window.digitaljs;
       const p = window.__sandboxPaper;
@@ -138,7 +142,8 @@ const clickActivity = async (page, label) => {
 
     // [4] 重建式配置：分线器分组 4 → 8（连线按 port id 接回）
     // 走真实路径：从部件库放置「分线器」（手工 new 出来的器件拿不到 spawnCell 的尺寸修正）
-    await page.locator('button[data-gate="BusUngroup"]').first().click(); await sleep(600);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'BusUngroup'); await sleep(600);
     // 放下后会弹「位宽方案」对话框 —— 取消即保持默认 4 组×1 位
     if (await page.locator('[data-bus-width-dialog]').count()) {
       await page.locator('[data-bus-width-dialog] button:text-is("取消")').click(); await sleep(400);

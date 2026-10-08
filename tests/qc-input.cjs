@@ -1,6 +1,7 @@
 // 1) 用「输入引脚」驱动与门，点击输入引脚能否改电平（用户说的「逻辑门无输出」主因）
 // 2) 展开图 host 内到底渲染了几个元件
 const { spawn } = require('child_process');
+const UI = require('./_ui.cjs');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
@@ -46,8 +47,7 @@ const cellBodyPt = (page, id) => page.evaluate((id) => {
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k=>localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
 
     console.log('===== [1] 输入引脚驱动与门 =====');
     await clickGate(page, 'Input'); await clickGate(page, 'Input');
@@ -76,7 +76,7 @@ const cellBodyPt = (page, id) => page.evaluate((id) => {
     console.log('    再点第2个输入引脚后:', JSON.stringify(await rd()));
 
     console.log('\n===== [2] 展开图 host 内容 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     await clickGate(page, 'Input'); await clickGate(page, 'Output'); await sleep(400);
     const io = await page.evaluate(() => {
       const p = window.__sandboxPaper; const by = {};
@@ -87,7 +87,7 @@ const cellBodyPt = (page, id) => page.evaluate((id) => {
     await page.locator('button[title^="将当前电路保存为自定义门"]').click(); await sleep(400);
     await page.fill('input[placeholder="自定义门名称"]', 'Q2'); await sleep(200);
     await page.locator('button[title="确认保存为自定义门"]').click(); await sleep(700);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await UI.newSandboxFile(page);
     await page.evaluate(() => { const g = window.__sandboxGates.list()[0]; if (g) window.__sandboxGates.place(g.id); });
     await sleep(900);
     const zp = await page.evaluate(() => {

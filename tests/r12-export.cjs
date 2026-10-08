@@ -8,6 +8,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1427;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1427)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const results = { pass: 0, fail: 0 };
@@ -20,35 +21,17 @@ async function waitForServer(t = 15000) {
   return false;
 }
 
-async function dragWire(page) {
-  const magnets = await page.evaluate(() => {
-    const ms = document.querySelectorAll('[magnet]');
-    return [...ms].filter(m => m.getAttribute('magnet') !== 'false').map(m => {
-      const r = m.getBoundingClientRect();
-      const pb = m.closest('.joint-port-body');
-      return { x: r.x + r.width / 2, y: r.y + r.height / 2, port: pb?.getAttribute('port') };
-    });
-  });
-  const src = magnets.find(m => m.port === 'out');
-  const tgt = magnets.find(m => m.port === 'in');
-  if (!src || !tgt) return false;
-  await page.mouse.move(src.x, src.y); await page.mouse.down(); await sleep(150);
-  await page.mouse.move((src.x + tgt.x) / 2, (src.y + tgt.y) / 2, { steps: 3 }); await sleep(80);
-  await page.mouse.move(tgt.x, tgt.y, { steps: 5 }); await sleep(250);
-  await page.mouse.up(); await sleep(400);
-  return true;
-}
-const clickGate = async (page, label) => {
-  await page.evaluate((l) => document.querySelector('button[data-gate="' + l + '"]')?.click(), label);
-  await sleep(400);
-};
+// 放置 / 连线 / 进沙盒统一走共用夹具（会显式展开折叠的分组，点不到就抛错）
+const UI = require('./_ui.cjs');
+const dragWire = (page) => UI.dragWire(page, 'out', 'in');
+const clickGate = (page, label) => UI.clickGate(page, label);
 async function boot(page) {
   await page.goto(URL, { waitUntil: 'networkidle' });
   await page.evaluate(() => { localStorage.removeItem('verilog-viz-sandbox-files'); localStorage.removeItem('verilog-viz-sandbox-active'); });
   await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
-  try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-  await page.locator('button[title="沙盒"]').click(); await sleep(800);
-  await page.locator('button[title="新建文件"]').click(); await sleep(1200);
+  try { await page.locator('button:has-text("Skip"), button:has-text("跳过")').first().click({ timeout: 2500 }); } catch {}
+  await UI.enterSandbox(page);
+  if (await page.locator('button[title="新建文件"]').count()) { await UI.newSandboxFile(page); }
 }
 
 // 像素级校验：把 PNG dataURL 画到 canvas，统计非白像素数，证明电路真的被渲染出来

@@ -5,14 +5,19 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 4173;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(4173)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+// 跑批只认 PASS/FAIL：这颗原来通篇 `>>>` 叙述，一条断言都不打 ⇒ 被 FATAL 盖成 RED 也没人说清它判了什么。
+let pass = 0, fail = 0;
+const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
+const bad = (n, d = '') => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };
 async function waitForServer(t = 20000) {
   const d = Date.now() + t;
   while (Date.now() < d) { try { const r = await fetch(URL); if (r.ok) return true; } catch {} await sleep(500); }
   return false;
 }
-const clickGate = async (page, l) => { await page.evaluate((x) => document.querySelector('button[data-gate="' + x + '"]')?.click(), l); await sleep(450); };
+const clickGate = async (page, l) => { await require('./_ui.cjs').clickGate(page, l); await sleep(450); };
 const portCenter = (page, id, port) => page.evaluate(({ id, port }) => {
   const p = window.__sandboxPaper; const c = p.model.getCell(id); const v = c?.findView(p); if (!v) return null;
   const el = v.el.querySelector(`.joint-port-body[port="${port}"] circle`); if (!el) return null;
@@ -30,21 +35,25 @@ async function wire(page, s, sp, t, tp) {
   let server, browser;
   try {
     try { require('child_process').execSync(`powershell -Command "Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"`); } catch {}
+    // 本格量的是**构建产物** ⇒ 先证明 dist 不比 src 旧（读旧壳会把已修好的东西判成没修，#265 一族）。
+    console.log('产物新鲜度:', require('./_ui.cjs').ensureFreshDist(PROJECT_ROOT));
     server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { cwd: PROJECT_ROOT, shell: true, stdio: 'pipe' });
     const okSrv = await waitForServer();
     console.log('preview server:', okSrv ? 'OK' : 'FAIL');
-    if (!okSrv) process.exit(2);
+    if (!okSrv) { console.log('FATAL 生产预览服务没起来'); process.exit(1); }
     browser = await PLAYWRIGHT.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('pageerror', e => errors.push(String(e)));
     page.on('console', m => { if (/error/i.test(m.type())) errors.push('console: ' + m.text().slice(0, 140)); });
-    await page.goto(URL, { waitUntil: 'networkidle' });
+    // 两处死锚点（实测 `放置结果: null` → 整格 FATAL）：
+    //   · networkidle 在这台 dev/preview 服务器上等不满；
+    //   · `button[title="新建文件"]` 在编译视图里弹 PromptDialog 遮罩，沙盒根本没进去。
+    await require('./_ui.cjs').boot(page, URL);
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k=>localStorage.removeItem(k)); });
-    await page.reload({ waitUntil: 'networkidle' }); await sleep(2500);
+    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1500 });
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(1000);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1500);
+    await require('./_ui.cjs').newSandboxFile(page);
 
     console.log('===== [1] 与门：输入引脚驱动 =====');
     await clickGate(page, 'Input'); await clickGate(page, 'Input');
@@ -56,7 +65,7 @@ async function wire(page, s, sp, t, tp) {
       return by;
     });
     console.log('    放置结果:', JSON.stringify(ids));
-    if (!ids || !ids.And) { console.log('FATAL: 与门未被放置'); process.exit(1); }
+    if (!ids || !ids.And) { bad('[0] 生产包下能从调色板放出一个与门', `放置结果=${JSON.stringify(ids)}`); console.log('FATAL: 与门未被放置'); await browser.close(); process.exit(1); }
     const inPorts = await page.evaluate((id) => window.__sandboxPaper.model.getCell(id).getPorts().filter(p => p.group === 'in').map(p => p.id), ids.And[0]);
     const w = [];
     w.push(await wire(page, ids.Input[0], 'out', ids.And[0], inPorts[0]));
@@ -64,6 +73,7 @@ async function wire(page, s, sp, t, tp) {
     w.push(await wire(page, ids.And[0], 'out', ids.Lamp[0], 'in'));
     const links = await page.evaluate(() => window.__sandboxPaper.model.getLinks().length);
     console.log('    连线:', JSON.stringify(w), ' links =', links);
+    (w.every(Boolean) && links >= 3 ? ok : bad)('[1] 生产包下三根连线都真接上了', `links=${links} 每次连线=${JSON.stringify(w)}`);
     const rd = () => page.evaluate(({ a, ins, l }) => {
       const p = window.__sandboxPaper;
       const g = (id) => { const c = p.model.getCell(id); if (!c) return 'no-cell'; const o = c.get('outputSignals'); const v = o?.out; return v ? v.toString() : 'n/a'; };
@@ -83,9 +93,10 @@ async function wire(page, s, sp, t, tp) {
     const after = await rd();
     console.log('    两个输入都点击后:', JSON.stringify(after));
     const lit = /3, 192, 60|#03c03c/.test(after.lamp);
-    console.log(lit ? '>>> 生产构建下与门正常' : '>>> 生产构建下与门无输出（复现用户问题）');
+    (lit ? ok : bad)('[2] 生产构建下拨两个输入后与门把灯点亮（他报的"逻辑门无法使用"不再复现）', JSON.stringify(after));
     console.log('pageerrors:', JSON.stringify(errors.slice(0, 5)));
+    console.log(`\n===== QC-PREVIEW DONE: ${pass} pass, ${fail} fail =====`);
     await browser.close();
-  } catch (e) { console.log('FATAL', String(e)); }
-  finally { try { server?.kill('SIGKILL'); } catch {} process.exit(0); }
+  } catch (e) { console.log('FATAL', String(e)); fail++; }
+  finally { try { server?.kill('SIGKILL'); } catch {} process.exit(fail > 0 ? 1 : 0); }
 })();

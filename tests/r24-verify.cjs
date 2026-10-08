@@ -9,6 +9,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1475;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1475)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -49,12 +50,11 @@ const clickBody = async (page, id) => {
     browser = await PLAYWRIGHT.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     page.on('pageerror', e => console.log('PAGEERR', String(e).slice(0, 150)));
-    await page.goto(URL, { waitUntil: 'networkidle' });
+    await require('./_ui.cjs').boot(page, URL);
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
-    await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
+    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1200 });
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
 
     // [1] 波形按钮开关面板（面板用 canvas 绘制，以标题栏 data-waveform-channels 为标记）
     await page.locator('button[title*="波形监视器"]').click(); await sleep(600);
@@ -66,8 +66,10 @@ const clickBody = async (page, id) => {
     await page.locator('button[title*="波形监视器"]').click(); await sleep(600);
 
     // [2] 放 Input + Lamp 连线，拨输入验证 signal 数据源
-    await page.locator('button[data-gate="Input"]').click(); await sleep(500);
-    await page.locator('button[data-gate="Lamp"]').click(); await sleep(500);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'Input'); await sleep(500);
+    await require('./_ui.cjs').ensurePalette(page);
+    await require('./_ui.cjs').clickGate(page, 'Lamp'); await sleep(500);
     const ids = await page.evaluate(() => {
       const p = window.__sandboxPaper; const by = {};
       p.model.getCells().filter(c => !c.isLink()).forEach(c => { const t = c.get('type'); (by[t] = by[t] || []).push(c.id); });
@@ -93,9 +95,12 @@ const clickBody = async (page, id) => {
     ch === '1' ? ok('[3] 面板自动补入通道（1 条连线 = 1 通道）', `channels=${ch}`) : bad('[3] 通道数异常', `channels=${ch}`);
 
     // [4] 计数器示例 + 波形：时钟通道持续变化
-    await page.mouse.click(1150, 760, { button: 'right' }); await sleep(500);
-    await page.locator('button:has-text("插入示例")').first().click(); await sleep(400);
-    await page.locator('button:has-text("4 位二进制计数器")').first().click(); await sleep(900);
+    // ⚠ 原来这里写死 `mouse.click(1150,760,'right')`：此刻波形面板正开着、盖住窗口下沿，
+    // 那一右键点在面板上而不是画布上 ⇒ 空白菜单根本没弹，locator 等「插入示例」等满 30 s。
+    // 改由夹具现场找一块**真空白**的画布点（避开面板/遮罩/器件）。
+    const blank = await require('./_ui.cjs').blankCanvasPoint(page);
+    await require('./_ui.cjs').menuClick(page, '插入示例', blank);
+    await require('./_ui.cjs').menuClick(page, '4 位二进制计数器');
     await sleep(1200); // 让时钟采样积累
     const ch2 = Number(await page.locator('[data-waveform-channels]').getAttribute('data-waveform-channels'));
     console.log('    插入计数器后通道数:', ch2);

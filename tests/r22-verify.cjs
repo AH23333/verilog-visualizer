@@ -9,6 +9,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1494;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1494)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
@@ -20,9 +21,11 @@ async function waitForServer(t = 15000) {
   return false;
 }
 const realClickGate = async (page, label) => {
-  const btn = page.locator(`button[data-gate="${label}"]`);
-  await btn.scrollIntoViewIfNeeded().catch(() => {});
-  await btn.click(); await sleep(500);
+  // 走共用夹具：它会先展开分组、按 .first() 点，点不到就抛。
+  //   ⚠ 原来这里对 `button[data-gate]` 用严格模式 .click()：时序组里「D 触发器」与「寄存器 EN/RST」
+  //   两颗的 data-gate 都是 Dff ⇒ strict mode violation，整颗闸门直接崩（本轮实测）。
+  await require('./_ui.cjs').clickGate(page, label);
+  await sleep(300);
 };
 const portCenter = (page, id, port) => page.evaluate(({ id, port }) => {
   const p = window.__sandboxPaper; const c = p.model.getCell(id); const v = c?.findView(p); if (!v) return null;
@@ -55,16 +58,19 @@ const clickBody = async (page, id) => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('pageerror', e => errors.push(String(e)));
-    await page.goto(URL, { waitUntil: 'networkidle' });
+    await require('./_ui.cjs').boot(page, URL);
     await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k => localStorage.removeItem(k)); });
-    await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
+    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1200 });
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(800);
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
 
     // ===== [1] 放置合总线 =====
     console.log('\n===== [1] 放置合总线 =====');
     await realClickGate(page, 'BusGroup');
+    // 合线器一放下就弹「位宽方案」遮罩（产品刻意）。不点掉它，[2] 之后每次点击都被
+    // 那颗 `inset:0` 的遮罩拦住 —— r22 原版就在这里 `locator.click` 卡满 30 s。
+    // 这里就按本闸门 [1] 要的 4×1 位方案点「应用」，顺带把应用那条路也走一遍。
+    await require('./_ui.cjs').busDialog(page, { total: 4, groupWidth: 1 });
     const bg = await page.evaluate(() => {
       const p = window.__sandboxPaper;
       const c = p.model.getCells().find(x => x.get('type') === 'BusGroup');
@@ -113,7 +119,7 @@ const clickBody = async (page, id) => {
 
     // ===== [3] 切总线 =====
     console.log('\n===== [3] 切总线（取低 4 位）=====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     const ids3 = await page.evaluate(() => {
       const p = window.__sandboxPaper, dj = window.digitaljs;
       const c1 = new dj.cells.Constant({ type: 'Constant', constant: '10101010', position: { x: 150, y: 200 } }); p.model.addCell(c1);
@@ -136,13 +142,20 @@ const clickBody = async (page, id) => {
 
     // ===== [4] 持久化 =====
     console.log('\n===== [4] groups 持久化 =====');
-    await page.locator('button[title="新建文件"]').click(); await sleep(1300);
+    await require('./_ui.cjs').newSandboxFile(page);
     await realClickGate(page, 'BusGroup'); await sleep(400);
-    await page.locator('button[title^="保存"]').first().click().catch(() => {});
+    await require('./_ui.cjs').busDialog(page, { total: 4, groupWidth: 1 });
+    await page.locator('button[title^="保存"]').first().click();
     await sleep(800);
-    await page.reload({ waitUntil: 'networkidle' }); await sleep(2500);
+    await require('./_ui.cjs').boot(page, URL, { reload: true });
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await page.locator('button[title="沙盒"]').click(); await sleep(1500);
+    // ⚠ 重载后落在**默认视图**（电路/代码），沙盒不是能持久化的默认视图 —— 得由夹具自己
+    // 再进一次。这里刻意不套 `enterSandbox`：它在读不到 paper 时会**新建文件**，
+    // 那等于把「持久化」这颗判据的前置抹掉；这一格要的正是「活动文件被带回来」。
+    await page.locator('button[data-activity="sandbox"]').click();
+    const restored = await page.waitForFunction(() => !!window.__sandboxPaper, null, { timeout: 15000 }).then(() => true).catch(() => false);
+    if (!restored) bad('[4] 重载后合总线端口仍在（groups 持久化）', '重载后回到沙盒却没恢复出任何文件：活动文件没被带回来');
+    else {
     const bg2 = await page.evaluate(() => {
       const p = window.__sandboxPaper;
       const c = p.model.getCells().find(x => x.get('type') === 'BusGroup');
@@ -152,6 +165,7 @@ const clickBody = async (page, id) => {
     (bg2 && ['in0','in1','in2','in3','out'].every(x => bg2.ports.includes(x)))
       ? ok('[4] 重载后合总线端口仍在（groups 持久化）', bg2.ports.join(','))
       : bad('[4] 重载后合总线端口丢失', JSON.stringify(bg2));
+    }
 
     console.log('\n  pageerrors:', JSON.stringify(errors.slice(0, 4)));
     console.log(`\n===== R22 DONE: ${pass} pass, ${fail} fail =====`);
