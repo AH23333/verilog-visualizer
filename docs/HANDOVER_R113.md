@@ -3,11 +3,17 @@
 - 交接日期：2026-10-08
 - 交接原因：用户裁决「已无大问题，你更新交接文档，然后提交并 push，我将让另一个代理接手」
 - 仓库：`verilog-visualizer`（独立 git 仓，**非**外层 Something 目录；origin = github.com/AH23333/verilog-visualizer）
-- **HEAD：`3bc44e5`（test 提交）→ 本文档随 docs 提交入库，接手时以 `git log --oneline` 顶部为准**
-- 提交序列（R94→R113 累积改动已于本日全部入库，**已 push**）：
+- **HEAD：`df16d99`（docs(readme) 提交，已 push，与 origin/main 一致）**
+- 提交序列（R94→R113 累积改动已于 2026-10-08 全部入库并 push）：
   1. `c505593` feat(sandbox): R100→R113 沙盒批次演进（39 文件，+4703/−883）
   2. `3bc44e5` test: R41→R113 全部闸门/变异台架/夹具 + run-all 清单（161 文件，+15316/−1614）
-  3. docs 提交（本文档 + 账本 + README/SANDBOX_DEV/FEATURES）
+  3. `b58be82` docs: R113 交接文档 + 项目账本卷十二~卷十五 + README/SANDBOX_DEV/FEATURES
+  4. `df16d99` docs(readme): README 功能条目补提交（上一条 git add 漏圈仓库根）
+- ⚠ **远程历史说明**：push 时发现 origin/main 是**另一段无关历史**（R14 时代的 QC 线，
+  fbb0266 止，merge-base 为空——本仓 8b75165「从 R37 工作树重建仓库」时 .git 元数据
+  已损坏重建，两条线没有共同祖先）。已按用户授权把 main 换成本地线，
+  **旧远程线完整备份在 `backup/pre-r113-remote-line` 分支**（勿删，溯源 R7~R14 的
+  QC 过程用）；其工作成果已全部包含在本地工作树中。
 - 上一份交接：`docs/HANDOVER_R99.md`（其 §4 待办 1/2/3/6/7/8 已在 R100→R113 完成；§4 第 4/5 项状态见本文 §5）
 
 ---
