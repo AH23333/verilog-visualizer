@@ -1,4 +1,5 @@
 ﻿import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
+import { foldArithConstants } from '../lib/displayFold';
 import { serializePaperJson } from '../lib/sandboxSerialize';
 import { settingsStore } from '../store/settingsStore';
 import { applyWireStyle } from '../lib/wireRouting';
@@ -693,7 +694,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     el.addEventListener('mouseleave', onLeave);
 
     try {
-      const circuit = new window.digitaljs.Circuit(circuitJson, {
+      const circuit = new window.digitaljs.Circuit(foldArithConstants(window.digitaljs, circuitJson), {
         layoutEngine: 'elkjs',
       });
       const paper = circuit.displayOn(wrapper);

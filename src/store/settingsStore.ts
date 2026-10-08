@@ -22,6 +22,8 @@ export interface SandboxSettings {
   autoStartSim: boolean;
   /** 仿真步进间隔（ms）—— 波形调试速度，与编译模式的 SPEED 滑条同一量纲 */
   simSpeedMs: number;
+  /** 只读视图（编译主视图/展开图/钻取）把「运算器 + Constant 喂入」折叠成 +5 圆圈（R114，不改存档） */
+  foldConstants: boolean;
 }
 
 const DEFAULT_SANDBOX: SandboxSettings = {
@@ -32,6 +34,7 @@ const DEFAULT_SANDBOX: SandboxSettings = {
   defaultBits: 1,
   autoStartSim: true,
   simSpeedMs: 10,
+  foldConstants: true,
 };
 
 function getSavedFontSize(): number {

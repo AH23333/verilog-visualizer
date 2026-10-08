@@ -245,6 +245,9 @@ export default function SettingsPanel({ theme, onToggleTheme, onClose }: Props) 
                 <Row label="打开时自动运行仿真" hint="关闭后需手动点“运行”">
                   {toggle(sb.autoStartSim, (v) => update({ autoStartSim: v }))}
                 </Row>
+                <Row label="常量折叠显示" hint="只读视图（编译主视图/展开图/钻取）把运算器+常量合并成 +5 圆圈；不改沙盒画布与存档">
+                  {toggle(sb.foldConstants, (v) => update({ foldConstants: v }))}
+                </Row>
                 <div style={{ marginTop: 10 }}>
                   <button onClick={() => { settingsStore.resetSandboxSettings(); setSb(settingsStore.getSandboxSettings()); }}
                     style={{

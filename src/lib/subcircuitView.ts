@@ -25,6 +25,7 @@ import { io_ui } from 'yosys2digitaljs/core';
 import { normalizeIoLabels, renameAutoCells } from './verilog';
 import { DEVICE_PARAM_KEYS, paramValue } from './deviceParams';
 import { zoomPaperAtClient } from './paperZoom';
+import { foldArithConstants } from './displayFold';
 
 type AnyCell = any;
 
@@ -366,7 +367,7 @@ export function renderCircuitView(
   let skippedWires = 0;
   let skippedDevices = 0;
   mark('ctor-begin');
-  const built = constructCircuit(digitaljs, json);
+  const built = constructCircuit(digitaljs, foldArithConstants(digitaljs, json));
   circuit = built.circuit;
   skippedWires = built.skippedWires;
   skippedDevices = built.skippedDevices;
