@@ -27,8 +27,8 @@
 // 单一真源：部件文件里的实例只存 celltype（不内联子图），编辑部件文件即改
 // 定义，所有绑定实例随之生效（编译模式 moduleBindings 语义）。
 
-import { sandboxStore, baseName, type SandboxFile } from '../store/sandboxStore';
-import { cellsToCircuitJson, circuitJsonToCells, constructCircuit } from './subcircuitView';
+import { sandboxStore, baseName, dirOf, type SandboxFile } from '../store/sandboxStore';
+import { cellsToCircuitJson, circuitJsonToCells } from './subcircuitView';
 import { serializeGraphCells } from './sandboxSerialize';
 import { normalizeIoLabels } from './verilog';
 import { io_ui } from 'yosys2digitaljs/core';
@@ -36,16 +36,31 @@ import { io_ui } from 'yosys2digitaljs/core';
 /** 绑定名 → 定义文件。scope = 实例所在画布文件的文件夹（优先作用域）。 */
 export interface PartRef { file: SandboxFile; legacy: boolean; }
 
-const dirOf = (f: SandboxFile) => (f.name.includes('/') ? f.name.slice(0, f.name.lastIndexOf('/')) : '');
+// R100 文件级部件绑定（对齐编译模式 file.moduleBindings）：活动文件声明的
+// 「绑定名 → 部件文件 id」映射，解析时**优先于**文件夹作用域打分。
+// 全局单例（与 settingsStore 同风格），活动文件切换时由 SandboxCanvas 刷新。
+let activePartBindings: Record<string, string> = {};
+export function setActivePartBindings(b: Record<string, string> | undefined | null): void {
+  activePartBindings = b && typeof b === 'object' ? { ...b } : {};
+}
+export function getActivePartBindings(): Record<string, string> {
+  return { ...activePartBindings };
+}
 
 /**
  * 按绑定名 + 作用域查找部件定义文件。
- * 顺序（打分升序）：scope 内 role:'part' → scope 内任意 .djs → 根 role:'part'
- * → scope 内 .gate → 根 .djs → 根 .gate → 全库兜底。
+ * 顺序（打分升序）：**活动文件显式绑定（R100，score -1）** → scope 内 role:'part'
+ * → scope 内任意 .djs → 根 role:'part' → scope 内 .gate → 根 .djs → 根 .gate → 全库兜底。
  */
 export function resolvePartRef(name: string, scope = ''): PartRef | null {
   if (!name) return null;
   const files = sandboxStore.list();
+  // 显式绑定最高优先：绑定的文件还活着就直接采用（哪怕同名文件在别处）
+  const boundId = activePartBindings[name];
+  if (boundId) {
+    const bf = files.find((f) => f.id === boundId);
+    if (bf) return { file: bf, legacy: bf.kind === 'gate' };
+  }
   const byBase = (f: SandboxFile) => baseName(f.name).replace(/\.(djs|gate|json)$/i, '') === name;
   const score = (f: SandboxFile): number => {
     const dir = dirOf(f);
@@ -90,13 +105,17 @@ export function partExists(name: string, scope = ''): boolean {
  */
 export function resolveDefCells(name: string, scope = '', seen = new Set<string>()): { cells: any[] } | null {
   if (seen.has(name)) return null;
-  seen.add(name);
   const raw = partCellsRaw(name, scope);
   if (!raw || !raw.cells.length) return null;
+  // 递归链按「祖先路径」传递，不按全局共享：一个模块被同层多个实例引用
+  // （4 个 full_adder、3 个 adder）是常态，共享 seen 会让第 2..N 个实例
+  // 拿不到内图 → 空壳 → 挂在它上面的连线全部还原失败。
+  const chain = new Set(seen);
+  chain.add(name);
   const out: any[] = [];
   for (const c of raw.cells) {
     if (c?.type === 'Subcircuit' && !c.subcircuitGraph?.cells?.length && c.celltype) {
-      const nested = resolveDefCells(String(c.celltype), scope, seen);
+      const nested = resolveDefCells(String(c.celltype), scope, chain);
       if (nested?.cells?.length) out.push({ ...c, subcircuitGraph: { cells: nested.cells } });
       else out.push(c);
     } else out.push(c);
@@ -263,72 +282,105 @@ export function renamePartDef(id: string, newName: string): number {
  * position 仍是 {0,0}，部件落盘就**全部堆叠在原点且无连线**（用户报告）。
  * dagre 走 DirectedGraph.layout 同步算完，返回即可用。
  */
-function layoutModuleCells(mod: any, pool: Map<string, any>): any {
+/**
+ * 等 digitaljs 的 elk 布局把坐标写回来。elk 是 `elk.layout().then(from_elkjs)`
+ * —— 异步 fire-and-forget，displayOn 返回时坐标可能还是初值；这里按「位置快照
+ * 连续两次不变」判定稳定（有上限），拿到的是与编译画布同一套 elk 坐标。
+ */
+async function waitLayoutSettled(graph: any, maxMs = 5000): Promise<void> {
+  const snap = () => graph.getElements()
+    .map((e: any) => { const p = e.position(); return `${String(e.id)}:${Math.round(p.x)},${Math.round(p.y)}`; })
+    .join('|');
+  let prev = '';
+  const t0 = performance.now();
+  while (performance.now() - t0 < maxMs) {
+    await new Promise((r) => setTimeout(r, 100));
+    let cur = '';
+    try { cur = snap(); } catch { return; }
+    if (cur && cur === prev) return;
+    prev = cur;
+  }
+}
+
+async function layoutModuleCells(mod: any, pool: Map<string, any>, name = ''): Promise<any> {
   const cellsFallback = () => circuitJsonToCells(mod);
   const djs = (window as any).digitaljs;
   if (!djs || !mod?.devices) return cellsFallback();
-  try {
-    // 只带上本模块**实际引用**的子模块体：给 Subcircuit 器件真实内图，ctor
-    // 才能一次成功（不触发降级剥线），elk 也就能给所有器件算出坐标与线路拐点。
-    const subcircuits: Record<string, any> = {};
-    for (const dev of Object.values<any>(mod.devices || {})) {
-      const ct = dev?.type === 'Subcircuit' ? String(dev.celltype || '') : '';
-      if (ct && pool.has(ct) && !subcircuits[ct]) {
-        subcircuits[ct] = { devices: structuredClone(pool.get(ct).devices ?? {}), connectors: structuredClone(pool.get(ct).connectors ?? []), subcircuits: {} };
-      }
+  // 整张平铺表（编译产物同形）：digitaljs 递归建图时沿用父层的 subcircuits，
+  // 只挂直连子模块会让第 3 层起的 `subcircuits[名]` 查不到 → ctor 抛错 →
+  // 静默回落到无坐标快照 → 用户看到的「所有部件和线路全部堆叠在一起」。
+  const flatTable = () => {
+    const out: Record<string, any> = {};
+    for (const [k, v] of pool) {
+      if (v?.devices) out[k] = { devices: structuredClone(v.devices ?? {}), connectors: structuredClone(v.connectors ?? []), subcircuits: {} };
     }
+    return out;
+  };
+  /** io_ui 的完整逆运算：布局借道 Button/Lamp/NumEntry/… ，落盘要还原成
+   *  可编辑的引脚器件 Input/Output。漏掉多位端口（NumEntry/NumDisplay）就等于
+   *  把部件的总线引脚从定义里抹掉 —— 绑上去的实例没有对应端口，连线全部还原失败。 */
+  const unIoUi = (c: any) => {
+    switch (c?.type) {
+      case 'Button':
+      case 'NumEntry': c.type = 'Input'; break;
+      case 'Clock': c.type = 'Input'; delete c.propagation; break;   // 100 是 io_ui 给时钟源注入的
+      case 'Lamp':
+      case 'NumDisplay':
+      case 'Display7': c.type = 'Output'; break;
+      default: return;
+    }
+    if (!c.net && c.label) c.net = String(c.label);   // io_ui: label = net
+  };
+  const run = async (subs: Record<string, any>) => {
     const view: any = {
       devices: structuredClone(mod.devices),
       connectors: structuredClone(mod.connectors ?? []),
-      subcircuits,
+      subcircuits: subs,
     };
     try { normalizeIoLabels(view); } catch { /* 端口名可选 */ }
-    // 布局前先 io_ui：把 Input/Output 变成 Button/Lamp。**elk 只对转换后的
-    // 器件正常布局** —— 实测直接布局原始 Input/Output 会 laid_out=true 但所有
-    // 坐标保持 0（elkwf 对引脚器件退化），这正是「部件全堆叠在原点」的成因。
-    // 落盘时再把 Button/Lamp/Clock 映射回 Input/Output（见 snapshotForPart），
-    // 保证部件文件仍是**可编辑的引脚电路**而非只读展示形态。
+    // 布局前先 io_ui：把 Input/Output 变成 Button/Lamp。**布局引擎只对转换后的
+    // 器件正常落位** —— 实测直接布局原始 Input/Output 会 laid_out=true 但所有
+    // 坐标保持 0，这正是「部件全堆叠在原点」的另一条成因。
     try { io_ui(view); } catch { /* 保留原始 IO */ }
-    // 布局引擎选择：**dagre**（同步）而非 elkjs。
-    // 实测 digitaljs 的 elk_layout 是 `elk.layout().then(from_elkjs)` —— 异步
-    // fire-and-forget，displayOn 返回时坐标尚未写回（position 仍是 {0,0}），
-    // 部件落盘就全堆在原点。dagre 走 DirectedGraph.layout 同步算完，返回即可用。
-    let circuit: any;
-    try {
-      circuit = new djs.Circuit(view, { layoutEngine: 'dagre' });
-    } catch {
-      circuit = constructCircuit(djs, view).circuit;
-    }
-    // 关键：布局在 **displayOn** 里触发（ctor 只建图）。dagre 是同步的，
-    // displayOn 返回时坐标已就绪，直接序列化即可。
+    // **elkjs**：与编译画布/展开图同一个引擎、同一套坐标。
+    // 实测用 dagre 落盘的部件与同一模块在编译模式下的展开图，归一化位置平均偏
+    // 17%、最差单个偏 45%（用户报告「位置极其混乱」的量化）。elk 是异步写坐标的，
+    // 所以 displayOn 之后要等布局稳定再序列化（见 waitLayoutSettled）。
+    const circuit = new djs.Circuit(view, { layoutEngine: 'elkjs' });
     const host = document.createElement('div');
     host.style.cssText = 'position:fixed;left:0;top:0;width:1400px;height:900px;opacity:0;pointer-events:none;z-index:-1;';
     document.body.appendChild(host);
-    let snap: any;
     try {
       const paper = circuit.displayOn(host);
+      await waitLayoutSettled(circuit._graph);
       try { paper.updateViews(); } catch { /* ignore */ }
-      snap = serializeGraphCells(circuit._graph);
-      try { paper.remove(); } catch { /* ignore */ }
+      return serializeGraphCells(circuit._graph);
     } finally {
       host.remove();
       try { circuit.shutdown?.(); } catch { /* ignore */ }
     }
-    const nodes = (snap?.cells || []).filter((c: any) => !c.isLink);
-    if (!nodes.length) return cellsFallback();
-    // 后处理：①剥掉嵌套实例的内联子图（单一真源 = 各自部件文件，按 celltype
-    // 绑定；保留 position/size —— 布局算出的框位决定观感）；②把布局用的
-    // Button/Lamp/Clock 还原成可编辑的 Input/Output 引脚器件。
-    for (const c of snap.cells) {
-      if (c?.type === 'Subcircuit') { delete c.subcircuitGraph; continue; }
-      // io_ui 方向反推：Button/Clock 是输入引脚，Lamp 是输出引脚
-      if (c?.type === 'Button' || c?.type === 'Clock') c.type = 'Input';
-      else if (c?.type === 'Lamp') c.type = 'Output';
+  };
+  let snap: any = null;
+  try {
+    snap = await run(flatTable());
+  } catch (e1) {
+    // 退一步：连子模块体都不给（实例按空壳参与布局），至少坐标是算出来的
+    try { snap = await run({}); }
+    catch (e2) {
+      console.warn(`[部件布局] 「${name || '?'}」自动布局失败，退回原始坐标：${String((e2 as Error)?.message || e2)}`);
+      return cellsFallback();
     }
-    return snap;
-  } catch {
-    return cellsFallback();
   }
+  const nodes = (snap?.cells || []).filter((c: any) => !c.isLink);
+  if (!nodes.length) return cellsFallback();
+  // 后处理：①剥掉嵌套实例的内联子图（单一真源 = 各自部件文件，按 celltype
+  // 绑定；保留 position/size —— 布局算出的框位决定观感）；②把布局用的
+  // Button/Lamp/Clock/NumEntry/NumDisplay 还原成可编辑的 Input/Output 引脚。
+  for (const c of snap.cells) {
+    if (c?.type === 'Subcircuit') { delete c.subcircuitGraph; continue; }
+    unIoUi(c);
+  }
+  return snap;
 }
 
 /**
@@ -337,7 +389,7 @@ function layoutModuleCells(mod: any, pool: Map<string, any>): any {
  * 每个子模块都跑一遍 elk 布局固化坐标与连线路由（见 layoutModuleCells）。
  * 返回入库的部件数。
  */
-export function collectToFolder(circuitJson: any, folder: string): number {
+export async function collectToFolder(circuitJson: any, folder: string): Promise<number> {
   // yosys2digitaljs 的 subcircuits 是**扁平**模块表（子模块的 subcircuits 多为
   // 空），布局时要用到「按名字找任意模块」的能力 —— 先把整棵树收进名字池。
   const pool = new Map<string, any>();
@@ -351,7 +403,7 @@ export function collectToFolder(circuitJson: any, folder: string): number {
   index(circuitJson);
   let n = 0;
   for (const [name, sub] of pool) {
-    savePartFile(name, layoutModuleCells(sub, pool), folder);
+    savePartFile(name, await layoutModuleCells(sub, pool, name), folder);
     n++;
   }
   return n;

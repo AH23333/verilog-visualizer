@@ -31,14 +31,18 @@ interface ContextMenuProps {
 export default function ContextMenu({ x, y, items, title, onClose }: ContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
 
+  // Esc 关窗的回调要经 ref：父组件每次渲染都新建箭头函数，把它写进依赖表＝每渲染一次就
+  // "摘掉旧的、挂上新的"一轮，按下那一刻挂没挂上是运气（本仓 r84 实测：事件到了 document 而弹窗没关）。
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        onClose();
+        closeRef.current();
       }
     };
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeRef.current();
     };
 
     const timer = setTimeout(() => {
@@ -58,7 +62,7 @@ export default function ContextMenu({ x, y, items, title, onClose }: ContextMenu
       document.removeEventListener('contextmenu', handleClick, true);
       document.removeEventListener('keydown', handleKey);
     };
-  }, [onClose]);
+  }, []);
 
   // 原来按 items.length × 52 估算高度来上移菜单 —— 项数一多（部件库 45+ 项、还有
   // 二级「放置部件」）估算值超过视口高度，adjustedY 变成负数，菜单整块跑到屏幕上方、
@@ -71,6 +75,7 @@ export default function ContextMenu({ x, y, items, title, onClose }: ContextMenu
   return (
     <div
       ref={menuRef}
+      data-context-menu=""
       className="animate-scale-in fixed z-[2000] min-w-[280px] py-2 select-none rounded-lg"
       style={{
         left: adjustedX,

@@ -1,6 +1,7 @@
 ﻿import { useState, useMemo, useCallback, useRef } from 'react';
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Pencil, Plus, FolderPlus, RefreshCw, PanelLeftClose, Check } from 'lucide-react';
 import type { FileEntry } from '../store/fileStore';
+import { parentDir } from '../lib/vpath';
 
 interface SidebarProps {
   files: FileEntry[];
@@ -366,9 +367,7 @@ export default function Sidebar({
             const raw = e.dataTransfer.getData('text/plain');
             if (!raw) return;
             const data = JSON.parse(raw);
-            const parentFolder = file.name.includes('/')
-              ? file.name.split('/').slice(0, -1).join('/')
-              : '';
+            const parentFolder = parentDir(file.name);
             if (data.type === 'files') {
               onMoveFiles(data.ids, parentFolder);
             } else if (data.type === 'folder') {

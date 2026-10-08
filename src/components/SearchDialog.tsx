@@ -34,13 +34,17 @@ export default function SearchDialog({ files, theme, onClose, onOpenFile }: Sear
   }, []);
 
   // Escape to close
+  // Esc 关窗的回调要经 ref：父组件每次渲染都新建箭头函数，把它写进依赖表＝每渲染一次就
+  // "摘掉旧的、挂上新的"一轮，按下那一刻挂没挂上是运气（本仓 r84 实测：事件到了 document 而弹窗没关）。
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeRef.current();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, []);
 
   const doSearch = useCallback(() => {
     if (!query.trim()) {

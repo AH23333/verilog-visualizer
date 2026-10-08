@@ -46,6 +46,8 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
 }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const styleElRef = useRef<HTMLStyleElement | null>(null);
+  /** 当前渲染出来的 paper：放大/缩小/适应按钮直接操作它（与 ctrl+滚轮同一套变换） */
+  const paperRef = useRef<any>(null);
   const gateName = String(cell?.get?.('celltype') || '');
   const initialInline = (() => { try { return cell.get('subcircuitGraph'); } catch { return null; } })();
 
@@ -71,6 +73,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
     } catch { return true; }
   });
   const [rendering, setRendering] = useState(true);
+  const [zoomPct, setZoomPct] = useState<number | null>(null);
   const [failMsg, setFailMsg] = useState<string | null>(null);
   const [skipped, setSkipped] = useState(0);
   const [skippedDevs, setSkippedDevs] = useState(0);
@@ -84,7 +87,12 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
     const name = String(subCell.get?.('celltype') || '');
     if (name && top?.kind === 'circuit') {
       const body = top.circuit?.subcircuits?.[name];
-      if (body?.devices) { setStack(s => [...s, { kind: 'circuit', name, circuit: body }]); return; }
+      if (body?.devices) {
+        // 子模块体自带的 subcircuits 是空的（digitaljs 沿用父层那张平铺表），
+        // 钻取时必须把同一张表带下去，否则再往下一层就查不到定义。
+        setStack(s => [...s, { kind: 'circuit', name, circuit: { devices: body.devices, connectors: body.connectors ?? [], subcircuits: top.circuit?.subcircuits ?? {} } }]);
+        return;
+      }
     }
     if (name && resolveDefCells(name, scope)) { setStack(s => [...s, { kind: 'def', name }]); return; }
     const g = subCell.get?.('graph');
@@ -136,6 +144,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
         }
         if (!handle) { setRendering(false); return; }
         curHandle = handle;
+        paperRef.current = handle.paper;
         setSkipped(handle.skippedWires);
         setSkippedDevs(handle.skippedDevices ?? 0);
         // R40 只读化（用户要求：展开图不需要组件拖动和开关交互，只保留点击
@@ -180,24 +189,32 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
         // 捕获阶段监听：joint 的 paper 会在冒泡阶段 stopPropagation，
         // 普通冒泡监听收不到；捕获阶段在 paper 处理之前命中，且保持弹窗只读。
         mount.addEventListener('click', clickHandler, true);
-        // render:done（elk 布局 + fitToContent）后在弹窗视口内缩放适配
-        let fitCount = 0;
-        handle.paper.on('render:done', () => {
-          if (fitCount++ < 5) {
-            requestAnimationFrame(() => {
-              try {
-                handle!.paper.setDimensions(host.clientWidth || 720, host.clientHeight || 420);
-                handle!.paper.scaleContentToFit({ padding: 24, maxScale: 3, minScale: 0.1 });
-              } catch { /* ignore */ }
-            });
-          }
-        });
-        requestAnimationFrame(() => {
+        // 适配到弹窗视口。digitaljs 的 elk 布局是**异步**写坐标的：displayOn 刚
+        // 返回时内容包围盒还是半路的（实测 300ms 时 432×401 → 被按 maxScale 放大到
+        // 3×，子部件的放大镜被推到视口外，用户看到的就是「一片空白/点不动」）。
+        // 所以不能只适配一次 —— 轮询到包围盒稳定为止（有上限，最迟 ~1.2s）。
+        let lastBox = '';
+        let fitsLeft = 12;
+        const fitNow = () => {
+          const pw = handle!.paper;
           try {
-            handle!.paper.setDimensions(host.clientWidth || 720, host.clientHeight || 420);
-            handle!.paper.scaleContentToFit({ padding: 24, maxScale: 3, minScale: 0.1 });
-          } catch { /* ignore */ }
-        });
+            const bb = pw.getContentBBox();
+            pw.setDimensions(host.clientWidth || 720, host.clientHeight || 420);
+            pw.scaleContentToFit({ padding: 24, maxScale: 3, minScale: 0.05 });
+            setZoomPct(Math.round((pw.scale().sx || 1) * 100));
+            return `${Math.round(bb.x)},${Math.round(bb.y)},${Math.round(bb.width)},${Math.round(bb.height)}`;
+          } catch { return lastBox; }
+        };
+        const settleFit = () => {
+          if (disposed || fitsLeft-- <= 0) return;
+          const box = fitNow();
+          if (box && box === lastBox) return;      // 布局已稳定，收工
+          lastBox = box;
+          window.setTimeout(settleFit, 100);
+        };
+        requestAnimationFrame(settleFit);
+        let fitCount = 0;
+        handle.paper.on('render:done', () => { if (fitCount++ < 5) requestAnimationFrame(settleFit); });
       } catch (e) {
         console.warn('[内部电路] 渲染失败:', e);
         setFailMsg(String((e as Error)?.message || e));
@@ -208,6 +225,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
     return () => {
       disposed = true;
       clearTimeout(timer);
+      paperRef.current = null;
       if (mountEl && clickHandler) { try { mountEl.removeEventListener('click', clickHandler, true); } catch { /* ignore */ } }
       try { handle?.circuit.shutdown(); } catch { /* ignore */ }
       try { handle?.paper.remove(); } catch { /* ignore */ }
@@ -215,6 +233,34 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
       try { delete (window as any).__innerPaper; } catch { /* ignore */ }
     };
   }, [stack, theme, autoLayout, scope]);
+
+  /** 以视口中心为锚点缩放（与 ctrl+滚轮同一变换式，按钮点一下就能放大看细节） */
+  const zoomBy = (factor: number) => {
+    const pw = paperRef.current; const host = hostRef.current;
+    if (!pw || !host) return;
+    // 复用 renderCircuitView 里那份量出来的锚点公式（joint 的 SVG 有 y 轴翻转，
+    // 自己写变换式会把画面推走 —— 见 subcircuitView 的说明）
+    const r = host.getBoundingClientRect();
+    try {
+      if (typeof pw.__zoomAtClient === 'function') pw.__zoomAtClient(r.left + r.width / 2, r.top + r.height / 2, factor);
+      else { const cur = pw.scale().sx || 1; const ns = Math.max(0.05, Math.min(8, cur * factor)); pw.scale(ns, ns); }
+      setZoomPct(Math.round((pw.scale().sx || 1) * 100));
+    } catch { /* ignore */ }
+  };
+  const zoomFit = () => {
+    const pw = paperRef.current; const host = hostRef.current;
+    if (!pw || !host) return;
+    try {
+      pw.setDimensions(host.clientWidth, host.clientHeight);
+      pw.scaleContentToFit({ padding: 24, maxScale: 8, minScale: 0.05 });
+      setZoomPct(Math.round((pw.scale().sx || 1) * 100));
+    } catch { /* ignore */ }
+  };
+  const zoomActual = () => {
+    const pw = paperRef.current;
+    if (!pw) return;
+    try { pw.scale(1, 1); pw.translate(0, 0); setZoomPct(100); } catch { /* ignore */ }
+  };
 
   const crumbLabel = (s: StackEntry) => (s.kind === 'inline' ? '内嵌子电路' : s.name);
 
@@ -287,6 +333,19 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
             {skipped === 0 && skippedDevs === 0 ? '完整还原 · ' : ''}
             {source === 'def' ? '绑定门定义渲染 · 与编译模式钻取同一管线' : '旧档内嵌快照渲染（定义缺失兜底）'}
             {stack.length > 1 ? ' · 已钻取子部件' : ''}
+          </span>
+          {/* 放大查看：按钮 + ctrl/⌘+滚轮（弹窗只读，不禁缩放平移） */}
+          <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
+            {([['−', () => zoomBy(1 / 1.25), '缩小'], ['+', () => zoomBy(1.25), '放大'],
+              ['适应', zoomFit, '缩放到整张图可见'], ['1:1', zoomActual, '按实际大小显示']] as [string, () => void, string][])
+              .map(([txt, fn, tip]) => (
+              <button key={txt} data-xz={txt} onClick={fn} title={`${tip}（滚轮以光标为中心缩放，Shift+滚轮左右平移）`}
+                style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 4,
+                  color: 'var(--text)', cursor: 'pointer', fontSize: 'var(--fs-xs)', padding: '1px 7px', lineHeight: '16px' }}>
+                {txt}
+              </button>
+            ))}
+            {zoomPct != null && <span style={{ minWidth: 34, textAlign: 'right' }}>{zoomPct}%</span>}
           </span>
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={autoLayout}

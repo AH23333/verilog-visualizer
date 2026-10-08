@@ -1,9 +1,72 @@
 ﻿import { useEffect, useRef, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { serializePaperJson } from '../lib/sandboxSerialize';
+import { settingsStore } from '../store/settingsStore';
+import { applyWireStyle } from '../lib/wireRouting';
+import { setSimInterval } from '../lib/simClock';
+
+/**
+ * 取器件的输出信号向量。digitaljs 把 `outputSignals` 存在 **attributes** 上，
+ * 直接读 `cell.outputSignals` 恒为 undefined —— 于是「单步」拨不动时钟、
+ * 输入面板的切换按钮点下去 `if (!sig?._bvec) return` 直接返回（表现为「按了没反应」），
+ * 面板列出的输入值也永远取不到。这里统一走属性访问器。
+ */
+const outSig = (cell: any) => {
+  const o = (cell && (cell.get?.('outputSignals') || cell.outputSignals)) || {};
+  return o.out ?? Object.values(o)[0];
+};
+
+/**
+ * 写器件的输出电平。⚠ 不能手写 `_bvec[0]=0; _avec={}`：digitaljs 的 Vector3vl
+ * 把 `_avec` 当**「已定义」掩码**用，`_avec={}` 表示 **x（未定）**而不是 0。
+ * 实测后果两条：①「单步」把时钟拉成 x，触发器判不到 0→1 上升沿，时序电路
+ * 按多少次单步都不走（表现为「按钮没反应」）；②这种半初始化向量连 `String()`
+ * 都会抛（digitaljs 内部 toBin 读 undefined）。所以一律用现成向量的构造器
+ * `fromBin` 造合法值（与 MemoryViewModal 同一取 ctor 的办法）。
+ */
+const setOutBit = (cell: any, one: boolean): boolean => {
+  try {
+    const o = (cell && (cell.get?.('outputSignals') || cell.outputSignals)) || {};
+    const sig = o.out ?? Object.values(o)[0];
+    const C = sig && sig.constructor;
+    if (!C || typeof C.fromBin !== 'function') return false;
+    const bits = Number(cell.get('bits')) || 1;
+    const vec = C.fromBin(one ? '1'.repeat(bits) : '0'.repeat(bits), bits);
+    cell.set('outputSignals', { ...o, out: vec });
+    return true;
+  } catch { return false; }
+};
+
+/** 读器件输出电平（'0' / '1' / 其它＝未定）；向量坏了也不炸。 */
+const readOutBit = (cell: any): string => {
+  try {
+    const s = outSig(cell);
+    return s == null ? 'x' : String(s).replace(/^Vector3vl\s+/, '');
+  } catch { return 'x'; }
+};
+
+/**
+ * 沉降：反复推进引擎队列直到当前时间片排空。
+ * 一次 updateGatesNext() 只消费一个片，深层组合逻辑（乘法器/加法器树）一轮排不干净，
+ * 表现为「走了一个时钟沿但输出一动不动」；这里与 SandboxCanvas 的 flushStaleQueue 同源，
+ * 加上片数上限防止死循环。
+ */
+const settle = (circuit: any, maxSteps = 24) => {
+  const eng = circuit?._engine || circuit;
+  for (let i = 0; i < maxSteps; i++) {
+    try {
+      if (typeof eng.updateGatesNext !== 'function') { if (i === 0) circuit.updateGatesNext?.(); break; }
+      const peek = eng._pq?.peek?.();
+      if (peek != null && eng._tick != null && peek >= eng._tick) { if (i === 0) eng.updateGatesNext(); break; }
+      eng.updateGatesNext();
+    } catch { break; }
+  }
+};
 
 export interface CanvasHandle {
   resetZoom: () => void;
   fitToWindow: () => void;
+  /** 菜单「放大 / 缩小」：以视口中心为锚按 factor 缩放（与 Ctrl+滚轮同一份实现） */
+  zoomBy: (factor: number) => void;
   /** Make the joint.js paper read-only (true) or interactive (false). Requires a rendered circuit. */
   setFixed: (fixed: boolean) => void;
   /** Pause (true) / resume (false) the digitaljs simulation engine. */
@@ -31,7 +94,11 @@ export interface CanvasHandle {
    */
   stepOnce: () => void;
   /** Enumerate all interactive input cells (Button/Clock) for the side panel. */
-  listInputs: () => { id: string; label: string; type: string; value: string }[];
+  listInputs: () => { id: string; label: string; type: string; value: string; bits: number }[];
+  /** Enumerate all output cells (Lamp/Display/…) — read-only in the side panel. */
+  listOutputs: () => { id: string; label: string; type: string; value: string }[];
+  /** 翻转某一位（bitIndex 0 = 最低位）——面板里多位输入逐位编辑用 */
+  toggleInputBit: (id: string, bitIndex: number) => void;
   /** Toggle a Button/Clock input by cell id (flip its output and propagate). */
   toggleInput: (id: string) => void;
   /**
@@ -84,8 +151,10 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const zoomRef = useRef(1);
   const panRef = useRef({ x: 0, y: 0 });
+  // 用户一旦自己拖过/缩过，就不许再被 render:done 的自动适应窗口抹掉（见 :699 那颗 refit）
+  const userViewRef = useRef(false);
   const isPanning = useRef(false);
-  const panStart = useRef({ x: 0, y: 0 });
+  const panStart = useRef({ x: 0, y: 0, px: 0, py: 0 });
 
   // Refs so imperative sim commands always act on the latest circuit / desired state
   const lockedRef = useRef(locked);
@@ -120,10 +189,15 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   useEffect(() => {
     speedRef.current = speedMs;
     const c = circuitRef.current;
-    if (c && !pausedRef.current) {
-      try { c.interval = speedMs; } catch { /* engine may not expose interval */ }
-    }
+    if (c && !pausedRef.current) setSimInterval(c, speedMs);
   }, [speedMs]);
+  // 走线方式是全局设置：在设置面板里改完，已画出来的编译电路图要**立刻**重排，
+  // 不用重开文件、不用重新编译。
+  useEffect(() => settingsStore.subscribe(() => {
+    const paper = paperRef.current;
+    if (!paper) return;
+    try { applyWireStyle(paper, settingsStore.getSandboxSettings().wireStyle); } catch { /* ignore */ }
+  }), []);
   useEffect(() => {
     pausedRef.current = paused;
     const c = circuitRef.current;
@@ -132,8 +206,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       if (paused) {
         c.stop();
       } else {
-        c.interval = speedRef.current;
-        c.start();
+        setSimInterval(c, speedRef.current, true);
       }
     } catch { /* ignore */ }
   }, [paused]);
@@ -146,6 +219,33 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     wrapper.style.transform = `translate(${x}px, ${y}px) scale(${z})`;
     wrapper.style.transformOrigin = '0 0';
   }, []);
+
+  /**
+   * 以「布局原点坐标系」里的 (mx,my) 为锚点缩放 —— **Ctrl+滚轮与右键菜单的放大/缩小共用这一份**。
+   * 锚点算法只能有一处：菜单那颗以前根本没有（编译模式右键菜单只有"适应窗口/重置缩放"），
+   * 补的时候要是另写一份，两条路就会飘（同"同一动作只许一份定位实现"那一族）。
+   * ⚠ 必须置 `userViewRef`：否则下一次 `render:done` 的自动适应窗口会把用户刚调的缩放抹掉（R59 的真因）。
+   */
+  const zoomAt = useCallback((factor: number, mx: number, my: number) => {
+    const newZoom = Math.min(5, Math.max(0.1, zoomRef.current * factor));
+    const scale = newZoom / zoomRef.current;
+    panRef.current = {
+      x: mx - scale * (mx - panRef.current.x),
+      y: my - scale * (my - panRef.current.y),
+    };
+    zoomRef.current = newZoom;
+    userViewRef.current = true;
+    applyTransform();
+  }, [applyTransform]);
+
+  /** 菜单「放大 / 缩小」：以视口中心为锚（没有光标位置可用时的默认锚点） */
+  const zoomBy = useCallback((factor: number) => {
+    const wrap = wrapperRef.current, el = containerRef.current;
+    if (!wrap || !el) return;
+    const wr = wrap.getBoundingClientRect(), cr = el.getBoundingClientRect();
+    // 与 handleWheel 同一套换算：布局原点 = 当前左上 − pan
+    zoomAt(factor, cr.left + cr.width / 2 - (wr.left - panRef.current.x), cr.top + cr.height / 2 - (wr.top - panRef.current.y));
+  }, [zoomAt]);
 
   // Apply theme to the DigitalJS paper element background.
   // We force paper/SVG transparent so the container's --canvas-bg + dot-grid
@@ -283,6 +383,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   useImperativeHandle(ref, () => ({
     resetZoom,
     fitToWindow,
+    zoomBy,
     highlightSource,
     clearSourceHighlight,
     getGraphJson: () => {
@@ -339,17 +440,18 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       const circuit = circuitRef.current;
       if (!paper || !circuit) return null;
       const values: Record<string, string> = {};
-      try {
-        const seen = new Set<string>();
-        for (const lk of paper.model.getLinks()) {
-          const net = lk.get('netname');
-          if (!net || seen.has(String(net))) continue;
-          seen.add(String(net));
+      const seen = new Set<string>();
+      for (const lk of paper.model.getLinks()) {
+        const net = lk.get('netname');
+        if (!net || seen.has(String(net))) continue;
+        seen.add(String(net));
+        // 逐根 net 各兜一次：某一条线里的向量坏了（String() 会抛）不该让整批采样停掉
+        try {
           const sig = lk.get('signal');
           values[String(net)] = sig != null ? String(sig).replace(/^Vector3vl\s+/, '') : 'x';
-          if (seen.size >= 24) break;
-        }
-      } catch { /* ignore */ }
+        } catch { values[String(net)] = 'x'; }
+        if (seen.size >= 24) break;
+      }
       return { tick: Number((circuit as any).tick) || 0, values };
     },
     stepOnce: () => {
@@ -367,59 +469,124 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
         }
 
         if (clocks.length === 0) {
-          // Pure combinational: advance ONE delta-cycle tick.
-          circuit.updateGatesNext();
+          // Pure combinational: settle one delta-cycle burst.
+          settle(circuit, 24);
           return;
         }
 
         // Sequential: toggle clock, then advance one delta tick.
-        // First, pull clock low and let it settle (one tick).
-        for (const clk of clocks) {
-          const sig = clk.outputSignals?.out;
-          if (sig?._bvec) { sig._bvec[0] = 0; sig._avec = {}; }
-        }
-        circuit.updateGatesNext();
+        // First, pull clock low and let it settle.
+        for (const clk of clocks) setOutBit(clk, false);
+        settle(circuit, 24);
         // Then, rising edge — clock goes high.
-        for (const clk of clocks) {
-          const sig = clk.outputSignals?.out;
-          if (sig?._bvec) { sig._bvec[0] = 1; sig._avec = { 0: 1 }; }
-        }
-        circuit.updateGatesNext();
+        for (const clk of clocks) setOutBit(clk, true);
+        settle(circuit, 24);
       } catch { /* step is cosmetic */ }
     },
     listInputs: () => {
       const paper = paperRef.current;
       if (!paper) return [];
-      const out: { id: string; label: string; type: string; value: string }[] = [];
+      const out: { id: string; label: string; type: string; value: string; bits: number }[] = [];
       try {
         for (const el of paper.model.getElements()) {
           const t = el.get('type');
           if (t === 'Button' || t === 'Clock') {
-            const sig = el.outputSignals?.out;
-            const bv = sig?._bvec?.[0];
             out.push({
               id: el.get('id'),
               label: el.get('label') || el.get('net') || el.get('id'),
               type: t,
-              value: bv === 1 ? '1' : '0',
+              value: readOutBit(el) === '1' ? '1' : '0',
+              bits: Number(el.get('bits') || 1),
             });
           }
         }
       } catch { /* ignore */ }
       return out;
     },
+    /** 输出件统计（R102）：灯 / 七段 / 数值显示 / 输出端口——**只读**。
+     *  ⚠ Lamp/Display 这类是**接收型**器件：值在 `inputSignals.in`（连线驱动），
+     *    `outputSignals` 是空的 —— 读错来源会让输出段永远显示 x。 */
+    listOutputs: () => {
+      const paper = paperRef.current;
+      if (!paper) return [];
+      const OUT_TYPES = ['Lamp', 'Display7', 'NumDisplay', 'NumEntry', 'Output', 'Led', 'SevenSegment'];
+      const out: { id: string; label: string; type: string; value: string }[] = [];
+      const clean = (v: any) => (v == null ? null : String(v).replace(/^Vector3vl\s+/, ''));
+      let seq = 0;
+      try {
+        for (const el of paper.model.getElements()) {
+          const t = String(el.get('type'));
+          if (!OUT_TYPES.includes(t)) continue;
+          seq++;
+          let val: string | null = null;
+          try {
+            const inSigs = el.get('inputSignals');
+            const iv = inSigs ? (inSigs.in ?? Object.values(inSigs)[0]) : null;
+            val = clean(iv);
+          } catch { /* 落到 outputSignals */ }
+          if (val == null) {
+            try {
+              const sigs = el.get('outputSignals');
+              const v = sigs ? (sigs.out ?? Object.values(sigs)[0]) : null;
+              val = clean(v);
+            } catch { /* ignore */ }
+          }
+          out.push({
+            id: el.get('id'),
+            label: el.get('label') || el.get('net') || `${t}#${seq}`,
+            type: t,
+            value: val ?? 'x',
+          });
+        }
+      } catch { /* ignore */ }
+      return out;
+    },
     toggleInput: (id: string) => {
+      // R112 更正 R103 的过度解读：用户要的「非运行状态下禁止组件传输信号」禁的是
+      //   **信号在电路里传播**（不运行 ⇒ 不调 updateGates ⇒ 灯不亮），**不是**禁止用户
+      //   拨输入引脚。R103 误加了 `if (pausedRef.current) return;`，而沙盒/编译默认就是
+      //   未运行态 ⇒ 用户**永远无法设置输入初值**（r50 三格全红：rst 拨不动、单步无 clk）。
+      //   现在允许随时改输入值；「不运行时不传输」由下面**跳过 updateGates** 来保证。
       const paper = paperRef.current;
       const circuit = circuitRef.current as any;
       if (!paper || !circuit) return;
       try {
         const cell = paper.model.getCell(id);
         if (!cell) return;
-        const sig = cell.outputSignals?.out;
-        if (!sig?._bvec) return;
-        sig._bvec[0] = sig._bvec[0] === 1 ? 0 : 1;
-        sig._avec = sig._bvec[0] === 1 ? { 0: 1 } : {};
+        setOutBit(cell, readOutBit(cell) !== '1');
+        // R112：非运行态**只改输入值、不传播** —— 这才是「禁止组件传输信号」的本意。
+        // ⚠ 判据用**引擎实际状态**（`_engine.running`），不用 `pausedRef`：后者只是 UI 意图标志，
+        //   编译后引擎还没起时它可能为 false，此时仍需要能算出静态值供用户看。
+        if (circuit?._engine && !circuit._engine.running) return;
         if (typeof circuit.updateGates === 'function') circuit.updateGates();
+        else settle(circuit, 24);
+      } catch { /* ignore */ }
+    },
+    /** 翻转第 bitIndex 位（0 = 最低位）。多位 Button 在面板里要能逐位编辑（R102）。 */
+    toggleInputBit: (id: string, bitIndex: number) => {
+      // R112 同 toggleInput：不再"直接拒绝改值"，改成"改完不传播"。
+      const paper = paperRef.current;
+      const circuit = circuitRef.current as any;
+      if (!paper || !circuit) return;
+      try {
+        const cell = paper.model.getCell(id);
+        if (!cell) return;
+        const o = (cell.get?.('outputSignals') || cell.outputSignals) || {};
+        const sig = o.out ?? Object.values(o)[0];
+        const C = sig && sig.constructor;
+        const bits = Number(cell.get('bits')) || 1;
+        if (!C || typeof C.fromBin !== 'function') { setOutBit(cell, readOutBit(cell) !== '1'); }
+        else {
+          const cur = String(sig ?? '').replace(/^Vector3vl\s+/, '').padStart(bits, '0').split('');
+          const pos = bitIndex;                       // R102：位序左＝高位，bitIndex 从左数
+          if (pos < 0 || pos >= bits) return;
+          cur[pos] = cur[pos] === '1' ? '0' : '1';
+          cell.set('outputSignals', { ...o, out: C.fromBin(cur.join(''), bits) });
+        }
+        // R112：同 toggleInput —— 非运行态只改输入值、不传播（用引擎实际状态判定）。
+        if (circuit?._engine && !circuit._engine.running) return;
+        if (typeof circuit.updateGates === 'function') circuit.updateGates();
+        else settle(circuit, 24);
       } catch { /* ignore */ }
     },
     setFixed: (fixed: boolean) => applyFixed(fixed),
@@ -431,8 +598,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
         if (p) {
           c.stop();
         } else {
-          c.interval = speedRef.current;
-          c.start();
+          setSimInterval(c, speedRef.current, true);
         }
       } catch (err: any) {
         onError(`Sim control failed: ${err?.message || err}`);
@@ -441,9 +607,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     setSpeed: (ms: number) => {
       speedRef.current = ms;
       const c = circuitRef.current;
-      if (c && !pausedRef.current) {
-        try { c.interval = ms; } catch { /* ignore */ }
-      }
+      if (c && !pausedRef.current) setSimInterval(c, ms);
     },
     reapplySimState: () => {
       const c = circuitRef.current;
@@ -451,7 +615,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       applyFixed(lockedRef.current);
       try {
         if (pausedRef.current) c.stop();
-        else { c.interval = speedRef.current; c.start(); }
+        else setSimInterval(c, speedRef.current, true);
       } catch { /* ignore */ }
     },
   }), [resetZoom, fitToWindow, highlightSource, clearSourceHighlight, applyFixed, onError, circuitJson]);
@@ -471,6 +635,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     el.innerHTML = '';
     zoomRef.current = 1;
     panRef.current = { x: 0, y: 0 };
+    userViewRef.current = false;
     wrapperRef.current = null;
 
     const wrapper = document.createElement('div');
@@ -533,6 +698,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       });
       const paper = circuit.displayOn(wrapper);
       paperRef.current = paper;
+
+      // 走线方式是**全局**设置（编译模式与沙盒同一套），不是沙盒专属
+      try { applyWireStyle(paper, settingsStore.getSandboxSettings().wireStyle); } catch { /* ignore */ }
 
       // Disable dragging on all non-IO cells — this is a compiled circuit,
       // not a manual editor. Dragging cells triggers elkjs re-layout which
@@ -636,9 +804,14 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       try {
         let refitCount = 0;
         paper.on?.('render:done', () => {
-          if (refitCount++ < 5) {
-            requestAnimationFrame(() => { fitToWindow(); applyThemeToPaper(); });
-          }
+          if (refitCount >= 5) return;
+          refitCount++;
+          requestAnimationFrame(() => {
+            // elk 重建 DOM 会丢主题，这颗每次都补
+            applyThemeToPaper();
+            // 用户已经拖过/缩过 ⇒ 画面不许再被"适应窗口"整体搬家（滚轮锚点会凭空失效）
+            if (!userViewRef.current) fitToWindow();
+          });
         });
       } catch { /* older builds */ }
 
@@ -659,8 +832,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       if (pausedRef.current) {
         circuit.stop();
       } else {
-        try { circuit.interval = speedRef.current; } catch { /* ignore */ }
-        circuit.start();
+        setSimInterval(circuit, speedRef.current, true);
       }
       // NOTE: do NOT read circuit.running synchronously here. stop() fires its
       // changeRunning event asynchronously (engine clears _interval then triggers),
@@ -710,28 +882,60 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       // 裸 jQuery 弹窗，可拖动元件、可点开关），改交 App 用统一只读预览渲染。
       // 关掉内置监听后，a.zoom 点击只走我们自己的捕获阶段命中逻辑。
       try {
-        if (onPreviewSubcircuitRef.current) {
-          // yosys2digitaljs 的 subcircuits 是**扁平**模块表：顶层列全部模块，
-          // 而各子模块自身的 subcircuits 多为空。digitaljs 构造 Subcircuit 器件
-          // 时会去读 subcircuits[celltype].devices —— 缺失就抛
-          // "Cannot read properties of undefined"。所以这里按引用把依赖模块体
-          // 递归挂进预览用的自足 circuit，钻取子部件才能继续渲染。
-          const root = circuitJson as any;
-          const selfContained = (mod: any, seen = new Set<string>()): any => {
-            if (!mod?.devices) return mod;
-            const subs: Record<string, any> = {};
-            for (const d of Object.values<any>(mod.devices || {})) {
-              const ct = d?.type === 'Subcircuit' ? String(d.celltype || '') : '';
-              if (!ct || seen.has(ct)) continue;
-              const body = mod.subcircuits?.[ct] || root?.subcircuits?.[ct];
-              if (body?.devices) { seen.add(ct); subs[ct] = selfContained(body, seen); }
+        // R106：点器件/连线**高亮**（与沙盒一致）。
+        // ⚠ 两个实测坑（R112 编译模式探针在 test_and.v 上验证）：
+        //   ① 这段原来被放在下面那个 `if (onPreviewSubcircuitRef.current)` 里，而那个 ref
+        //      只有"存在子电路预览"时才非空 ⇒ **普通电路整段绑定根本不执行**（用户报的正是
+        //      「点了没反应」）。必须独立于预览逻辑、无条件执行。
+        //   ② `cell.on('cell:pointerclick', …)` **收不到事件**：joint 的 pointerclick 是
+        //      由 **paper** 派发、参数是 View，Backbone 的 model 不转发 ⇒ 绑在 model 上
+        //      等于绑了个死钩子。必须 `paper.on(...)`。
+        let selPrev: any[] = [];
+        const clearPrev = () => {
+          selPrev.forEach((v: any) => v?.el?.classList?.remove('sm-selected'));
+          selPrev = [];
+        };
+        paper.on('cell:pointerclick', (view: any) => {
+          clearPrev();
+          const t = view?.model;
+          if (!t) return;
+          let views: any[] = [];
+          try {
+            if (typeof t.isLink === 'function' && t.isLink()) {
+              // 连线：两端所连的器件一起亮（沙盒同款语义）
+              const ids = new Set<string>();
+              const s = t.get('source'), tg = t.get('target');
+              if (s?.id) ids.add(String(s.id));
+              if (tg?.id) ids.add(String(tg.id));
+              views = paper.model.getCells()
+                .filter((x: any) => ids.has(String(x.id)))
+                .map((x: any) => x.findView(paper))
+                .filter(Boolean);
+            } else {
+              views = [view];
             }
-            return { devices: mod.devices, connectors: mod.connectors ?? [], subcircuits: subs };
-          };
+          } catch { views = [view]; }
+          selPrev = views;
+          views.forEach((v: any) => v?.el?.classList?.add('sm-selected'));
+        });
+        paper.on('blank:pointerclick', clearPrev);
+      } catch { /* best-effort：绑定失败只是没有高亮，不影响其它功能 */ }
+
+      try {
+        if (onPreviewSubcircuitRef.current) {
+          // digitaljs 的 Circuit._makeGraph 在递归进子模块时**沿用自己的那张表**
+          // （`_makeGraph(subcircuits[dev.celltype], subcircuits)`），所以子模块体
+          // 必须**平铺在同一张 subcircuits 表**里 —— 逐层内联的写法只有上一层能
+          // 查到，第 3 层起就是 `subcircuits[名] === undefined` → ctor 抛
+          // "Cannot read properties of undefined (reading 'devices')"。
+          // 编译产物本来就是平表（yosys2digitaljs 把所有模块收在顶层），直接沿用。
+          const root = circuitJson as any;
+          const flatSubs = root?.subcircuits && typeof root.subcircuits === 'object' ? root.subcircuits : {};
           const firePreview = (model: any) => {
             const name = String(model?.get?.('celltype') || '');
-            const body = root?.subcircuits?.[name];
-            if (body?.devices) onPreviewSubcircuitRef.current?.(selfContained(body), name);
+            const body = flatSubs[name];
+            if (!body?.devices) return;
+            onPreviewSubcircuitRef.current?.({ devices: body.devices, connectors: body.connectors ?? [], subcircuits: flatSubs }, name);
           };
           paper.off('open:subcircuit');
           paper.on('open:subcircuit', firePreview);
@@ -759,6 +963,11 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       // DEV-only read-only debug hook for automated smoke probes (stripped in prod builds)
       if (import.meta.env.DEV) {
         (window as any).__djsDebug = {
+          // R112：暴露 paper 引用。此前编译画布**没有任何调试入口**（沙盒有
+          // `window.__sandboxPaper`），导致「编译画布点部件有没有高亮」「编译画布空白右键
+          // 有没有菜单」这两条一直无法端到端验证 —— 探针跑了三轮都进不去这个视图。
+          paper: () => paper,
+          cells: () => (paper ? paper.model.getCells().map((c: any) => ({ id: c.id, type: c.get('type'), isLink: !!(c.isLink && c.isLink()) })) : []),
           getSignals: () => {
             const g = (circuit as any)._graph;
             const cells = g.getElements().map((el: any) => ({
@@ -776,6 +985,27 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
             }));
           },
           getPaper: () => paper,
+          getCircuit: () => circuit,
+          // ⚠ 缩放取证用：wrapper 的**内联** transform 只有 applyTransform 会写，
+          //   它变了就证明滚轮真的落到了 handleWheel（区分"我们的 CSS 缩放"与 joint 自己的缩放）。
+          getZoomState: () => {
+            const r = (x: DOMRect) => ({
+              l: Math.round(x.left), t: Math.round(x.top), w: Math.round(x.width), h: Math.round(x.height),
+            });
+            const wrap = wrapperRef.current;
+            const paperEl = (paper as any)?.el as HTMLElement | undefined;
+            return {
+              zoom: zoomRef.current, pan: { ...panRef.current },
+              userView: userViewRef.current,
+              wrapperInline: wrap ? wrap.style.transform : null,
+              wrapperOrigin: wrap ? wrap.style.transformOrigin : null,
+              container: r(el.getBoundingClientRect()),
+              wrapperRect: wrap ? r(wrap.getBoundingClientRect()) : null,
+              paperInline: paperEl ? paperEl.style.transform : null,
+              paperRect: paperEl ? r(paperEl.getBoundingClientRect()) : null,
+              jointScale: (() => { try { const s = (paper as any).scale(); return { sx: s.sx, sy: s.sy }; } catch { return null; } })(),
+            };
+          },
         };
       }
 
@@ -817,19 +1047,24 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
   }, [circuitJson, onError, fitToWindow, applyThemeToPaper, applyFixed, clearSourceHighlight]);
 
   // Pan and zoom mouse handlers
+  // ⚠ panRef 的坐标系只有一个：容器相对（centerAtScale 与 handleWheel 都按它算）。
+  //   原来这里存的是**绝对 clientX**，于是「拖过之后再 Ctrl+滚轮」锚点会整体偏掉一个
+  //   容器左上角的距离（实测光标处漂 636px、画面直接出视口）——改成纯增量，
+  //   增量与原点无关，panRef 就只有一种含义。
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (e.button === 2) {
       e.preventDefault();
       isPanning.current = true;
-      panStart.current = { x: e.clientX - panRef.current.x, y: e.clientY - panRef.current.y };
+      userViewRef.current = true;
+      panStart.current = { x: e.clientX, y: e.clientY, px: panRef.current.x, py: panRef.current.y };
     }
   }, []);
 
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isPanning.current) return;
     panRef.current = {
-      x: e.clientX - panStart.current.x,
-      y: e.clientY - panStart.current.y,
+      x: panStart.current.px + (e.clientX - panStart.current.x),
+      y: panStart.current.py + (e.clientY - panStart.current.y),
     };
     applyTransform();
   }, [applyTransform]);
@@ -842,33 +1077,50 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
     (e: React.WheelEvent) => {
       e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
-        // Ctrl+wheel = zoom at cursor
+        // Ctrl+wheel = zoom at cursor（换算全在 zoomAt 那一份里）
         const delta = e.deltaY > 0 ? 0.9 : 1.1;
-        const newZoom = Math.min(5, Math.max(0.1, zoomRef.current * delta));
-        const rect = containerRef.current?.getBoundingClientRect();
-        if (rect) {
-          const mx = e.clientX - rect.left;
-          const my = e.clientY - rect.top;
-          const scale = newZoom / zoomRef.current;
-          panRef.current = {
-            x: mx - scale * (mx - panRef.current.x),
-            y: my - scale * (my - panRef.current.y),
-          };
+        const wrap = wrapperRef.current;
+        if (wrap) {
+          // 锚点必须按 wrapper 的**布局原点**算：getBoundingClientRect 已含当前变换，
+          // 而 origin 0 0 时盒左上 = 布局原点 + pan ⇒ 布局原点 = 左上 − pan（与容器无关，
+          // 容器有内边距/inline-block 基线偏移都不会把锚点带歪）。
+          const wr = wrap.getBoundingClientRect();
+          zoomAt(delta, e.clientX - (wr.left - panRef.current.x), e.clientY - (wr.top - panRef.current.y));
+        } else {
+          zoomRef.current = Math.min(5, Math.max(0.1, zoomRef.current * delta));
+          userViewRef.current = true;
+          applyTransform();
         }
-        zoomRef.current = newZoom;
       } else {
         // Plain wheel = pan (vertical by default, horizontal with Shift)
         panRef.current = {
           x: panRef.current.x - (e.shiftKey ? e.deltaY : e.deltaX),
           y: panRef.current.y - (e.shiftKey ? e.deltaX : e.deltaY),
         };
+        userViewRef.current = true;
       }
       applyTransform();
     },
-    [applyTransform]
+    [applyTransform, zoomAt]
   );
 
   return (
+    <>
+      {/* R103：与沙盒同一套选中高亮样式（主题紫 + !important 压过 index.css 的主题规则） */}
+      <style>{`
+        [data-theme] .joint-paper .sm-selected .body, [data-theme] .joint-paper .sm-selected .gate,
+        [data-theme] .joint-paper .sm-selected .btnface, [data-theme] .joint-paper .sm-selected .led,
+        [data-theme] .joint-paper .sm-selected path.decor,
+        [data-theme] .joint-paper .sm-selected .joint-port-body {
+          stroke: var(--accent-hover) !important;
+          stroke-width: 2.5 !important;
+        }
+        [data-theme] .joint-paper .sm-selected .connection {
+          stroke: var(--accent-hover) !important;
+          stroke-width: 3 !important;
+        }
+        [data-theme] .joint-paper .sm-selected circle.port { fill: var(--accent-hover) !important; }
+      `}</style>
     <div
       ref={containerRef}
       onMouseDown={handleMouseDown}
@@ -888,6 +1140,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
         position: 'relative',
       }}
     />
+    </>
   );
 });
 

@@ -28,8 +28,6 @@ interface Props {
   folders: string[];
   activeId: string | null;
   selectedIds: Set<string>;
-  renaming: RenameTarget | null;
-  creating: CreateTarget | null;
   onOpen: (f: SandboxFile) => void;
   onSelectToggle: (id: string, e: React.MouseEvent) => void;
   onFileContextMenu: (e: React.MouseEvent, f: SandboxFile) => void;
@@ -37,10 +35,9 @@ interface Props {
   onRootContextMenu: (e: React.MouseEvent) => void;
   onMoveFiles: (ids: string[], folder: string) => void;
   onMoveFolder: (path: string, newPath: string) => void;
+  // R101：右键菜单的「重命名」改为**弹窗**（SandboxCanvas 里走 PromptDialog，与编译模式一致）；
+  // 这里只保留 hover 铅笔触发的**行内**重命名（编译模式 Sidebar 同样有这颗铅笔）。
   onRenameCommit: (t: RenameTarget, name: string) => void;
-  onRenameCancel: () => void;
-  onCreateCommit: (t: CreateTarget, name: string) => void;
-  onCreateCancel: () => void;
 }
 
 const DRAG_MIME = 'application/x-sandbox-fs';
@@ -92,9 +89,9 @@ const rowBase: React.CSSProperties = {
 };
 
 export default function SandboxFileTree({
-  files, folders, activeId, selectedIds, renaming, creating,
+  files, folders, activeId, selectedIds,
   onOpen, onSelectToggle, onFileContextMenu, onFolderContextMenu, onRootContextMenu,
-  onMoveFiles, onMoveFolder, onRenameCommit, onRenameCancel, onCreateCommit, onCreateCancel,
+  onMoveFiles, onMoveFolder, onRenameCommit,
 }: Props) {
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
@@ -162,7 +159,7 @@ export default function SandboxFileTree({
   const fileRow = (f: SandboxFile, depth: number) => {
     const selected = selectedIds.has(f.id);
     const isActive = activeId === f.id;
-    const isRenaming = (renaming?.kind === 'file' && renaming.key === f.id) || localRename?.key === f.id;
+    const isRenaming = localRename?.key === f.id;
     return (
       <div key={f.id} data-sbfile={f.name} draggable={!isRenaming}
         onDragStart={(e) => onDragStart(e, selectedIds.has(f.id) ? Array.from(selectedIds) : [f.id], 'files')}
@@ -177,6 +174,9 @@ export default function SandboxFileTree({
           borderLeft: isActive ? '2px solid var(--accent)' : '2px solid transparent',
           color: isActive ? 'var(--text)' : 'var(--text-secondary)',
         }}>
+        {/* 状态圆点：与编译模式行节奏一致（激活＝accent，其余＝muted） */}
+        <div style={{ width: 5, height: 5, borderRadius: '50%', flexShrink: 0,
+          background: isActive ? 'var(--accent)' : 'var(--text-muted)' }} />
         <span style={{ flexShrink: 0, display: 'inline-flex', color: 'var(--text-muted)' }}><FileText size={14} /></span>
         {isRenaming ? (
           <input
@@ -185,7 +185,7 @@ export default function SandboxFileTree({
             onClick={(e) => e.stopPropagation()}
             onKeyDown={(e) => {
               if (e.key === 'Enter') { onRenameCommit({ kind: 'file', key: f.id }, (e.target as HTMLInputElement).value); setLocalRename(null); }
-              if (e.key === 'Escape') { setLocalRename(null); onRenameCancel(); }
+              if (e.key === 'Escape') { setLocalRename(null); }
             }}
             onBlur={(e) => { onRenameCommit({ kind: 'file', key: f.id }, e.currentTarget.value); setLocalRename(null); }}
             style={inputStyle} />
@@ -207,25 +207,11 @@ export default function SandboxFileTree({
     );
   };
 
-  const createInput = (depth: number) => (
-    <div style={{ paddingLeft: 6 + depth * 14, paddingRight: 10 }}>
-      <input
-        autoFocus
-        placeholder={creating!.kind === 'file' ? '新文件名.djs' : '新文件夹名'}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') onCreateCommit(creating!, (e.target as HTMLInputElement).value);
-          if (e.key === 'Escape') onCreateCancel();
-        }}
-        onBlur={onCreateCancel}
-        style={inputStyle} />
-    </div>
-  );
-
   const folderRows = (node: FolderNode, depth: number): React.ReactNode[] => {
     const out: React.ReactNode[] = [];
     for (const child of node.children.values()) {
       const isCollapsed = collapsed.has(child.path);
-      const isRenaming = (renaming?.kind === 'folder' && renaming.key === child.path) || localRename?.key === child.path;
+      const isRenaming = localRename?.key === child.path;
       const dragOverThis = dragOverFolder === child.path;
       const allSelected = (() => { const ids = folderFileIds(child); return ids.length > 0 && ids.every((id) => selectedIds.has(id)); })();
       out.push(
@@ -242,16 +228,15 @@ export default function SandboxFileTree({
             style={{
               ...rowBase,
               paddingLeft: 6 + depth * 14,
-              fontWeight: 600,
               color: 'var(--text-secondary)',
               background: dragOverThis ? 'var(--accent-muted)' : 'transparent',
               outline: dragOverThis ? '1px dashed var(--accent)' : 'none',
               outlineOffset: -1,
             }}>
-            <span style={{ width: 14, display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+            <span style={{ width: 14, marginRight: 4, display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
               {isCollapsed ? <ChevronRight size={13} /> : <ChevronDown size={13} />}
             </span>
-            <span style={{ display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
+            <span style={{ marginRight: 4, display: 'inline-flex', alignItems: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
               {isCollapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
             </span>
             {isRenaming ? (
@@ -261,7 +246,7 @@ export default function SandboxFileTree({
                 onClick={(e) => e.stopPropagation()}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') { onRenameCommit({ kind: 'folder', key: child.path }, (e.target as HTMLInputElement).value); setLocalRename(null); }
-                  if (e.key === 'Escape') { setLocalRename(null); onRenameCancel(); }
+                  if (e.key === 'Escape') { setLocalRename(null); }
                 }}
                 onBlur={(e) => { onRenameCommit({ kind: 'folder', key: child.path }, e.currentTarget.value); setLocalRename(null); }}
                 style={inputStyle} />
@@ -272,7 +257,6 @@ export default function SandboxFileTree({
           </div>
           {!isCollapsed && (
             <>
-              {creating?.folder === child.path && createInput(depth + 1)}
               {folderRows(child, depth + 1)}
               {child.files.slice().sort((a, b) => a.name.localeCompare(b.name)).map((f) => fileRow(f, depth + 1))}
             </>
@@ -308,7 +292,6 @@ export default function SandboxFileTree({
         outlineOffset: -2,
         transition: 'background 0.12s',
       }}>
-      {creating?.folder === '' && createInput(0)}
       {folderRows(root, 0)}
       {rootFiles.map((f) => fileRow(f, 0))}
       {isEmpty && (

@@ -6,6 +6,9 @@
 // serializePaper builds a WHITELIST cell shape instead — the same shape the
 // sandbox's own save/load pipeline (and loadCells) consumes.
 
+import { DEVICE_PARAM_KEYS, paramValue } from './deviceParams';
+import { MIRROR_VER_LOCAL } from './cellMirror';
+
 /**
  * Whitelist-serialize a live Graph (R34: graph-level variant).
  *
@@ -20,10 +23,7 @@ export function serializeGraphCells(graph: any): { cells: any[] } {
 }
 
 function serializeCellsOf(getCells: () => any[]): any[] {
-  const all = getCells();
-  const linkCount = all.filter((c: any) => (typeof c.isLink === 'function' && c.isLink()) || /^(link|wire|djs\.wire)$/i.test(String(c.get('type')))).length;
-  console.log('[serialize] total cells:', all.length, 'links detected:', linkCount, 'sample types:', [...new Set(all.map((c: any) => c.get('type')))].slice(0, 10));
-  return all.map((c: any) => {
+  return getCells().map((c: any) => {
     const type = c.get('type');
     const cell: any = {
       id: c.id,
@@ -35,18 +35,23 @@ function serializeCellsOf(getCells: () => any[]): any[] {
       net: c.get('net'),
       celltype: c.get('celltype'),
       label: c.get('label'),
-      propagation: c.get('propagation'),
-      angle: c.get('angle'),
-      constant: c.get('constant'),
-      polarity: c.get('polarity'),
-      initial: c.get('initial'),
-      groups: c.get('groups') instanceof Map ? Array.from(c.get('groups').entries()) : undefined,
-      slice: c.get('slice'),
-      abits: c.get('abits'),
-      rdports: c.get('rdports'),
-      wrports: c.get('wrports'),
+      // IO 引脚排序键：yosys2digitaljs 给每个 Input/Output 写 order，digitaljs 的
+      // Subcircuit.initialize 有 order 时按它排端口，没有就退回按 net 名字母序。
+      // 不带上它，部件文件的引脚顺序就和编译模式对不上（sum/cout 上下颠倒）。
+      order: c.get('order'),
       memdataInit: c.get('memdataInit'),
     };
+    // 器件参数一律按 deviceParams 的清单整体带上：以往这里、sandboxLoad、
+    // subcircuitView 两个方向各写一份字段链，清单靠人手对齐，digitaljs 构造期
+    // 读走的 extend/arst_value/srst_value 就是这么被静默吞掉的。
+    for (const k of DEVICE_PARAM_KEYS) {
+      const v = paramValue(k, c);
+      if (v != null) cell[k] = v;
+    }
+    // R113：mirror 语义版本标记。新语义＝器件**本地轴**（mirrorVer 2）；
+    // 旧存档没有这个字段，sandboxLoad 的 migrateMirror 会按旧屏幕语义换算过来。
+    // 不写标记的话，每次存盘重开都会把已迁移的器件再迁移一次（h/v 又对调回去）。
+    if (cell.mirror && (cell.mirror.h || cell.mirror.v)) cell.mirrorVer = MIRROR_VER_LOCAL;
     if (type === 'Subcircuit') {
       cell.subcircuitGraph = c.get('subcircuitGraph');
       // 编译模式的 Subcircuit 只有活 `graph`（joint.dia.Graph），没有可序列化的

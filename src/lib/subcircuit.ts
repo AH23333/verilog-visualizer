@@ -8,6 +8,7 @@
 // attrs (Vector3vl `signal`, nested `graph` Graphs) — see sandboxSerialize.ts.
 
 import { serializeGraphCells } from './sandboxSerialize';
+import { ctorParams } from './deviceParams';
 
 /**
  * Rebuild a live inner Graph from a whitelisted cells JSON snapshot.
@@ -61,24 +62,11 @@ export function buildInnerGraph(digitaljs: any, Graph: any, json: any, display3v
         if (cc.id) innerMap.set(cc.id, subCell);
         continue;
       }
-      // 器件特有配置必须构造时传入（事后 set 不重建端口/不生效）——与 loadCells 的
-      // cellExtra 对齐。缺失会导致：Constant 值归零、Dff 丢 clk 引脚、
-      // BusGroup/Slice 端口错乱、Memory 丢端口配置。
-      const extra: any = {};
-      if (cc.type === 'Dff') {
-        if (cc.polarity) extra.polarity = cc.polarity;
-        if (cc.initial != null) extra.initial = cc.initial;
-      }
-      if (cc.type === 'Constant' && cc.constant) extra.constant = cc.constant;
-      if ((cc.type === 'BusGroup' || cc.type === 'BusUngroup') && Array.isArray(cc.groups)) extra.groups = new Map(cc.groups);
-      if (cc.type === 'BusSlice' && cc.slice) extra.slice = cc.slice;
-      if (cc.type === 'Memory') {
-        if (cc.bits != null) extra.bits = cc.bits;
-        if (cc.abits != null) extra.abits = cc.abits;
-        if (Array.isArray(cc.rdports)) extra.rdports = cc.rdports;
-        if (Array.isArray(cc.wrports)) extra.wrports = cc.wrports;
-        if (cc.memdata) extra.memdata = cc.memdata; // 内存内容随子电路保留
-      }
+      // 器件特有配置必须构造时传入（事后 set 不重建端口/不生效）——与 loadCells 共用
+      // deviceParams 的清单。缺失会导致：Constant 值归零、Dff 丢 clk 引脚、
+      // BusGroup/Slice 端口错乱、Memory 丢端口配置、ZeroExtend 位宽退回默认 1→1。
+      const extra: any = ctorParams(cc);
+      if (cc.type === 'Memory' && cc.memdata) extra.memdata = cc.memdata; // 内存内容随子电路保留
       const extraSize =
         cc.type === 'Memory'
           ? { width: 88, height: 16 * (((cc.rdports || []).length + (cc.wrports || []).length) * 3 || 6) + 8 }
@@ -96,6 +84,8 @@ export function buildInnerGraph(digitaljs: any, Graph: any, json: any, display3v
         // label 是用户重命名。漏传 → 展开图里全是无标识的裸框（R33 用户报告）。
         celltype: cc.celltype,
         label: cc.label,
+        // 引脚顺序键（见 sandboxSerialize 的说明）：漏了会让部件的端口按字母序重排
+        order: cc.order,
         size: isPort ? { width: 30, height: 30 } : (extraSize || cc.size || { width: 60, height: 32 }),
         // 必须带上 attrs：内部图是「序列化 → 重建」的，若不带，之前为消除横向拉伸而设的
         // ioname/display:none 会在重建时丢失，端口又变回按标签加宽的横条。

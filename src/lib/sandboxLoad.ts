@@ -10,7 +10,9 @@
 
 import { buildInnerGraph } from './subcircuit';
 import { serializeGraphCells } from './sandboxSerialize';
+import { ctorParams } from './deviceParams';
 import { resolveDefCells } from './gateSystem';
+import { applyMirror, MIRROR_VER_LOCAL } from './cellMirror';
 
 export interface LoadCellsOptions {
   /** 绑定作用域：本画布文件所在文件夹（部件解析优先同文件夹，R39） */
@@ -22,6 +24,35 @@ export interface LoadCellsOptions {
   dy?: number;
 }
 
+/**
+ * R113 存档迁移：mirror 从**屏幕语义**换成**器件本地语义**（见 cellMirror 文件头）。
+ * 旧存档没有版本标记，按下面的规则还原成新语义：
+ *   旧语义下用户点的轴会按当时的 angle 换算成本地轴落地：
+ *     angle ∈ {90,270} ⇒ 用户点的 h 落到本地 v、反之亦然；
+ *     其它角度 ⇒ 用户点的 h 落到本地 h。
+ *   反推即：**带角度的旧器件，h/v 对调**；angle 为 0/180 的不动。
+ * 新写出的存档一律带 `mirrorVer: 2`，不再迁移（幂等：迁移只认没有标记的）。
+ * ⚠ 版本常量从 cellMirror 导入，序列化侧（sandboxSerialize）也用同一个 ——
+ *   两处各写一个数字早晚会对不上。
+ */
+
+function migrateMirror(saved: any, cell: any): boolean {
+  const m = saved?.mirror;
+  if (!m || typeof m !== 'object') return false;
+  const ver = Number(saved?.mirrorVer || 0);
+  if (ver >= MIRROR_VER_LOCAL) return !!(m.h || m.v);
+  // 旧屏幕语义 → 新本地语义
+  let local: { h?: boolean; v?: boolean } | null = null;
+  if (m.h || m.v) {
+    const a = ((Number(cell?.get?.('angle') || 0) % 360) + 360) % 360;
+    const swap = a === 90 || a === 270;
+    local = swap ? { h: !!m.v, v: !!m.h } : { h: !!m.h, v: !!m.v };
+    if (!local.h && !local.v) local = null;
+  }
+  try { cell?.prop?.('mirror', local); } catch { /* ignore */ }
+  return !!local;
+}
+
 export function loadCells(
   paper: any,
   digitaljs: any,
@@ -31,8 +62,6 @@ export function loadCells(
   opts: LoadCellsOptions = {},
 ) {
   const saved = JSON.parse(json);
-  const wireCells = (saved.cells || []).filter((c: any) => c.isLink);
-  console.log('[loadCells] saved cells total:', (saved.cells||[]).length, 'isLink=true:', wireCells.length, 'sample wire:', wireCells[0], 'sample non-link type:', (saved.cells||[]).find((c:any)=>!c.isLink)?.type);
   const Graph = (paper.model as any).constructor;
   const { idMap, dx = 0, dy = 0, scope = '' } = opts;
   const mapId = (id: any) => (idMap && id != null && idMap.has(String(id))) ? idMap.get(String(id)) : id;
@@ -45,12 +74,13 @@ export function loadCells(
     const py = (pos.y || 50) + dy;
     const cid = mapId(c.id);
     if (c.type === 'Subcircuit') {
-      // R39 绑定加载：优先内嵌快照（旧档/未迁移），否则按 celltype 解析部件文件
-      // （resolveDefCells 递归物化嵌套 → 自足 cells，buildInnerGraph 可直接消费）
-      let innerSrc = c.subcircuitGraph || c.graph;
-      if (!innerSrc?.cells?.length) {
-        innerSrc = resolveDefCells(String(c.celltype || ''), scope) || undefined;
-      }
+      // R39 绑定加载 → R100 调整优先级：**按 celltype 解析部件定义优先**（文件级
+      // partBindings 最高 → 文件夹作用域打分），解析不到再退回内嵌快照（旧档/部件
+      // 已删）。这样「绑定...」改绑后重开文件即生效（与编译模式 moduleBindings 同语义），
+      // 部件文件的原地编辑也能随重开落到实例上。
+      const defCells = c.celltype ? resolveDefCells(String(c.celltype), scope) : null;
+      let innerSrc = (defCells?.cells?.length ? defCells : null)
+        || c.subcircuitGraph || c.graph;
       const GraphCtor2 = Graph;
       const inner = innerSrc
         ? buildInnerGraph(digitaljs, GraphCtor2, innerSrc, paper.model._display3vl)
@@ -69,26 +99,15 @@ export function loadCells(
       if (cid) cellMap.set(cid, sub);
       continue;
     }
-    const cellExtra: Record<string, any> = {};
-    if (c.type === 'Dff' && c.polarity) cellExtra.polarity = c.polarity;
-    if (c.type === 'Dff' && c.initial != null) cellExtra.initial = c.initial;
-    if (c.type === 'Constant' && c.constant) cellExtra.constant = c.constant;
-    if ((c.type === 'BusGroup' || c.type === 'BusUngroup') && Array.isArray(c.groups)) cellExtra.groups = new Map(c.groups);
-    if (c.type === 'BusSlice' && c.slice) cellExtra.slice = c.slice;
-    if (c.type === 'Memory') {
-      // 端口由 rdports/wrports 生成，必须构造时给出（事后 set 不重建端口）；
-      // bits 同理决定 data 端口位宽，一并构造时传入
-      if (c.bits != null) cellExtra.bits = c.bits;
-      if (c.abits != null) cellExtra.abits = c.abits;
-      if (Array.isArray(c.rdports)) cellExtra.rdports = c.rdports;
-      if (Array.isArray(c.wrports)) cellExtra.wrports = c.wrports;
-      if (c.memdataInit) {
-        // digitaljs 的 Memory.prepare() 只认构造属性 memdata（Mem3vl.fromJSON）——
-        // 只带 memdataInit 的话 memdata 全 x 初始化，组合读（rdports 无 clock_polarity）
-        // 永远读出 x（R28 根因）。memdataInit 快照字段保留给 serializePaper/内存编辑器。
-        cellExtra.memdata = c.memdataInit;
-        cellExtra.memdataInit = c.memdataInit; // restoreMemoryData 回写用
-      }
+    // 构造期参数按 deviceParams 的清单整体传入：这些字段 digitaljs 在
+    // initialize()/构造期读走，事后 set 会被列进「不支持运行时修改」。
+    const cellExtra: Record<string, any> = ctorParams(c);
+    if (c.type === 'Memory' && c.memdataInit) {
+      // digitaljs 的 Memory.prepare() 只认构造属性 memdata（Mem3vl.fromJSON）——
+      // 只带 memdataInit 的话 memdata 全 x 初始化，组合读（rdports 无 clock_polarity）
+      // 永远读出 x（R28 根因）。memdataInit 快照字段保留给 serializePaper/内存编辑器。
+      cellExtra.memdata = c.memdataInit;
+      cellExtra.memdataInit = c.memdataInit; // restoreMemoryData 回写用
     }
     const cell = spawnCell(c.type, px, py, cid, cellExtra);
     if (cell) {
@@ -104,20 +123,22 @@ export function loadCells(
       if (c.size) try { cell.set('size', c.size); } catch {}
       if (c.angle) try { cell.set('angle', c.angle); } catch {}
       if (c.initial != null) try { cell.set('initial', c.initial); } catch {}
+      if (c.order != null) try { cell.set('order', c.order); } catch {}
       cellMap.set(cid ?? cell.id, cell);
+      // 镜像翻转（R99→R100 模型级镜像）：mirror 在构造期名单里（ctorParams 已带上），
+      // 但锚点/attrs/图形体的落地要靠 applyMirror 重挂——这里必须调，否则存盘重开镜像消失。
+      // paper 传下去做 body 内文本的字形回正。
+      const mirrored = migrateMirror(c, cell);
+      if (mirrored) { try { applyMirror(cell, paper); } catch { /* ignore */ } }
     }
   }
-  let wireTotal = 0, wireSkipNoSrc = 0, wireSkipNoTgt = 0, wireOk = 0;
   for (const c of saved.cells || []) {
     // 兼容旧格式：isLink 标记缺失但有 source+target 的也当 wire 处理
     const isWire = c.isLink || (c.source && c.target && c.source.id && c.target.id);
     if (!isWire) continue;
-    wireTotal++;
     try {
       const srcCell = cellMap.get(mapId(c.source?.id));
       const tgtCell = cellMap.get(mapId(c.target?.id));
-      if (!srcCell) wireSkipNoSrc++;
-      if (!tgtCell) wireSkipNoTgt++;
       if (!srcCell || !tgtCell) continue;
       const srcPort = c.source?.port;
       const tgtPort = c.target?.port;
@@ -132,8 +153,6 @@ export function loadCells(
       if (c.vertices) linkArgs.vertices = c.vertices;
       const link = new digitaljs.cells.Wire(linkArgs);
       paper.model.addCell(link);
-      wireOk++;
     } catch { /* skip broken link */ }
   }
-  console.log('[loadCells] wire stats:', { wireTotal, wireOk, wireSkipNoSrc, wireSkipNoTgt, cellsInMap: cellMap.size, sampleCellIds: [...cellMap.keys()].slice(0,3), sampleWireSrc: saved.cells.filter((c:any)=>c.isLink).slice(0,3).map((c:any)=>c.source?.id) });
 }

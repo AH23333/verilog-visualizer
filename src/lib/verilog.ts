@@ -29,6 +29,8 @@ export interface CompileResult {
   yosysJson: any;
   /** Maps the synthesis FS path (e.g. '/input_0.v') used inside source_positions back to the real file name */
   srcFileMap: Record<string, string>;
+  /** 多驱动冲突：已剥掉多余驱动照常出图的那些，UI 要作为告警报出来 */
+  netConflicts: NetConflict[];
 }
 
 /** Error thrown when Yosys compilation fails due to missing modules */
@@ -58,7 +60,6 @@ export class YosysCompileError extends Error {
 
 let yosysModule: YosysModule | null = null;
 let initPromise: Promise<YosysModule> | null = null;
-
 export async function initYosys(): Promise<YosysModule> {
   if (yosysModule) return yosysModule;
   if (initPromise) return initPromise;
@@ -213,6 +214,12 @@ export interface ValidationError {
   moduleName: string;
   instanceName: string;
   detail: string;
+  /**
+   * 这条错误在源码里的 1 起行号。**结构化**字段，不再要消费方从 `detail` 文案里正则回捞
+   * （旧形状下四条同模块实例全显示第 8 行，见 r80 读数）。文件级错误（重复定义）给不出
+   * 具体行 ⇒ 明确 `null`，不许塞个 1 冒充"就在第一行"。
+   */
+  line: number | null;
 }
 
 /**
@@ -264,11 +271,56 @@ function parseModulePorts(source: string): Map<string, ModuleDefInfo> {
  * Parse module instantiations with their port connections from a Verilog source.
  * Returns InstanceInfo for each non-primitive, non-self-defined instantiation.
  */
+/**
+ * 一遍扫描：去掉注释、把连续空白折成一个空格，并产出 `srcIdx` ——
+ * `srcIdx[i]` = 折叠后第 i 个字符在**原源码**里的下标。
+ *
+ * 有了这张表，任何在折叠文本上的匹配位置都能换算回真实的行列，
+ * 不必再用 `indexOf(模块名)` 这种"只能命中第一处"的估法。
+ */
+function cleanVerilogWithMap(source: string): { text: string; srcIdx: number[] } {
+  let out = '';
+  const srcIdx: number[] = [];
+  let i = 0;
+  const isSpace = (c: string) => c === ' ' || c === '\t' || c === '\n' || c === '\r' || c === '\f' || c === '\v';
+  while (i < source.length) {
+    const two = source.substr(i, 2);
+    if (two === '//') {                            // 行注释：整段丢到行尾（换行留给下面折叠）
+      while (i < source.length && source[i] !== '\n') i++;
+      continue;
+    }
+    if (two === '/*') {                            // 块注释：连内容一起丢
+      const end = source.indexOf('*/', i + 2);
+      i = end < 0 ? source.length : end + 2;
+      continue;
+    }
+    if (isSpace(source[i])) {                      // 连续空白 → 一个空格，映射指向这段空白起点
+      const start = i;
+      while (i < source.length && isSpace(source[i])) i++;
+      out += ' '; srcIdx.push(start);
+      continue;
+    }
+    out += source[i]; srcIdx.push(i);
+    i++;
+  }
+  return { text: out, srcIdx };
+}
+
+/** 源码下标 → 1 起的行号 */
+function lineAt(source: string, pos: number): number {
+  let line = 1;
+  for (let i = 0; i < pos && i < source.length; i++) if (source[i] === '\n') line++;
+  return line;
+}
+
 function parseInstantiations(source: string): InstanceInfo[] {
   const definedModules = new Set(parseVerilogModules(source));
   const primitives = new Set([
     'and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor', 'buf', 'bufif0', 'bufif1',
-    'notif0', 'notif1', 'dff', 'dffs', 'dffe', 'dlatch',
+    'notif0', 'notif1',
+    // ⚠ 这里刻意**不列** dff / dffe / dffs / dlatch / adffe：IEEE 1364 没有这些原语，
+    // yosys 也不认（除非用户自己 `primitive dff(...)` 声明）。把它们当原语跳过，
+    // 门级网表里的未声明单元就会一路走到 callMain，撞成不可捕获的 wasm abort。
     'module', 'endmodule', 'input', 'output', 'inout', 'wire', 'reg', 'assign',
     'always', 'initial', 'if', 'else', 'case', 'endcase', 'begin', 'end',
     'posedge', 'negedge', 'parameter', 'localparam', 'function', 'endfunction',
@@ -278,13 +330,12 @@ function parseInstantiations(source: string): InstanceInfo[] {
 
   const instances: InstanceInfo[] = [];
 
-  // Remove comments first
-  let cleaned = source
-    .replace(/\/\/.*$/gm, ' ')
-    .replace(/\/\*[\s\S]*?\*\//g, ' ');
-
-  // Collapse whitespace for easier matching
-  cleaned = cleaned.replace(/\s+/g, ' ');
+  // 去注释 + 折叠空白，但**同时记下每个字符来自源码的哪个下标**。
+  // 为什么不能再像以前那样只留一个字符串：实例正则是在折叠过的文本上 exec 的，
+  // `match.index` 于是回不到源码 ⇒ 旧实现只能 `source.indexOf(moduleName)` 估行，
+  // 同一个模块的多个实例必然拿到**同一个行号**（r80 实测：test_counter.v 四条
+  // "模块 dff 未定义"全显示第 8 行，而 d0-d3 真身在 8/9/10/11 行）。
+  const { text: cleaned, srcIdx } = cleanVerilogWithMap(source);
 
   // Match: module_name instance_name ( .port1(expr1), .port2(expr2) );
   // Also handles: module_name #(.param(val)) instance_name ( .port1(expr1) );
@@ -325,10 +376,10 @@ function parseInstantiations(source: string): InstanceInfo[] {
       ports.push({ portName, connectedExpr });
     }
 
-    // Calculate approximate line number in original source
-    // Use a rough estimate: count newlines in original source up to the module name position
-    const origIdx = source.indexOf(moduleName);
-    const origLineNum = origIdx >= 0 ? source.substring(0, origIdx).split('\n').length : 1;
+    // 行号：拿**这次匹配**在折叠文本里的起点，经 srcIdx 换算回源码，再数换行符。
+    // 正则的第一个捕获组就是模块名、且它总是出现在 match[0] 开头，所以 match.index 直接可用。
+    const srcPos = srcIdx[match.index] ?? 0;
+    const origLineNum = lineAt(source, srcPos);
 
     instances.push({
       instanceName,
@@ -365,6 +416,7 @@ export function validateModuleInterfaces(
           fileName: file.name,
           moduleName: name,
           instanceName: '',
+          line: null,
           detail: `模块 '${name}' 已在文件 '${allModules.get(name)!.fileName}' 中定义，在文件 '${file.name}' 中重复定义`,
         });
       } else {
@@ -387,6 +439,7 @@ export function validateModuleInterfaces(
           fileName: file.name,
           moduleName: inst.moduleName,
           instanceName: inst.instanceName,
+          line: inst.lineNumber,
           detail: `实例 '${inst.instanceName}' (第${inst.lineNumber}行) 引用了模块 '${inst.moduleName}'，但该模块未在任何已导入文件中定义。请导入定义该模块的文件或手动绑定。`,
         });
         continue;
@@ -404,6 +457,7 @@ export function validateModuleInterfaces(
             fileName: file.name,
             moduleName: inst.moduleName,
             instanceName: inst.instanceName,
+            line: inst.lineNumber,
             detail: `实例 '${inst.instanceName}' (第${inst.lineNumber}行) 连接了端口 '${conn.portName}'，但模块 '${inst.moduleName}' (定义于 '${def.fileName}') 没有此端口。可用端口: ${def.ports.map((p) => p.name).join(', ')}`,
           });
         }
@@ -418,6 +472,7 @@ export function validateModuleInterfaces(
               fileName: file.name,
               moduleName: inst.moduleName,
               instanceName: inst.instanceName,
+              line: inst.lineNumber,
               detail: `实例 '${inst.instanceName}' (第${inst.lineNumber}行) 未连接模块 '${inst.moduleName}' 的端口 '${defPort.name}' (${defPort.direction}, ${defPort.width}位)。请添加 .${defPort.name}(signal) 连接。`,
             });
           }
@@ -436,6 +491,7 @@ export function validateModuleInterfaces(
               fileName: file.name,
               moduleName: inst.moduleName,
               instanceName: inst.instanceName,
+              line: inst.lineNumber,
               detail: `实例 '${inst.instanceName}' (第${inst.lineNumber}行) 端口 '${conn.portName}' 宽度不匹配: 模块 ${inst.moduleName} 期望 ${defPort.width}位，实际连接表达式宽度为 ${exprWidth}位`,
             });
           }
@@ -740,6 +796,11 @@ export function renameAutoCells(circuit: any): void {
   }
 }
 
+/** 剥 UTF-8 BOM + CRLF 归一（见 compileVerilog 写虚拟文件处的说明） */
+function stripBom(text: string): string {
+  return String(text ?? '').replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+}
+
 /**
  * Compile all Verilog files together, with optional top-level module override.
  * @param files - All Verilog files to compile
@@ -772,7 +833,11 @@ export async function compileVerilog(
   const srcFileMap: Record<string, string> = {};
   for (let i = 0; i < files.length; i++) {
     const fp = `/input_${i}.v`;
-    FS.writeFile(fp, files[i].content);
+    // UTF-8 BOM 会让 yosys-wasm 的 read_verilog 直接抛 emscripten 异常
+    // （「Exception catching is disabled, this exception cannot be caught」），
+    // 整个编译连一条人话错误都拿不到。Windows 记事本/VSCode 存出来的 .v 常带 BOM，
+    // 所以在进综合器之前就剥掉；CRLF 一并归一成 LF。
+    FS.writeFile(fp, stripBom(files[i].content));
     filePaths.push(fp);
     srcFileMap[fp] = files[i].name;
   }
@@ -780,6 +845,26 @@ export async function compileVerilog(
   const scriptFile = '/script.ys';
   const jsonFile = '/output.json';
   const netlistFile = '/output_netlist.v';
+
+  // 预检（必须在 callMain 之前）：门级网表常例化一些**没有声明**的单元（`dff d0(...)` 这类
+  // UDP / 库单元）。yosys 对它的报错是 C++ 异常，而这份 wasm 构建关了异常捕获 ⇒ 直接 abort，
+  // 用户只能看到 "Exception catching is disabled..."（实测 test_counter.v）。
+  // 这里用本仓自己的解析器把名字点出来，走既有的 MissingModulesError →「导入源文件 / 绑定」弹窗。
+  {
+    const declared = new Set<string>();
+    for (const f of files) {
+      for (const m of parseVerilogModules(f.content)) declared.add(m);
+      // UDP 声明（primitive dff(...); endprimitive）也算"有定义"，别误报
+      for (const p of f.content.matchAll(/^\s*primitive\s+(\w+)/gm)) declared.add(p[1]);
+    }
+    const missingUnits = new Set<string>();
+    for (const f of files) {
+      for (const inst of parseInstantiations(f.content)) {
+        if (!declared.has(inst.moduleName)) missingUnits.add(inst.moduleName);
+      }
+    }
+    if (missingUnits.size > 0) throw new MissingModulesError([...missingUnits], '');
+  }
 
   // Build Yosys script: read all files, then synthesize
   const readCmds = filePaths.map((fp) => `read_verilog ${fp}`).join('\n');
@@ -809,6 +894,24 @@ export async function compileVerilog(
     mod.callMain([scriptFile]);
   } catch (err: any) {
     const fullLog = logLines.join('\n');
+    // 门级网表里例化了没随包提供的模块（`dff d0(...)`）时，yosys 抛的是 **C++ 异常**，
+    // 而这份 emscripten 构建编译时关了异常捕获 ⇒ callMain 直接 abort，
+    // 原始信息只有一句 "Exception catching is disabled, this exception cannot be caught"。
+    // 用户看到它既不知道缺哪个模块，也不知道下一步做什么。日志里其实已经打了
+    // "Module `dff' referenced in module ... does not exist"，所以这里先按既有解析器
+    // 翻成 MissingModulesError（走既有的「绑定/导入源文件」弹窗），解析不出来才回落原文。
+    const aborted = /Exception catching is disabled|this exception cannot be caught/i.test(String(err?.message || err));
+    const missing = parseMissingModules(fullLog);
+    if (missing.length > 0) throw new MissingModulesError(missing, fullLog);
+    if (aborted) {
+      const errLine = (fullLog.match(/^\s*ERROR:.*$/m) || [''])[0].trim();
+      throw new YosysCompileError(
+        '综合器在这个文件上异常退出（yosys 的 wasm 构建关掉了 C++ 异常捕获，错误无法原样回传）。'
+        + (errLine ? `日志里的最后一条错误：${errLine}` : '日志里没有 ERROR 行，请把这份文件反馈出来。')
+        + ' 常见原因是门级网表里例化了没有随包提供的单元（如 dff /Latch 等），把这些源文件一起导入即可。',
+        fullLog,
+      );
+    }
     throw new YosysCompileError('Yosys compilation failed: ' + (err.message || String(err)), fullLog);
   }
 
@@ -854,11 +957,209 @@ export async function compileVerilog(
 
   normalizeStdDffCells(yosysOutput);
 
-  const digitaljsCircuit = yosys2digitaljs(yosysOutput, { propagation: 1 });
+  // 多驱动冲突分级（用户裁决）：能命名且能安全摘掉多余驱动 ⇒ 照常出图并把冲突
+  // 报成告警；摘不动（驱动挂在顶层端口上）或连 net 名都拿不到 ⇒ 直接拒编译，
+  // 说清原因，不再甩一句 yosys2digitaljs 的内部异常。
+  const netConflicts = findNetConflicts(yosysOutput);
+  let conflictsReported: NetConflict[] = [];
+  if (netConflicts.length) {
+    const unnamed = netConflicts.filter((c) => !c.net);
+    const stripped = unnamed.length ? 0 : stripExtraDrivers(yosysOutput);
+    // 复跑一遍：摘完之后还有冲突（例如多余驱动落在摘不掉的 input 端口上）就拒
+    const remain = stripped ? findNetConflicts(yosysOutput) : netConflicts;
+    const portInvolved = remain.some((c) => c.drivers.some((d) => d.startsWith(PORT_DRIVER_PREFIX)));
+    if (remain.length) {
+      const why = unnamed.length
+        ? `有 ${unnamed.length} 处冲突位连 net 名都没有 —— 手工门级网表的典型特征`
+        : portInvolved
+          ? '多余驱动挂在顶层输入端口上（多个端口并到同一根线），端口摘不掉'
+          : '多余驱动与其它正常位混在同一端口上，摘不掉';
+      throw new YosysCompileError(conflictText(netConflicts, why), fullLog);
+    }
+    conflictsReported = netConflicts;
+  }
+
+  // 缺模块时 yosys 不带 `-check`，会把没定义的模块当黑盒留下；转成 digitaljs 时
+  // 炸的是 `Invalid cell type: <模块名>` —— 一句实现细节话术，用户看不出「少一个
+  // 源文件」，更不会知道去点「绑定」。这里翻成 MissingModulesError，走既有的绑定弹窗。
+  let digitaljsCircuit: ReturnType<typeof yosys2digitaljs>;
+  try {
+    digitaljsCircuit = yosys2digitaljs(yosysOutput, { propagation: 1 });
+  } catch (e) {
+    // 摘掉多余驱动后仍然转不动（实测：真多驱动网表会踩到 yosys2digitaljs 的
+    // assert）—— 不要甩一句 Assertion failed，把冲突清单原样报出去；
+    // 同时把上游那句原文带上：没有它，"为什么摘了还转不动"就永远只能靠猜。
+    if (netConflicts.length) throw new YosysCompileError(
+      conflictText(netConflicts, `且摘除多余驱动后仍无法转换（上游报：${String((e as any)?.message || e).slice(0, 140)}）`),
+      fullLog);
+    const m = String((e as Error)?.message || e).match(/^Invalid cell type: (\S+)$/);
+    const name = m?.[1];
+    if (name && !yosysOutput.modules[name]) throw new MissingModulesError([name], fullLog);
+    throw e;
+  }
   io_ui(digitaljsCircuit);
+  // 无名连线补自动名（必须在 io_ui 之后、渲染之前；见函数注释）
+  assignAutoNetNames(digitaljsCircuit);
   normalizeIoLabels(digitaljsCircuit);
   renameAutoCells(digitaljsCircuit);
-  return { circuitJson: digitaljsCircuit, yosysLog: fullLog, netlistVerilog, yosysJson: yosysOutput, srcFileMap };
+  return { circuitJson: digitaljsCircuit, yosysLog: fullLog, netlistVerilog, yosysJson: yosysOutput, srcFileMap, netConflicts: conflictsReported };
+}
+
+/**
+ * 给没有名字的连线补一个自动名（N1、N2…），逐层递归到所有子模块体。
+ *
+ * 为什么必须在编译产物阶段做：digitaljs 的 Wire 只在 `initialize()` 里
+ * 判断 `has('netname')` 来决定要不要建标签节点（cells/base.mjs），事后
+ * set('netname') 不会凭空长出标签。
+ * 沙盒画布之所以每条线都有名字，是因为 loadCells 给无名线补了 N 序号；
+ * 编译模式此前不补 ⇒ 内部连线一片空白，两个模式对不上（用户裁决：编译模式
+ * 也标自动名）。
+ */
+export function assignAutoNetNames(circuit: any, counter = { n: 0 }): void {
+  if (!circuit || typeof circuit !== 'object') return;
+  for (const conn of circuit.connectors || []) {
+    if (!conn || typeof conn !== 'object') continue;
+    if (!conn.name || !String(conn.name).trim()) conn.name = `N${++counter.n}`;
+  }
+  for (const sub of Object.values<any>(circuit.subcircuits || {})) assignAutoNetNames(sub, counter);
+}
+
+const PORT_DRIVER_PREFIX = '端口 ';
+
+/** 冲突的统一话术：先列是哪几根线、谁在并驱，再说为什么处理不了 */
+function conflictText(conflicts: NetConflict[], why: string): string {
+  const named = conflicts.filter((c) => c.net).map((c) => c.net).slice(0, 6).join(', ');
+  const detail = conflicts.slice(0, 3)
+    .map((c) => `net「${c.net ?? '无名'}」← ${c.drivers.join(' + ')}`).join('；');
+  return `检测到 ${conflicts.length} 处多驱动冲突${named ? `（${named}${conflicts.length > 6 ? ' …' : ''}）` : ''}：${detail}。`
+    + `${why}。本工具渲染的是「每个信号单一驱动、可直接仿真」的电路图，已拒绝编译。`
+    + '请把每个输出改成独立信号，或去掉并驱的 assign / 例化端口连接。';
+}
+
+/** 一处多驱动冲突：net 名（拿不到就是 null）+ 驱动它的 端口 列表 */
+export interface NetConflict {
+  net: string | null;
+  module: string;
+  drivers: string[];
+}
+
+/**
+ * 从 yosys write_json 里找出「同一根线上有多个驱动」的位。
+ *
+ * 为什么要自己查：yosys2digitaljs 遇到多驱动直接抛 `Multiple sources driving
+ * net: <name>` 就什么都不画了，而 `<name>` 经常是 `undefined`（它拿不到可读
+ * 名字），用户看到的是一句没有信息量的失败。自己查可以分清两种情况：
+ *  - 冲突位能对上具名 net ⇒ 这是可修的写法问题，剥掉多余驱动后照常出图并报告；
+ *  - 对不上名字 ⇒ 典型的手工门级网表（assign 与 dff 输出并驱），本工具按
+ *    「单驱动、可仿真」的电路图渲染，直接拒编译并说清原因。
+ */
+export function findNetConflicts(yosysOutput: any): NetConflict[] {
+  const conflicts: NetConflict[] = [];
+  for (const [modName, mod] of Object.entries<any>(yosysOutput?.modules || {})) {
+    const drivers = new Map<number, string[]>();
+    const note = (bits: unknown, who: string) => {
+      if (!Array.isArray(bits)) return;
+      for (const raw of bits) {
+        const bit = Number(raw);
+        if (!Number.isFinite(bit)) continue;
+        const list = drivers.get(bit);
+        if (list) list.push(who); else drivers.set(bit, [who]);
+      }
+    };
+    // yosys2digitaljs 的方向语义（core.ts connect_ports）：**input 端口是驱动源**、
+    // output 端口是负载。所以这里只把 input 端口记成驱动者 —— 记反了会把
+    // 「门驱动输出端口」这一正常结构误判成冲突（实测踩过）。
+    // input 端口摘不掉（那是引脚），落在它上面的冲突只能拒编译。
+    for (const [pn, p] of Object.entries<any>(mod?.ports || {})) {
+      if (p?.direction === 'input') note(p.bits, PORT_DRIVER_PREFIX + pn);
+    }
+    for (const [cellName, cell] of Object.entries<any>(mod?.cells || {})) {
+      const dirs = cell?.port_directions || {};
+      for (const [port, bits] of Object.entries<any>(cell?.connections || {})) {
+        if (dirs[port] === 'output' || dirs[port] === 'inout') note(bits, `${cellName}.${port}`);
+      }
+    }
+    const conflicted = new Set<number>();
+    for (const [bit, list] of drivers) {
+      if (list.length >= 2) conflicted.add(bit);
+    }
+    if (!conflicted.size) continue;
+    // 冲突位 → 可读 net 名（netnames 里 bits 命中即算，hide_name 的也认）
+    const nameOf = new Map<number, string>();
+    for (const [nn, info] of Object.entries<any>(mod?.netnames || {})) {
+      for (const b of info?.bits || []) {
+        const bit = Number(b);
+        if (conflicted.has(bit) && !nameOf.has(bit)) nameOf.set(bit, nn);
+      }
+    }
+    const grouped = new Map<string, NetConflict>();
+    for (const bit of conflicted) {
+      const who = drivers.get(bit)!.join(' + ');
+      const net = nameOf.get(bit) ?? null;
+      const key = `${net}|${who}`;
+      if (!grouped.has(key)) grouped.set(key, { net, module: modName, drivers: drivers.get(bit)!.slice() });
+    }
+    conflicts.push(...grouped.values());
+    // 留给 stripExtraDrivers 用：哪些位有冲突、每位分别是谁在驱动
+    mod.__conflictedBits = conflicted;
+    mod.__driverList = drivers;
+  }
+  return conflicts;
+}
+
+/**
+ * 剥掉多余驱动：只有当某个驱动端口的**每一位**都是多余驱动时才整个删掉它
+ * （部分位删除要做位级手术，风险大，宁可退回拒编译）。
+ * 返回剥掉的驱动端口数。
+ */
+export function stripExtraDrivers(yosysOutput: any): number {
+  let fixed = 0;
+  for (const mod of Object.values<any>(yosysOutput?.modules || {})) {
+    const conflicted: Set<number> | undefined = mod.__conflictedBits;
+    const driverList: Map<number, string[]> | undefined = mod.__driverList;
+    if (!conflicted?.size || !driverList) continue;
+    const isPortDriver = (who: string) => who.startsWith(PORT_DRIVER_PREFIX);
+    const keep = new Map<number, string>();      // 每位保留第一个驱动
+    for (const bit of conflicted) {
+      const first = (driverList.get(bit) || [])[0];
+      if (first) keep.set(bit, first);
+    }
+    // 输出被摘空的器件：如果它**所有**输出都摘空了，就把整颗删掉。
+    // 只把 connections 置空是不够的 —— 上游对每个输出端口都 assert
+    // `connections[port].length == 端口位宽`（core.ts:755/767/960 一族的写法），
+    // 空向量长度 0 对不上位宽 ⇒ `Assertion failed`（实测 r56_conflict_named：
+    // `assign dup = a&b; assign dup = a|b;` 摘完第二颗仍报 Assertion failed）。
+    const emptiedOut = new Map<string, number>();  // cell → 被摘空的输出端口数
+    const totalOut = new Map<string, number>();    // cell → 输出端口总数
+    for (const [cellName, cell] of Object.entries<any>(mod?.cells || {})) {
+      const dirs = cell?.port_directions || {};
+      const outs = Object.keys(dirs).filter((p) => dirs[p] === 'output' || dirs[p] === 'inout');
+      totalOut.set(cellName, outs.length);
+      for (const port of outs) {
+        const bits = cell?.connections?.[port];
+        const arr = Array.isArray(bits) ? bits.map(Number) : [];
+        if (!arr.length) continue;
+        // 每一位都必须是「有冲突、保留者不是本端口、且保留者不是顶层端口」
+        // —— 顶层端口摘不掉（摘了就没有这个引脚），那种情况交给上层拒编译。
+        const allExtra = arr.every((b) => {
+          const k = keep.get(b);
+          return conflicted.has(b) && k !== `${cellName}.${port}` && !isPortDriver(String(k));
+        });
+        if (!allExtra) continue;
+        // 置空而不是删除这个键：yosys2digitaljs 读 undefined.length 会崩（实测）
+        cell.connections[port] = [];
+        emptiedOut.set(cellName, (emptiedOut.get(cellName) || 0) + 1);
+        fixed++;
+      }
+    }
+    for (const [cellName, n] of emptiedOut) {
+      if (n >= (totalOut.get(cellName) || 0)) {
+        delete mod.cells[cellName];
+        fixed++;
+      }
+    }
+  }
+  return fixed;
 }
 
 /**

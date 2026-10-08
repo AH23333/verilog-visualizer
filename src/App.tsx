@@ -13,7 +13,7 @@ import ContextMenu from './components/ContextMenu';
 import type { ContextMenuItem } from './components/ContextMenu';
 import MissingModulesDialog from './components/MissingModulesDialog';
 import ModulePanel from './components/ModulePanel';
-import OutputPanel from './components/OutputPanel';
+import OutputPanel, { type Problem } from './components/OutputPanel';
 import BindingDialog from './components/BindingDialog';
 import HierarchyViewer from './components/HierarchyViewer';
 import SearchDialog from './components/SearchDialog';
@@ -72,7 +72,7 @@ export default function App() {
   const [yosysLog, setYosysLog] = useState('');
   const [outputPanelVisible, setOutputPanelVisible] = useState(false);
   // Structured problems for the Problems tab (validation errors + parseable compile errors)
-  const [problems, setProblems] = useState<{ fileName: string; line: number; message: string; severity: 'error' | 'warning' }[]>([]);
+  const [problems, setProblems] = useState<Problem[]>([]);
 
   // IDE panel state: 'files' | 'modules' | 'hierarchy'
   const [leftPanel, setLeftPanel] = useState<'files' | 'modules' | 'hierarchy'>('files');
@@ -110,6 +110,9 @@ export default function App() {
   // Simulation control state (digitaljs engine)
   const [simLocked, setSimLocked] = useState(false); // default: interactive (unchanged from prior behavior); lock is opt-in
   const [simPaused, setSimPaused] = useState(false);
+  // "引擎因悬空/成环没起来"要是一颗**状态**，不能靠回头读自己写的那句文案认事
+  // （V2b 把那句翻成中文后，原先那条英文正则就永远不命中 ⇒ 错误态清不掉）
+  const [simBlocked, setSimBlocked] = useState(false);
   const [debugTick, setDebugTick] = useState(0);
       const MIN_SPEED_MS = 5, MAX_SPEED_MS = 200, DEFAULT_SPEED_MS = 10;
   const [speedMs, setSpeedMs] = useState(DEFAULT_SPEED_MS);
@@ -320,7 +323,7 @@ export default function App() {
     if (!targetFile) return;
 
     setStatus('compiling');
-    setMessage('Compiling...');
+    setMessage('正在编译…');
     setYosysLog('');
 
     const dependencyFiles = resolveDependencies(targetFileId);
@@ -340,24 +343,23 @@ export default function App() {
       log += `Total: ${validationErrors.length} error(s).\n`;
       log += '========================================================\n';
 
-      // Structured problems for the Problems tab — parse line number from detail
-      const parsed = validationErrors.map((err) => {
-        const m = err.detail.match(/第(\d+)行/);
-        return {
-          fileName: err.fileName,
-          line: m ? parseInt(m[1], 10) : 1,
-          message: err.message,
-          severity: 'error' as const,
-        };
-      });
+      // 行号直接用 validator 算好的**结构化字段**。⚠ 旧写法是从 `detail` 那句人话里
+      // 正则回捞 `/第(\d+)行/`：等于把"跳去哪一行"寄生在文案上，而且捞到的还是
+      // 那个"同模块多实例全同一行"的估值（V1）。给不出行的文件级错误就明确不跳。
+      const parsed = validationErrors.map((err) => ({
+        fileName: err.fileName,
+        line: err.line,
+        message: err.message,
+        severity: 'error' as const,
+      }));
       setProblems(parsed);
 
       fileStore.updateFile(targetFileId, {
-        status: 'error', errorMessage: `Interface validation failed: ${validationErrors.length} error(s)`,
+        status: 'error', errorMessage: `接口校验未通过：${validationErrors.length} 处错误`,
         missingModules: undefined, circuitJson: null,
       });
       setStatus('error');
-      setMessage(`Interface validation failed: ${validationErrors.length} error(s)`);
+      setMessage(`接口校验未通过：${validationErrors.length} 处错误`);
       setYosysLog((prev) => prev + '\n' + log);
       setOutputPanelVisible(true);
       return;
@@ -370,9 +372,20 @@ export default function App() {
         errorMessage: undefined, missingModules: undefined,
       });
       setStatus('done');
-      setMessage('Compiled successfully!');
       setMissingModules(null);
       setProblems([]);
+      if (result.netConflicts?.length) {
+        // 多驱动冲突：已剥掉多余驱动照常出图，但必须说出来 —— 画出来的不是原设计
+        // ⚠ 行号给不出（冲突是 yosys 图上的 net，不是源码某一行）⇒ 明确 null，
+        // 不再塞 `line: 1` 冒充"就在第一行"（点了会跳到文件头，看着像 bug）。
+        setProblems(result.netConflicts.map((c) => ({
+          fileName: c.module, line: null, severity: 'warning' as const,
+          message: `net「${c.net}」有 ${c.drivers.length} 个驱动（${c.drivers.join(' + ')}），已保留 ${c.drivers[0]}，其余驱动未画入`,
+        })));
+        setMessage(`编译完成，但有 ${result.netConflicts.length} 处多驱动冲突已标出（见 PROBLEMS）`);
+      } else {
+        setMessage('编译成功！');
+      }
       setSimPaused(false); // a fresh build always starts running
       setYosysLog((prev) => prev + '\n' + result.yosysLog);
       setOutputPanelVisible(true);
@@ -390,10 +403,10 @@ export default function App() {
         setOutputPanelVisible(true);
       } else {
         fileStore.updateFile(targetFileId, {
-          status: 'error', errorMessage: err.message || 'Compilation failed',
+          status: 'error', errorMessage: err.message || '编译失败',
           missingModules: undefined,
         });
-        setStatus('error'); setMessage(err.message || 'Compilation failed');
+        setStatus('error'); setMessage(err.message || '编译失败');
         setYosysLog((prev) => prev + '\n' + (log || err.message || 'Unknown error'));
         setOutputPanelVisible(true);
         console.error(err);
@@ -407,37 +420,37 @@ export default function App() {
     const name = activeFile?.name || 'circuit';
     const baseName = name.replace(/\.(v|sv|vh)$/, '');
     const ok = await exportSVG(canvasContainerRef.current, baseName);
-    setMessage(ok ? 'SVG exported.' : 'Export cancelled or no circuit.');
+    setMessage(ok ? 'SVG 已导出。' : '导出已取消，或画布上没有电路。');
   }, [activeFile]);
 
   const handleExportPNG = useCallback(async () => {
     const name = activeFile?.name || 'circuit';
     const baseName = name.replace(/\.(v|sv|vh)$/, '');
     const ok = await exportPNG(canvasContainerRef.current, baseName);
-    setMessage(ok ? 'PNG exported.' : 'Export cancelled or no circuit.');
+    setMessage(ok ? 'PNG 已导出。' : '导出已取消，或画布上没有电路。');
   }, [activeFile]);
 
   const handleExportJSON = useCallback(async () => {
     const name = activeFile?.name || 'circuit';
     const baseName = name.replace(/\.(v|sv|vh)$/, '');
     const ok = await exportCircuitJSON(activeFile?.circuitJson || null, baseName);
-    setMessage(ok ? 'Circuit JSON exported.' : 'Export cancelled or no circuit data.');
+    setMessage(ok ? '电路 JSON 已导出。' : '导出已取消，或没有电路数据。');
   }, [activeFile]);
 
   const handleExportVerilog = useCallback(async () => {
     if (!activeFile) return;
     const ok = await exportVerilogCode(activeFile.content, activeFile.name);
-    setMessage(ok ? 'Verilog source exported.' : 'Export cancelled or no code.');
+    setMessage(ok ? 'Verilog 源码已导出。' : '导出已取消，或没有代码。');
   }, [activeFile]);
 
   const handleExportNetlist = useCallback(async () => {
     if (!activeFile) return;
     if (!activeFile.netlistVerilog) {
-      setMessage('No synthesized netlist — compile the file first.');
+      setMessage('还没有综合出的网表——请先编译该文件。');
       return;
     }
     const ok = await exportNetlistVerilog(activeFile.netlistVerilog, activeFile.name);
-    setMessage(ok ? 'Synthesized netlist exported.' : 'Export cancelled.');
+    setMessage(ok ? '综合网表已导出。' : '导出已取消。');
   }, [activeFile]);
 
   // ============ File Operations ============
@@ -450,7 +463,7 @@ export default function App() {
       input.onchange = async (e: Event) => {
         const fileList = (e.target as HTMLInputElement).files;
         if (!fileList || fileList.length === 0) return;
-        setStatus('compiling'); setMessage('Importing files...');
+        setStatus('compiling'); setMessage('正在导入文件…');
         let primaryId: string | null = null;
         for (let i = 0; i < fileList.length; i++) {
           const file = fileList[i];
@@ -485,7 +498,7 @@ export default function App() {
     setSelectedIds(new Set([entry.id]));
     setViewMode('code');
     setStatus('idle');
-    setMessage('New file created. Edit and compile to render.');
+    setMessage('已新建文件，编辑后按 F5 编译即可渲染。');
   }, [openFileInTab, askPrompt]);
 
   const handleCreateFolder = useCallback(async () => {
@@ -494,13 +507,13 @@ export default function App() {
     });
     if (!name) return;
     fileStore.createFolder(name);
-    setMessage(`Folder '${name}' created.`);
+    setMessage(`已创建文件夹「${name}」。`);
   }, [askPrompt]);
 
   const handleRefresh = useCallback(async () => {
-    setMessage('Refreshing from disk...');
+    setMessage('正在从磁盘刷新…');
     await fileStore.refresh();
-    setMessage('Files synced from disk.');
+    setMessage('已从磁盘同步文件。');
   }, []);
 
   const handleSelectFile = useCallback((id: string) => {
@@ -510,15 +523,15 @@ export default function App() {
     const file = fileStore.getById(id);
     if (!file) return;
     if (file.status === 'compiled' && file.circuitJson) {
-      setStatus('done'); setMessage('Loaded from cache.');
+      setStatus('done'); setMessage('已从缓存载入。');
       setSimPaused(false); // canvas remounts with the new circuit — start fresh
     } else if (file.status === 'missing_deps') {
-      setStatus('error'); setMessage(file.errorMessage || 'Missing module implementations');
+      setStatus('error'); setMessage(file.errorMessage || '缺少模块实现');
       if (file.missingModules) setMissingModules(file.missingModules);
     } else if (file.status === 'error') {
-      setStatus('error'); setMessage(file.errorMessage || 'Compilation error');
+      setStatus('error'); setMessage(file.errorMessage || '编译出错');
     } else {
-      setStatus('idle'); setMessage('Pending compilation. Press F5 to compile.');
+      setStatus('idle'); setMessage('尚未编译。按 F5 开始编译。');
     }
   }, [defaultViewMode, openFileInTab]);
 
@@ -552,11 +565,11 @@ export default function App() {
 
   const handleMoveFiles = useCallback((fileIds: string[], targetFolder: string) => {
     fileStore.moveFilesToFolder(fileIds, targetFolder);
-    setMessage(`Moved ${fileIds.length} file(s) to ${targetFolder || 'root'}.`);
+    setMessage(`已移动 ${fileIds.length} 个文件到 ${targetFolder || '根目录'}。`);
   }, []);
   const handleMoveFolder = useCallback((folderPath: string, newPath: string) => {
     fileStore.moveFolder(folderPath, newPath);
-    setMessage(`Moved folder to '${newPath}'.`);
+    setMessage(`已把文件夹移动到「${newPath}」。`);
   }, []);
 
   const handleDeleteFile = useCallback((id: string) => {
@@ -576,34 +589,34 @@ export default function App() {
       setActiveFileId(null);
       setStatus('idle'); setMessage(''); setMissingModules(null);
     }
-    setMessage(`Deleted ${ids.length} file(s).`);
+    setMessage(`已删除 ${ids.length} 个文件。`);
   }, [activeFileId]);
 
   const handleCopy = useCallback((ids?: string[]) => {
     const copyIds = ids || Array.from(selectedIds);
     if (copyIds.length === 0) return;
     setClipboard({ type: 'files', ids: copyIds });
-    setMessage(`${copyIds.length} file(s) copied to clipboard.`);
+    setMessage(`已复制 ${copyIds.length} 个文件到剪贴板。`);
   }, [selectedIds]);
 
   const handleCut = useCallback((ids?: string[]) => {
     const cutIds = ids || Array.from(selectedIds);
     if (cutIds.length === 0) return;
     setClipboard({ type: 'cut', data: { type: 'files', ids: cutIds } });
-    setMessage(`${cutIds.length} file(s) cut to clipboard.`);
+    setMessage(`已剪切 ${cutIds.length} 个文件，可直接粘贴。`);
   }, [selectedIds]);
 
   const handleCopyFolder = useCallback((folderPath: string) => {
     setClipboard({ type: 'folder', path: folderPath });
-    setMessage(`Folder '${folderPath}' copied to clipboard.`);
+    setMessage(`已把文件夹「${folderPath}」复制到剪贴板。`);
   }, []);
   const handleCutFolder = useCallback((folderPath: string) => {
     setClipboard({ type: 'cut', data: { type: 'folder', path: folderPath } });
-    setMessage(`Folder '${folderPath}' cut to clipboard.`);
+    setMessage(`已把文件夹「${folderPath}」剪切到剪贴板。`);
   }, []);
 
   const handlePaste = useCallback((targetFolder?: string) => {
-    if (!clipboard) { setMessage('Clipboard is empty.'); return; }
+    if (!clipboard) { setMessage('剪贴板是空的。'); return; }
     const isCut = clipboard.type === 'cut';
     const data = isCut ? clipboard.data : clipboard;
     if (data.type === 'files') {
@@ -618,16 +631,16 @@ export default function App() {
           fileStore.copyFile(id, targetFolder);
         }
       }
-      setMessage(`${isCut ? 'Moved' : 'Copied'} ${data.ids.length} file(s)${targetFolder ? ' to ' + targetFolder : ''}.`);
+      setMessage(`已${isCut ? '移动' : '复制'} ${data.ids.length} 个文件${targetFolder ? '到 ' + targetFolder : ''}。`);
     } else if (data.type === 'folder') {
       if (isCut) {
         const folderName = data.path.split('/').pop() || data.path;
         const newPath = targetFolder ? targetFolder + '/' + folderName : folderName;
         fileStore.moveFolder(data.path, newPath);
-        setMessage(`Moved folder '${data.path}' to '${newPath}'.`);
+        setMessage(`已把文件夹「${data.path}」移动到「${newPath}」。`);
       } else {
         fileStore.copyFolder(data.path, targetFolder);
-        setMessage(`Copied folder '${data.path}'${targetFolder ? ' to ' + targetFolder : ''}.`);
+        setMessage(`已复制文件夹「${data.path}」${targetFolder ? '到 ' + targetFolder : ''}。`);
       }
     }
     if (isCut) setClipboard(null);
@@ -644,7 +657,7 @@ export default function App() {
     if (!file) return;
     fileStore.saveContent(activeFileId, file.content);
     setDirtyMap((prev) => ({ ...prev, [activeFileId]: false }));
-    setStatus('idle'); setMessage('File saved.');
+    setStatus('idle'); setMessage('已保存文件。');
   }, [activeFileId]);
 
   const handleCompile = useCallback(async () => {
@@ -700,7 +713,7 @@ export default function App() {
 
   const handleBindModule = useCallback((fileId: string, missingModule: string, sourceFileId: string) => {
     fileStore.setModuleBinding(fileId, missingModule, sourceFileId);
-    setMessage(`Bound '${missingModule}' to source file. Recompile to apply.`);
+    setMessage(`已把模块「${missingModule}」绑定到源文件，重新编译后生效。`);
   }, []);
 
   const handleBindingConfirm = useCallback((bindings: Record<string, string>) => {
@@ -708,7 +721,7 @@ export default function App() {
     for (const [moduleName, fileId] of Object.entries(bindings)) {
       fileStore.setModuleBinding(bindingDialogFile.id, moduleName, fileId);
     }
-    setMessage('Module bindings saved. Recompile to apply.');
+    setMessage('模块绑定已保存，重新编译后生效。');
     setBindingDialogFile(null);
   }, [bindingDialogFile]);
 
@@ -745,7 +758,7 @@ export default function App() {
   const handleToggleSimLock = useCallback(() => {
     setSimLocked((prev) => {
       const next = !prev;
-      setMessage(next ? 'View mode — clicks on switches/buttons are ignored. Unlock to simulate.' : 'Interactive mode — click switches to simulate.');
+      setMessage(next ? '浏览模式——点击开关/按钮不会改变电路，解锁后才能仿真。' : '交互模式——点击开关即可仿真。');
       return next;
     });
   }, []);
@@ -753,7 +766,7 @@ export default function App() {
   const handleToggleSimPause = useCallback(() => {
     setSimPaused((prev) => {
       const next = !prev;
-      setMessage(next ? 'Simulation paused.' : 'Simulation running.');
+      setMessage(next ? '仿真已暂停。' : '仿真运行中。');
       return next;
     });
   }, []);
@@ -763,11 +776,9 @@ export default function App() {
   }, []);
 
   // ============ 问题 6：一键复制主模式编译出的电路到沙盒二次编辑 ============
-  const handleCopyToSandbox = useCallback(() => {
-    console.log('[copy2sb] fired, activeFile=', activeFile?.name, 'circuitJson=', !!activeFile?.circuitJson);
+  const handleCopyToSandbox = useCallback(async () => {
     if (!activeFile?.circuitJson) { setMessage('先编译出电路，再复制到沙盒。'); return; }
     const graphJson = canvasRef.current?.getGraphJson();
-    console.log('[copy2sb] graphJson len=', graphJson ? graphJson.length : 'null');
     if (!graphJson) { setMessage('无法导出当前电路图。'); return; }
     const base = (activeFile.name || 'circuit').replace(/\.(v|sv|vh)$/i, '');
     // R39 文件夹组织 + 可编辑子部件（用户方案）：
@@ -780,8 +791,13 @@ export default function App() {
     const folder = base;
     sandboxStore.createFolder(folder);
     const f = sandboxStore.create(`${folder}/${base}_sandbox`);
+    // 子部件要逐个跑一遍布局并等 elk 写回坐标（实测 0.4–0.8s/个），期间必须当场
+    // 给反馈 —— 否则点了「复制到沙盒」几秒内界面毫无反应，看起来像没生效。
+    const modCount = Object.keys((activeFile.circuitJson as any)?.subcircuits || {}).length;
+    if (modCount) setMessage(`正在固化 ${modCount} 个子部件的编译布局…`);
     let bound = 0;
-    try { bound = collectToFolder(activeFile.circuitJson, folder); } catch { /* ignore */ }
+    let boundErr = '';
+    try { bound = await collectToFolder(activeFile.circuitJson, folder); } catch (e) { boundErr = String((e as Error)?.message || e); }
     let storedJson = graphJson;
     try { storedJson = stripBoundInlineJson(graphJson, folder); } catch { /* ignore */ }
     sandboxStore.save(f.id, storedJson);
@@ -795,7 +811,12 @@ export default function App() {
     // R34：子模块（Subcircuit）的内部电路已随序列化一并携带，不再丢部件/线路
     let mods = 0;
     try { mods = (JSON.parse(storedJson)?.cells || []).filter((c: any) => c.type === 'Subcircuit').length; } catch { /* ignore */ }
-    setMessage(`已把「${activeFile.name}」的电路复制到沙盒文件夹「${folder}/」：主电路「${f.name.split('/').pop()}」${mods ? `含 ${mods} 个子模块实例；` : ''}${bound ? `${bound} 个子级部件已递归复制为该文件夹下的可编辑电路并按名绑定，` : ''}所有电路（含子部件）均可直接打开编辑；也可在任意沙盒文件中右键「粘贴复制的电路」。`);
+    // 子部件固化失败不能默默吞掉：那时主电路已经建好、部件却缺几个，
+    // 用户只会看到「实例展不开」，且不知道是这一步没成。
+    const warn = boundErr
+      ? `⚠ 子部件布局固化中断（${boundErr.slice(0, 60)}），已入库 ${bound} 个；缺失的部件实例展不开，可对该模块单独「保存为部件」补齐。`
+      : '';
+    setMessage(`${warn}已把「${activeFile.name}」的电路复制到沙盒文件夹「${folder}/」：主电路「${f.name.split('/').pop()}」${mods ? `含 ${mods} 个子模块实例；` : ''}${bound ? `${bound} 个子级部件已递归复制为该文件夹下的可编辑电路并按名绑定，` : ''}所有电路（含子部件）均可直接打开编辑；也可在任意沙盒文件中右键「粘贴复制的电路」。`);
   }, [activeFile, viewMode]);
 
   // ============ Circuit -> source jump (double-click a cell) ============
@@ -806,18 +827,18 @@ export default function App() {
     const map = activeFile?.srcFileMap;
     const fileName = map?.[srcName];
     if (!fileName) {
-      setMessage('This element has no source location mapping.');
+      setMessage('这个元件没有源码位置映射。');
       return;
     }
     const target = fileStore.getAll().find((f) => f.name === fileName);
     if (!target) {
-      setMessage(`Source file "${fileName}" is no longer in the project.`);
+      setMessage(`源文件「${fileName}」已不在本工程里。`);
       return;
     }
     openFileInTab(target.id);
     setViewMode('code');
     setPendingJump({ fileId: target.id, line });
-    setMessage(`Jumped to ${fileName}:${line}`);
+    setMessage(`已跳到 ${fileName}:${line}`);
   }, [activeFile, openFileInTab]);
 
   // Run the pending jump after CodeEditor has received the new file content.
@@ -856,22 +877,25 @@ export default function App() {
     pendingSrcGlowRef.current = null;
     const n = canvasRef.current?.highlightSource(pending.path, pending.line) ?? 0;
     setMessage(n > 0
-      ? `Highlighted ${n} element(s) from line ${pending.line}.`
-      : `No top-level element on line ${pending.line} (may be inside a subcircuit).`);
+      ? `已从第 ${pending.line} 行高亮 ${n} 个元件。`
+      : `第 ${pending.line} 行顶层没有对应元件（可能在子电路内部）。`);
   }, []);
 
   const handleCanvasRunningChange = useCallback((running: boolean) => {
     if (running && status !== 'compiling') {
-      // engine started (possibly after a prior refused attempt) — clear stale error
-      if (status === 'error' && /floating|looped|not started/i.test(message)) {
+      setSimBlocked(false);
+      // 只清"引擎没起来"那一颗留下的残留错误态；编译错误（接口校验、缺模块）不许被引擎
+      // 报一句"在跑"就抹掉——那会让人以为电路是好的。所以这里必须看 simBlocked 这颗状态。
+      if (status === 'error' && simBlocked) {
         setStatus('done');
-        setMessage('Simulation running.');
+        setMessage('仿真运行中。');
       }
     } else if (!running && !simPaused) {
+      setSimBlocked(true);
       setStatus('error');
-      setMessage('Circuit has floating/looped wires — simulation not started.');
+      setMessage('电路存在悬空/成环的连线——未启动仿真。');
     }
-  }, [simPaused, status, message]);
+  }, [simPaused, status, simBlocked]);
 
   // ============ Context Menus ============
 
@@ -935,13 +959,13 @@ export default function App() {
           const entry = fileStore.createFile(fullPath);
           openFileInTab(entry.id);
           setViewMode('code');
-          setStatus('idle'); setMessage('New file created.');
+          setStatus('idle'); setMessage('已新建文件。');
         }},
         { label: '新建文件夹...', action: async () => {
           const name = await askPrompt({ title: '新建子文件夹', label: '文件夹名称', defaultValue: 'child', confirmLabel: '创建' });
           if (!name) return;
           fileStore.createFolder(folderPath + '/' + name);
-          setMessage(`Folder '${name}' created.`);
+          setMessage(`已创建文件夹「${name}」。`);
         }},
         { label: '---', disabled: true, action: () => {} },
         { label: '复制文件夹', action: () => handleCopyFolder(folderPath) },
@@ -954,17 +978,19 @@ export default function App() {
           const parts = folderPath.split('/');
           parts[parts.length - 1] = newName;
           fileStore.moveFolder(folderPath, parts.join('/'));
-          setMessage(`Folder renamed to '${newName}'.`);
+          setMessage(`文件夹已重命名为「${newName}」。`);
         }},
         { label: '删除文件夹', danger: true, action: async () => {
+          // R102：汉化 + 与沙盒模式的弹窗信息保持一致（标题/正文/详情/按钮同一套话术）
+          const n = fileStore.countFilesUnder(folderPath);
           const ok = await askConfirm({
             title: '删除文件夹', danger: true, confirmLabel: '删除',
-            message: `Delete folder '${folderPath}' and all its contents?`,
-            detail: 'Files inside will be removed from the project.',
+            message: `确定删除文件夹「${folderPath}」吗？`,
+            detail: n ? `文件夹内的 ${n} 个文件（含子文件夹）会一并删除，此操作无法撤销。` : '文件夹内的文件会一并删除，此操作无法撤销。',
           });
           if (ok) {
             fileStore.deleteFolder(folderPath);
-            setMessage(`Folder '${folderPath}' deleted.`);
+            setMessage(`已删除文件夹「${folderPath}」。`);
           }
         }},
         { label: '---', disabled: true, action: () => {} },
@@ -973,9 +999,8 @@ export default function App() {
     });
   }, [handleCopyFolder, handleCutFolder, handlePaste, openFileInTab, handleRefresh, askPrompt, askConfirm]);
 
-  const handleCanvasContextMenu = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    const cell = canvasRef.current?.probeCellAt(e.clientX, e.clientY);
+  const openCanvasMenuAt = useCallback((x: number, y: number) => {
+    const cell = canvasRef.current?.probeCellAt(x, y);
     const drillItems = (cell?.drillable && cell.celltype)
       ? [
           { label: `↵ Enter ${cell.celltype}`, action: () => setViewPath((p) => [...p, cell.celltype]) },
@@ -983,11 +1008,15 @@ export default function App() {
         ]
       : [];
     setContextMenu({
-      x: e.clientX, y: e.clientY,
+      x, y,
       items: [
         ...drillItems,
+        // 视图那一组与沙盒画布菜单同序同词（放大/缩小/适应窗口/重置缩放）——
+        // 此前编译模式只有后两项，用户在编译图里没法用菜单缩放。
+        { label: '放大', hint: 'Ctrl+滚轮', action: () => canvasRef.current?.zoomBy(1.2) },
+        { label: '缩小', hint: 'Ctrl+滚轮', action: () => canvasRef.current?.zoomBy(1 / 1.2) },
+        { label: '适应窗口', hint: 'Shift+F', action: () => canvasRef.current?.fitToWindow() },
         { label: '重置缩放', action: () => canvasRef.current?.resetZoom() },
-        { label: '适应窗口', action: () => canvasRef.current?.fitToWindow() },
         { label: '---', disabled: true, action: () => {} },
         { label: '导出 SVG', action: () => handleExportSVG() },
         { label: '导出 PNG', action: () => handleExportPNG() },
@@ -999,6 +1028,38 @@ export default function App() {
       ],
     });
   }, [handleCompile, handleImportFile, handleExportSVG, handleExportPNG, handleExportJSON, handleExportNetlist]);
+
+  // 右键在画布上是**平移**手势（Canvas 的 handleMouseDown），所以菜单不能在
+  // 按下瞬间弹（浏览器就是在那一刻发 contextmenu，于是「一拖动就出菜单」）。
+  // 这里按「按下 → 抬起，且中途没移动」判定成一次真正的右键点击再弹。
+  useEffect(() => {
+    const el = canvasContainerRef.current;
+    if (!el) return;
+    let press: { x: number; y: number; moved: boolean } | null = null;
+    const onDown = (e: MouseEvent) => { if (e.button === 2) press = { x: e.clientX, y: e.clientY, moved: false }; };
+    const onMove = (e: MouseEvent) => {
+      if (!press) return;
+      // R102：阈值 4px → 10px。真实用户右键时手几乎一定有 1–5px 抖动，4px 太紧 ⇒
+      // 菜单「丢了」（用户报"画布空白处右键丢失右键菜单"）。10px 仍远小于拖拽平移
+      // 的位移量，不会把"右键拖动画布"误判成点击。
+      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) > 10) press.moved = true;
+    };
+    const onUp = (e: MouseEvent) => {
+      if (e.button !== 2 || !press) return;
+      const moved = press.moved;
+      press = null;
+      if (!moved) openCanvasMenuAt(e.clientX, e.clientY);
+    };
+    // 捕获阶段：joint 的 paper 会在自己的处理里吞掉冒泡阶段的鼠标事件
+    el.addEventListener('mousedown', onDown, true);
+    el.addEventListener('mousemove', onMove, true);
+    el.addEventListener('mouseup', onUp, true);
+    return () => {
+      el.removeEventListener('mousedown', onDown, true);
+      el.removeEventListener('mousemove', onMove, true);
+      el.removeEventListener('mouseup', onUp, true);
+    };
+  }, [openCanvasMenuAt]);
 
   const closeContextMenu = useCallback(() => setContextMenu(null), []);
 
@@ -1161,7 +1222,7 @@ export default function App() {
             {activeFile ? activeFile.name : 'Verilog Visualizer'}
           </span>
           {message && (
-            <span style={{
+            <span data-status-message style={{
               fontSize: 'var(--fs-sm)', color: 'var(--text-muted)',
               overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
             }}>
@@ -1289,7 +1350,8 @@ export default function App() {
             onSelectTab={openFileInTab}
             onCloseTab={closeTab}
             onReorderTabs={reorderTabs}
-            rightSlot={<>            {/* Simulation controls — only meaningful with a rendered circuit */}
+            leftSlot={<>            {/* R103：功能按钮组搬**左侧**并与沙盒顶栏对齐（左对齐）；
+                「仿真」文案改「运行」；暂停/继续与运行合并为一颗，避免出现两颗"运行"按钮。 */}
             {viewMode === 'circuit' && activeFile?.circuitJson && (
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
@@ -1307,17 +1369,21 @@ export default function App() {
                     background: simLocked ? 'var(--surface-hover)' : 'var(--success)',
                     color: simLocked ? 'var(--text-secondary)' : '#fff',
                   }}
-                >{simLocked ? <><Lock size={13} /> View</> : <><LockOpen size={13} /> Simulate</>}</button>
+                >{simLocked ? <><Lock size={13} /> 查看</> : <><LockOpen size={13} /> 运行</>}</button>
+                {/* R103：原来的「⏸/▶ 暂停·继续」与上面的「运行」并排会让人以为是两颗运行按钮。
+                    改成**合并**：运行时显示「暂停」，暂停时显示「继续」——单态按钮，不并列。 */}
                 <button
-                  onClick={handleToggleSimPause}
-                  title={simPaused ? 'Resume simulation' : 'Pause simulation'}
+                  onClick={simPaused ? handleToggleSimPause : handleToggleSimPause}
+                  data-testid="sim-pause-toggle"
+                  title={simPaused ? '继续运行' : '暂停仿真（定格当前波形，R103）'}
                   style={{
                     display: 'inline-flex', alignItems: 'center',
                     padding: '4px 9px', border: '1px solid var(--border)',
                     borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                    background: 'transparent', color: 'var(--text)',
+                    background: simPaused ? 'var(--accent)' : 'transparent',
+                    color: simPaused ? '#fff' : 'var(--text)',
                   }}
-                >{simPaused ? <Play size={13} /> : <Pause size={13} />}</button>
+                >{simPaused ? <><Play size={13} /> 继续</> : <><Pause size={13} /> 暂停</>}</button>
                 <button
                   onClick={() => canvasRef.current?.stepOnce()}
                   disabled={!simPaused}
@@ -1331,14 +1397,14 @@ export default function App() {
                     fontSize: 'var(--fs-xs)', fontWeight: 600,
                     opacity: simPaused ? 1 : 0.4,
                   }}
-                ><StepForward size={13} /> Step</button>
+                ><StepForward size={13} /> 单步</button>
                 {simPaused && debugTick > 0 && (
                   <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--accent)', fontWeight: 600, padding: '0 4px' }}>
                     tick={debugTick}
                   </span>
                 )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)' }}>
-                  SPEED
+                  速度
                   {/* range value = "fastness": low ms = fast engine tick */}
                   <input
                     type="range" min={0} max={1} step={0.01}
@@ -1362,7 +1428,7 @@ export default function App() {
                     background: waveOpen ? 'var(--accent)' : 'transparent',
                     color: waveOpen ? '#fff' : 'var(--text)',
                   }}
-                ><AudioWaveform size={13} /> Wave</button>
+                ><AudioWaveform size={13} /> 波形</button>
                 <button
                   onClick={() => setInputsOpen((v) => !v)}
                   title="切换输入开关面板"
@@ -1373,11 +1439,12 @@ export default function App() {
                     background: inputsOpen ? 'var(--accent)' : 'transparent',
                     color: inputsOpen ? '#fff' : 'var(--text)',
                   }}
-                ><SlidersHorizontal size={13} /> Inputs</button>
+                ><SlidersHorizontal size={13} /> 输入</button>
               </div>
             )}
             <button
-              onClick={() => setExamplesVisible(true)}
+              data-tool="examples"
+                  onClick={() => setExamplesVisible(true)}
               title="打开示例电路"
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -1386,7 +1453,7 @@ export default function App() {
                 fontSize: 'var(--fs-md)', background: 'var(--surface)', color: 'var(--text)',
                 flexShrink: 0,
               }}
-            ><Library size={14} /> Examples</button>
+            ><Library size={14} /> 示例</button>
             {viewMode === 'circuit' && activeFile?.circuitJson && (
               <button
                 onClick={handleCopyToSandbox}
@@ -1407,14 +1474,14 @@ export default function App() {
                   padding: '0 14px', height: 30, border: '1px solid var(--border)',
                   borderRadius: 'var(--radius-md)', cursor: 'pointer',
                   fontSize: 'var(--fs-md)', background: 'var(--surface)', color: 'var(--text)', fontWeight: 500,
-                }}><Save size={14} /> Save</button>
+                }}><Save size={14} /> 保存</button>
                 <button onClick={handleCompile} disabled={status === 'compiling'} title="编译 (F5)" style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '0 14px', height: 30, border: 'none', borderRadius: 'var(--radius-md)',
                   cursor: status === 'compiling' ? 'default' : 'pointer', fontSize: 'var(--fs-md)',
                   background: status === 'compiling' ? 'var(--text-muted)' : 'var(--accent)',
                   color: '#fff', fontWeight: 600,
-                }}>{status === 'compiling' ? 'Compiling...' : <><Hammer size={14} /> Compile</>}</button>
+                }}>{status === 'compiling' ? '编译中…' : <><Hammer size={14} /> 编译</>}</button>
                 {hasMissingDeps && (
                   <button onClick={handleCompile} disabled={status === 'compiling'} style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -1436,27 +1503,34 @@ export default function App() {
                     background: viewMode === 'circuit' ? 'var(--accent)' : 'transparent',
                     color: viewMode === 'circuit' ? '#fff' : 'var(--text-secondary)',
                     fontSize: 'var(--fs-md)',
-                  }}><Network size={13} /> Circuit</button>
+                  }}><Network size={13} /> 电路图</button>
                 <button onClick={() => setViewMode('code')} className="inline-flex items-center gap-1.5 px-3.5 h-[26px] border-0 rounded-md cursor-pointer font-medium transition-all"
                   style={{
                     background: viewMode === 'code' ? 'var(--accent)' : 'transparent',
                     color: viewMode === 'code' ? '#fff' : 'var(--text-secondary)',
                     fontSize: 'var(--fs-md)',
-                  }}><Code size={13} /> Code</button>
+                  }}><Code size={13} /> 代码</button>
                 <button onClick={() => setViewMode('split')} className="inline-flex items-center gap-1.5 px-3.5 h-[26px] border-0 rounded-md cursor-pointer font-medium transition-all"
                   title="分屏：左侧代码，右侧电路"
                   style={{
                     background: viewMode === 'split' ? 'var(--accent)' : 'transparent',
                     color: viewMode === 'split' ? '#fff' : 'var(--text-secondary)',
                     fontSize: 'var(--fs-md)',
-                  }}><Columns2 size={13} /> Split</button>
+                  }}><Columns2 size={13} /> 分屏</button>
               </div>
             )}</>}
           />
 
           {/* Content: Canvas or Code Editor */}
           <div ref={canvasContainerRef} className="flex-1 relative overflow-hidden"
-            onContextMenu={handleCanvasContextMenu}>
+            onContextMenu={(e) => { e.preventDefault(); /* 菜单改由「右键没移动」判定后弹，见 openCanvasMenuAt */ }}>
+            {/* R102：输入/输出面板**移到画布右侧浮层**（原来是最右侧独立栏，与沙盒位置不一致）。
+                位置、尺寸、配色与沙盒的 IOPanel 完全一致。 */}
+            {inputsOpen && viewMode === 'circuit' && activeFile?.circuitJson && (
+              <div className="absolute top-12 right-2 bottom-2 z-30 flex" style={{ pointerEvents: 'auto' }}>
+                <InputPanel canvasRef={canvasRef} open={inputsOpen} onClose={() => setInputsOpen(false)} />
+              </div>
+            )}
             {/* Sub-module breadcrumb — only while drilled in, circuit view */}
             {viewMode === 'circuit' && viewPath.length > 0 && activeFile?.circuitJson && (
               <div
@@ -1566,7 +1640,7 @@ export default function App() {
                         <div style={{
                           height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
                           color: 'var(--text-muted)', fontSize: 'var(--fs-sm)',
-                        }}>Press F5 to compile →</div>
+                        }}>按 F5 开始编译 →</div>
                       )}
                     </div>
                   </div>
@@ -1617,10 +1691,10 @@ export default function App() {
                     </div>
                   <div className="text-base font-medium" style={{ color: 'var(--text)' }}>
                     {activeFile.status === 'missing_deps' ? 'Missing dependencies'
-                      : activeFile.status === 'error' ? 'Compilation error' : 'Not compiled'}
+                      : activeFile.status === 'error' ? '编译出错' : '尚未编译'}
                   </div>
                   <div className="text-sm max-w-[420px] text-center leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-                    {activeFile.errorMessage || 'Press F5 to compile. Check Output panel for details.'}
+                    {activeFile.errorMessage || '按 F5 开始编译；细节见「输出」面板。'}
                   </div>
                   <button onClick={handleCompile} disabled={status === 'compiling'} className="mt-2 px-6 py-2.5 text-sm font-semibold rounded-lg border-0 cursor-pointer text-white transition-all hover:opacity-90 hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
                     style={{
@@ -1637,6 +1711,7 @@ export default function App() {
               getChannels={waveGetChannels}
               getSample={waveGetSample}
               resetKey={String(waveEpoch)}
+              running={!simPaused && !simLocked}
               onClose={() => setWaveOpen(false)}
             />
           )}
@@ -1653,10 +1728,7 @@ export default function App() {
             />
           )}
 
-          {/* Input switches panel (circuit view only) */}
-          {inputsOpen && viewMode === 'circuit' && activeFile?.circuitJson && (
-            <InputPanel canvasRef={canvasRef} open={inputsOpen} onClose={() => setInputsOpen(false)} />
-          )}
+          {/* Input switches panel：R102 已移入画布容器右侧（见上方 canvasContainerRef 内）*/}
           </>)}
         </div>
       </div>
@@ -1670,11 +1742,11 @@ export default function App() {
         onClose={() => setOutputPanelVisible(false)}
         onJumpToProblem={(fileName, line) => {
           const target = fileStore.getAll().find((f) => f.name === fileName);
-          if (!target) { setMessage(`File "${fileName}" not found.`); return; }
+          if (!target) { setMessage(`找不到文件「${fileName}」。`); return; }
           openFileInTab(target.id);
           setViewMode('code');
           setPendingJump({ fileId: target.id, line });
-          setMessage(`Jumped to ${fileName}:${line}`);
+          setMessage(`已跳到 ${fileName}:${line}`);
         }}
       />
 

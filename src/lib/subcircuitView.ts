@@ -23,6 +23,8 @@
 
 import { io_ui } from 'yosys2digitaljs/core';
 import { normalizeIoLabels, renameAutoCells } from './verilog';
+import { DEVICE_PARAM_KEYS, paramValue } from './deviceParams';
+import { zoomPaperAtClient } from './paperZoom';
 
 type AnyCell = any;
 
@@ -32,65 +34,87 @@ type AnyCell = any;
  * 与 buildInnerGraph 互为对偶：那边重建 joint Graph（仿真/交互用），
  * 这边产出纯数据 circuit JSON（渲染管线用）。
  *
- * R37 绑定语义：嵌套 Subcircuit 不再每实例合成一个 __subN 条目，而是
- * **按 celltype 名称分组**（与编译模式 subcircuits[模块名] 同构）——
- * 同名实例共享同一定义条目，这正是「实例绑定定义」的数据形态。
- * 没有 celltype 的匿名嵌套才退化成 __subN 内联条目。
+ * 绑定语义：嵌套 Subcircuit 按 celltype 名称分组（与编译模式
+ * subcircuits[模块名] 同构）——同名实例共享同一定义条目，这正是
+ * 「实例绑定定义」的数据形态；没有 celltype 的匿名嵌套退化成 __subN。
+ * 整棵定义树**平铺在顶层一张表**里：digitaljs 递归建图时沿用的是父层那张
+ * 表，逐层内联等于只有上一层可见（3 层起 ctor 直接抛错）。
  */
 export function cellsToCircuitJson(json: { cells?: AnyCell[] } | null | undefined): any {
-  const devices: Record<string, any> = {};
-  const connectors: any[] = [];
-  const subcircuits: Record<string, any> = {};
+  const flat: Record<string, any> = {};
   let subSeq = 0;
-  let wireSeq = 0;
-  for (const c of json?.cells || []) {
-    // 兼容旧格式：有 source+target 的是 wire
-    if (c.isLink || (c.source && c.target && c.source.id && c.target.id)) {
-      connectors.push({
-        from: { id: c.source?.id, port: c.source?.port },
-        to: { id: c.target?.id, port: c.target?.port },
-        name: c.netname || `N${++wireSeq}`,
-        ...(c.vertices?.length ? { vertices: c.vertices } : {}),
-      });
-      continue;
-    }
-    if (c.type === 'Subcircuit') {
-      const name = c.celltype ? String(c.celltype) : `__sub${++subSeq}`;
-      // 同名实例共享一条定义（绑定）；内容以第一份非空内嵌图为准
-      if (!subcircuits[name]) {
-        subcircuits[name] = cellsToCircuitJson(c.subcircuitGraph || c.graph);
+  const build = (src: { cells?: AnyCell[] } | null | undefined, chain: Set<string>): any => {
+    const devices: Record<string, any> = {};
+    const connectors: any[] = [];
+    let wireSeq = 0;
+    for (const c of src?.cells || []) {
+      // 兼容旧格式：有 source+target 的是 wire
+      if (c.isLink || (c.source && c.target && c.source.id && c.target.id)) {
+        connectors.push({
+          from: { id: c.source?.id, port: c.source?.port },
+          to: { id: c.target?.id, port: c.target?.port },
+          name: c.netname || `N${++wireSeq}`,
+          ...(c.vertices?.length ? { vertices: c.vertices } : {}),
+        });
+        continue;
       }
-      devices[c.id] = {
+      if (c.type === 'Subcircuit') {
+        const name = c.celltype ? String(c.celltype) : `__sub${++subSeq}`;
+        // 同名实例共享一条定义（绑定）；内容以第一份非空内嵌图为准
+        const inner = c.subcircuitGraph || c.graph;
+        if (!flat[name] && inner?.cells?.length && !chain.has(name)) {
+          chain.add(name);
+          flat[name] = build(inner, chain);
+        }
+        const inst: any = {
+          id: c.id,
+          type: 'Subcircuit',
+          celltype: name,
+          label: c.label || c.celltype || name,
+          ...(c.position ? { position: c.position } : {}),
+          ...(c.angle ? { angle: c.angle } : {}),
+        };
+        // 实例上的 propagation 等参数也要带：编译产物给每颗器件（含模块实例）都写了
+        // 组合延迟，漏掉这一项，复制出来的模块实例与编译模式的时序就不一致。
+        for (const k of DEVICE_PARAM_KEYS) {
+          const v = paramValue(k, c);
+          if (v == null || (k === 'angle' && !v)) continue;
+          inst[k] = v;
+        }
+        devices[c.id] = inst;
+        continue;
+      }
+      const dev: any = {
         id: c.id,
-        type: 'Subcircuit',
-        celltype: name,
-        label: c.label || c.celltype || name,
+        type: c.type,
+        // celltype 是器件符号标识（& / ≥1 / Dff 变体），漏了会渲染成裸框
+        ...(c.celltype ? { celltype: c.celltype } : {}),
+        ...(c.label ? { label: c.label } : {}),
+        ...(c.order != null ? { order: c.order } : {}),
+        ...(c.bits != null ? { bits: c.bits } : {}),
+        ...(c.net ? { net: c.net } : {}),
         ...(c.position ? { position: c.position } : {}),
+        ...(c.size ? { size: c.size } : {}),
       };
-      continue;
+      // 其余器件参数按 deviceParams 的清单整体带上。以往这里手写一条字段链，
+      // 漏掉的 extend / arst_value / srst_value 正是 digitaljs **构造期**读走的：
+      // 3→4 位零扩展变成 1→1 位、复位值 1 变成 0，器件数与连线数却都不变。
+      for (const k of DEVICE_PARAM_KEYS) {
+        const v = paramValue(k, c);
+        if (v == null) continue;
+        if (k === 'angle' && !v) continue;   // 0° 是默认值，不给每颗器件占一行
+        dev[k] = v;
+      }
+      devices[c.id] = dev;
     }
-    devices[c.id] = {
-      id: c.id,
-      type: c.type,
-      // celltype 是器件符号标识（& / ≥1 / Dff 变体），漏了会渲染成裸框
-      ...(c.celltype ? { celltype: c.celltype } : {}),
-      ...(c.label ? { label: c.label } : {}),
-      ...(c.bits != null ? { bits: c.bits } : {}),
-      ...(c.net ? { net: c.net } : {}),
-      ...(c.position ? { position: c.position } : {}),
-      ...(c.size ? { size: c.size } : {}),
-      ...(c.propagation != null ? { propagation: c.propagation } : {}),
-      ...(c.constant != null ? { constant: c.constant } : {}),
-      ...(c.polarity ? { polarity: c.polarity } : {}),
-      ...(c.initial != null ? { initial: c.initial } : {}),
-      ...(Array.isArray(c.groups) ? { groups: c.groups } : {}),
-      ...(c.slice ? { slice: c.slice } : {}),
-      ...(c.abits != null ? { abits: c.abits } : {}),
-      ...(Array.isArray(c.rdports) ? { rdports: c.rdports } : {}),
-      ...(Array.isArray(c.wrports) ? { wrports: c.wrports } : {}),
-    };
-  }
-  return { devices, connectors, subcircuits };
+    return { devices, connectors, subcircuits: {} };
+  };
+  const top = build(json, new Set<string>());
+  // digitaljs 的 _makeGraph 递归时**沿用自己的那张表**（见 circuit.mjs
+  // `_makeGraph(subcircuits[dev.celltype], subcircuits)`），逐层内联等于只有
+  // 上一层可见。所以整棵树必须平铺在顶层这一张表里 —— 与编译产物同形。
+  top.subcircuits = flat;
+  return top;
 }
 
 /**
@@ -124,20 +148,18 @@ export function circuitJsonToCells(mod: any): { cells: AnyCell[] } {
       c.celltype = dev.celltype;
     }
     if (dev.label != null) c.label = dev.label;
+    if (dev.order != null) c.order = dev.order;
     if (dev.bits != null) c.bits = dev.bits;
     if (dev.net != null) c.net = dev.net;
     if (dev.position) c.position = dev.position;
     if (dev.size) c.size = dev.size;
     if (dev.propagation != null) c.propagation = dev.propagation;
     if (dev.angle != null) c.angle = dev.angle;
-    if (dev.constant != null) c.constant = dev.constant;
-    if (dev.polarity != null) c.polarity = dev.polarity;
-    if (dev.initial != null) c.initial = dev.initial;
-    if (Array.isArray(dev.groups)) c.groups = dev.groups;
-    if (dev.slice) c.slice = dev.slice;
-    if (dev.abits != null) c.abits = dev.abits;
-    if (Array.isArray(dev.rdports)) c.rdports = dev.rdports;
-    if (Array.isArray(dev.wrports)) c.wrports = dev.wrports;
+    // 与 cellsToCircuitJson 共用同一份清单，两个方向不会再次走偏
+    for (const k of DEVICE_PARAM_KEYS) {
+      const v = paramValue(k, dev);
+      if (v != null) c[k] = v;
+    }
     cells.push(c);
   }
   for (const conn of mod?.connectors || []) {
@@ -352,10 +374,6 @@ export function renderCircuitView(
   const paper = circuit.displayOn(mount);
   mark('displayOn-done');
   mergeWireVertices(paper);
-  // 诊断：打印渲染结果（开发期定位「只渲染器件不渲染连线」用）
-  const linkCount = paper.model.getLinks().length;
-  const elementCount = paper.model.getElements().length;
-  console.log(`[renderCircuitView] devices=${Object.keys(json.devices).length} connectors=${json.connectors.length} rendered_elements=${elementCount} rendered_links=${linkCount} skippedWires=${skippedWires} skippedDevices=${skippedDevices}`);
   mark('done');
   // R35：digitaljs 的 cell 构造把 label 文本硬设为器件 id（dev0/dev13…），
   // JSON 里的 label 不生效 —— 编译视图（Canvas.tsx）在 displayOn 后对 IO/总线
@@ -377,26 +395,28 @@ export function renderCircuitView(
       }
     }
   } catch { /* cosmetic */ }
-  // 展开图交互：ctrl+wheel 以光标为中心缩放，wheel 垂直平移，shift+wheel 水平平移
+  // 展开图交互（R100 定版语义，与用户清单一致）：
+  //   滚轮 ＝ 上下平移；Shift+滚轮 ＝ 左右平移；Ctrl+滚轮 ＝ 以光标为锚点缩放。
+  //  （旧版滚轮直接缩放、没有 Ctrl 门控——用户报「交互逻辑错误」的根因。）
+  //
+  // 锚点公式是量出来的（tests/r43c-api.cjs：三个锚点残差 0.0，旧公式偏 140~326px
+  // —— 那就是用户说的「一缩放电路图画面就丢了」）：joint 的 SVG 有 y 轴翻转，且
+  // translate 的单位是**缩放后**的纸面单位，所以必须
+  //   ① 缩放前先取光标下的模型点；② 缩放后再取同一光标点下的模型点；
+  //   ③ 把两次的差 × 新缩放系数补回 translate（两轴同号）。
+  // 手写「以元素内坐标为锚」的变换式做不到这一点。
   try {
     const pw = paper as any;
     pw.options.scroll = true;
+    // 锚点数学只有一份实现（src/lib/paperZoom.ts）：本仓被打回来过两次，
+    // 沙盒主画布曾因另写一份（不补平移）而出现同样的「一缩放画面就没了」。
+    const zoomAtClient = (clientX: number, clientY: number, factor: number) =>
+      zoomPaperAtClient(pw, clientX, clientY, factor);
     mount.addEventListener('wheel', (ev: WheelEvent) => {
       ev.preventDefault();
       ev.stopPropagation();
-      if (ev.ctrlKey || ev.metaKey) {
-        const cur = pw.scale();
-        const factor = ev.deltaY < 0 ? 1.1 : 1 / 1.1;
-        const ns = Math.max(0.1, Math.min(5, cur.sx * factor));
-        const rect = mount.getBoundingClientRect();
-        const cx = ev.clientX - rect.left;
-        const cy = ev.clientY - rect.top;
-        const t = pw.translate();
-        pw.translate(
-          t.tx + cx - (cx - t.tx) * (ns / cur.sx),
-          t.ty + cy - (cy - t.ty) * (ns / cur.sy),
-        );
-        pw.scale(ns, ns);
+      if (ev.ctrlKey) {
+        zoomAtClient(ev.clientX, ev.clientY, ev.deltaY < 0 ? 1.1 : 1 / 1.1);
       } else if (ev.shiftKey) {
         const t = pw.translate();
         pw.translate(t.tx - ev.deltaY, t.ty);
@@ -405,8 +425,34 @@ export function renderCircuitView(
         pw.translate(t.tx, t.ty - ev.deltaY);
       }
     }, { passive: false });
+    // 暴露给弹窗的缩放按钮（同一套锚点数学，避免两份实现算出两种结果）
+    (pw as any).__zoomAtClient = zoomAtClient;
   } catch { /* ignore */ }
   return { circuit, paper, skippedWires, skippedDevices };
+}
+
+/**
+ * 数据级预检：端点器件不存在的连线一律先摘掉并计数。
+ * joint 允许「只接上一端」的悬空 link，digitaljs 的 ctor 对这种线**不抛异常**，
+ * 于是它会被画成一条断头线、还被底栏计入「完整还原」（实测：目标 id 写成不存在
+ * 的器件时 links=1 / skipped=0）。端口名对不对不归这里管 —— 那会触发 ctor 抛错
+ * 并进入降级逐条补线，那里有存在性预检。
+ */
+function pruneDanglingConnectors(mod: any, seen = new Set<object>()): number {
+  if (!mod || typeof mod !== 'object' || seen.has(mod)) return 0;
+  seen.add(mod);
+  let dropped = 0;
+  if (Array.isArray(mod.connectors)) {
+    const ids = new Set(Object.keys(mod.devices || {}));
+    const keep = mod.connectors.filter((c: any) => {
+      const ok = !!c?.from?.id && !!c?.to?.id && ids.has(String(c.from.id)) && ids.has(String(c.to.id));
+      if (!ok) dropped++;
+      return ok;
+    });
+    mod.connectors = keep;
+  }
+  for (const sub of Object.values<any>(mod.subcircuits || {})) dropped += pruneDanglingConnectors(sub, seen);
+  return dropped;
 }
 
 /**
@@ -423,14 +469,12 @@ export function constructCircuit(digitaljs: any, json: any): {
 } {
   let skippedWires = 0;
   let skippedDevices = 0;
+  skippedWires += pruneDanglingConnectors(json);
   try {
     return { circuit: new digitaljs.Circuit(json, { layoutEngine: 'elkjs' }), skippedWires, skippedDevices };
   } catch (e) {
-    console.error('[constructCircuit] 正常路径失败，进入降级:', e);
-    console.error('[constructCircuit] 失败的 json keys:', Object.keys(json.devices || {}), 'connectors:', (json.connectors || []).length);
-    for (const conn of json.connectors || []) {
-      console.error('[constructCircuit] connector:', JSON.stringify(conn));
-    }
+    console.warn('[constructCircuit] 正常路径失败，进入降级:', (e as Error)?.message || e,
+      'devices=', Object.keys(json.devices || {}).length, 'connectors=', (json.connectors || []).length);
     // 降级 1：器件级净化（类型未知/构造即炸的器件剔除；嵌套模块后序净化）
     try {
       const GraphCtor = new digitaljs.Circuit({ devices: {}, connectors: [] })._graph.constructor;
@@ -458,17 +502,11 @@ export function constructCircuit(digitaljs: any, json: any): {
     // 「先插入图、后抛异常」，所以补线前先做端口存在性预检（与 joint 的
     // _changeSource/_checkConnection 同判据），坏线根本不入图；万一仍抛，
     // 再把僵尸线从图里清掉，避免污染渲染与仿真。
+    // 这里刻意**不做端口名猜测**：把引用不存在的端口自动改接到「猜出来的」
+    // 同名脚上，等于把一张电路上错的图当「完整还原」呈现给用户，比少画一条线
+    // 更糟；宁可 skip + 计数，让底栏把缺口说出来。
     const reAdd = (graph: any, m: any): number => {
       let skipped = 0;
-      // 端口名模糊匹配：先试指定名，失败则自动试常见端口名
-      const tryPorts = (cell: any, candidates: string[]): string | null => {
-        for (const p of candidates) {
-          try { if (cell.getPort(p)) return p; } catch { /* ignore */ }
-        }
-        return null;
-      };
-      const outCandidates = ['out', 'Y', 'y'];
-      const inCandidates = ['in1', 'in', 'A', 'a', 'in2'];
       for (const conn of m.connectors || []) {
         const srcCell = graph.getCell ? graph.getCell(conn.from?.id) : null;
         const tgtCell = graph.getCell ? graph.getCell(conn.to?.id) : null;
@@ -477,8 +515,8 @@ export function constructCircuit(digitaljs: any, json: any): {
         }
         let srcPort = conn.from?.port;
         let tgtPort = conn.to?.port;
-        try { if (!srcCell.getPort(srcPort)) srcPort = tryPorts(srcCell, outCandidates); } catch { srcPort = null; }
-        try { if (!tgtCell.getPort(tgtPort)) tgtPort = tryPorts(tgtCell, inCandidates); } catch { tgtPort = null; }
+        try { if (!srcCell.getPort(srcPort)) srcPort = null; } catch { srcPort = null; }
+        try { if (!tgtCell.getPort(tgtPort)) tgtPort = null; } catch { tgtPort = null; }
         if (!srcPort || !tgtPort) { skipped++; continue; }
         let w: any = null;
         try {

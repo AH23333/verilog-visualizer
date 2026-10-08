@@ -385,16 +385,28 @@ input:focus, select:focus, textarea:focus {
 [data-theme="dark"] svg text {
   fill: #e4e4ec !important;
 }
-/* Cell bodies stay light (white/light-gray) in both themes — schematic look */
-.joint-paper .cell .body,
-.joint-paper [class*="body"] {
+/* 器件底色分主题：
+   - 浅色：白底（原理图观感），文字黑；
+   - 深色：暗底 + 较亮描边，文字浅。
+   以前底色不分主题恒为白、体内文字恒为黑，于是「落在体外」的那批题注
+   （实例名、模块名、合线器名、IO 名 —— 实测这些 text 都在 body 矩形之外）
+   在深色画布上就是黑字压黑底，等于没有名字。
+   信号状态色走的是 btnface / led 两个独立元素，不受这里的 body 影响。 */
+[data-theme="light"] .joint-paper .cell .body,
+[data-theme="light"] .joint-paper [class*="body"] {
   fill: #f4f4f5 !important;
   stroke: #52525b !important;
 }
-/* Text inside cells is always black (on light body background) */
-.joint-paper .cell text,
-.joint-paper [class*="body"] + text,
-.joint-paper text.label {
+[data-theme="dark"] .joint-paper .cell .body,
+[data-theme="dark"] .joint-paper [class*="body"] {
+  fill: #232830 !important;
+  stroke: #717784 !important;
+}
+/* 文字：只在浅色主题下钉死为黑（此时底色也是白）；深色主题交给上面的
+   `[data-theme="dark"] svg text` 统一走浅色。 */
+[data-theme="light"] .joint-paper .cell text,
+[data-theme="light"] .joint-paper [class*="body"] + text,
+[data-theme="light"] .joint-paper text.label {
   fill: #18181b !important;
 }
 [data-theme="dark"] svg .cell {

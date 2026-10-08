@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 /**
  * 存储器（RAM）内容查看 / 编辑器。
@@ -36,13 +36,17 @@ export function MemoryViewModal({ cell, onClose }: Props) {
   const [draft, setDraft] = useState('');
 
   // Escape 关闭（走 onClose —— 关闭时 SandboxCanvas 会 commit，生成 memdataInit 快照）
+  // Esc 关窗的回调要经 ref：父组件每次渲染都新建箭头函数，把它写进依赖表＝每渲染一次就
+  // "摘掉旧的、挂上新的"一轮，按下那一刻挂没挂上是运气（本仓 r84 实测：事件到了 document 而弹窗没关）。
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && editing === null) onClose();
+      if (e.key === 'Escape' && editing === null) closeRef.current();
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [editing, onClose]);
+  }, [editing]);
 
   const decOf = (bin: string): string => {
     if (/x/i.test(bin)) return 'x';

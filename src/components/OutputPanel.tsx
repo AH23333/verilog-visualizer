@@ -3,7 +3,8 @@ import { X, AlertCircle, Terminal } from 'lucide-react';
 
 export interface Problem {
   fileName: string;
-  line: number;
+  /** 源码里的 1 起行号；文件级错误（如重复定义）给不出具体行 ⇒ null，面板如实说"未定位到行" */
+  line: number | null;
   message: string;
   severity: 'error' | 'warning';
 }
@@ -196,35 +197,35 @@ export default function OutputPanel({ log, problems, visible, onToggle, onClose,
             minHeight: 0,
           }}
         >
-          {log || 'No output yet. Press F5 to compile.'}
+          {log || '还没有输出。按 F5 开始编译。'}
         </pre>
       ) : (
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, background: 'var(--bg)' }}>
           {problems.length === 0 ? (
             <div style={{ padding: '12px', color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>
-              No problems. Code is clean.
+              没有问题。代码是干净的。
             </div>
           ) : (
             problems.map((p, i) => (
               <div
                 key={i}
-                onClick={() => onJumpToProblem(p.fileName, p.line)}
+                onClick={() => { if (p.line != null) onJumpToProblem(p.fileName, p.line); }}
                 style={{
                   display: 'flex', alignItems: 'flex-start', gap: 8,
-                  padding: '5px 12px', cursor: 'pointer',
+                  padding: '5px 12px', cursor: p.line == null ? 'default' : 'pointer',
                   borderBottom: '1px solid var(--border-subtle)',
                   fontSize: 'var(--fs-sm)',
                   color: 'var(--text-secondary)',
                 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; }}
                 onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-                title={`${p.fileName}:${p.line} — click to jump`}
+                title={p.line == null ? `${p.fileName} — 这条错误定位不到具体行` : `${p.fileName}:${p.line} — 点击跳转到该行`}
               >
                 <AlertCircle size={13} style={{ color: 'var(--danger)', flexShrink: 0, marginTop: 2 }} />
                 <div style={{ minWidth: 0 }}>
                   <div style={{ color: 'var(--text)' }}>{p.message}</div>
                   <div style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-xs)', fontFamily: 'monospace' }}>
-                    {p.fileName}:{p.line}
+                    {p.line == null ? `${p.fileName}（未定位到行）` : `${p.fileName}:${p.line}`}
                   </div>
                 </div>
               </div>

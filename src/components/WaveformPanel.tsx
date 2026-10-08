@@ -11,6 +11,11 @@ interface WaveformPanelProps {
   /** change to reset history (new circuit / drill) */
   resetKey: string;
   onClose: () => void;
+  /**
+   * R103：**只有运行态才随时间移动**。暂停/停止时停止采样、冻结时间窗，
+   * 让用户能停在某一刻反复查看多个输入输出的波形（以前暂停后曲线还在爬）。
+   */
+  running?: boolean;
 }
 
 const WINDOW_TICKS = 600;     // visible time span
@@ -26,7 +31,7 @@ function hexVal(bin: string): string {
   return isNaN(n) ? 'x' : n.toString(16);
 }
 
-export default function WaveformPanel({ getChannels, getSample, resetKey, onClose }: WaveformPanelProps) {
+export default function WaveformPanel({ getChannels, getSample, resetKey, onClose, running = true }: WaveformPanelProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
   const histRef = useRef<Map<string, Transition[]>>(new Map());
@@ -109,9 +114,10 @@ export default function WaveformPanel({ getChannels, getSample, resetKey, onClos
     });
   }, [channels]);
 
-  // poll + redraw
+  // poll + redraw。R103：**running=false 时只重绘、不采样也不推进时间窗** ⇒ 曲线定格在那一刻。
   useEffect(() => {
     const id = window.setInterval(() => {
+      if (!running) { draw(); return; }
       const s = getSample();
       if (!s) return;
       curTickRef.current = s.tick;
@@ -132,7 +138,7 @@ export default function WaveformPanel({ getChannels, getSample, resetKey, onClos
       draw();
     }, POLL_MS);
     return () => window.clearInterval(id);
-  }, [getSample, draw]);
+  }, [getSample, draw, running]);
 
   useEffect(() => { draw(); }, [draw]);
 

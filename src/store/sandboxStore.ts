@@ -1,6 +1,8 @@
 // Sandbox file system — independent from .v verilog files.
 // Each .djs file stores a digitaljs circuit graph as JSON.
 
+import { parentDir } from '../lib/vpath';
+
 export interface SandboxFile {
   id: string;
   name: string;
@@ -22,6 +24,12 @@ export interface SandboxFile {
    *    又可被同文件夹（优先）/全局的实例按「文件名（去扩展名）」绑定引用。
    */
   role?: 'circuit' | 'part';
+  /**
+   * R100 文件级部件绑定（对齐编译模式 file.moduleBindings 语义）：
+   * 绑定名（celltype）→ 部件文件 id。解析时**优先于**文件夹作用域打分
+   * （gateSystem.setActivePartBindings / resolvePartRef），「绑定...」对话框维护。
+   */
+  partBindings?: Record<string, string>;
 }
 
 // 一个「部件」（自定义门 / 编译子模块）。R39 起部件真身是可编辑的 role='part'
@@ -66,6 +74,21 @@ export function baseName(path: string): string {
   return path.split('/').pop() || path;
 }
 
+/**
+ * 取路径的所在文件夹（根目录返回 ''）。真身在 `lib/vpath.ts`，这里只是沙盒侧的别名——
+ * 沙盒文件没有维护 `folder` 字段，"文件夹"的唯一真相就是 `SandboxFile.name` 里的那颗 `/`，
+ * 而部件绑定的作用域解析（`resolvePartRef` 的 scope）、移动时的部件随行、部件清单的
+ * folder 列全都建立在这条上，所以不许有第二份写法。
+ */
+export function dirOfName(name: string): string {
+  return parentDir(name);
+}
+
+/** `dirOfName` 的文件形态便捷入口 */
+export function dirOf(f: { name: string }): string {
+  return dirOfName(f.name);
+}
+
 export const sandboxStore = {
   list(): SandboxFile[] {
     const files = loadAll();
@@ -85,12 +108,52 @@ export const sandboxStore = {
     else localStorage.removeItem(SANDBOX_ACTIVE);
   },
 
+  /**
+   * 同名去重 —— **照抄编译模式 `fileStore.getUniqueName`**（R101「文件系统必须严格一致」）：
+   * 重名加 ` (1)`、` (2)` 后缀（不是沙盒早前的 `_1`）。同名集合同时算文件与文件夹的
+   * **直接子项**。`excludeId` 用于重命名时把自己排除在外。
+   */
+  getUniqueName(name: string, folder = '', excludeId?: string): string {
+    const prefix = folder ? folder + '/' : '';
+    const dot = name.lastIndexOf('.');
+    const isFile = dot > 0;
+    const base = isFile ? name.slice(0, dot) : name;
+    const ext = isFile ? name.slice(dot) : '';
+    const taken = new Set<string>();
+    for (const [fid, f] of Object.entries(loadAll())) {
+      if (excludeId && fid === excludeId) continue;
+      if (!folder || f.name.startsWith(prefix)) {
+        const rel = folder ? f.name.slice(prefix.length) : f.name;
+        if (!rel.includes('/')) taken.add(rel);
+      }
+    }
+    for (const p of loadFolders()) {
+      if (!folder || p.startsWith(prefix)) {
+        const rel = folder ? p.slice(prefix.length) : p;
+        if (!rel.includes('/')) taken.add(rel);
+      }
+    }
+    if (!taken.has(name)) return name;
+    let n = 1;
+    while (taken.has(`${base} (${n})${ext}`)) n++;
+    return `${base} (${n})${ext}`;
+  },
+
+  /** 把「可能带目录」的名字拆成 (folder, base) */
+  splitPath(name: string): { folder: string; base: string } {
+    const raw = name.endsWith('.djs') ? name : name + '.djs';
+    const slash = raw.lastIndexOf('/');
+    return slash >= 0 ? { folder: raw.slice(0, slash), base: raw.slice(slash + 1) } : { folder: '', base: raw };
+  },
+
   create(name: string, role?: 'circuit' | 'part'): SandboxFile {
     const files = loadAll();
+    const { folder, base } = this.splitPath(name);
+    const finalName = (folder ? folder + '/' : '') + this.getUniqueName(base, folder);
     const id = 'sb_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
     const file: SandboxFile = {
       id,
-      name: name.endsWith('.djs') ? name : name + '.djs',
+      name: finalName,
       graphJson: JSON.stringify({ cells: [] }),
       updatedAt: Date.now(),
       ...(role ? { role } : {}),
@@ -117,10 +180,22 @@ export const sandboxStore = {
     saveAll(files);
   },
 
+  /** R100：保存文件级部件绑定（绑定名 → 部件文件 id）；空对象＝清除 */
+  setPartBindings(id: string, bindings: Record<string, string>) {
+    const files = loadAll();
+    if (!files[id]) return;
+    const keys = Object.keys(bindings);
+    if (keys.length) files[id].partBindings = bindings;
+    else delete files[id].partBindings;
+    saveAll(files);
+  },
+
+  /** 重命名（含跨目录写法 `sub/x.djs`），同名按编译模式规则去重 */
   rename(id: string, name: string) {
     const files = loadAll();
     if (!files[id]) return;
-    files[id].name = name.endsWith('.djs') ? name : name + '.djs';
+    const { folder, base } = this.splitPath(name);
+    files[id].name = (folder ? folder + '/' : '') + this.getUniqueName(base, folder, id);
     saveAll(files);
   },
 
@@ -180,27 +255,29 @@ export const sandboxStore = {
     saveFolders(folders);
   },
 
-  /** 删除文件夹：取消跟踪（含子文件夹），其下文件移回根目录（重名自动加 _1 后缀） */
+  /**
+   * 删除文件夹 —— **照抄编译模式 `fileStore.deleteFolder`**（R101「文件系统必须严格一致」）：
+   * 文件夹连同其下**全部文件与子文件夹一起删除**（不是早前"文件移回根目录"）。
+   * ⚠ 破坏性操作，调用方必须先弹确认（`ConfirmDialog`）把"会一同删除内部文件"说清楚。
+   */
   removeFolder(path: string) {
     const prefix = path + '/';
     const files = loadAll();
-    const taken = new Set(Object.values(files).map((f) => f.name));
-    const rename = (f: SandboxFile, base: string) => {
-      if (!taken.has(base)) { f.name = base; taken.add(base); return; }
-      const dot = base.lastIndexOf('.');
-      const stem = dot > 0 ? base.slice(0, dot) : base;
-      const ext = dot > 0 ? base.slice(dot) : '';
-      let n = 1;
-      while (taken.has(`${stem}_${n}${ext}`)) n++;
-      f.name = `${stem}_${n}${ext}`;
-      taken.add(f.name);
-    };
-    for (const f of Object.values(files)) {
-      if (f.name === path) rename(f, baseName(f.name));
-      else if (f.name.startsWith(prefix)) rename(f, f.name.slice(prefix.length));
+    const active = localStorage.getItem(SANDBOX_ACTIVE);
+    for (const [id, f] of Object.entries(files)) {
+      if (f.name === path || f.name.startsWith(prefix)) {
+        delete files[id];
+        if (active === id) localStorage.removeItem(SANDBOX_ACTIVE);
+      }
     }
     saveAll(files);
     saveFolders(loadFolders().filter((p) => p !== path && !p.startsWith(prefix)));
+  },
+
+  /** 删除文件夹时给确认框用：该文件夹（含子目录）下会被一起删掉的文件数 */
+  countFilesUnder(path: string): number {
+    const prefix = path + '/';
+    return Object.values(loadAll()).filter((f) => f.name.startsWith(prefix)).length;
   },
 
   /** 把文件移动到 folder（'' = 根目录），重名自动加 _1 后缀 */
@@ -269,7 +346,7 @@ export const sandboxStore = {
     const files = loadAll();
     const src = files[id];
     if (!src) return null;
-    const dir = src.name.includes('/') ? src.name.slice(0, src.name.lastIndexOf('/')) : '';
+    const dir = dirOf(src);
     return this.copyFile(id, dir);
   },
 };
@@ -287,7 +364,7 @@ export const customGateStore = {
       const isGate = f.kind === 'gate';
       if (!isPart && !isGate) continue;
       const name = baseName(f.name).replace(/\.(djs|gate|json)$/i, '');
-      const dir = f.name.includes('/') ? f.name.slice(0, f.name.lastIndexOf('/')) : '';
+      const dir = dirOf(f);
       if (seen.has(name)) continue;
       seen.add(name);
       out.push({ id: f.id, name, folder: dir });
@@ -302,7 +379,7 @@ export const customGateStore = {
     return {
       id: f.id,
       name: baseName(f.name).replace(/\.(djs|gate|json)$/i, ''),
-      folder: f.name.includes('/') ? f.name.slice(0, f.name.lastIndexOf('/')) : '',
+      folder: dirOf(f),
     };
   },
 

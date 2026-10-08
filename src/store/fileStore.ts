@@ -3,6 +3,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { parseVerilogModules } from '../lib/verilog';
+import { parentDir } from '../lib/vpath';
 
 export interface FileEntry {
   id: string;
@@ -197,6 +198,12 @@ export const fileStore = {
     notify();
   },
 
+  /** 该文件夹（含子目录）下会被一并删除的文件数——删除确认框用它把话说清楚（R102） */
+  countFilesUnder(name: string): number {
+    const prefix = name + '/';
+    return files.filter((f) => f.name.startsWith(prefix)).length;
+  },
+
   /** Save file content to disk (without re-parsing) */
   saveContent(id: string, content: string): void {
     const file = files.find((f) => f.id === id);
@@ -252,7 +259,7 @@ export const fileStore = {
     let resolvedName = newName;
     if (targetExists) {
       const fileName = newName.split('/').pop() || newName;
-      const parentFolder = newName.includes('/') ? newName.split('/').slice(0, -1).join('/') : '';
+      const parentFolder = parentDir(newName);
       const uniqueName = this.getUniqueName(fileName, parentFolder || undefined);
       resolvedName = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
     }
@@ -279,7 +286,7 @@ export const fileStore = {
     let resolvedPath = newPath;
     if (targetExists) {
       const fileName = newPath.split('/').pop() || newPath;
-      const parentFolder = newPath.includes('/') ? newPath.split('/').slice(0, -1).join('/') : '';
+      const parentFolder = parentDir(newPath);
       const uniqueName = this.getUniqueName(fileName, parentFolder || undefined);
       resolvedPath = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
     }
@@ -306,7 +313,7 @@ export const fileStore = {
     let resolvedPath = newPath;
     if (targetExists) {
       const folderName = newPath.split('/').pop() || newPath;
-      const parentFolder = newPath.includes('/') ? newPath.split('/').slice(0, -1).join('/') : '';
+      const parentFolder = parentDir(newPath);
       const uniqueName = this.getUniqueName(folderName, parentFolder || undefined);
       resolvedPath = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
     }
@@ -396,7 +403,7 @@ export const fileStore = {
     if (!file) return null;
 
     const fileName = file.name.split('/').pop() || file.name;
-    const parentFolder = targetFolder ?? (file.name.includes('/') ? file.name.split('/').slice(0, -1).join('/') : '');
+    const parentFolder = targetFolder ?? parentDir(file.name);
     const uniqueName = this.getUniqueName(fileName, parentFolder || undefined);
     const newPath = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
 
@@ -424,7 +431,7 @@ export const fileStore = {
   /** Copy a folder and all its contents to the same parent with auto-incremented name, or to a target folder */
   copyFolder(sourcePath: string, targetFolder?: string): string | null {
     const folderName = sourcePath.split('/').pop() || sourcePath;
-    const parentFolder = targetFolder ?? (sourcePath.includes('/') ? sourcePath.split('/').slice(0, -1).join('/') : '');
+    const parentFolder = targetFolder ?? parentDir(sourcePath);
     const uniqueName = this.getUniqueName(folderName, parentFolder || undefined);
     const newPath = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
 

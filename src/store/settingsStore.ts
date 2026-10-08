@@ -20,6 +20,8 @@ export interface SandboxSettings {
   defaultBits: number;
   /** 打开沙盒时自动运行仿真 */
   autoStartSim: boolean;
+  /** 仿真步进间隔（ms）—— 波形调试速度，与编译模式的 SPEED 滑条同一量纲 */
+  simSpeedMs: number;
 }
 
 const DEFAULT_SANDBOX: SandboxSettings = {
@@ -29,6 +31,7 @@ const DEFAULT_SANDBOX: SandboxSettings = {
   wireStyle: 'metro',
   defaultBits: 1,
   autoStartSim: true,
+  simSpeedMs: 10,
 };
 
 function getSavedFontSize(): number {

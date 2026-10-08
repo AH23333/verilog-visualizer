@@ -19,12 +19,16 @@ export default function ConfirmDialog({
   title, message, detail, confirmLabel = 'OK', danger, onAccept, onCancel,
 }: ConfirmDialogProps) {
   const okRef = useRef<HTMLButtonElement>(null);
+  // Esc 关窗的回调要经 ref：父组件每次渲染都新建箭头函数，把它写进依赖表＝每渲染一次
+  // 就"摘掉旧的、挂上新的"一轮，按下那一刻挂没挂上是运气（r84 实测：事件到了 document 而弹窗没关）。
+  const cancelRef = useRef(onCancel);
+  cancelRef.current = onCancel;
   useEffect(() => {
     const t = setTimeout(() => okRef.current?.focus(), 0);
-    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
+    const key = (e: KeyboardEvent) => { if (e.key === 'Escape') cancelRef.current(); };
     window.addEventListener('keydown', key);
     return () => { clearTimeout(t); window.removeEventListener('keydown', key); };
-  }, [onCancel]);
+  }, []);
 
   const btnBase: CSSProperties = {
     height: 28, padding: '0 14px', borderRadius: 'var(--radius-md)',

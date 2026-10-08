@@ -2,7 +2,7 @@
 import { X } from 'lucide-react';
 // hand-maintained copy (see src/lib/shortcuts.ts).
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { SHORTCUTS, SHORTCUT_GROUPS, type ShortcutDef } from '../lib/shortcuts';
 
 interface ShortcutsHelpDialogProps {
@@ -10,13 +10,17 @@ interface ShortcutsHelpDialogProps {
 }
 
 export default function ShortcutsHelpDialog({ onClose }: ShortcutsHelpDialogProps) {
+  // Esc 关窗的回调要经 ref：父组件每次渲染都新建箭头函数，把它写进依赖表＝每渲染一次就
+  // "摘掉旧的、挂上新的"一轮，按下那一刻挂没挂上是运气（本仓 r84 实测：事件到了 document 而弹窗没关）。
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') closeRef.current();
     };
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
-  }, [onClose]);
+  }, []);
 
   const groups: Record<string, ShortcutDef[]> = {};
   for (const group of SHORTCUT_GROUPS) {

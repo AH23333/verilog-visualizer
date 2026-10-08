@@ -11,6 +11,9 @@ interface TabBarProps {
   onReorderTabs: (fileIds: string[]) => void;
   /** Right-aligned actions area (VS Code-style editor toolbar living in the tab row) */
   rightSlot?: ReactNode;
+  /** R103：左侧插槽——编译模式的功能按钮组要**左对齐**（与沙盒顶栏一致），
+   *  以前只能塞右槽（marginLeft:auto ⇒ 永远贴右边）。 */
+  leftSlot?: ReactNode;
 }
 
 export default function TabBar({
@@ -22,6 +25,7 @@ export default function TabBar({
   onCloseTab,
   onReorderTabs,
   rightSlot,
+  leftSlot,
 }: TabBarProps) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
@@ -65,7 +69,7 @@ export default function TabBar({
     dragRef.current = null;
   }, []);
 
-  if (openFiles.length === 0 && !rightSlot) return null;
+  if (openFiles.length === 0 && !rightSlot && !leftSlot) return null;
 
   return (
     <div
@@ -155,6 +159,12 @@ export default function TabBar({
           </div>
         );
       })}
+      {leftSlot && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '0 10px', flexShrink: 0,
+        }}>{leftSlot}</div>
+      )}
       {rightSlot && (
         <div style={{
           marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 10,
