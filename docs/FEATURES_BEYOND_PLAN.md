@@ -96,6 +96,7 @@
 | FSM 状态机 | 右键「转移表…」（`FsmTableModal`）重建状态图与弧线 |
 | n 元门（And/Or/Nand/Nor/Xor/Xnor） | 右键「输入引脚数 2–16」（`inputs` 是构造期参数，改完重建端口） |
 | NumDisplay / NumEntry | 画布内原生 `<select>` 改进制；`numbase` 已进序列化清单（存盘重开不丢） |
+| 常量折叠显示（R114） | 只读渲染链借上游 `transform.integrateArithConstant`：运算器+Constant 喂入 → `+5` 圆圈（宿主 id/连线/源码跳行保留；沙盒编辑画布与存档**不折叠**；设置可关） |
 
 **边界**：`signed / fillx / words / offset` 四项与上游清单对齐，但本仓**现场没能复现**其丢失后果
 （裸 `techmap` 会把 `$mul/$div` 打散成门），不算"已修掉的可见缺陷"。

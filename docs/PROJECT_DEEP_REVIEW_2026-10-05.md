@@ -1491,3 +1491,47 @@ R113 给 `tests/_ui.cjs` 的 `menuClick` 加固时（防「命中上一次残留
   分别因本批夹具回归与菜单竞态，现已修复并复验。
 - tsc 0 错；临时探针已全部自行清理（`tests/.tmp-*` 与根目录遗留截图）。
 - R94→R113 累积改动**仍未提交**（按约定不自动 commit）。
+---
+
+## 卷十六（2026-10-08）：R114 常量折叠显示（digitaljs 功能深入 → 拓展批第一刀）
+
+### ① 批次缘起与盘点更正
+
+- 用户指令：验证 R113 质检后「继续深入 digitaljs 功能、拓展项目功能」，方向经确认排为
+  **常量折叠显示 → UI 一致性 → yosys 构建** 三批依次。
+- **盘点更正留档**：早前字面量探针误读 palette 覆盖面（未扫数组常量形态）得出「缺 16 颗器件」，
+  重盘后真实差集只有 **14 颗 `*Const` 融合运算器 + BusRegroup/GenMux**；后者已被 r76 账目判
+  「一放就崩/抽象基类，不接」，前者经源码查实是 digitaljs `transform.js` 的 `integrateArithConstant`
+  **展示期折叠产物**（OpenCircuits 把加法器+常量喂入显示为 `+5` 圆圈），不是元件库缺条目。
+  yosys2digitaljs 0.10.3 的 core.js 对该族**零引用** ⇒ 编译产物不直接发射，纯显示语义。
+
+### ② 方案与边界（加法式，零回归）
+
+- 新 `src/lib/displayFold.ts`：`foldArithConstants(digitaljs, json)` ——借上游 transform，只挂
+  `integrateArithConstant` 一条变换（其余五条约等于自研已有功能：makeNAryGates≈扇入编辑、
+  makeDffWithEnable≈寄存器 EN/RST、makeBinaryMuxes≈稀疏选择器），且 fs 传入**形态守卫包装**。
+- **注入点只有两处只读渲染入口**：`Canvas.tsx` 编译主视图 `new Circuit` 前；`subcircuitView.renderCircuitView`
+  的 `constructCircuit` 前。沙盒**可编辑画布从不经过折叠**（R37 可编辑红线），闸门以负断言钉住。
+- 设置项 `sandbox.foldConstants`（默认开，localStorage 旧档自动补默认）；关时**原样返回输入引用**。
+
+### ③ 上游脆弱点（本代发现）
+
+- `transform.js:97` 无条件读 `dev.signed.in1`：编译产物带 `signed` 对象无碍，但**手绘电路反向导出的
+  circuit JSON 可能不带** ⇒ 一颗炸拖垮整模块折叠。`displayFold` 的 `signedShapeOk` 按器件形态跳过
+  （闸门 [11] 用真实上游抛出实证 + 本仓守卫文本双向钉住）；外层 try/catch 再保底：折叠失败渲染原图，绝不白屏。
+
+### ④ 证据链
+
+- 专项闸门 `tests/r114-const-fold-gate.cjs` **11/11**：折叠发生/宿主 id·label·net·source_positions 保留/
+  连线重排到 in/常量多扇出保留 Constant/幂等/subcircuits 递归/operation 行为等价/接线正反断言/浏览器 bundle 可达。
+- 一次性真机取证（跑完已删）：**5/5** ——真实 Edge + 真实 window.digitaljs bundle + 真实设置面板开关
+  往返（默认开折叠成立 / 关时原引用 / 再开复折 / 全程无页面异常）。
+- 全量回归：见下一节补记。
+
+### ⑤ R114 最终状态
+
+- **全量 62 格：RED=0 ENVRED=0 GREEN=62 NOVERDICT=0**（`tests/.out-run-all-r114.txt`），
+  新格 `r114-const-fold-gate` 首跑即 11/11 绿；qc-preview 族走 ensureFreshDist 自动重编判绿。
+- 专项闸门 11/11 + 一次性真机取证 5/5（真实 Edge/浏览器 bundle/设置往返）双轨全绿。
+- tsc 0 错；临时探针与一次性取证脚本已全部自行清理。
+
