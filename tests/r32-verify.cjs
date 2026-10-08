@@ -91,7 +91,7 @@ const sidebarTitle = (page) => page.evaluate(() => {
       w: document.querySelector('[data-sandbox-sidebar]').getBoundingClientRect().width,
       saved: parseFloat(localStorage.getItem('verilog-viz-sandbox-w') || ''),
     }));
-    // 往回拖过头，验证下限 160
+    // 往回拖过头，验证下限 180（R115a 起与编译模式侧栏同区间 180–500）
     await page.mouse.move(handleBox.x + 90, handleBox.y);
     await page.mouse.down();
     await page.mouse.move(handleBox.x + 90 - 500, handleBox.y, { steps: 10 });
@@ -101,8 +101,8 @@ const sidebarTitle = (page) => page.evaluate(() => {
       saved: parseFloat(localStorage.getItem('verilog-viz-sandbox-w') || ''),
     }));
     console.log('    侧栏宽度:', JSON.stringify({ w0, w1, w2 }));
-    (Math.abs(w0 - 200) < 6 && Math.abs(w1.w - (w0 + 90)) < 8 && Math.abs(w1.saved - w1.w) < 2
-      && Math.abs(w2.w - 160) < 6)
+    (Math.abs(w0 - 240) < 6 && Math.abs(w1.w - (w0 + 90)) < 8 && Math.abs(w1.saved - w1.w) < 2
+      && Math.abs(w2.w - 180) < 6)
       ? ok('[1] 侧栏拖拽调宽生效且持久化', `${w0} → ${Math.round(w1.w)} → ${Math.round(w2.w)}（下限 160）`)
       : bad('[1] 侧栏调宽异常', JSON.stringify({ w0, w1, w2 }));
 
