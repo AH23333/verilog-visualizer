@@ -507,7 +507,7 @@ export default function Sidebar({
           borderBottom: '1px solid var(--border)',
           color: 'var(--text-secondary)',
         }}>
-        <span className="text-[var(--fs-xs)] font-semibold uppercase tracking-[0.08em]">文件</span>
+        <span className="text-[length:var(--fs-xs)] font-semibold uppercase tracking-[0.08em]">文件</span>
         <div className="flex gap-0.5">
           <button
             onClick={onImportFile}

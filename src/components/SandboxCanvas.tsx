@@ -800,16 +800,16 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   const [waveOpen, setWaveOpen] = useState(false);
   const [memViewCell, setMemViewCell] = useState<any>(null);
   const waveTickRef = useRef(0);
-  // 沙盒左栏可调宽度（问题 1）：160–420px，持久化到 localStorage
+  // 沙盒左栏可调宽度（问题 1）：180–500px、默认 240px——与编译模式侧栏同一套（App.sidebarWidth）
   const [sidebarW, setSidebarW] = useState<number>(() => {
-    try { const v = parseFloat(localStorage.getItem('verilog-viz-sandbox-w') || ''); return isNaN(v) ? 200 : Math.min(420, Math.max(160, v)); } catch { return 200; }
+    try { const v = parseFloat(localStorage.getItem('verilog-viz-sandbox-w') || ''); return isNaN(v) ? 240 : Math.min(500, Math.max(180, v)); } catch { return 200; }
   });
   const onSidebarWDragStart = useCallback((e: React.MouseEvent) => {
     e.preventDefault(); e.stopPropagation();
     const startX = e.clientX;
     const startW = (document.querySelector('[data-sandbox-sidebar]') as HTMLElement | null)?.getBoundingClientRect().width ?? 200;
     const onMove = (ev: MouseEvent) => {
-      const w = Math.min(420, Math.max(160, startW + (ev.clientX - startX)));
+      const w = Math.min(500, Math.max(180, startW + (ev.clientX - startX)));
       setSidebarW(w);
       try { localStorage.setItem('verilog-viz-sandbox-w', String(w)); } catch {}
     };
@@ -3775,7 +3775,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       `}</style>
       {sidebarCollapsed ? (
         <div style={{
-          width: 36, borderRight: '1px solid var(--border-subtle)',
+          width: 36, borderRight: '1px solid var(--border)',
           display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0,
           background: 'var(--sidebar-bg)', paddingTop: 8,
         }}>
@@ -3787,14 +3787,14 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         </div>
       ) : (
       <div data-sandbox-sidebar style={{
-        width: sidebarW, borderRight: '1px solid var(--border-subtle)',
+        width: sidebarW, borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', flexShrink: 0,
         // zIndex:2 —— 把整个侧栏（含右缘 3px 拖拽手柄）抬到画布 wrapper 之上，
         // 否则外露的手柄条被后渲染的绝对定位画布盖住，拖不动；侧栏内部
         // 局部层级仍由内容容器 zIndex:1 > 手柄 决定，按钮点击不受影响。
         background: 'var(--sidebar-bg)', position: 'relative', zIndex: 2,
       }}>
-        {/* 右缘拖拽手柄（问题 1）：悬停变色，拖动调宽 160–420px。
+        {/* 右缘拖拽手柄（问题 1）：悬停变色，拖动调宽 180–500px。
             下方两个内容容器带 position:relative + zIndex:1 —— 盖在手柄之上，
             按钮点击不被拦截；手柄只在未被内容盖住的右缘空隙接收事件。 */}
         <div
@@ -3809,7 +3809,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)',
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           position: 'relative', zIndex: 1 }}>
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.08em' }}>
+          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
             {SANDBOX_PANEL_TITLE[leftPanel] || '文件'}
           </span>
           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -4089,7 +4089,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
               return (<>
           <div data-sandbox-debug-bar style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
-            paddingLeft: 8, marginLeft: 2, borderLeft: '1px solid var(--border)',
+            padding: '4px 10px', background: 'var(--surface)',
+            border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
           }}>
             <button
               onClick={handlePlayPause}

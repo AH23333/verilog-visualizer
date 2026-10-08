@@ -62,17 +62,17 @@ export default function ModulePanel({
       {/* Header */}
       <div
         style={{
-          padding: '8px 14px',
-          fontSize: 'var(--fs-sm)',
+          padding: '10px 14px',
+          fontSize: 'var(--fs-xs)',
           fontWeight: 600,
           color: 'var(--text-secondary)',
           textTransform: 'uppercase',
-          letterSpacing: '0.6px',
-          borderBottom: '1px solid var(--border-subtle)',
+          letterSpacing: '0.08em',
+          borderBottom: '1px solid var(--border)',
           flexShrink: 0,
         }}
       >
-        Modules
+        模块
       </div>
 
       {/* File list with modules */}

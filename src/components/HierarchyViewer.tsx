@@ -107,11 +107,11 @@ export default function HierarchyViewer({ files, targetFileId, onSelectFile, the
     }}>
       {/* Header */}
       <div style={{
-        padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)',
-        fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-secondary)',
-        textTransform: 'uppercase', letterSpacing: '0.05em',
+        padding: '10px 14px', borderBottom: '1px solid var(--border)',
+        fontSize: 'var(--fs-xs)', fontWeight: 600, color: 'var(--text-secondary)',
+        textTransform: 'uppercase', letterSpacing: '0.08em',
       }}>
-        Hierarchy
+        层次结构
       </div>
 
       {/* Tree view */}
