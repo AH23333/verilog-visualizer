@@ -1644,3 +1644,41 @@ R113 给 `tests/_ui.cjs` 的 `menuClick` 加固时（防「命中上一次残留
   在拦截范围内）。若用户后续在**无嵌套**的部件上再遇渲染失败，拿错误原文（冒号后的 xxx）回来定位。
 - R114 的教训进闸门纪律：**展示变换类改动，判据必须过「输出→真实消费方」全链**，函数返回值形状断言不算数。
 
+---
+
+## 卷二十（2026-10-09）：R117 布尔表达式 → 电路图（OpenCircuits ExprToCircuitPopup 借鉴批）
+
+### ① 调研与裁决
+
+- 用户指令「继续参考 OpenCircuits 已有功能扩展本项目」。实地盘点 OpenCircuits src（monorepo：
+  digital/site 主前端），功能面 = ExprToCircuitPopup（表达式→电路）、ICDesigner/ICViewer（物理 IC 封装）、
+  SelectionPopup（浮动属性面板）、SimControls、ChangelogPopup 等。
+- 差集裁决：**表达式生成**是真实缺口（本仓有 Verilog 编译链但无布尔表达式直绘快速路径，教育价值高、
+  功能面独立）；ICDesigner/ICViewer 与数字教学定位远、成本高，缓；SelectionPopup 与本仓右键参数编辑
+  功能等价（形态差异），缓。
+- 上游 API 体系不同（shared/api/circuit vs 本仓 joint cells）⇒ **吸收算法与交互概念，生成逻辑自研适配**。
+
+### ② 落地
+
+- `src/lib/exprToCircuit.ts`：词法（多算符格式：&/&&/* AND、|/||/+ OR、^/^^ XOR、!/~/NOT 大小写不敏感）
+  → 语法（上游优先级递归 | < ^ < & < ! < 括号final + 同型并 + >8 嵌套分桶 + isNot 融合）→ 本仓 cells 生成
+  （Input/Output net=变量名、门 inputs 扇入、深度列布局）+ evalExpr 独立真值实现（判据对拍用）。
+- `ExprGenDialog.tsx`：实时预览摘要/中文错误/示例 chips/输出名（吸取卷十七教训，字号全 inline 不踩死类）。
+- SandboxCanvas 顶栏「表达式生成」→ `insertCellsAt`（撤销/批号 id/仿真自举全复用）。
+
+### ③ 证据与闸门演进
+
+- `tests/r117-expr-gate.cjs` **8/8**：弹窗/拓扑/Nand 融合/括号 final/中文错误+按钮禁用/
+  **8 组真值表 digitaljs 引擎实跑对拍**/撤销/无异常。首跑三红全是夹具账（线数算错、测试用例设计错、
+  多批生成污染）+ Vector3vl String 前缀坑（r50 vec() 注释在案，NaN→JSON null 假象），逐一按事实修正——
+  产品代码零改动，判据对齐设计意图。
+- 引擎单测（tsc 直编 .cjs 跑）：12 用例全对（含 9 输入嵌套分桶 And[8]+And[2]）。
+  坑：仓库 package.json type:module ⇒ tsc 产物 .js 被当 ESM 空导出，拷 .cjs 才可见 exports。
+- 全量批与提交状态见下节补记。
+
+### ④ R117 最终状态
+
+- **全量 64 格：RED=0 GREEN=63 + 1 格 ENVRED（r68-fanin-gate，pass=0 fail=0＝未判成）**；
+  r68 单独重跑 **8/8 全绿**——环境竞态坐实，有效判定 **64/64**（`tests/.out-run-all-r117.txt`）。
+- tsc 0 错；引擎单测 12 用例全对；一次性探针/编译试验产物全部自清。
+
