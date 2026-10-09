@@ -4,24 +4,24 @@
 // 天然支持撤销/存盘/导出 Verilog/仿真——与上游"生成即入画布"同构）。
 //
 // R118：多输出语句 + CSE 公共子表达式共享 + 直接存部件（上游 isIC 概念本地化）。
-// R119：**多位总线与切片**——`a[3:1]`、`a[0]`；位宽自动推断（切片最大下标+1）；
-//       运算数位宽必须一致（不一致给中文错误，不猜扩展）；切片落 BusSlice 器件。
+// R119：多位总线与切片——a[3:1]、a[0]；位宽自动推断；BusSlice 落器件；位宽校验不猜扩展。
+// R120：**拼接 {A, B}**（Verilog 语义：左高右低 → BusGroup，in0=最低位）+ **常量 0/1**。
 //
 // 语法：
 //   与 & && * AND   或 | || + OR   异或 ^ ^^ XOR   非 ! ~ NOT
-//   括号 ( )；赋值 =；语句分隔 ; / 换行；切片 var[msb:lsb] / var[i]
-//   变量 [A-Za-z_][A-Za-z0-9_]*（AND/OR/XOR/NOT 关键字形式不区分大小写）
-//   优先级：或 < 异或 < 与 < 非 < 括号
+//   括号 ( )；拼接 { , }（逗号分隔，左高右低）；常量 0 / 1（多位常量用拼接 {1,1,0,1}）
+//   赋值 =；语句分隔 ; / 换行；切片 var[msb:lsb] / var[i]
+//   优先级：或 < 异或 < 与 < 非 < 拼接 < 括号
 // 结构语义（照抄上游，逐条有判据）：
-//   - 同型结合：a&b&c&d → 一颗 4 输入 And（CSE 序敏感，保守不猜等价）
-//   - 括号定型：(a|b)|(c|d) → 三颗二输入 Or，不并成 4 输入（上游 final 标记）
-//   - 反相融合：!(a&b) → 一颗 Nand（上游 isNot → NegatedTypeToGate）
-//   - 扇入上限 8：超出的同型链嵌套分桶（上游 generateNestedTrees）
+//   - 同型结合；括号定型（final）；反相融合（isNot→Nand）；扇入上限 8 嵌套分桶
+//   - CSE：结构键严格同构（子序敏感）共享一颗门；拼接同样入共享池
 
 export type ExprNode =
   | { kind: 'leaf'; ident: string; slice?: { msb: number; lsb: number } }
+  | { kind: 'const'; v: 0 | 1 }
   | { kind: 'unop'; child: ExprNode }
-  | { kind: 'binop'; type: '&' | '|' | '^'; isNot: boolean; children: ExprNode[] };
+  | { kind: 'binop'; type: '&' | '|' | '^'; isNot: boolean; children: ExprNode[] }
+  | { kind: 'concat'; parts: ExprNode[] };
 
 export interface ExprGenOptions {
   /** 无赋值语句时的输出端口名（默认 'Y'）；Input/Output 器件的 net 即端口名，导出 Verilog 同名 */
@@ -49,7 +49,7 @@ export interface ExprGenError {
 
 // ---------- 词法 ----------
 type Tok =
-  | { t: '(' | ')' | '&' | '|' | '^' | '!' | '=' | ';' | '[' | ']' | ':' }
+  | { t: '(' | ')' | '&' | '|' | '^' | '!' | '=' | ';' | '[' | ']' | ':' | '{' | '}' | ',' }
   | { t: 'var'; name: string }
   | { t: 'num'; v: number };
 
@@ -68,6 +68,9 @@ function lex(src: string): { tokens?: Tok[]; error?: string } {
     if (/\s/.test(c)) { i++; continue; }
     if (c === '(') { tokens.push({ t: '(' }); i++; continue; }
     if (c === ')') { tokens.push({ t: ')' }); i++; continue; }
+    if (c === '{') { tokens.push({ t: '{' }); i++; continue; }
+    if (c === '}') { tokens.push({ t: '}' }); i++; continue; }
+    if (c === ',') { tokens.push({ t: ',' }); i++; continue; }
     if (c === '[') { tokens.push({ t: '[' }); i++; continue; }
     if (c === ']') { tokens.push({ t: ']' }); i++; continue; }
     if (c === ':') { tokens.push({ t: ':' }); i++; continue; }
@@ -114,7 +117,7 @@ function lex(src: string): { tokens?: Tok[]; error?: string } {
 }
 
 // ---------- 语法（优先级递归下降，移植上游 generateInputTreeCore） ----------
-const PREC = ['|', '^', '&', '!', '('] as const;
+const PREC = ['|', '^', '&', '!', '{', '('] as const;
 const MAX_FAN = 8; // 上游同值：digitaljs 门扇入习惯上限
 const MAX_BIT = 32; // 本仓位宽习惯上限（与器件参数编辑 1–32 对齐）
 
@@ -141,7 +144,7 @@ function parseLeaf(toks: Tok[], pos: number): { node: ExprNode; pos: number } {
     }
     if (!toks[pos] || toks[pos].t !== ']') throw new ParseError('切片缺 "]"');
     pos++;
-    if (lo > hi) { const t = lo; lo = hi; hi = t; } // a[0:3] 容忍，按 [3:0] 理解
+    if (lo > hi) { const tmp = lo; lo = hi; hi = tmp; } // a[0:3] 容忍，按 [3:0] 理解
     if (hi >= MAX_BIT) throw new ParseError(`切片下标 ${hi} 超过位宽上限 ${MAX_BIT}`);
     return { node: { kind: 'leaf', ident: tk.name, slice: { msb: hi, lsb: lo } }, pos };
   }
@@ -153,7 +156,7 @@ function parseCore(toks: Tok[], pos: number, precIdx: number): { node: ExprNode;
   const next = (precIdx + 1) % PREC.length;
   const tk = toks[pos];
   if (!tk) throw new ParseError('表达式意外结束（缺右操作数？）');
-  if (tk.t === ')' || tk.t === ';' || tk.t === '=') {
+  if (tk.t === ')' || tk.t === ';' || tk.t === '=' || tk.t === '}' || tk.t === ',') {
     if (tk.t === ')') {
       const prev = toks[pos - 1];
       if (prev && prev.t === '(') throw new ParseError('空括号 ()');
@@ -162,10 +165,34 @@ function parseCore(toks: Tok[], pos: number, precIdx: number): { node: ExprNode;
     throw new ParseError(`缺少左操作数（"${tk.t}"）`);
   }
   if (op === '(') {
+    // primary 层：只有真括号才吃 '('；var/num 直接消费（R120：'{' 层内容解析也转调到这里，
+    // 无守卫的话 var 会被当成括号误吃——用例 y={a[1:0],b[1:0]} 报「缺少左操作数（[）」实证）
+    if (tk.t === 'var') return parseLeaf(toks, pos);
+    if (tk.t === 'num') {
+      if (tk.v !== 0 && tk.v !== 1) throw new ParseError('常量只能是 0 或 1（多位常量用拼接，如 {1,1,0,1}）');
+      return { node: { kind: 'const', v: tk.v as 0 | 1 }, pos: pos + 1 };
+    }
+    if (tk.t !== '(') throw new ParseError(`缺少左操作数（"${tk.t}"）`);
     pos++; // 吃掉 '('
     const r = parseCore(toks, pos, next);
     if (!toks[r.pos] || (toks[r.pos] as Tok).t !== ')') throw new ParseError('括号不匹配：缺 ")"');
     return { node: r.node, pos: r.pos + 1, final: true }; // 上游 final：括号内容不并入更大的同型门
+  }
+  if (op === '{') {
+    pos++; // 吃 '{'
+    const parts: ExprNode[] = [];
+    // 内容是完整表达式（含 & |）——回最低层解析（与上游括号层 next 回绕同理）
+    const first = parseCore(toks, pos, 0);
+    parts.push(first.node);
+    let p = first.pos;
+    while (toks[p] && (toks[p] as Tok).t === ',') {
+      const r = parseCore(toks, p + 1, 0);
+      parts.push(r.node);
+      p = r.pos;
+    }
+    if (!toks[p] || (toks[p] as Tok).t !== '}') throw new ParseError('拼接缺 "}"');
+    if (parts.length < 2) throw new ParseError('拼接至少要两项（{a, b}）——单项直接写表达式即可');
+    return { node: { kind: 'concat', parts }, pos: p + 1, final: true };
   }
   if (op === '!') {
     if (tk.t === '!') {
@@ -174,8 +201,13 @@ function parseCore(toks: Tok[], pos: number, precIdx: number): { node: ExprNode;
       if (rt.kind === 'binop' && !rt.isNot) { rt.isNot = true; return { node: rt, pos: r.pos }; } // !(a&b)→Nand 融合
       return { node: { kind: 'unop', child: rt }, pos: r.pos };
     }
-    if (tk.t === '(') return parseCore(toks, pos, next);
+    if (tk.t === '(') return parseCore(toks, pos, PREC.length - 1); // 括号层（勿走 '{' 层——R120 路由拆分）
+    if (tk.t === '{') return parseCore(toks, pos, next); // '{' 层
     if (tk.t === 'var') return parseLeaf(toks, pos);
+    if (tk.t === 'num') {
+      if (tk.v !== 0 && tk.v !== 1) throw new ParseError(`常量只能是 0 或 1（多位常量用拼接，如 {1,1,0,1}）`);
+      return { node: { kind: 'const', v: tk.v as 0 | 1 }, pos: pos + 1 };
+    }
     throw new ParseError(`缺少左操作数（"${tk.t}"）`);
   }
   // 二元优先级层
@@ -222,14 +254,16 @@ function normalizeNewlines(src: string): string {
   return src.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).join('; ');
 }
 
-// ---------- 电路化（本仓 cells 格式 + CSE 共享池 + R119 位宽） ----------
+// ---------- 电路化（本仓 cells 格式 + CSE 共享池 + 位宽） ----------
 const GATE_NAME: Record<string, string> = { '&': 'And', '|': 'Or', '^': 'Xor' };
 const NEG_GATE_NAME: Record<string, string> = { '&': 'Nand', '|': 'Nor', '^': 'Xnor' };
 
 /** 结构键（CSE 用）：严格同构（子序敏感——a&b 与 b&a 视为不同，保守不猜） */
 function structKey(n: ExprNode): string {
   if (n.kind === 'leaf') return n.slice ? `v:${n.ident}[${n.slice.msb}:${n.slice.lsb}]` : `v:${n.ident}`;
+  if (n.kind === 'const') return `c:${n.v}`;
   if (n.kind === 'unop') return `!(${structKey(n.child)})`;
+  if (n.kind === 'concat') return `{}(${n.parts.map(structKey).join(',')})`;
   return `${n.isNot ? 'N' : ''}${n.type}(${n.children.map(structKey).join(',')})`;
 }
 
@@ -262,7 +296,7 @@ export function expressionToCircuit(src: string, opts: ExprGenOptions = {}): Exp
       const r = parseCore(exprToks, 0, 0);
       if (r.pos < exprToks.length) {
         const bad = exprToks[r.pos];
-        return { error: bad.t === ')' ? '括号不匹配：多余的 ")"' : `缺少运算符（"${bad.t === 'var' ? (bad as any).name : bad.t}" 附近）` };
+        return { error: bad.t === ')' ? '括号不匹配：多余的 ")"' : bad.t === '}' ? '拼接缺 "}"' : `缺少运算符（"${bad.t === 'var' ? (bad as any).name : bad.t}" 附近）` };
       }
       parsed.push({ out: outName, tree: r.node });
     } catch (e) {
@@ -280,15 +314,19 @@ export function expressionToCircuit(src: string, opts: ExprGenOptions = {}): Exp
       varBits[n.ident] = Math.max(varBits[n.ident] || 1, need);
       return;
     }
+    if (n.kind === 'const') return;
     if (n.kind === 'unop') return walkVar(n.child);
+    if (n.kind === 'concat') return n.parts.forEach(walkVar);
     n.children.forEach(walkVar);
   };
   parsed.forEach((p) => walkVar(p.tree));
 
-  // 位宽校验（R119）：binop 各子树位宽必须一致；unop 子任意（同宽输出）
+  // 位宽计算 + 校验（R119/R120）：binop 各子树等宽；concat = 部件之和
   const widthOf = (n: ExprNode): number => {
     if (n.kind === 'leaf') return n.slice ? n.slice.msb - n.slice.lsb + 1 : varBits[n.ident];
+    if (n.kind === 'const') return 1;
     if (n.kind === 'unop') return widthOf(n.child);
+    if (n.kind === 'concat') return n.parts.reduce((a, p) => a + widthOf(p), 0);
     const ws = n.children.map(widthOf);
     if (ws.some((w) => w !== ws[0])) throw new ParseError(
       `位宽不一致（${opSymbol(n.type)} 的运算数需要等宽）——多位请用切片：a[${ws[0] - 1}:0]`);
@@ -298,15 +336,19 @@ export function expressionToCircuit(src: string, opts: ExprGenOptions = {}): Exp
   catch (e) { if (e instanceof ParseError) return { error: e.message }; throw e; }
 
   const depth = (n: ExprNode): number =>
-    n.kind === 'leaf' ? 0 : n.kind === 'unop' ? depth(n.child) + 1 : Math.max(...n.children.map(depth)) + 1;
+    n.kind === 'leaf' ? 0 : n.kind === 'const' ? 0
+      : n.kind === 'unop' ? depth(n.child) + 1
+        : n.kind === 'concat' ? Math.max(...n.parts.map(depth)) + 1
+          : Math.max(...n.children.map(depth)) + 1;
   const maxD = Math.max(1, ...parsed.map((p) => depth(p.tree)));
   const COL_X = (d: number) => 120 + d * 170;
 
   const cells: any[] = [];
   const gateCounts: Record<string, number> = {};
   const placed = new Map<string, PlacedRef>(); // 变量全宽 → Input cell
+  const constRef = new Map<string, PlacedRef>(); // 0/1 → Constant cell（CSE）
   const sliceRef = new Map<string, PlacedRef>(); // var[msb:lsb] → BusSlice cell（CSE）
-  const cse = new Map<string, PlacedRef>();     // 门结构键 → cell（CSE）
+  const cse = new Map<string, PlacedRef>();     // 门/拼接结构键 → cell（CSE）
   const wire = (from: string, fp: string, to: string, tp: string) =>
     ({ isLink: true, source: { id: from, port: fp }, target: { id: to, port: tp }, netname: `N${cells.length}` });
   let leafRow = 0;
@@ -315,9 +357,13 @@ export function expressionToCircuit(src: string, opts: ExprGenOptions = {}): Exp
   const place = (n: ExprNode): PlacedRef => {
     if (n.kind === 'leaf') {
       const bits = n.slice ? n.slice.msb - n.slice.lsb + 1 : varBits[n.ident];
-      if (!n.slice || n.slice.msb === varBits[n.ident] - 1 && n.slice.lsb === 0 && varBits[n.ident] === bits) {
+      if (!n.slice || (n.slice.msb === varBits[n.ident] - 1 && n.slice.lsb === 0 && varBits[n.ident] === bits)) {
         // 全宽（无切片或切片恰覆盖全宽）：直接用 Input
-        let p = placed.get(n.ident);
+        // R120 级联：后续语句可引用前面的输出名（w = {cout, s}）——找到该输出的
+      // 驱动 cell 直接扇出，不再新建 Input；未定义名仍按输入变量处理
+      const outRef = outputsRef.get(n.ident);
+      if (outRef) { outRef.consumers++; return outRef; }
+      let p = placed.get(n.ident);
         if (!p) {
           const id = nid('e');
           cells.push({ id, type: 'Input', position: { x: COL_X(0), y: 90 + leafRow * 70 }, net: n.ident, bits: varBits[n.ident] });
@@ -326,13 +372,13 @@ export function expressionToCircuit(src: string, opts: ExprGenOptions = {}): Exp
           placed.set(n.ident, p);
         }
         p.consumers++;
-        return { ...p, consumers: 1 }; // 共享计数记在源上，返回值 bits 正确
+        return { ...p, consumers: 1 };
       }
       // 切片：Input（全宽）+ BusSlice 提取
       const key = `${n.ident}[${n.slice!.msb}:${n.slice!.lsb}]`;
       const hit = sliceRef.get(key);
       if (hit) { hit.consumers++; return hit; }
-      const src = place({ kind: 'leaf', ident: n.ident }); // 全宽 Input（含 slice 覆盖全宽的合并判断走上面分支）
+      const src = place({ kind: 'leaf', ident: n.ident });
       const id = nid('s');
       cells.push({
         id, type: 'BusSlice', position: { x: COL_X(0) + 90, y: 90 + gateRow * 70 },
@@ -343,6 +389,17 @@ export function expressionToCircuit(src: string, opts: ExprGenOptions = {}): Exp
       cells.push(wire(src.cellId, 'out', id, 'in'));
       const p: PlacedRef = { cellId: id, outPort: 'out', bits, consumers: 1 };
       sliceRef.set(key, p);
+      return p;
+    }
+    if (n.kind === 'const') {
+      const key = `c:${n.v}`;
+      const hit = constRef.get(key);
+      if (hit) { hit.consumers++; return hit; }
+      const id = nid('k');
+      cells.push({ id, type: 'Constant', position: { x: COL_X(0), y: 90 + leafRow * 70 }, constant: String(n.v) });
+      leafRow++;
+      const p: PlacedRef = { cellId: id, outPort: 'out', bits: 1, consumers: 1 };
+      constRef.set(key, p);
       return p;
     }
     const key = structKey(n);
@@ -356,6 +413,24 @@ export function expressionToCircuit(src: string, opts: ExprGenOptions = {}): Exp
       gateCounts.Not = (gateCounts.Not || 0) + 1;
       cells.push(wire(c.cellId, c.outPort, id, 'in'));
       const p: PlacedRef = { cellId: id, outPort: 'out', bits: c.bits, consumers: 1 };
+      cse.set(key, p);
+      return p;
+    }
+    if (n.kind === 'concat') {
+      // Verilog 语义：{A, B} 左高右低 → BusGroup in0=最低位（digitaljs Vector3vl.concat 低位在前）
+      const parts = n.parts.map(place); // parts[0]=A（高位）
+      const groups = parts.map((p) => p.bits).reverse(); // in0..inN 位宽（低位在前）
+      const id = nid('u');
+      const total = parts.reduce((a, p) => a + p.bits, 0);
+      cells.push({ id, type: 'BusGroup', position: { x: COL_X(depth(n)), y: 90 + gateRow * 70 }, groups, bits: total });
+      gateRow++;
+      gateCounts.BusGroup = (gateCounts.BusGroup || 0) + 1;
+      // parts[0]（Verilog 最高位）→ in{N-1}；parts[last]（最低位）→ in0
+      parts.forEach((p, idx) => {
+        const portIdx = parts.length - 1 - idx;
+        cells.push(wire(p.cellId, p.outPort, id, `in${portIdx}`));
+      });
+      const p: PlacedRef = { cellId: id, outPort: 'out', bits: total, consumers: 1 };
       cse.set(key, p);
       return p;
     }
@@ -373,14 +448,16 @@ export function expressionToCircuit(src: string, opts: ExprGenOptions = {}): Exp
   };
 
   const outputs: string[] = [];
+  const outputsRef = new Map<string, PlacedRef>(); // R120 级联：输出名 → 驱动 cell
   parsed.forEach((st) => {
     const root = place(st.tree);
+    outputsRef.set(st.out, root);
     const outId = nid('o');
     cells.push({ id: outId, type: 'Output', position: { x: COL_X(maxD + 1), y: 90 + outputs.length * 70 }, net: st.out, bits: root.bits });
     cells.push(wire(root.cellId, root.outPort, outId, 'in'));
     outputs.push(st.out);
   });
-  const shared = [...cse.values()].filter((p) => p.consumers > 1).length + [...sliceRef.values()].filter((p) => p.consumers > 1).length;
+  const shared = [...cse.values(), ...sliceRef.values(), ...constRef.values()].filter((p) => p.consumers > 1).length;
   return { cells, vars, varBits, outputs, gateCounts, shared };
 }
 
@@ -406,7 +483,9 @@ export function evalExpr(src: string, env: Record<string, number>): Record<strin
     const mask = (b: number) => b >= 32 ? -1 >>> 0 : ((1 << b) - 1);
     const widthOf = (n: ExprNode): number => {
       if (n.kind === 'leaf') return n.slice ? n.slice.msb - n.slice.lsb + 1 : 1;
+      if (n.kind === 'const') return 1;
       if (n.kind === 'unop') return widthOf(n.child);
+      if (n.kind === 'concat') return n.parts.reduce((a, p) => a + widthOf(p), 0);
       return widthOf(n.children[0]);
     };
     const ev = (n: ExprNode): number => {
@@ -414,7 +493,14 @@ export function evalExpr(src: string, env: Record<string, number>): Record<strin
         const v = (env[n.ident] ?? 0) >>> 0;
         return n.slice ? (v >> n.slice.lsb) & mask(n.slice.msb - n.slice.lsb + 1) : v;
       }
-      if (n.kind === 'unop') { const w = widthOf(n.child); return (~ev(n.child)) & mask(Math.max(1, w)); }
+      if (n.kind === 'const') return n.v;
+      if (n.kind === 'unop') { const w = Math.max(1, widthOf(n.child)); return (~ev(n.child)) & mask(w); }
+      if (n.kind === 'concat') {
+        // 左高右低：acc = (acc << w(part)) | part
+        let acc = 0;
+        for (const p of n.parts) { const w = widthOf(p); acc = ((acc << w) | (ev(p) & mask(w))) >>> 0; }
+        return acc;
+      }
       const vs = n.children.map(ev);
       const w = Math.max(1, widthOf(n.children[0]));
       let acc = vs[0];
@@ -425,6 +511,7 @@ export function evalExpr(src: string, env: Record<string, number>): Record<strin
       return acc & mask(w);
     };
     out[name] = ev(t.node) >>> 0;
+    env[name] = out[name]; // R120 级联：后续语句可引用前面的输出名
   }
   return out;
 }

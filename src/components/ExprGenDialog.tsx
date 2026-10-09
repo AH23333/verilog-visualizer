@@ -94,7 +94,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
             ))}
           </div>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-            支持 &amp;(与) |(或) ^(异或) !(非)，括号；多输出用分号（s = a^b^cin; cout = ...）；同型自动并多输入门，!(a&amp;b) 自动用与非门，公共子表达式共享一颗门
+            支持 &amp;(与) |(或) ^(异或) !(非)，括号；切片 a[3:0]；拼接 {'{'}a, b{'}'}（左高右低）；常量 0/1；多输出用分号，后续语句可引用前面的输出名
           </div>
           {ok
             ? <div data-expr-preview style={{ fontSize: 'var(--fs-sm)', color: 'var(--success, #22c55e)' }}>✓ {summary}</div>
