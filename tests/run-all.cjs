@@ -34,7 +34,7 @@ const GATES = ['r7-p1a-wire', 'r11-sim-control', 'r12-export', 'r13-custom-gate'
   'r26-verify', 'r27-verify', 'r30-verify', 'r31-verify', 'r32-verify', 'r33-verify', 'r34-verify', 'r35-verify',
   'r37-verify', 'r40-verify', 'r42-verify', 'r43e-verify', 'r44-verify', 'r46-menu-parity',
   'r48-verify', 'r49-parity', 'r50-ui-sim', 'r53-fsm-gate', 'r55-memports-gate', 'r56-conflict-gate',
-  'r57-zoom-anchor-gate', 'r60-part-binding-gate', 'r61-dark-label-gate', 'r62-sandbox-speed-gate', 'r65-numbase-gate', 'r68-fanin-gate', 'r71-abort-port-gate', 'r76-sparse-mux-gate', 'r81-line-gate', 'r82-move-def-gate', 'r83-errorcopy-gate', 'r84-binding-gate', 'r85-posfidelity-gate', 'r87-esc-shape-gate', 'r90-single-owner-gate', 'r91-palette-coverage-gate', 'r92-routing-gate', 'r94-dff-polarity-gate', 'r95-signed-toggle-gate', 'r99-ui-unify-gate', 'r113-mirror-rotate-gate', 'r114-const-fold-gate', 'r115-sidebar-align-gate', 'r117-expr-gate', 'r118-multiout-gate', 'selfaudit2-sandbox',
+  'r57-zoom-anchor-gate', 'r60-part-binding-gate', 'r61-dark-label-gate', 'r62-sandbox-speed-gate', 'r65-numbase-gate', 'r68-fanin-gate', 'r71-abort-port-gate', 'r76-sparse-mux-gate', 'r81-line-gate', 'r82-move-def-gate', 'r83-errorcopy-gate', 'r84-binding-gate', 'r85-posfidelity-gate', 'r87-esc-shape-gate', 'r90-single-owner-gate', 'r91-palette-coverage-gate', 'r92-routing-gate', 'r94-dff-polarity-gate', 'r95-signed-toggle-gate', 'r99-ui-unify-gate', 'r113-mirror-rotate-gate', 'r114-const-fold-gate', 'r115-sidebar-align-gate', 'r117-expr-gate', 'r118-multiout-gate', 'r119-bus-expr-gate', 'selfaudit2-sandbox',
   'qc-audit', 'qc-audit2', 'qc-paused', 'qc-preview', 'qc-realuser'];
 const only = process.argv.slice(2);
 const list = only.length ? only : GATES;

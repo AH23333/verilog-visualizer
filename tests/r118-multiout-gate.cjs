@@ -67,7 +67,8 @@ const clearCanvas = async (page) => {
     await openGen(page);
     await setExpr(page, 's = a^b^cin; cout = (a&b)|(cin&(a^b))');
     const prev = await page.evaluate(() => (document.querySelector('[data-expr-preview]') || {}).textContent || '');
-    (prev.includes('输出 2') && prev.includes('输入 3')) ? ok('[3] 预览含多输出摘要', prev.trim()) : bad('[3] 预览', prev);
+    // R119 起摘要为变量名+位宽标注形态（「输入 a b cin」取代「输入 3」）——按新设计意图断言
+    (prev.includes('输出 2') && prev.includes('cin')) ? ok('[3] 预览含多输出摘要', prev.trim()) : bad('[3] 预览', prev);
     await page.locator('[data-expr-go]').click();
     await sleep(2000);
     let st = await page.evaluate(() => {
