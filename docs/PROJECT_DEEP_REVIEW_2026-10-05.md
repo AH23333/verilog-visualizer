@@ -1778,3 +1778,27 @@ R113 给 `tests/_ui.cjs` 的 `menuClick` 加固时（防「命中上一次残留
   三格单独重跑 **16/16、17/17、8/8 全绿**——深夜批资源竞态坐实（本仓 ENVRED 判据：未判成即重跑归责）。
   有效判定 **67/67 全绿**（`tests/.out-run-all-r120.txt`）。tsc 0 错；一次性脚本自清。
 
+
+# 卷二十四 · 用户报障修复：编译模式点击连线高亮了两端器件（2026-10-10，接卷二十三 R120 之后）
+
+- **症状**：编译模式电路图上点击连线，期望高亮**该连线**，实际高亮了连线两端的器件。
+- **根因**：`Canvas.tsx` R114（卷十四）引入的选中处理器把 link 点击**故意映射成两端器件高亮**，注释称「沙盒同款语义」——**对沙盒语义的误读**：沙盒的选中 mark 是直接打在选中 cell（含 link）自身 view 上，且两侧都早已备好 `.sm-selected .connection` 紫色加粗样式，只是编译模式从未把 class 打到 link view 上。
+- **修复**（唯一代码改动，`src/components/Canvas.tsx`）：pointerclick 一律高亮被点击对象本身（link 亮 link），删除两端映射分支；注释更新为 R106b 并记录沙盒真实语义，防止后人「改回去」。
+- **验证**：`tsc --noEmit` 0 错误；`vite build` 通过；Edge headless 探针（`.tmpbuild/verilog_wire_select.cjs`）三段断言全过——①点连线：`wireSel=true, cellSel=0`；②纸面空白点击：selection 清零；③点器件：器件亮、旧连线选中被清。截图 `.tmpbuild/accept/s9_wire_select.png` 目检紫色高亮正确。
+- **探针插曲（非产品缺陷）**：初版探针「空白不消失」是点击坐标落在纸面外的 DIV 遮罩上，`blank:pointerclick` 绑定本身未动、行为正常。
+- 未提交 git（工作区另有在途代理改动，避免混提）。
+
+---
+
+# 卷二十五 · 用户报障修复：BusSlice 切片配置记法（2026-10-10，接卷二十四）
+
+- **症状**：总线切片部件右键「切片配置」的写法有问题——旧记法是 `起始:位数`（如 `2:4` = 从第 2 位起取 4 位），用户定案应为 **`起始位:结束位` 含两端**：`0:3` = 切第 0-3 位（共 4 位）、`1:1` = 只切第 1 位。
+- **改动**（`src/components/SandboxCanvas.tsx` BusSlice 右键区）：
+  1. 输入框初值显示改为 `${first}:${first+count-1}`；placeholder/格式错误话术同步；
+  2. 解析改为 `a:b → first=min(a,b), count=|a-b|+1`——顺带**兼容 Verilog 降幂 `[msb:lsb]`**（`3:0` 等价 `0:3`），与 R117-R120 表达式引擎的 `a[3:0]` 记法（本就是含两端）**对齐成同一套语义**；
+  3. 内部 digitaljs 构造参数 `{first,count,total}` 不动（构造期读走，动了是重灾区）；
+  4. **连带修一个边界 bug**：「总线总位宽」收缩时旧钳制 `count ≤ n` 未扣除 first 偏移，`first+count` 可越过新 total（切片越界）——改为先夹 first、再按 `n-first` 夹 count。
+- **文档同步**：`FEATURES_BEYOND_PLAN.md` 表格行、`SANDBOX_DEV.md` 右键配置节均改为新记法并标注定案日期。
+- **验证**：`tsc --noEmit` 0 错误 + `vite build` 通过 + Edge headless 探针（`.tmpbuild/verilog_slice.cjs`，serve dist 8126 + localStorage 注入沙盒文件 + 真右键菜单输入）七场景断言全过：`0:0` 初值 / `0:3`→{0,4} / `1:1`→{1,1} / `3:0`→{0,4} / `2:3`→{2,2} / `2:70` 拒绝不改 / total 4→3 钳出 {2,1,3}（旧逻辑此处会越界）。页面错误 0。
+- **探针插曲（均为探针问题，非产品缺陷）**：①沙盒按钮是 toggle，重复点击会退出沙盒；②沙盒空态无 activeFile 时 paper 不构建——用 localStorage 注入文件 + 点文件行激活解决。
+- 未提交 git；工作区另有在途代理改动。
