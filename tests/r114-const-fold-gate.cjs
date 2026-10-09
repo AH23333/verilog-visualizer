@@ -160,10 +160,28 @@ try {
   delete j.devices.a.signed;
   let threw = false;
   try { fold(j); } catch { threw = true; }
-  const df = fs.readFileSync(path.join(ROOT, 'src', 'lib', 'displayFold.ts'), 'utf8');
+  const df = require('fs').readFileSync(path.join(ROOT, 'src', 'lib', 'displayFold.ts'), 'utf8');
   const hardened = df.includes('signedShapeOk') && df.includes('return T.integrateArithConstant(model, dev, id)');
   if (threw && hardened) ok('[11] 上游缺 signed 形态即抛（实证），本仓 signedShapeOk 守卫已接线（文本）');
   else bad('[11] 脆弱点/硬化', `上游抛=${threw} 本仓守卫=${hardened}`);
+}
+
+// ---- [12] R114 热修回归（2026-10-08 用户报「内部电路渲染失败」，双击部件/钻取第二层现场）----
+// 上游 CircuitModel.addDevice 对 dev 整颗 cloneDeep——**Subcircuit 的内嵌 graph 快照被拷死**
+// （joint 原型结构在纯 JSON 往返里死亡）；嵌套模块电路一旦过 fold 链，Circuit ctor 依赖
+// subcircuits 表重建 graph，表与实例绑定一旦错位即构造抛 →
+// SandboxExpandModal 显示「内部电路渲染失败：…」——正是用户看到的文案。守卫因此递归全层级。
+{
+  const j = circ('in2');
+  j.devices.sc = { type: 'Subcircuit', celltype: 'inner', graph: { cells: [{ id: 'n1', type: 'Not' }] } };
+  const f = fold(j); // 上游原样折叠（不带本仓守卫）—— 必须看到 graph 被深拷 + 连线 id 蒸发，坐实根因
+  const sc = f.devices.sc;
+  const cloned = sc && sc.graph && typeof sc.graph === 'object' && Array.isArray(sc.graph.cells); // 深拷（joint 原型死亡，graph 不再是活图）
+  const df = fs.readFileSync(path.join(ROOT, 'src', 'lib', 'displayFold.ts'), 'utf8');
+  const guarded = df.includes('hasSubcircuitLayer') && df.includes('if (hasSubcircuitLayer(json)) return json;')
+    && df.includes('d?.graph?.cells') && df.includes('if (hasSubcircuitLayer(s, seen)) return true;');
+  if (cloned && guarded) ok('[12] 上游 cloneDeep 把 Subcircuit 内嵌 graph 拷死（实证）+ 本仓递归守卫 v2 在案');
+  else bad('[12] 热修回归', `深拷=${cloned} 守卫v2=${guarded}`);
 }
 
 console.log(`\n===== R114 const-fold: PASS=${pass} FAIL=${fail} =====`);
