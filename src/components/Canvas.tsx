@@ -900,24 +900,13 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
           clearPrev();
           const t = view?.model;
           if (!t) return;
-          let views: any[] = [];
-          try {
-            if (typeof t.isLink === 'function' && t.isLink()) {
-              // 连线：两端所连的器件一起亮（沙盒同款语义）
-              const ids = new Set<string>();
-              const s = t.get('source'), tg = t.get('target');
-              if (s?.id) ids.add(String(s.id));
-              if (tg?.id) ids.add(String(tg.id));
-              views = paper.model.getCells()
-                .filter((x: any) => ids.has(String(x.id)))
-                .map((x: any) => x.findView(paper))
-                .filter(Boolean);
-            } else {
-              views = [view];
-            }
-          } catch { views = [view]; }
-          selPrev = views;
-          views.forEach((v: any) => v?.el?.classList?.add('sm-selected'));
+          // R106b（用户报「点线却亮了两端器件」）：高亮**被点的对象本身**——
+          // 连线亮连线。此前误写成「沙盒同款语义=亮两端器件」，实查沙盒的选中
+          // mark 就是直接打在选中 cell（含 link）自己的 view 上，且两侧都备有
+          // `.sm-selected .connection` 样式（joint 的 LinkView 根 <g> 内即
+          // connection 路径），打在 link view 上样式恰好命中。
+          selPrev = [view];
+          try { view.el?.classList?.add('sm-selected'); } catch { /* ignore */ }
         });
         paper.on('blank:pointerclick', clearPrev);
       } catch { /* best-effort：绑定失败只是没有高亮，不影响其它功能 */ }
