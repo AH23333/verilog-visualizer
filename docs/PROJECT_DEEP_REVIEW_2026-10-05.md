@@ -1568,4 +1568,44 @@ R113 给 `tests/_ui.cjs` 的 `menuClick` 加固时（防「命中上一次残留
   判据全部 computed-style 互比，不硬编码主题色值（换主题不碎）。
 - 全量 63 格：RED=0 ENVRED=0 GREEN=63 NOVERDICT=0（`tests/.out-run-all-r115.txt`）。tsc 0 错。
 - 一次性取证/诊断脚本与截图全部自清。
+---
+
+## 卷十八（2026-10-08）：R116 yosys 综合流——官方流实证 + 改判为实验开关（默认旧流复原）
+
+### ① 正解修正：#5 不需要「换构建」
+
+- wasm 二进制扫描实证：`public/yosys/yosys.wasm` 为 **Yosys 0.30+48（git sha1 14d50a176, emcc）全功能版**，
+  官方流全部命令（`memory -nomap`/`wreduce -memx`/`setattr`/`opt_clean`）支持齐全 ⇒ #5 的正解是**改脚本**，不是换构建。
+- 旧流根因（r51 账目「现场未复现」的谜底）：脚本里裸 `techmap` 把 $mul/$div/$sshr 打散成门阵、`memory` 直映射把 RAM 炸成触发器，
+  signed/fillx/words/offset 在产物里根本没有出现机会。yosys2digitaljs 官方 `prepare_yosys_script`（core.js）默认**不跑 techmap**。
+
+### ② 官方流实证（r51_signed.v / ram_r116.v 夹具，实验闸门 8/8）
+
+- `Multiplication` 进产物且 `signed={in1:true,in2:true}`；`Division` 在；128×8 RAM 保持 `Memory` 且 `words=128,abits=8`；
+  行为级读写口 RAM → `Memory` 带 `rdports[{clock_polarity:true}]/wrports`；画布渲染高层器件正常（29 cells）。
+- deviceParams 卷十六标注的「与上游清单对齐但未复现」四项（signed/fillx/words/offset）在官方流下**真实出现**。
+
+### ③ 收官批 5 红取证 → 改判
+
+- 64 格收官批 r42/r48/r49/r50/r85 红。逐格取证：根因是官方流产物形态触发的**真回归**，不是判据过时——
+  (a) 异宽操作数：`count <= count+1` 经 `wreduce` 后成 `Addition bits{in1:4,in2:1}`（yosys 日志 Removed top 31 bits 实证），
+  本仓 InputPanel/IO 驱动链按旧流同宽假设走 → `setInput: wrong number of bits`（真身=digitaljs io.mjs:215）×3、
+  单步计数器 q 卡 0001（r50[1c] 在官方流下）、parity 覆盖塌（r49）；
+  (b) 同步读 mem（r48_exotic 的 64×8）未保持 Memory 而成 FF 海 + Mux 解码，r48 的 arst_value 判据字段族失踪。
+- 按**零回归加法式**纪律改判：官方流不做默认切换，回滚默认脚本为旧流（63 格历史基线全绿）。
+
+### ④ 落地形态（加法式）
+
+- `verilog.ts`：`EXPERIMENTAL_FLOW` 编译期常量开关（false=旧流默认；true=官方流），两套脚本并列、注释完整记因与缺口清单。
+- `tests/r116-compile-flow-gate.cjs` 转**实验闸门**：不进 run-all GATES；默认流下自动 SKIP 退出（exit 0 无 PASS，不产假红）；
+  开关打开后手动跑即得 8 项有效判定。夹具新增 `test_files/ram_r116.v`（行为级读写口 RAM）。
+- deviceParams 注释改判：四项参数「官方流下已实证出现、默认旧流仍不出现」，清单在两种流下都是对称往返契约。
+
+### ⑤ R116 最终状态
+
+- 改判后全量 63 格：RED=1（r50-ui-sim）→ 逐格复核：**[1c] q 递增已 PASS，红格换成 [1b] 装载时序**，
+  单独复跑 **6/6 全绿**——判定跑批内竞态环境红（与 R113 时 r24/r68 同类），非产品缺陷、非本批改动（本批对 r50 被测路径零改动）。
+- 有效判定 = **63/63 全绿**（`tests/.out-run-all-r116b.txt`）。tsc 0 错。
+- 后续批排期：InputPanel/IO 驱动链适配高层器件形态（异宽操作数、同步读 mem 语义）→ 修完才把默认切官方流；
+  官方流的收益（高层器件可视化 + signed/words 参数真实在场 + 仿真更快）已在实验闸门固化可复验。
 
