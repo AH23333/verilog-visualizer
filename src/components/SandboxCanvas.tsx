@@ -1808,18 +1808,28 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     }
     if (type === 'BusSlice') {
       const sl = cell.get('slice') || { first: 0, count: 1, total: 4 };
-      items.push({ label: '切片配置', input: { value: `${sl.first}:${sl.count}`, placeholder: '起始:位数', onCommit: (v) => {
+      // 用户定案写法：「起始位:结束位」**含两端** —— 0:3 = 取第 0-3 位（共 4 位），
+      // 1:1 = 只取第 1 位。同时兼容 Verilog 降幂 [msb:lsb]（3:0 与 0:3 等价）。
+      // 内部仍是 digitaljs 构造期读的 {first, count, total}，只换 UI 记法。
+      const lo = sl.first, hi = sl.first + (sl.count ?? 1) - 1;
+      items.push({ label: '切片配置', input: { value: `${lo}:${hi}`, placeholder: '起始:结束（含两端，如 0:3）', onCommit: (v) => {
         const m = /^(\d+)\s*[:：]\s*(\d+)$/.exec(String(v).trim());
-        if (!m) { showToast('格式：起始位:位数（如 2:4）'); return; }
-        const first = Number(m[1]), count = Number(m[2]);
-        if (count < 1 || first < 0 || first + count > 64) { showToast('切片范围非法（起始 ≥0、位数 ≥1、合计 ≤64）'); return; }
-        reconfigureCell(cellId, { slice: { first, count, total: Math.max(sl.total ?? 4, first + count) } });
-        showToast(`已取 [${first}, ${first + count}) 共 ${count} 位`);
+        if (!m) { showToast('格式：起始位:结束位，含两端（0:3 取 0-3 位，1:1 取第 1 位）'); return; }
+        const a = Number(m[1]), b = Number(m[2]);
+        const first = Math.min(a, b), last = Math.max(a, b);
+        const count = last - first + 1;
+        if (last > 63 || count > 64) { showToast('切片范围非法（位号 0–63，最多 64 位）'); return; }
+        reconfigureCell(cellId, { slice: { first, count, total: Math.max(sl.total ?? 4, last + 1) } });
+        showToast(`已取第 ${first}–${last} 位，共 ${count} 位`);
       } } });
       items.push({ label: '总线总位宽', input: { value: String(sl.total ?? 4), placeholder: 'total bits', onCommit: (v) => {
         const n = Number(v);
         if (!Number.isFinite(n) || n < 1 || n > 64) { showToast('总线总位宽必须是 1–64 的数字'); return; }
-        reconfigureCell(cellId, { slice: { first: Math.min(sl.first ?? 0, n - 1), count: Math.min(sl.count ?? 1, n), total: Math.floor(n) } });
+        // 收缩总位宽时先夹 first 再按剩余空间夹 count —— 此前只夹 count≤n，
+        // first+count 仍可能越过新 total（切片越界）。
+        const first = Math.min(sl.first ?? 0, n - 1);
+        const count = Math.min(sl.count ?? 1, n - first);
+        reconfigureCell(cellId, { slice: { first, count, total: Math.floor(n) } });
       } } });
     }
     // Display7 固定 8 位段码（改位宽会让段码错乱），故不列入

@@ -92,7 +92,7 @@
 | MuxSparse 稀疏选择器 | 右键「分支取值表」（非负十进制列表）＋ 数据/选择位宽 |
 | Repeater 缓冲器 | 逻辑门分组内 |
 | BusGroup / BusUngroup | 放下即弹「位宽方案」对话框（`[data-bus-width-dialog]`，Esc 关）＋ 右键分组配置 |
-| BusSlice | 切片配置 `起始:位数` ＋ 总线总位宽 |
+| BusSlice | 切片配置 `起始位:结束位`（含两端，如 `0:3` 取 4 位、`1:1` 取 1 位；兼容 `3:0` 降幂）＋ 总线总位宽 |
 | Memory | 右键「端口配置…」（`MemPortsModal`）＋ 查看/编辑内存/清零/全 1 |
 | FSM 状态机 | 右键「转移表…」（`FsmTableModal`）重建状态图与弧线 |
 | n 元门（And/Or/Nand/Nor/Xor/Xnor） | 右键「输入引脚数 2–16」（`inputs` 是构造期参数，改完重建端口） |
