@@ -19,6 +19,25 @@ function signedShapeOk(dev: any): boolean {
   return !!s && typeof s === 'object' && s.in1 != null && s.in2 != null;
 }
 
+/** R114 热修 v2（2026-10-08 用户报「内部电路渲染错误」，首版守卫只查顶层被推翻）：
+ * 上游 CircuitModel 的器件表只存 cloneDeep(dev)——**Subcircuit 实例的内嵌 graph 进不了
+ * 模型**，toJSON 往返后该实例只剩 celltype 空壳；嵌套模块一旦过 fold 链，钻取第二层起
+ * 报「该子部件没有可渲染的内部电路」。且 renderCircuitView 的 fold 只作用顶层，
+ * subcircuits 深处若还有 Subcircuit 实例，同样会在再下钻时丢 body。
+ * 守卫因此**递归全层级**：任何一层存在子模块结构 → 整棵电路不折叠（宁可少圆圈观感）。 */
+function hasSubcircuitLayer(mod: any, seen = new Set<object>()): boolean {
+  if (!mod || typeof mod !== 'object' || seen.has(mod)) return false;
+  seen.add(mod);
+  for (const d of Object.values<any>(mod.devices || {})) {
+    if (String(d?.type || '') === 'Subcircuit') return true;
+    if (d?.graph?.cells || d?.subcircuitGraph?.cells) return true; // 内嵌快照式实例
+  }
+  for (const s of Object.values<any>(mod.subcircuits || {})) {
+    if (hasSubcircuitLayer(s, seen)) return true;
+  }
+  return false;
+}
+
 /** 全层级（含 subcircuits）找「Constant + 可折运算」对；没有就直接跳过上游变换 */
 function scan(mod: any, st: { hasConst: boolean; hasOp: boolean }): void {
   const devs = mod?.devices;
@@ -42,6 +61,7 @@ export function foldArithConstants(digitaljs: any, json: any): any {
   const st = { hasConst: false, hasOp: false };
   scan(json, st);
   if (!st.hasConst || !st.hasOp) return json;
+  if (hasSubcircuitLayer(json)) return json; // 热修：带子模块的电路不折叠（模块体会被上游 toJSON 拍平丢失）
   const T = digitaljs?.transform;
   if (!T || typeof T.transformCircuit !== 'function' || typeof T.integrateArithConstant !== 'function') return json;
   try {
