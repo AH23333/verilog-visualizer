@@ -4334,8 +4334,20 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
             用的是同一对组件（PromptDialog / ConfirmDialog），样式天然一致 */}
         {exprGenOpen && (
           <ExprGenDialog
-            onGenerate={(res, expr) => {
+            onGenerate={(res, expr, asGate) => {
               setExprGenOpen(false);
+              if (asGate) {
+                // R118：表达式直接存部件（上游 isIC 概念的本地化）+ 放实例
+                try {
+                  saveGateFromCellsToFolder(asGate, { cells: res.cells }, scopeRef.current);
+                  refreshGates();
+                  const g = customGateStore.list().find((x) => x.name === asGate);
+                  if (g) placeCustomGate(g);
+                  showToast(`已存为部件「${asGate}」并放置实例`);
+                  setTimeout(() => zoomToFit(), 60);
+                } catch (e) { showToast(`存部件失败：${String((e as Error)?.message || e)}`); }
+                return;
+              }
               const wrap = document.querySelector('[data-sandbox-wrapper]');
               const r = wrap ? wrap.getBoundingClientRect() : { left: 400, top: 400, width: 600, height: 400 };
               if (insertCellsAt(res.cells, r.left + r.width / 2, r.top + r.height / 2, `已生成表达式：${expr}`)) setTimeout(() => zoomToFit(), 60);
