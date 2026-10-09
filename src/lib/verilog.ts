@@ -866,26 +866,50 @@ export async function compileVerilog(
     if (missingUnits.size > 0) throw new MissingModulesError([...missingUnits], '');
   }
 
-  // Build Yosys script: read all files, then synthesize
+  // Build Yosys script。**两套流程**（R116 卷十八裁决）：
+  // · 旧流（默认）：proc/opt/fsm/opt/memory/opt/techmap/opt —— 高层算术被裸 techmap 打散成门阵，
+  //   signed/fillx/words 不出现在产物里；但与本仓 InputPanel/parity/IO 全链路兼容（全量 63 格的历史基线）。
+  // · 官方流（EXPERIMENTAL_FLOW=true，对齐 yosys2digitaljs prepare_yosys_script）：memory -nomap 保
+  //   $mem_v2（→ Memory words/offset）、wreduce -memx、不跑 techmap —— 高层器件（Multiplication.signed、
+  //   Memory.words）真实进产物（r116 实验闸门已实证）；**已知缺口**：异宽操作数（count+1 → in2:1）
+  //   触发 InputPanel 驱动链 setInput 位宽错（r42/r50/r85 红的根因）、同步读 mem 被降级成 FF 海。
+  //   缺口清单与修复排期见账本卷十八；修复完才允许把默认切到官方流。
   const readCmds = filePaths.map((fp) => `read_verilog ${fp}`).join('\n');
   const hierarchyCmd = topModule
     ? `hierarchy -top ${topModule}`
     : 'hierarchy -auto-top';
-  const script = [
-    'design -reset',
-    readCmds,
-    hierarchyCmd,
-    'proc',
-    'opt',
-    'fsm',
-    'opt',
-    'memory',
-    'opt',
-    'techmap',
-    'opt',
-    'write_json ' + jsonFile,
-    'write_verilog ' + netlistFile,
-  ].join('\n');
+  // 实验开关（编译期常量）：官方流研究/联调用；false = 旧流（与全量闸门基线一致）
+  const EXPERIMENTAL_FLOW = false;
+  const script = EXPERIMENTAL_FLOW
+    ? [
+        'design -reset',
+        readCmds,
+        'setattr -mod -unset top',
+        hierarchyCmd,
+        'proc',
+        'opt_clean',
+        'fsm',
+        'memory -nomap',
+        'wreduce -memx',
+        'opt_clean',
+        'write_json ' + jsonFile,
+        'write_verilog ' + netlistFile,
+      ].join('\n')
+    : [
+        'design -reset',
+        readCmds,
+        hierarchyCmd,
+        'proc',
+        'opt',
+        'fsm',
+        'opt',
+        'memory',
+        'opt',
+        'techmap',
+        'opt',
+        'write_json ' + jsonFile,
+        'write_verilog ' + netlistFile,
+      ].join('\n');
 
   FS.writeFile(scriptFile, script);
 

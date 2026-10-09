@@ -52,9 +52,9 @@ export const CTOR_PARAM_KEYS = [
   //  - `fillx` 丢 → $shiftx「移位量取不出补 x」变成补 0；
   //  - `words`/`offset` 丢 → 128 字存储器按默认行数建，写进高位地址的数据不见。
   // 三者都不改器件数与连线数，正是 R48/R49 那一族「拓扑没变、仿真变了」。
-  // ⚠ 本仓现场还没复现：裸 `techmap` 会把 $mul/$div 打散成门、`memory` 把 RAM 映射成
-  // 触发器（r51_signed 实测 signed/fillx/words 一个都不出现）⇒ 这两行是「与上游清单对齐」，
-  // 不许当成已修掉的可见缺陷。
+  // 官方流（verilog.ts EXPERIMENTAL_FLOW）下这四项已被实证能出现在产物里（r116 实验闸门：
+  // Multiplication.signed={in1:true,in2:true}、Memory.words=128）；默认旧流（techmap）下仍不出现。
+  // 这份清单在两种流下都是三处对称往返的契约，删任何一行都会回到 R48/R49 那一族。
   'signed', 'fillx', 'words', 'offset',
   // NumDisplay/NumEntry/总线终端的数值基（io.mjs:9-82 画布内 <select> 直接改这个属性）。
   // 不序列化 = 用户把 hex 改成 dec，存盘重开就变回 hex。
