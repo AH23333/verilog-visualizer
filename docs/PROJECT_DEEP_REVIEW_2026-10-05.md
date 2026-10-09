@@ -1608,4 +1608,39 @@ R113 给 `tests/_ui.cjs` 的 `menuClick` 加固时（防「命中上一次残留
 - 有效判定 = **63/63 全绿**（`tests/.out-run-all-r116b.txt`）。tsc 0 错。
 - 后续批排期：InputPanel/IO 驱动链适配高层器件形态（异宽操作数、同步读 mem 语义）→ 修完才把默认切官方流；
   官方流的收益（高层器件可视化 + signed/words 参数真实在场 + 仿真更快）已在实验闸门固化可复验。
+---
+
+## 卷十九（2026-10-09）：R114 热修——「内部电路渲染失败」（用户报障，双击部件/钻取第二层）
+
+### ① 现场与定位过程（三轮假设三轮推翻，如实留档）
+
+- 用户报：双击部件看内部电路、钻取第二层/层次面板时弹「内部电路渲染失败：…」。
+  该文案 = SandboxExpandModal 的 **constructCircuit throw 路径**（不是绑定缺失类文案）——折叠输出让 Circuit 构造抛且降级链救不回。
+- 假设一「toJSON 把 subcircuits 拍平」→ 被 [12] 实验推翻（transformCircuit 对 subcircuits 有递归重建）。
+- 假设二「position 被吞」→ 被 ex-118 推翻（position/size/name/vertices/bits 全保留）。
+- 假设三「connector id 重编号」→ 被推翻（输出对象不携带 id 字段）。
+- 定案（读 CircuitModel 源码）：`addDevice` 对 dev 整颗 **cloneDeep**——Subcircuit 实例的内嵌 graph 快照
+  在纯 JSON 往返里被拷死（joint 原型结构死亡）；嵌套模块电路一旦进 fold 链，Circuit ctor 重建 graph 时
+  表与实例一旦错位即构造抛。displayFold 的 try/catch 只保折叠过程，**保不了折叠输出的下游消费**——这是 R114 闸门的盲区：
+  专项 11 项 + 真机取证 5 项全部只验「折叠函数返回形状」，从未跑「folded → new Circuit → displayOn」真实消费链。
+
+### ② 修复（守卫 v2，递归全层级）
+
+- `displayFold.ts`：`hasSubcircuitLayer` **递归扫整棵树**——任何一层出现 Subcircuit 实例、内嵌 graph 快照
+  或 subcircuits 表 → 整棵电路不折叠（宁可少 `+5` 圆圈观感，不冒嵌套渲染失败风险）。
+- 首版守卫只查顶层，被钻取场景（顶层干净、子模块体内有实例）击穿后升级 v2。
+- 纯组合电路（无任何嵌套）仍正常折叠——R114 功能对安全子集保留。
+
+### ③ 证据链
+
+- r114 闸门新增 [12]（上游 cloneDeep 拷死内嵌 graph 实证 + 守卫 v2 文本断言）：**12/12 全绿**。
+- 全量 63 格：RED=0 ENVRED=0 GREEN=63 NOVERDICT=0（`tests/.out-run-all-hotfix.txt`）。tsc 0 错。
+- 排查用一次性脚本/截图（复现×5、注入实验×2、决定性复现）全部自清；实验期间临时翻转过 EXPERIMENTAL_FLOW
+  的决定性复现脚本跑完即还原（复核 `EXPERIMENTAL_FLOW = false` 在位）。
+
+### ④ 观察项（不掩盖未闭环部分）
+
+- 「纯组合部件体被折叠后是否也可能抛」未在现场复现（守卫 v2 已拦截全部嵌套形态；用户的两个报错场景均带 Subcircuit，
+  在拦截范围内）。若用户后续在**无嵌套**的部件上再遇渲染失败，拿错误原文（冒号后的 xxx）回来定位。
+- R114 的教训进闸门纪律：**展示变换类改动，判据必须过「输出→真实消费方」全链**，函数返回值形状断言不算数。
 
