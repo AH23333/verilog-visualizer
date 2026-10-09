@@ -24,7 +24,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
   const ok = !preview.error;
   const gateNameOk = !gateMode || /^[A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff-]*$/.test(gateName.trim());
   const summary = ok
-    ? `输入 ${(preview as ExprGenResult).vars.length} · 门 ${Object.values((preview as ExprGenResult).gateCounts).reduce((a, b) => a + b, 0)} · 输出 ${(preview as ExprGenResult).outputs.length}`
+    ? `输入 ${(preview as ExprGenResult).vars.map((v) => (preview as ExprGenResult).varBits[v] > 1 ? `${v}[${(preview as ExprGenResult).varBits[v]}b]` : v).join(' ')} · 门 ${Object.values((preview as ExprGenResult).gateCounts).reduce((a, b) => a + b, 0)} · 输出 ${(preview as ExprGenResult).outputs.length}`
       + (((preview as ExprGenResult).shared || 0) > 0 ? ` · 共享 ${(preview as ExprGenResult).shared} 门` : '')
     : '';
 
