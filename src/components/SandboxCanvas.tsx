@@ -19,7 +19,7 @@ import SandboxFileBindingDialog from './SandboxFileBindingDialog';
 import SandboxFileTree, { type RenameTarget, type CreateTarget } from './SandboxFileTree';
 import { ChevronRight, PanelLeftClose, Plus, Undo2, Play, Pause, StepForward, AudioWaveform, RotateCcw,
   FileText, FolderPlus, RefreshCw, Redo2, RotateCw, Save, Download, FileCode, Link2, Settings, Cpu,
-  SlidersHorizontal, ImageDown } from 'lucide-react';
+  SlidersHorizontal, ImageDown, FunctionSquare } from 'lucide-react';
 import { settingsStore, type SandboxSettings } from '../store/settingsStore';
 import { exportPng, exportSvg, exportPngDataUrl, exportSvgString } from '../utils/sandboxExport';
 import { generateVerilog } from '../utils/sandboxVerilog';
@@ -32,6 +32,7 @@ import { FsmTableModal } from './FsmTableModal';
 import { MemPortsModal } from './MemPortsModal';
 import IOPanel, { type IOHost } from './IOPanel';
 import PromptDialog from './PromptDialog';
+import ExprGenDialog from './ExprGenDialog';
 import ConfirmDialog from './ConfirmDialog';
 
 /** 文件/文件夹名校验（与编译模式同名：`V_NAME_VALIDATE` 那一条规则，禁非法字符与空名） */
@@ -554,6 +555,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   // R100 文件级「绑定...」对话框（侧栏文件右键，与编译模式一致）
   const [fileBindingId, setFileBindingId] = useState<string | null>(null);
   const [savingGate, setSavingGate] = useState(false);
+  // R117 布尔表达式→电路图（借鉴 OpenCircuits ExprToCircuitPopup）
+  const [exprGenOpen, setExprGenOpen] = useState(false);
   const [gateName, setGateName] = useState('');
   const [gateError, setGateError] = useState<string | null>(null);
   const [deleteGateId, setDeleteGateId] = useState<string | null>(null);
@@ -4165,6 +4168,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
                 ) : (
                   <button onClick={() => setSavingGate(true)} disabled={!activeFile} title="将当前电路保存为自定义门" style={activeFile ? sm : dis}><Cpu size={13} />自定义门</button>
                 )}
+                <button onClick={() => setExprGenOpen(true)} disabled={!activeFile} title="输入布尔表达式自动生成电路图（a & b | !c）" style={activeFile ? sm : dis}><FunctionSquare size={13} />表达式生成</button>
                 <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
                 <button onClick={handleExportPng} disabled={!activeFile} title="导出 PNG" style={activeFile ? sm : dis}><ImageDown size={13} />PNG</button>
                 <button onClick={handleExportSvg} disabled={!activeFile} title="导出 SVG" style={activeFile ? sm : dis}><Download size={13} />SVG</button>
@@ -4328,6 +4332,17 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         )}
         {/* R101：文件系统的两个弹窗（重命名 / 新建 / 删除确认）——与编译模式
             用的是同一对组件（PromptDialog / ConfirmDialog），样式天然一致 */}
+        {exprGenOpen && (
+          <ExprGenDialog
+            onGenerate={(res, expr) => {
+              setExprGenOpen(false);
+              const wrap = document.querySelector('[data-sandbox-wrapper]');
+              const r = wrap ? wrap.getBoundingClientRect() : { left: 400, top: 400, width: 600, height: 400 };
+              if (insertCellsAt(res.cells, r.left + r.width / 2, r.top + r.height / 2, `已生成表达式：${expr}`)) setTimeout(() => zoomToFit(), 60);
+            }}
+            onCancel={() => setExprGenOpen(false)}
+          />
+        )}
         {fsPrompt && (
           <div data-fs-dialog={fsPrompt.title}>
             <PromptDialog
