@@ -665,20 +665,51 @@ export default function App() {
   // ============ Code Editor ============
 
   const autoSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingAutoSave = useRef<{ id: string; code: string } | null>(null);
+
+  // 把待写的编辑器内容立刻落盘（切档 / 手动保存 / 关窗前调用）。
+  const flushAutoSave = useCallback(() => {
+    if (autoSaveTimer.current) { clearTimeout(autoSaveTimer.current); autoSaveTimer.current = null; }
+    const p = pendingAutoSave.current;
+    pendingAutoSave.current = null;
+    if (!p) return;
+    try {
+      fileStore.saveContent(p.id, p.code);
+      setDirtyMap((prev) => ({ ...prev, [p.id]: false }));
+    } catch { /* auto-save best-effort */ }
+  }, []);
+
   const handleCodeChange = useCallback((code: string) => {
-    if (activeFileId) {
-      fileStore.updateFile(activeFileId, { content: code });
-      setDirtyMap((prev) => ({ ...prev, [activeFileId]: true }));
-      // Debounced auto-save (2s after last keystroke)
-      if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-      autoSaveTimer.current = setTimeout(() => {
-        try {
-          fileStore.saveContent(activeFileId, code);
-          setDirtyMap((prev) => ({ ...prev, [activeFileId]: false }));
-        } catch { /* auto-save best-effort */ }
-      }, 2000);
-    }
+    if (!activeFileId) return;
+    fileStore.updateFile(activeFileId, { content: code });
+    setDirtyMap((prev) => ({ ...prev, [activeFileId]: true }));
+    // 自动保存设置（外观 → 自动保存）：关掉后只保留内存/localStorage 副本，
+    // 由切档/手动保存/关窗落盘（updateFile 已即时写入 localStorage，不会丢编辑内容）。
+    const as = settingsStore.getAutosaveSettings();
+    if (!as.enabled) { pendingAutoSave.current = null; if (autoSaveTimer.current) { clearTimeout(autoSaveTimer.current); autoSaveTimer.current = null; } return; }
+    pendingAutoSave.current = { id: activeFileId, code };
+    if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
+    autoSaveTimer.current = setTimeout(() => {
+      autoSaveTimer.current = null;
+      const pp = pendingAutoSave.current;
+      pendingAutoSave.current = null;
+      if (!pp) return;
+      try {
+        fileStore.saveContent(pp.id, pp.code);
+        setDirtyMap((prev) => ({ ...prev, [pp.id]: false }));
+      } catch { /* auto-save best-effort */ }
+    }, as.intervalMs);
   }, [activeFileId]);
+
+  // 切换文件 / 卸载前，先落盘待写的编辑器内容（关掉自动保存时也保证切档不丢磁盘副本）。
+  useEffect(() => () => { flushAutoSave(); }, [activeFileId, flushAutoSave]);
+
+  // 关窗前落盘（HTML beforeunload 兜底 webview 内导航；Tauri 关窗走同一路径）。
+  useEffect(() => {
+    const onBeforeUnload = () => flushAutoSave();
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [flushAutoSave]);
 
   // ============ Split-view drag splitter ============
   const onSplitDividerMouseDown = useCallback((e: React.MouseEvent) => {

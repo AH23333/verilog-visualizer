@@ -53,8 +53,28 @@ function loadAll(): Record<string, SandboxFile> {
   } catch { return {}; }
 }
 
+/**
+ * 安全写 localStorage（A4 修复）：配额超限/被清时 setItem 会抛 QuotaExceededError，
+ * 早前裸调用会打断 handleSave/handleOpen 链路（用户表现「保存没反应 / 切过去又弹回 / 丢编辑」）。
+ * 这里吞错但**广播** `vv-storage-error`，由 UI（SandboxCanvas）弹 toast 告知用户去导出备份。
+ */
+function safeSetItem(key: string, val: string): boolean {
+  try {
+    localStorage.setItem(key, val);
+    return true;
+  } catch (e) {
+    try { console.error('[sandboxStore] localStorage 写入失败', key, e); } catch { /* ignore */ }
+    try {
+      window.dispatchEvent(new CustomEvent('vv-storage-error', {
+        detail: { key, message: String((e as { name?: string })?.name || e) },
+      }));
+    } catch { /* ignore */ }
+    return false;
+  }
+}
+
 function saveAll(files: Record<string, SandboxFile>) {
-  localStorage.setItem(SANDBOX_KEY, JSON.stringify(files));
+  safeSetItem(SANDBOX_KEY, JSON.stringify(files));
 }
 
 function loadFolders(): string[] {
@@ -66,7 +86,7 @@ function loadFolders(): string[] {
 }
 
 function saveFolders(folders: string[]) {
-  localStorage.setItem(SANDBOX_FOLDERS, JSON.stringify(folders));
+  safeSetItem(SANDBOX_FOLDERS, JSON.stringify(folders));
 }
 
 /** 取路径的最后一段（文件或文件夹的显示名） */

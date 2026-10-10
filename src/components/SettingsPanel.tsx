@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { settingsStore, type ViewMode } from '../store/settingsStore';
+import { settingsStore, AUTOSAVE_INTERVAL_OPTIONS, type ViewMode, type AutosaveSettings } from '../store/settingsStore';
 
 interface Props {
   theme: 'dark' | 'light';
@@ -7,10 +7,11 @@ interface Props {
   onClose: () => void;
 }
 
-type Tab = 'appearance' | 'sandbox' | 'shortcuts' | 'about';
+type Tab = 'appearance' | 'autosave' | 'sandbox' | 'shortcuts' | 'about';
 
 const TABS: { id: Tab; label: string }[] = [
   { id: 'appearance', label: '外观' },
+  { id: 'autosave', label: '自动保存' },
   { id: 'sandbox', label: '沙盒' },
   { id: 'shortcuts', label: '快捷键' },
   { id: 'about', label: '关于' },
@@ -86,6 +87,7 @@ export default function SettingsPanel({ theme, onToggleTheme, onClose }: Props) 
   const [fontSize, setFontSize] = useState(() => settingsStore.getFontSize());
   const [defaultView, setDefaultView] = useState<ViewMode>(() => settingsStore.getDefaultViewMode());
   const [sb, setSb] = useState(() => settingsStore.getSandboxSettings());
+  const [auto, setAuto] = useState<AutosaveSettings>(() => settingsStore.getAutosaveSettings());
   const [, force] = useState(0);
 
   // R102：store 一变就把快照 state 一起刷新——否则走别的入口（快捷键 ±、localStorage
@@ -95,6 +97,7 @@ export default function SettingsPanel({ theme, onToggleTheme, onClose }: Props) 
     setFontSize(settingsStore.getFontSize());
     setDefaultView(settingsStore.getDefaultViewMode());
     setSb(settingsStore.getSandboxSettings());
+    setAuto(settingsStore.getAutosaveSettings());
   }), []);
   // Esc 关窗的回调要经 ref：父组件每次渲染都新建箭头函数，把它写进依赖表＝每渲染一次就
   // "摘掉旧的、挂上新的"一轮，按下那一刻挂没挂上是运气（本仓 r84 实测：事件到了 document 而弹窗没关）。
@@ -225,6 +228,40 @@ export default function SettingsPanel({ theme, onToggleTheme, onClose }: Props) 
                     <option value="straight">直线</option>
                   </select>
                 </Row>
+              </>
+            )}
+
+            {tab === 'autosave' && (
+              <>
+                <Row label="启用自动保存" hint="编译编辑器与沙盒画布共用：编辑停止后自动落盘">
+                  {toggle(auto.enabled, (v) => { settingsStore.setAutosaveSettings({ enabled: v }); setAuto(settingsStore.getAutosaveSettings()); })}
+                </Row>
+                <Row label="自动保存间隔" hint="编辑停止多久后落盘（关闭自动保存后此项无效）">
+                  <select
+                    data-autosave-interval=""
+                    disabled={!auto.enabled}
+                    value={auto.intervalMs}
+                    onChange={(e) => { settingsStore.setAutosaveSettings({ intervalMs: Number(e.target.value) }); setAuto(settingsStore.getAutosaveSettings()); }}
+                    style={{
+                      padding: '4px 8px', borderRadius: 4, background: 'var(--surface)',
+                      color: auto.enabled ? 'var(--text)' : 'var(--text-muted)',
+                      border: '1px solid var(--border)', fontSize: 'var(--fs-sm)', opacity: auto.enabled ? 1 : 0.6,
+                    }}>
+                    {AUTOSAVE_INTERVAL_OPTIONS.map((ms) => (
+                      <option key={ms} value={ms}>{ms >= 1000 ? `${ms / 1000} 秒` : `${ms} 毫秒`}</option>
+                    ))}
+                  </select>
+                </Row>
+                <Row label="关闭自动保存后" hint="仍会在手动保存 / 切换文件 / 关闭窗口时落盘，避免误丢">
+                  <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>保留切档与手动保存</span>
+                </Row>
+                <div style={{ marginTop: 10 }}>
+                  <button onClick={() => { settingsStore.resetAutosaveSettings(); setAuto(settingsStore.getAutosaveSettings()); }}
+                    style={{
+                      padding: '4px 12px', borderRadius: 4, cursor: 'pointer', fontSize: 'var(--fs-sm)',
+                      background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)',
+                    }}>恢复自动保存默认设置</button>
+                </div>
               </>
             )}
 

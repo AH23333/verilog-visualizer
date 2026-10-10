@@ -4,8 +4,22 @@
 const FONT_SIZE_KEY = 'verilog-viz-font-size';
 const DEFAULT_VIEW_KEY = 'verilog-viz-default-view';
 const SANDBOX_KEY = 'verilog-viz-sandbox-settings';
+const AUTOSAVE_KEY = 'verilog-viz-autosave-settings';
 
 export type ViewMode = 'circuit' | 'code' | 'split' | 'sandbox';
+
+/** 自动保存设置（两模式共用）：编译编辑器与沙盒画布都按此开关/间隔落盘。
+ *  关掉后仍会在「手动保存 / 切档 / 卸载 / 关窗」时落盘（不会因关闭自动保存而丢正在看的内容）。 */
+export interface AutosaveSettings {
+  enabled: boolean;
+  intervalMs: number;
+}
+
+const DEFAULT_AUTOSAVE: AutosaveSettings = { enabled: true, intervalMs: 2000 };
+
+/** 间隔可选项（ms）—— 面板下拉用 */
+export const AUTOSAVE_INTERVAL_OPTIONS = [1000, 2000, 5000, 10000, 30000];
+
 
 export interface SandboxSettings {
   /** 网格间距（px） */
@@ -64,9 +78,22 @@ function getSavedSandbox(): SandboxSettings {
   return { ...DEFAULT_SANDBOX };
 }
 
+function getSavedAutosave(): AutosaveSettings {
+  try {
+    const raw = localStorage.getItem(AUTOSAVE_KEY);
+    if (raw) {
+      const p = JSON.parse(raw);
+      const intervalMs = Math.min(60000, Math.max(500, Number(p.intervalMs) || DEFAULT_AUTOSAVE.intervalMs));
+      return { enabled: p.enabled !== false, intervalMs };
+    }
+  } catch {}
+  return { ...DEFAULT_AUTOSAVE };
+}
+
 let fontSize: number = getSavedFontSize();
 let defaultViewMode: ViewMode = getSavedDefaultView();
 let sandbox: SandboxSettings = getSavedSandbox();
+let autosave: AutosaveSettings = getSavedAutosave();
 let listeners: Array<() => void> = [];
 
 function notify() {
@@ -129,6 +156,25 @@ export const settingsStore = {
   resetSandboxSettings(): void {
     sandbox = { ...DEFAULT_SANDBOX };
     try { localStorage.setItem(SANDBOX_KEY, JSON.stringify(sandbox)); } catch {}
+    notify();
+  },
+
+  // ---- Autosave（两模式共用）----
+  getAutosaveSettings(): AutosaveSettings {
+    return { ...autosave };
+  },
+
+  setAutosaveSettings(patch: Partial<AutosaveSettings>): void {
+    const next = { ...autosave, ...patch };
+    next.intervalMs = Math.min(60000, Math.max(500, Number(next.intervalMs) || DEFAULT_AUTOSAVE.intervalMs));
+    autosave = next;
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autosave)); } catch {}
+    notify();
+  },
+
+  resetAutosaveSettings(): void {
+    autosave = { ...DEFAULT_AUTOSAVE };
+    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autosave)); } catch {}
     notify();
   },
 

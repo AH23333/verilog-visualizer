@@ -141,6 +141,10 @@ async function mainInfo(page, pa) {
     // 主画布：另开一张，放一颗 A 实例（celltype 聚合出 1 行：A）
     await UI.newSandboxFile(page);
     await placePart(page, PA);
+    // 自动保存改为间隔节流后，store 快照可能滞后；夹具直接读 store（mainInfo），
+    // 先以手动保存把活画布落盘 —— 与用户「放完存一下再开绑定」的语义一致。
+    await page.evaluate(() => window.__sandboxSave && window.__sandboxSave());
+    await sleep(600);
 
     const mi = await mainInfo(page, PA);
     const pbId = await page.evaluate(async (pb) => {

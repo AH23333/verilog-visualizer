@@ -2,6 +2,44 @@
 
 import { invoke } from '@tauri-apps/api/core';
 
+// Tauri 运行时探测：生产窗口里有 __TAURI_INTERNALS__，浏览器（dev / 无头 QC）没有。
+// 每次调用现读（不是模块加载期求值），测试可在点击前注入桩来验证走的是原生保存路径。
+export const isTauri = (): boolean =>
+  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+
+/**
+ * 统一导出落盘 —— 单一真源（消除编译模式「Tauri 原生对话框」与沙盒「<a download>」双轨）：
+ *  - Tauri：`invoke('save_export_file')`，弹系统保存对话框；用户取消返回 false。
+ *  - 浏览器（dev / 无头 QC）：回退 `<a download>`，让 r12/audit3/r26/r37 等下载类闸门仍可判。
+ */
+export async function saveExport(
+  bytes: Uint8Array,
+  defaultName: string,
+  mime = 'application/octet-stream',
+): Promise<boolean> {
+  if (isTauri()) {
+    try {
+      const path = await invoke<string | null>('save_export_file', {
+        content: Array.from(bytes),
+        defaultName,
+      });
+      return path != null;
+    } catch {
+      return false;
+    }
+  }
+  const blob = new Blob([bytes], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = defaultName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+  return true;
+}
+
 // 编译模式 SVG 导出要做「深度重绘」，不能只是克隆 DOM 的 <svg>：
 // digitaljs 用 CSS class（如 `.joint-element .body` 的 fill 等）着色，克隆后没有样式表，
 // 导出的 SVG 打开就是一片纯黑矩形。逐元素把计算样式内联进 clone，再加白底 + 按内容取景。
@@ -67,11 +105,7 @@ export async function exportSVG(canvasContainer: HTMLElement | null, fileName: s
 
   const serializer = new XMLSerializer();
   const svgStr = serializer.serializeToString(clone);
-  const path = await invoke<string | null>('save_export_file', {
-    content: Array.from(new TextEncoder().encode(svgStr)),
-    defaultName: `${fileName}_circuit.svg`,
-  });
-  return path !== null;
+  return saveExport(new TextEncoder().encode(svgStr), `${fileName}_circuit.svg`, 'image/svg+xml;charset=utf-8');
 }
 
 /**
@@ -80,11 +114,7 @@ export async function exportSVG(canvasContainer: HTMLElement | null, fileName: s
 export async function exportCircuitJSON(circuitJson: Record<string, unknown> | null, fileName: string): Promise<boolean> {
   if (!circuitJson) return false;
   const jsonStr = JSON.stringify(circuitJson, null, 2);
-  const path = await invoke<string | null>('save_export_file', {
-    content: Array.from(new TextEncoder().encode(jsonStr)),
-    defaultName: `${fileName}_circuit.json`,
-  });
-  return path !== null;
+  return saveExport(new TextEncoder().encode(jsonStr), `${fileName}_circuit.json`, 'application/json');
 }
 
 /**
@@ -93,11 +123,7 @@ export async function exportCircuitJSON(circuitJson: Record<string, unknown> | n
 export async function exportVerilogCode(code: string, fileName: string): Promise<boolean> {
   if (!code) return false;
   const baseName = fileName.replace(/\.(v|sv|vh)$/, '');
-  const path = await invoke<string | null>('save_export_file', {
-    content: Array.from(new TextEncoder().encode(code)),
-    defaultName: `${baseName}.v`,
-  });
-  return path !== null;
+  return saveExport(new TextEncoder().encode(code), `${baseName}.v`, 'text/plain;charset=utf-8');
 }
 
 /**
@@ -106,9 +132,5 @@ export async function exportVerilogCode(code: string, fileName: string): Promise
 export async function exportNetlistVerilog(netlist: string | null | undefined, fileName: string): Promise<boolean> {
   if (!netlist) return false;
   const baseName = fileName.replace(/\.(v|sv|vh)$/, '');
-  const path = await invoke<string | null>('save_export_file', {
-    content: Array.from(new TextEncoder().encode(netlist)),
-    defaultName: `${baseName}_netlist.v`,
-  });
-  return path !== null;
+  return saveExport(new TextEncoder().encode(netlist), `${baseName}_netlist.v`, 'text/plain;charset=utf-8');
 }

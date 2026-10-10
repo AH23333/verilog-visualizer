@@ -1,6 +1,11 @@
 // 沙盒电路导出工具：把 JointJS paper 序列化为自包含 SVG（含白底、按内容自适应取景）。
 // 供 SandboxCanvas 的「导出 SVG」按钮复用，并暴露给 QC 验收（window.__sandboxExport）
 // 做非空校验。
+//
+// 落盘走 exportUtils.saveExport（Tauri 原生保存对话框 / 浏览器回退 <a download>），
+// 与编译模式共用同一条导出通道（B4：消除双轨）。
+
+import { saveExport } from '../lib/exportUtils';
 
 function getSvgEl(paper: any): SVGElement | null {
   if (!paper) return null;
@@ -55,22 +60,10 @@ export function buildSvgString(paper: any, fit = true): string {
   return new XMLSerializer().serializeToString(clone);
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-}
-
-export async function exportSvg(paper: any, filename = 'circuit.svg') {
+export async function exportSvg(paper: any, filename = 'circuit.svg'): Promise<boolean> {
   const svgString = buildSvgString(paper, true);
-  if (!svgString) return;
-  const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-  downloadBlob(blob, filename);
+  if (!svgString) return false;
+  return saveExport(new TextEncoder().encode(svgString), filename, 'image/svg+xml;charset=utf-8');
 }
 
 export function exportSvgString(paper: any): string {

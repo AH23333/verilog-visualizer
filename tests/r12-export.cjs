@@ -165,6 +165,35 @@ function netlistLooksOk(p) { const b = fs.readFileSync(p, 'utf8'); return /modul
       ? ok('context menu exports: SVG / 综合网表 / JSON', JSON.stringify(menuTxt))
       : bad('context menu exports faded', JSON.stringify(menuTxt));
 
+    // =====================================================================
+    console.log('[F] 生产路径（Tauri）— 注入 __TAURI_INTERNALS__ 后必须走原生 save_export_file，不再 <a download>');
+    await page.keyboard.press('Escape'); await sleep(200);
+    await page.evaluate(() => {
+      window.__capturedExport = null;
+      window.__TAURI_INTERNALS__ = {
+        invoke: async (cmd, args) => { window.__capturedExport = { cmd, args }; return 'C:/tmp/r12-fake.svg'; },
+      };
+    });
+    let tauriDownloads = 0;
+    const onTauriDl = () => { tauriDownloads++; };
+    page.on('download', onTauriDl);
+    await page.locator('button[title="导出 SVG"]').click();
+    await sleep(900);
+    page.off('download', onTauriDl);
+    const cap = await page.evaluate(() => window.__capturedExport);
+    (cap && cap.cmd === 'save_export_file')
+      ? ok('[F1] Tauri 路径：SVG 导出走原生 save_export_file')
+      : bad('[F1] Tauri 路径未走 save_export_file', JSON.stringify(cap));
+    if (cap && cap.args && Array.isArray(cap.args.content)) {
+      const txt = Buffer.from(cap.args.content).toString('utf8');
+      const nm = String(cap.args.defaultName || '');
+      (txt.includes('<svg') && nm.endsWith('.svg'))
+        ? ok('[F2] save_export_file 载荷 = 自包含 SVG + .svg 文件名', nm)
+        : bad('[F2] 载荷异常', JSON.stringify({ nm, head: txt.slice(0, 30) }));
+    } else bad('[F2] 载荷异常', 'no content[] array');
+    tauriDownloads === 0 ? ok('[F3] Tauri 路径不再产生 <a download>') : bad('[F3] 仍走浏览器下载', `n=${tauriDownloads}`);
+    await page.evaluate(() => { delete window.__TAURI_INTERNALS__; });
+
     dialogs.length === 0 ? ok('0 native dialogs') : bad('native dialogs', dialogs.join('; '));
     const typeErrors = errors.filter(e => /TypeError/i.test(e));
     typeErrors.length === 0 ? ok('0 TypeErrors', `total=${errors.length}`) : bad('TypeErrors', typeErrors.join('; '));
