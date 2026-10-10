@@ -19,10 +19,11 @@ import SandboxFileBindingDialog from './SandboxFileBindingDialog';
 import SandboxFileTree, { type RenameTarget, type CreateTarget } from './SandboxFileTree';
 import { ChevronRight, PanelLeftClose, Plus, Undo2, Play, Pause, StepForward, AudioWaveform, RotateCcw,
   FileText, FolderPlus, RefreshCw, Redo2, RotateCw, Save, Download, FileCode, Link2, Settings, Cpu,
-  SlidersHorizontal, ImageDown, FunctionSquare } from 'lucide-react';
+  SlidersHorizontal, FunctionSquare } from 'lucide-react';
 import { settingsStore, type SandboxSettings } from '../store/settingsStore';
-import { exportPng, exportSvg, exportPngDataUrl, exportSvgString } from '../utils/sandboxExport';
+import { exportSvg, exportSvgString } from '../utils/sandboxExport';
 import { generateVerilog } from '../utils/sandboxVerilog';
+import { partSearchRegistry, collectPartHits } from '../lib/partSearch';
 import ContextMenu, { type ContextMenuItem } from './ContextMenu';
 import WaveformPanel from './WaveformPanel';
 import { MemoryViewModal } from './MemoryViewModal';
@@ -615,8 +616,6 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   const [busGroupW, setBusGroupW] = useState(1);
   // 状态机转移表编辑窗：记住正在编辑的器件 id（弹窗按 cellId 现取 cell）
   const [fsmDlg, setFsmDlg] = useState<string | null>(null);
-  // 部件绑定总览（用户裁决 R-A＝「要添加入口」）：null = 关着；打开时**现扫画布**取快照
-  const [bindingRows, setBindingRows] = useState<BindingRow[] | null>(null);
   // 子电路实例的「绑定...」对话框（与编译模式 BindingDialog 同款样式）：存 cellId＋当前 celltype
   const [rebindDlg, setRebindDlg] = useState<{ cellId: string; cur: string } | null>(null);
   // 存储器端口配置窗：存 cellId（弹窗按 id 现取 cell，避免拿着被重建掉的旧引用）
@@ -1621,40 +1620,6 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     showToast(`${busDlg.type === 'BusGroup' ? '合线器' : '分线器'}：${n} 组 × ${busGroupW} 位 = ${n * busGroupW} 位`);
   }, [busDlg, busTotal, busGroupW, reconfigureCell, showToast]);
 
-  /**
-   * 扫一遍画布，算出每颗子电路实例**当前真正的绑定情况**（R-A 全局视图的数据源）。
-   *
-   * 三态必须说清，因为「挂着名字」与「能用」不是一回事（他第 9 条报的就是这个）：
-   *  · 未绑定 ＝ `celltype` 为空；
-   *  · 绑定失效 ＝ 有名字，但按作用域解析不到定义（部件文件被删了）；
-   *  · 已绑定 ＝ 解析得到，并把 `resolvePartRef` 按打分**实际选中**的那一颗所在文件夹报出来
-   *    —— 同名部件分散在多个文件夹时，只有这个能解释"为什么展开的是这一份"。
-   */
-  const collectBindings = useCallback((): BindingRow[] => {
-    const paper = paperRef.current;
-    if (!paper) return [];
-    const scope = scopeRef.current;
-    const count = new Map<string, number>();
-    for (const g of gatesRef.current) count.set(g.name, (count.get(g.name) || 0) + 1);
-    const rows: BindingRow[] = [];
-    for (const cell of paper.model.getCells()) {
-      if ((cell as any).isLink?.() || String(cell.get('type')) !== 'Subcircuit') continue;
-      const name = String(cell.get('celltype') || '');
-      const ref = name ? resolvePartRef(name, scope) : null;
-      const def = name ? resolveDefCells(name, scope) : null;
-      rows.push({
-        cellId: String(cell.id),
-        label: String(cell.get('label') || ''),
-        celltype: name,
-        state: !name ? '未绑定' : (!ref || !def?.cells?.length ? '绑定失效' : '已绑定'),
-        folder: ref ? dirOf(ref.file) : '',
-        ambiguous: name ? (count.get(name) || 0) > 1 : false,
-        ports: (cell.getPorts?.() || []).length,
-      });
-    }
-    return rows;
-  }, []);
-
   const openMenuAt = useCallback((x: number, y: number, title: string, items: ContextMenuItem[]) => {
     setMenu({ x, y, title, items });
   }, []);
@@ -2186,9 +2151,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       { label: '---' },
       // 导出：与编译模式同一组词、同样落在画布右键菜单里（动作仍走左栏那三个
       // 处理函数，不另开一份实现）
-      { label: '导出 PNG', action: () => handleExportPng() },
       { label: '导出 SVG', action: () => handleExportSvg() },
-      { label: '导出 Verilog (.v)', action: () => handleExportVerilog() },
+      { label: '导出综合网表 (.v)', action: () => handleExportNetlist() },
+      { label: '导出 JSON', action: () => { if (activeFile) handleExportDjs(activeFile); } },
       { label: '---' },
       { label: '清除选择', action: () => setSelectionRef.current([]) },
     ]);
@@ -2299,8 +2264,26 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     (window as any).__sandboxSelection = () => [...selectionRef.current];
     (window as any).__sandboxExport = {
       svgString: () => exportSvgString(paperRef.current),
-      pngDataUrl: (scale = 2) => exportPngDataUrl(paperRef.current, scale),
+      netlistString: (name = 'sandbox_circuit') => {
+        const p = paperRef.current;
+        if (!p) return '';
+        try { return generateVerilog(p, name); } catch { return ''; }
+      },
     };
+    // 部件搜索源（Ctrl+F 画布聚焦时，App 层的 PartSearchDialog 经 bus 现取）：
+    // 随画布建立注册、随画布销毁同源注销，不许留着指向已销毁 paper 的句柄。
+    const partSource = {
+      list: (q: string) => collectPartHits(paper.model.getCells(), q),
+      locate: (id: string): boolean => {
+        const cell = paper.model.getCell(id);
+        if (!cell || (typeof cell.isLink === 'function' && cell.isLink())) return false;
+        setSelectionRef.current([id]);
+        const pos = (cell as any).position?.();
+        if (pos) paper.scroller?.center?.(pos.x, pos.y);
+        return true;
+      },
+    };
+    partSearchRegistry.register(partSource);
     (window as any).__sandboxGates = {
       list: () => customGateStore.list(),
       place: (id: string) => { const g = customGateStore.get(id); if (g) placeCustomGate(g); },
@@ -3079,6 +3062,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         }
       } catch { /* ignore */ }
       try { circuit.stop(); } catch {}
+      partSearchRegistry.unregister(partSource);
       paper.remove();
     };
   }, [activeFile?.id, spawnCell, resetNonce, selectAll, copySelection, deleteSelection,
@@ -3146,16 +3130,6 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
 
   const clearSelectionForExport = useCallback(() => setSelectionRef.current([]), []);
 
-  const handleExportPng = () => {
-    if (!paperRef.current) return;
-    clearSelectionForExport();
-    const name = activeFile ? activeFile.name.replace(/\.djs$/i, '') : '电路';
-    exportPng(paperRef.current, `${name}.png`, 2).catch((e) => {
-      console.error('PNG 导出失败', e);
-      showToast('PNG 导出失败：' + String(e?.message || e).slice(0, 60));
-    });
-  };
-
   const handleExportSvg = () => {
     if (!paperRef.current) return;
     clearSelectionForExport();
@@ -3166,7 +3140,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     });
   };
 
-  const handleExportVerilog = () => {
+  // 综合网表（用户裁决：沙盒的 Verilog 导出改名为「综合网表」——它就是网表：
+  // 门/触发器/常量转结构化 Verilog；不再单独提供第二个"Verilog"出口）
+  const handleExportNetlist = () => {
     if (!paperRef.current || !activeFile) return;
     try {
       const name = activeFile.name.replace(/\.djs$/i, '').replace(/[^\w]/g, '_') || 'sandbox_circuit';
@@ -3177,9 +3153,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       a.href = url; a.download = `${name}.v`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      showToast('Verilog 已导出：' + name + '.v');
+      showToast('综合网表已导出：' + name + '.v');
     } catch (e: any) {
-      showToast('Verilog 导出失败：' + String(e?.message || e).slice(0, 60));
+      showToast('综合网表导出失败：' + String(e?.message || e).slice(0, 60));
     }
   };
 
@@ -4247,12 +4223,12 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
                 )}
                 <button onClick={() => setExprGenOpen(true)} disabled={!activeFile} title="输入布尔表达式自动生成电路图（a & b | !c）" style={activeFile ? sm : dis}><FunctionSquare size={13} />表达式生成</button>
                 <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-                <button onClick={handleExportPng} disabled={!activeFile} title="导出 PNG" style={activeFile ? sm : dis}><ImageDown size={13} />PNG</button>
                 <button onClick={handleExportSvg} disabled={!activeFile} title="导出 SVG" style={activeFile ? sm : dis}><Download size={13} />SVG</button>
-                <button onClick={handleExportVerilog} disabled={!activeFile} title="导出 Verilog（.v）：门/触发器/常量转结构化代码" style={activeFile ? sm : dis}><FileCode size={13} />Verilog</button>
+                <button onClick={handleExportNetlist} disabled={!activeFile} title="导出综合网表（.v）：门/触发器/常量转结构化网表代码" style={activeFile ? sm : dis}><FileCode size={13} />综合网表</button>
+                <button onClick={() => activeFile && handleExportDjs(activeFile)} disabled={!activeFile} title="导出 JSON（.djs）：含引用的部件定义" style={activeFile ? sm : dis}><Download size={13} />JSON</button>
                 <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-                <button onClick={() => setBindingRows(collectBindings())} data-sandbox-bindings disabled={!activeFile}
-                  title="部件绑定总览：这张画布上每个子电路实例绑到哪个部件文件" style={activeFile ? sm : dis}><Link2 size={13} />部件绑定</button>
+                <button onClick={() => activeFile && setFileBindingId(activeFile.id)} data-sandbox-bindings disabled={!activeFile || activeFile.kind === 'gate'}
+                  title="部件绑定：给当前文件里的子电路实例选择部件定义文件" style={activeFile && activeFile.kind !== 'gate' ? sm : dis}><Link2 size={13} />部件绑定</button>
                 {onOpenSettings && (
                   <button onClick={onOpenSettings} data-sandbox-settings title="打开设置面板" style={sm}><Settings size={13} />设置</button>
                 )}
@@ -4421,25 +4397,6 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
               showToast(`已把实例绑定到「${name}」`);
             }}
             onClose={() => setRebindDlg(null)}
-          />
-        )}
-        {bindingRows && (
-          <BindingDialog
-            rows={bindingRows} parts={gates} scope={scope}
-            onRebind={(cellId, newName) => {
-              rebindSubcircuitCell(cellId, newName);
-              setBindingRows(collectBindings());   // 换绑会重建实例：行要现扫，不能留着旧快照
-            }}
-            onLocate={(cellId) => {
-              const paper = paperRef.current;
-              const cell = paper?.model.getCell(cellId);
-              if (!paper || !cell) { showToast('那颗实例已经不在画布上了'); return; }
-              setSelectionRef.current([cellId]);
-              const pos = (cell as any).position?.();
-              if (pos) paper.scroller?.center?.(pos.x, pos.y);
-            }}
-            onRefresh={() => setBindingRows(collectBindings())}
-            onClose={() => setBindingRows(null)}
           />
         )}
         {/* R101：输入 / 输出面板（与编译模式同一颗 IOPanel）。沙盒没有右侧栏容器，
@@ -4617,140 +4574,6 @@ function BusWidthDialog({ mode, total, groupWidth, onTotal, onGroupWidth, onAppl
             background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 4 }}>取消</button>
           <button onClick={onApply} style={{ padding: '6px 14px', fontSize: 'var(--fs-sm)', cursor: 'pointer',
             background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4 }}>应用</button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** 一行＝画布上一颗子电路实例的绑定真相 */
-interface BindingRow {
-  cellId: string;
-  label: string;
-  celltype: string;
-  /** 未绑定＝没名字；绑定失效＝有名字但按作用域解析不到定义；已绑定＝解析得到 */
-  state: '未绑定' | '绑定失效' | '已绑定';
-  folder: string;
-  /** 库里同名部件不止一颗 ⇒ 解析结果由作用域打分决定，光看名字解释不了行为 */
-  ambiguous: boolean;
-  ports: number;
-}
-
-/**
- * 部件绑定总览（用户裁决 R-A：「要添加入口」＝绑定的全局视图）。
- *
- * 为什么不是"再多给几颗右键菜单项"：换绑这件事此前只能一颗一颗实例地操作，
- * 而用户想知道的是"这张图里谁绑到哪儿了、哪个已经失效"——那是一个**表**。
- * 每行给出实际解析到的文件夹（同名部件分散在多个文件夹时这是唯一能解释行为的字段），
- * 换绑直接走 `rebindSubcircuitCell`（它会重建实例并按端口 id 把连线接回、
- * 接不上的按条数报出来），所以这里不复制任何绑定逻辑。
- */
-function BindingDialog({ rows, parts, scope, onRebind, onLocate, onRefresh, onClose }: {
-  rows: BindingRow[];
-  parts: CustomGate[];
-  scope: string;
-  onRebind: (cellId: string, newName: string) => void;
-  onLocate: (cellId: string) => void;
-  onRefresh: () => void;
-  onClose: () => void;
-}) {
-  // 遮罩是 `inset:0`：不给 Esc 就等于把用户关在弹窗里，非要用鼠标去够那颗「关闭」
-  // ⚠ 依赖表要写 `[]` 并把回调塞进 ref：`onClose` 是父组件每次渲染新建的箭头函数，
-  //   拿它当依赖 ⇒ 父组件每渲染一次就"摘掉旧的、挂上新的"一轮；沙盒在仿真跑动时渲染很密，
-  //   Esc 按下那一刻挂没挂上就成了运气（实测：事件到了 document，弹窗却没关）。
-  const closeRef = useRef(onClose);
-  closeRef.current = onClose;
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') closeRef.current(); };
-    document.addEventListener('keydown', k);
-    return () => document.removeEventListener('keydown', k);
-  }, []);
-  const broken = rows.filter((r) => r.state === '绑定失效').length;
-  const unbound = rows.filter((r) => r.state === '未绑定').length;
-  const cell = (active: boolean): React.CSSProperties => ({
-    padding: '3px 6px', fontSize: 'var(--fs-xs)', borderRadius: 3,
-    background: active ? 'var(--accent)' : 'var(--surface)',
-    color: active ? '#fff' : 'var(--text)', border: '1px solid var(--border-subtle)', cursor: 'pointer',
-  });
-  return (
-    <div data-binding-dialog onMouseDown={(e) => e.stopPropagation()}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)',
-        backdropFilter: 'blur(2px)', WebkitBackdropFilter: 'blur(2px)', zIndex: 2200,
-        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      {/* R100：面板令牌与编译模式 BindingDialog 完全一致 */}
-      <div style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', borderRadius: 'var(--radius-xl)',
-        padding: '24px 28px', minWidth: 520, maxWidth: 680, maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-        boxShadow: 'var(--shadow-lg)' }}>
-        <div style={{ fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
-          部件绑定总览
-        </div>
-        <div style={{ fontSize: 'var(--fs-md)', color: 'var(--text-secondary)', marginBottom: 14, lineHeight: 1.5 }}>
-          本文件所在文件夹：<b>{scope || '根目录'}</b> ｜ 实例 {rows.length} 颗
-          （未绑定 {unbound} ｜ 绑定失效 {broken}）｜ 库里有部件 {parts.length} 颗
-        </div>
-
-        <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
-          {rows.length === 0 ? (
-            <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', padding: '10px 0' }}>
-              这张画布上没有子电路实例。先在左栏「部件」里放一个，或把当前电路「保存为自定义门」。
-            </div>
-          ) : (
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 'var(--fs-xs)', color: 'var(--text)' }}>
-              <thead>
-                <tr style={{ textAlign: 'left', color: 'var(--text-muted)' }}>
-                  <th style={{ padding: '3px 6px' }}>实例</th>
-                  <th style={{ padding: '3px 6px' }}>状态</th>
-                  <th style={{ padding: '3px 6px' }}>绑定到</th>
-                  <th style={{ padding: '3px 6px' }}>实际解析</th>
-                  <th style={{ padding: '3px 6px' }}>换绑</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.cellId} style={{ borderTop: '1px solid var(--border-subtle)' }}>
-                    <td style={{ padding: '4px 6px', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      <span title={`实例 id ${r.cellId}，端口 ${r.ports} 个`}>
-                        {r.label || r.celltype || r.cellId.slice(0, 6)}
-                      </span>
-                      <button onClick={() => onLocate(r.cellId)} title="在画布上选中并居中这颗实例"
-                        style={{ ...cell(false), marginLeft: 4, padding: '1px 5px' }}>定位</button>
-                    </td>
-                    <td style={{ padding: '4px 6px', whiteSpace: 'nowrap' }}>
-                      <span style={{ color: r.state === '已绑定' ? 'var(--text)' : 'var(--error, #ef4444)' }}>
-                        {r.state}
-                      </span>
-                      {r.ambiguous ? <span title="库里同名部件不止一颗，解析结果按作用域打分挑选" style={{ color: 'var(--text-muted)' }}> ⟡</span> : null}
-                    </td>
-                    <td style={{ padding: '4px 6px', fontFamily: 'monospace' }}>{r.celltype || '—'}</td>
-                    <td style={{ padding: '4px 6px', fontFamily: 'monospace' }}>
-                      {r.state === '已绑定' ? (r.folder ? `${r.folder}/` : '根目录') : '—'}
-                    </td>
-                    <td style={{ padding: '4px 6px' }}>
-                      <select value={r.celltype} onChange={(e) => e.target.value && onRebind(r.cellId, e.target.value)}
-                        data-binding-select={r.cellId}
-                        style={{ fontSize: 'var(--fs-xs)', padding: '2px 4px', background: 'var(--input-bg)',
-                          color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 3, maxWidth: 160 }}>
-                        <option value="">（未绑定）</option>
-                        {parts.map((p) => (
-                          <option key={p.id} value={p.name}>{p.folder ? `${p.folder}/` : ''}{p.name}</option>
-                        ))}
-                      </select>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '10px 0 12px', lineHeight: 1.5 }}>
-          换绑会<b>重建实例</b>（端口表按新定义重算），已接的连线按端口名接回，接不上的会被断开并报条数。
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onRefresh} style={cell(false)}>重新扫描</button>
-          <button onClick={onClose} style={{ padding: '6px 14px', fontSize: 'var(--fs-sm)', cursor: 'pointer',
-            background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 4 }}>关闭</button>
         </div>
       </div>
     </div>
