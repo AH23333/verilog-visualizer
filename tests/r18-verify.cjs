@@ -61,6 +61,18 @@ const portCenterClient = async (page, cellId, portId) => page.evaluate(([id, p])
 
     // ================= [1] 反向连线 =================
     console.log('\n===== [1] 反向连线（输入端 → 输出端）=====');
+    // ⚠ 先等 paper 真起来再放件：机器忙时元件库按钮已可点而 `__sandboxPaper` 还没建
+    //   （无沙盒文件就没有 paper），原来这里第一行就直读 ⇒ 整颗闸门 FATAL、一格都不算判过
+    //   （全量跑批里就是这么红的，单跑却 11/0）。守卫加在这里，⛔ 别把"没读到"记成产品缺陷——
+    //   也⛔ 用 FATAL 记（那会被跑批读成产品红）：这条路径打 UNVERIFIED 后干净收尾＝NOVERDICT。
+    try {
+      await page.waitForFunction(() => !!(window).__sandboxPaper && !!(window).__sandboxPaper.model, null, { timeout: 20000 });
+    } catch {
+      console.log('  UNVERIFIED  [1]～[8] 沙盒 paper 20s 没起来（机器忙），这颗闸门这一跑不作数');
+      console.log(`\n===== R18 DONE: ${pass} pass, ${fail} fail =====`);
+      await browser.close();
+      return;
+    }
     await clickGate(page, 'Input'); await clickGate(page, 'Lamp'); await sleep(400);
     const pair = await page.evaluate(() => {
       const p = window.__sandboxPaper;

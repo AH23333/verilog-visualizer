@@ -65,16 +65,40 @@ const NOTE = (a) => {
     const b = h.getBoundingClientRect();
     return { x: b.left + b.width / 2, y: b.top + b.height / 2, visible: b.width > 0 && b.height > 0 };
   };
+  // 视觉几何（用户报"文本与文本框分离／黑体描边／拉伸不缩放"三类症状的读数口径）
+  const bgEl = v && v.el ? v.el.querySelector('[joint-selector="noteBg"]') : null;
+  const bodyEl = v && v.el ? v.el.querySelector('[joint-selector="body"]') : null;
+  const br = bgEl ? bgEl.getBoundingClientRect() : null;
+  const tr = label ? label.getBoundingClientRect() : null;
+  const cs = label ? getComputedStyle(label) : null;
+  const t1 = tspans[0];
   return {
     id: String(c.id), type: String(c.get('type')),
     text: String((c.attr && c.attr('label/text')) || ''),
+    labelProp: String(c.get('label') ?? ''),
     size: c.get('size'), pos: c.get('position'),
     angle: Number(c.get('angle') || 0), mirror: c.get('mirror') || null,
+    noteUserSized: !!c.get('noteUserSized'),
+    fontScale: Number(c.get('noteFontScale') || 1),
     tspans: tspans.length, lineWidths: widths,
     ta: !!document.querySelector('[data-note-edit]'),
     taFocused: document.activeElement === document.querySelector('[data-note-edit]'),
     taValue: String((document.querySelector('[data-note-edit]') || {}).value ?? ''),
     handleE: handle('e'), handleSe: handle('se'),
+    theme: document.documentElement.getAttribute('data-theme') || document.body.getAttribute('data-theme'),
+    labelTransform: label ? (label.getAttribute('transform') || 'none') : null,
+    bodyStroke: bodyEl ? (bodyEl.getAttribute('stroke') || null) : 'no-body',
+    labelStroke: cs ? cs.stroke : null,
+    fontWeight: cs ? cs.fontWeight : null,
+    fontPx: cs ? Math.round(parseFloat(cs.fontSize) * 100) / 100 : null,
+    fill: cs ? cs.fill : null,
+    // 文字块相对框的内缩（左/上）与越界量（右/下为正＝超出框）
+    inset: br && tr ? {
+      l: Math.round(tr.x - br.x), t: Math.round(tr.y - br.y),
+      overR: Math.round(tr.right - br.right), overB: Math.round(tr.bottom - br.bottom),
+    } : null,
+    t1x: t1 ? Number(t1.getAttribute('x')) : null,
+    t1y: t1 ? Number(t1.getAttribute('y')) : null,
   };
 };
 
@@ -376,6 +400,180 @@ const TXT3 = '变换后仍可编辑';
           ? ok('[10] 展开图叠加：注释与器件绝对坐标逐位相等（与部件相对位置零误差），文字/角度/镜像随行',
             `ann=${J(a && a.pos)} and=${J(g && g.pos)} angle=${a && a.angle}`)
           : bad('[10] 展开图叠加：注释与器件绝对坐标逐位相等（与部件相对位置零误差），文字/角度/镜像随行', J(arm10));
+      }
+    }
+
+    // ================= 视觉几何族（用户报"文本与框分离／黑体描边／拉伸不缩放"） =================
+    // 新建一颗干净的注释（上一颗已经带旋转/镜像，几何读数要独立）
+    const blank2 = await UI.blankCanvasPoint(page);
+    if (!blank2) {
+      ['[11] 文字块落在框内（label 无 transform、内缩＝pad、不越框）',
+       '[12] 无继承描边＋字重 normal，且两个主题的 fill 都随主题翻转',
+       '[13] 拉伸盒宽 ⇒ 字号等比放大（用户："拉伸文本框没有缩放文本"）',
+       '[14] 提交后盒子贴住文字；手动拉过之后不再被贴小（标记随存档走）']
+        .forEach((n) => skip(n, '找不到第二处空白点'));
+    } else {
+      await page.mouse.dblclick(blank2.x, blank2.y);
+      await sleep(400);
+      await page.keyboard.type('短字' + String.fromCharCode(10) + '第二行也不长', { delay: 15 });
+      await page.keyboard.press('Escape');
+      await sleep(500);
+      const n2 = await page.evaluate(NOTE, {});
+      const fitTight = n2 && n2.size.width <= 180 - 20 && n2.size.height <= 60;
+      fitTight
+        ? ok('[14a] 提交后盒子贴住文字（新建默认 180×76 → 实测 ' + n2.size.width + '×' + n2.size.height + '；用户报"边框比文字宽、上下都有空隙"）',
+          `size=${n2.size.width}x${n2.size.height} lines=${n2.tspans} 行宽=${J(n2.lineWidths)}`)
+        : bad('[14a] 提交后盒子贴住文字（新建默认 180×76 → 应随文字收缩）',
+          J(n2 && { size: n2.size, tspans: n2.tspans, widths: n2.lineWidths }));
+
+      // ---- [11] label 与框同一坐标空间、内缩＝pad、不越框 ----
+      const gOk = n2 && n2.labelTransform === 'none' && n2.inset
+        && Math.abs(n2.inset.l - 8) <= 4 && Math.abs(n2.inset.t - 8) <= 8
+        && n2.inset.overR <= 1 && n2.inset.overB <= 1;
+      gOk
+        ? ok('[11] 文字块落在框内：label 无 transform（Gate 基类的居中平移已清）、左内缩＝pad、不越框',
+          `transform=${n2.labelTransform} inset=${J(n2.inset)} t1=(${n2.t1x},${n2.t1y})`)
+        : bad('[11] 文字块落在框内：label 无 transform（Gate 基类的居中平移已清）、左内缩＝pad、不越框',
+          J(n2 && { tr: n2.labelTransform, inset: n2.inset, t1x: n2.t1x, t1y: n2.t1y, size: n2.size }));
+
+      // ---- [12] 描边/字重/主题色 ----
+      const strokeOk = n2 && (n2.labelStroke === 'none') && (n2.bodyStroke === null || n2.bodyStroke === 'none')
+        && String(n2.fontWeight) === '400';
+      // 对比度按**亮度阈值**断言（⛔ 拿正则认 rgb() 的写法：一次转义事故就把它变成恒真式，
+      // 而且 r121 这一格第一版就是这么坏在测试脚本里的——控制字符混进了正则）。
+      const lum = (rgb) => {
+        const mm = /^rgba?\((\d+)[,\s]+(\d+)[,\s]+(\d+)/.exec(String(rgb || ''));
+        return mm ? (Number(mm[1]) + Number(mm[2]) + Number(mm[3])) / 3 : -1;
+      };
+      const t0 = n2 && n2.theme, l0 = lum(n2 && n2.fill);
+      await page.locator('button[data-activity="主题"]').first().click();
+      await sleep(700);
+      const n2b = await page.evaluate(NOTE, {});
+      const t1v = n2b && n2b.theme, l1 = lum(n2b && n2b.fill);
+      await page.locator('button[data-activity="主题"]').first().click();
+      await sleep(600);
+      // 深色主题＝亮字压暗底（亮度>160）；浅色主题＝暗字压亮底（亮度<90）
+      const darkSide = (t, l) => (t === 'dark' ? l > 160 : l < 90);
+      const contrastOk = !!t0 && !!t1v && t1v !== t0 && l0 >= 0 && l1 >= 0 && darkSide(t0, l0) && darkSide(t1v, l1);
+      (strokeOk && contrastOk)
+        ? ok('[12] 文字无继承描边（body 的 stroke 不再落到 text）、字重 400，两个主题各自对比度成立（深底亮字／亮底暗字）',
+          `stroke=${n2.labelStroke} body=${J(n2.bodyStroke)} weight=${n2.fontWeight}；${t0} 亮度=${l0} ⇒ ${t1v} 亮度=${l1}`)
+        : bad('[12] 文字无继承描边（body 的 stroke 不再落到 text）、字重 400，两个主题各自对比度成立（深底亮字／亮底暗字）',
+          J({ stroke: n2 && n2.labelStroke, bodyStroke: n2 && n2.bodyStroke, weight: n2 && n2.fontWeight,
+            t0, l0, t1: t1v, l1 }));
+
+      // ---- [13] 拉伸 → 字号等比放大 ----
+      const sel2 = await page.evaluate((a) => {
+        const p = (window).__sandboxPaper;
+        const b = p.findViewByModel(p.model.getCell(a.id)).el.getBoundingClientRect();
+        return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+      }, { id: n2.id });
+      await page.mouse.click(sel2.x, sel2.y);
+      await sleep(400);
+      const before13 = await page.evaluate(NOTE, { id: n2.id });
+      const he = before13.handleE;
+      if (!he || !he.visible) {
+        skip('[13] 拖角＝整块等比缩放（字号跟放大、文字不溢出）；拖边＝只改比例（字号与高都不动）', `手柄不可见：${J(he)}`);
+        skip('[14b] 拉过之后不再被自动贴小；noteUserSized 与缩放数随存盘重开回来', '前置没满足');
+      } else {
+        const w0 = before13.size.width, h0b = before13.size.height, f0b = before13.fontPx;
+        // 先拖**边** +60（只改比例），再拖**角** +150（整块等比）。角这一步为什么要拖 150：
+        // 盒子是**贴过字**的窄盒（实测 95 起步），拖太少会卡在基准宽附近、放大量看不出来
+        // ——第一版判据就是这么误红一格的（产品没错，是夹具的起点变了）。
+        await page.mouse.move(he.x, he.y);
+        await page.mouse.down();
+        await page.mouse.move(he.x + 60, he.y, { steps: 5 });
+        await page.mouse.up();
+        await sleep(400);
+        // 先量**边**：只改比例——字号与高都不该动（角/边不分的回归臂）
+        const edgeOnly = await page.evaluate(NOTE, { id: n2.id });
+        const edgeNoScale = Math.abs(edgeOnly.fontPx - f0b) < 0.01 && edgeOnly.size.height === h0b;
+        const hs2 = edgeOnly.handleSe;
+        await page.mouse.move(hs2.x, hs2.y);
+        await page.mouse.down();
+        await page.mouse.move(hs2.x + 150, hs2.y + 40, { steps: 6 });
+        await page.mouse.up();
+        await sleep(500);
+        const after13 = await page.evaluate(NOTE, { id: n2.id });
+        // 期望＝13 × 这颗便签自己的缩放数（⛔ 拿 宽/180 当契约：驱动源换成 noteFontScale
+        // 后那个式子就成了恒假——第一版判据就是这么误红过一格的）
+        const expectFont = Math.round(13 * after13.fontScale * 100) / 100;
+        const scaleOk = edgeNoScale && after13.size.width > w0 + 100 && w0 < 180
+          && after13.fontScale > 1.05 && after13.fontPx > f0b + 2
+          && Math.abs(after13.fontPx - expectFont) <= 0.6
+          // 等比缩放后文字不许溢出到框外（让四条边都放大字号的第一版，实测溢出 51px）
+          && after13.inset.overR <= 1 && after13.inset.overB <= 1;
+        scaleOk
+          ? ok('[13] 拖**角**＝整块等比缩放（字号跟着放大且文字不溢出）；拖**边**＝只改比例（字号与高都不动）',
+            `角拖后 w ${w0}→${after13.size.width} font ${f0b}→${after13.fontPx} scale=${after13.fontScale} 期望≈${expectFont} 越界=${J(after13.inset)}；边拖那一步 font 仍=${edgeOnly.fontPx} 高仍=${edgeOnly.size.height}`)
+          : bad('[13] 拖**角**＝整块等比缩放（字号跟着放大且文字不溢出）；拖**边**＝只改比例（字号与高都不动）',
+            J({ edgeNoScale, edgeFont: edgeOnly && edgeOnly.fontPx, f0b, h0b, w0, got: after13 && { w: after13.size.width, h: after13.size.height, font: after13.fontPx, scale: after13.fontScale, inset: after13.inset }, expectFont }));
+
+        // ---- [14b] 拉过之后：标记立起来，再编辑提交不吞掉用户尺寸 ----
+        const flagged = after13.noteUserSized === true;
+        // ⚠ 现量现点，且取**noteBg 的矩形**：视图 el 的 bbox 含 8 颗手柄（文字长高时更大），
+        //   它的"中心"实测压在南手柄 rect#h-s 上——点手柄等于起缩放，双击永远进不了编辑分支
+        //   （[14b] 第一版就是这么红的：读起来像"编辑没生效"，其实是点错了元素）。
+        const sel3 = await page.evaluate((a) => {
+          const p = (window).__sandboxPaper;
+          const v = p.findViewByModel(p.model.getCell(a.id));
+          const bg = v.el.querySelector('[joint-selector="noteBg"]') || v.el;
+          const b = bg.getBoundingClientRect();
+          return { x: b.left + b.width / 2, y: b.top + b.height / 2 };
+        }, { id: n2.id });
+        // 诊断：这一格第一版红的归因要分得开——是双击没命中，还是命中了没进编辑分支
+        await page.evaluate(() => {
+          const p = (window).__sandboxPaper;
+          (window).__dbl14 = { pd: 0, hit: null };
+          p.on('cell:pointerdown', (v) => { if (String(v.model.get('type')) === 'Annotation') (window).__dbl14.pd++; });
+        });
+        await page.evaluate((pt) => {
+          const el = document.elementFromPoint(pt.x, pt.y);
+          (window).__dbl14.hit = el ? `${el.tagName}#${el.getAttribute('joint-selector') || ''} in-cell=${!!(el.closest && el.closest('[model-id]'))}` : 'null';
+        }, sel3);
+        await page.mouse.dblclick(sel3.x, sel3.y);
+        await sleep(400);
+        const open14 = await page.evaluate(() => ({
+          ta: !!document.querySelector('[data-note-edit]'),
+          focused: document.activeElement === document.querySelector('[data-note-edit]'),
+          diag: (window).__dbl14,
+          rect: (() => { const c = (window).__sandboxPaper.model.getElements().find((e) => e.get('type') === 'Annotation'); const v = (window).__sandboxPaper.findViewByModel(c); const b = v.el.getBoundingClientRect(); return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width), h: Math.round(b.height) }; })(),
+        }));
+        await page.keyboard.press('Control+a');
+        await page.keyboard.type('又改了文字，盒子不该缩回去', { delay: 10 });
+        await page.keyboard.press('Escape');
+        await sleep(500);
+        const after14 = await page.evaluate(NOTE, { id: n2.id });
+        if (!open14.ta || !open14.focused) console.log(`  [现场14b] 编辑器没开或没聚焦：${J(open14)} after14.text=${after14 && after14.text}`);
+        const keptLive = flagged && after14.size.width >= after13.size.width - 1 && after14.noteUserSized === true
+          && after14.text.indexOf('又改了文字') === 0;
+        // 标记本身也要随存档走——不然重开一次后"贴字"就会把用户拉好的尺寸吃掉（这条不是推断，是量出来的）
+        await page.locator('button[title^="保存当前沙盒文件"]').first().click().catch(() => { });
+        await sleep(900);
+        let back14 = null;
+        for (let attempt = 1; attempt <= 3 && !back14; attempt++) {
+          try {
+            await UI.boot(page, URL, { reload: true });
+            try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
+            await UI.enterSandbox(page);
+            await waitPaper(page);
+            await sleep(900);
+            const got = await page.evaluate(() => (window).__sandboxPaper.model.getElements()
+              .filter((e) => String(e.get('type')) === 'Annotation')
+              .map((e) => ({ id: String(e.id), w: (e.get('size') || {}).width, flag: !!e.get('noteUserSized'), scale: Number(e.get('noteFontScale') || 1), font: Math.round(parseFloat(getComputedStyle((window).__sandboxPaper.findViewByModel(e).el.querySelector('[joint-selector=\"label\"]')).fontSize) * 100) / 100, text: String(e.get('label') || '') }))
+              .find((x) => x.text.indexOf('又改了文字') === 0));
+            back14 = got || null;
+          } catch (e) { await sleep(1200); }
+        }
+        const kept = keptLive && back14 && back14.flag === true
+          && Math.abs(back14.w - after14.size.width) <= 1
+          && Math.abs(back14.scale - after14.fontScale) <= 0.01
+          && Math.abs(back14.font - after14.fontPx) <= 0.6;
+        kept
+          ? ok('[14b] 手动拉过之后不再被自动贴小；noteUserSized 与缩放数（及其算出的字号）都随存盘重开回来',
+            `拉后 w=${after14.size.width} font=${after14.fontPx} scale=${after14.fontScale}；重开 w=${back14 && back14.w} font=${back14 && back14.font} scale=${back14 && back14.scale}`)
+          : bad('[14b] 手动拉过之后不再被自动贴小；noteUserSized 与缩放数（及其算出的字号）都随存盘重开回来',
+            J({ open14, flagged, after13: after13.size, after14: after14 && { size: after14.size, text: after14.text, flag: after14.noteUserSized, fontPx: after14.fontPx, scale: after14.fontScale }, back14 }));
       }
     }
 
