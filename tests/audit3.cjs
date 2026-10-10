@@ -1,4 +1,4 @@
-// 深度自检轮 3：PNG/SVG 导出含新器件（Memory/Display7/总线/计数器）+ 空画布导出
+// 深度自检轮 3：SVG/综合网表 导出含新器件（Memory/Display7/总线/计数器）+ 空画布导出 + PNG 下线
 const { spawn } = require('child_process');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
@@ -47,19 +47,19 @@ const UI = require('./_ui.cjs');
     // 保存（导出可能要求已保存文件）
     await page.keyboard.press('Control+s'); await sleep(900);
 
-    // PNG 导出
-    const dlPng = page.waitForEvent('download', { timeout: 8000 }).then(() => 'download').catch(() => null);
-    await page.locator('button[title="导出 PNG"]').click();
-    const png = await dlPng;
-    await sleep(600);
-    png === 'download' ? ok('[3a] PNG 导出触发下载（含 Memory/Display7/总线）') : bad('[3a] PNG 导出无响应', `errors=${errors.length}`);
-
-    // SVG 导出
+    // SVG 导出（含新器件）
     const dlSvg = page.waitForEvent('download', { timeout: 8000 }).then(() => 'download').catch(() => null);
     await page.locator('button[title="导出 SVG"]').click();
     const svg = await dlSvg;
     await sleep(600);
-    svg === 'download' ? ok('[3b] SVG 导出触发下载') : bad('[3b] SVG 导出无响应');
+    svg === 'download' ? ok('[3a] SVG 导出触发下载（含 Memory/Display7/总线）') : bad('[3a] SVG 导出无响应', `errors=${errors.length}`);
+
+    // 综合网表导出（时序器件也要能转出 always/forever）
+    const dlNl = page.waitForEvent('download', { timeout: 8000 }).then(() => 'download').catch(() => null);
+    await page.locator('button[title^="导出综合网表"]').click();
+    const nl = await dlNl;
+    await sleep(600);
+    nl === 'download' ? ok('[3b] 综合网表导出触发下载') : bad('[3b] 综合网表导出无响应');
 
     // 页面错误检查
     errors.length === 0 ? ok('[3c] 导出全程无页面异常') : bad('[3c] 导出产生页面异常', errors.slice(0, 2).join('|').slice(0, 200));
@@ -67,10 +67,14 @@ const UI = require('./_ui.cjs');
     // 空文件导出（健壮性）
     await UI.newSandboxFile(page);
     const dlEmpty = page.waitForEvent('download', { timeout: 8000 }).then(() => 'download').catch(() => null);
-    await page.locator('button[title="导出 PNG"]').click();
+    await page.locator('button[title="导出 SVG"]').click();
     const empty = await dlEmpty;
     await sleep(600);
     empty === 'download' ? ok('[3d] 空画布导出也不崩（有下载或安全忽略）') : bad('[3d] 空画布导出崩溃', errors.slice(0, 2).join('|').slice(0, 200));
+
+    // PNG 全下线：工具栏不再给 PNG 出口
+    const pngBtn = await page.locator('button[title^="导出 PNG"]').count();
+    pngBtn === 0 ? ok('[3e] PNG 出口已下线') : bad('[3e] 仍残留 PNG 按钮', `count=${pngBtn}`);
     console.log(`\n===== 结果: ${pass} pass, ${fail} fail =====`);
   } catch (e) { console.log('FATAL', e); if (pass + fail === 0) fail = 1; }
   finally { try { await browser?.close(); } catch {} try { server?.kill(); } catch {} process.exit(fail > 0 ? 1 : 0); }

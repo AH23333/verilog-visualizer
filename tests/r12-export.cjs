@@ -1,4 +1,4 @@
-// R12 沙盒导出验收：Export PNG / Export SVG —— 真实按钮触发 <a download> + 像素级非空校验
+// R12 沙盒导出验收：SVG / 综合网表 / JSON —— 真实按钮触发 <a download> + 内容按成品判据；PNG 全下线
 // 用法: node tests/r12-export.cjs
 const { spawn } = require('child_process');
 const fs = require('fs');
@@ -34,25 +34,8 @@ async function boot(page) {
   if (await page.locator('button[title="新建文件"]').count()) { await UI.newSandboxFile(page); }
 }
 
-// 像素级校验：把 PNG dataURL 画到 canvas，统计非白像素数，证明电路真的被渲染出来
-async function countNonWhite(page, dataUrl) {
-  return page.evaluate(async (du) => {
-    const img = new Image();
-    await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = du; });
-    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
-    const ctx = c.getContext('2d'); ctx.drawImage(img, 0, 0);
-    const d = ctx.getImageData(0, 0, c.width, c.height).data;
-    let nw = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i] > 248 && d[i + 1] > 248 && d[i + 2] > 248) continue; // 近白
-      nw++;
-    }
-    return { w: img.width, h: img.height, nonWhite: nw };
-  }, dataUrl);
-}
-
-function pngMagicOk(p) { const b = fs.readFileSync(p); return b.length > 8 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47; }
 function svgLooksOk(p) { const b = fs.readFileSync(p, 'utf8'); return b.includes('<svg') && (b.includes('joint-cell') || b.includes('<rect') || b.includes('<path')); }
+function netlistLooksOk(p) { const b = fs.readFileSync(p, 'utf8'); return /module\s+\w+\(/.test(b) && b.includes('endmodule'); }
 
 (async () => {
   let server, browser;
@@ -74,37 +57,8 @@ function svgLooksOk(p) { const b = fs.readFileSync(p, 'utf8'); return b.includes
     const cellCount = await page.evaluate(() => window.__sandboxPaper.model.getCells().length);
     cellCount >= 2 ? ok('cells present before export', `cells=${cellCount}`) : bad('cells present', `cells=${cellCount}`);
 
-    console.log('[B] Export PNG — real <a download> + pixel check');
-    const pngBtn = await page.locator('button[title="导出 PNG"]').count();
-    pngBtn === 1 ? ok('Export PNG button exists') : bad('Export PNG button exists', `count=${pngBtn}`);
-
-    const pngPath = path.join(PROJECT_ROOT, '.tmpbuild', 'r12-export.png');
-    let dlName = '';
-    try {
-      const [dl] = await Promise.all([
-        page.waitForEvent('download', { timeout: 15000 }),
-        page.locator('button[title="导出 PNG"]').click(),
-      ]);
-      dlName = dl.suggestedFilename();
-      await dl.saveAs(pngPath);
-    } catch (e) { bad('Export PNG download captured', String(e)); }
-    if (dlName) ok('PNG download filename', dlName); else bad('PNG download filename', '(none)');
-    (dlName.endsWith('.png')) ? ok('PNG filename extension') : bad('PNG filename extension', dlName);
-    if (fs.existsSync(pngPath)) {
-      pngMagicOk(pngPath) ? ok('PNG file is valid (magic 89 50 4E 47)') : bad('PNG valid', 'bad magic');
-      const sz = fs.statSync(pngPath).size;
-      sz > 500 ? ok('PNG file non-trivial size', `${sz}B`) : bad('PNG size', `${sz}B`);
-    } else bad('PNG file written', pngPath);
-
-    // 像素级：证明电路真的被画出来（而非空白）
-    const du = await page.evaluate(() => window.__sandboxExport.pngDataUrl(2));
-    du && du.startsWith('data:image/png') ? ok('PNG dataUrl produced') : bad('PNG dataUrl', String(du).slice(0, 40));
-    if (du) {
-      const px = await countNonWhite(page, du);
-      px.nonWhite > 100 ? ok('PNG actually renders circuit (non-white px)', `nonWhite=${px.nonWhite} ${px.w}x${px.h}`) : bad('PNG renders circuit', `nonWhite=${px.nonWhite}`);
-    }
-
-    console.log('[C] Export SVG — real <a download> + structure');
+    // =====================================================================
+    console.log('[B] Export SVG — real <a download> + 深度重绘结构判据');
     const svgBtn = await page.locator('button[title="导出 SVG"]').count();
     svgBtn === 1 ? ok('Export SVG button exists') : bad('Export SVG button exists', `count=${svgBtn}`);
 
@@ -126,11 +80,90 @@ function svgLooksOk(p) { const b = fs.readFileSync(p, 'utf8'); return b.includes
       sz > 200 ? ok('SVG non-trivial size', `${sz}B`) : bad('SVG size', `${sz}B`);
     } else bad('SVG file written', svgPath);
 
-    // QC 钩子直读 SVG 字符串
+    // QC 钩子直读 SVG 字符串 + 深度重绘三连（自包含 / 取景 / 无 HTML 异物）
     const svgStr = await page.evaluate(() => window.__sandboxExport.svgString());
     (typeof svgStr === 'string' && svgStr.includes('<svg') && svgStr.includes('joint-cell'))
       ? ok('QC hook svgString() has cells', `len=${svgStr.length}`)
       : bad('QC hook svgString', String(svgStr).slice(0, 40));
+    (typeof svgStr === 'string' && !svgStr.includes('foreignObject'))
+      ? ok('SVG is self-contained (no foreignObject / inline controls)')
+      : bad('SVG foreignObject 残留', '去 PNG 时连交互控件一起从导出里拿掉了，不该还留着');
+    (typeof svgStr === 'string' && svgStr.includes('viewBox'))
+      ? ok('SVG has viewBox (fitted to content)')
+      : bad('SVG viewBox', '深度重绘要求按模型包围盒取景');
+    (typeof svgStr === 'string' && svgStr.includes('#ffffff'))
+      ? ok('SVG white background rect present')
+      : bad('SVG white bg', '自包含导出必须是非透明的');
+
+    // =====================================================================
+    console.log('[C] Export 综合网表 (.v) — real <a download> + QC hook');
+    const nlBtn = await page.locator('button[title^="导出综合网表"]').count();
+    nlBtn === 1 ? ok('综合网表 button exists') : bad('综合网表 button exists', `count=${nlBtn}`);
+
+    const nlPath = path.join(PROJECT_ROOT, '.tmpbuild', 'r12-export.v');
+    let nName = '';
+    try {
+      const [dl] = await Promise.all([
+        page.waitForEvent('download', { timeout: 15000 }),
+        page.locator('button[title^="导出综合网表"]').click(),
+      ]);
+      nName = dl.suggestedFilename();
+      await dl.saveAs(nlPath);
+    } catch (e) { bad('综合网表 download captured', String(e)); }
+    (nName && nName.endsWith('.v')) ? ok('综合网表 filename extension (.v)', nName) : bad('综合网表 filename extension', nName);
+    if (fs.existsSync(nlPath)) {
+      netlistLooksOk(nlPath) ? ok('综合网表 contains module…endmodule') : bad('综合网表 markup', fs.readFileSync(nlPath, 'utf8').slice(0, 120));
+      const sz = fs.statSync(nlPath).size;
+      sz > 60 ? ok('综合网表 non-trivial size', `${sz}B`) : bad('综合网表 size', `${sz}B`);
+    } else bad('综合网表 file written', nlPath);
+
+    const nlStr = await page.evaluate(() => window.__sandboxExport.netlistString());
+    (typeof nlStr === 'string' && /module\s+sandbox_circuit\(/.test(nlStr))
+      ? ok('QC hook netlistString() has module sandbox_circuit', `len=${nlStr.length}`)
+      : bad('QC hook netlistString', String(nlStr).slice(0, 60));
+
+    // =====================================================================
+    console.log('[D] Export JSON (.djs) — real <a download> + 内容可解析');
+    const jBtn = await page.locator('button[title^="导出 JSON"]').count();
+    jBtn === 1 ? ok('导出 JSON button exists') : bad('导出 JSON button exists', `count=${jBtn}`);
+
+    const jPath = path.join(PROJECT_ROOT, '.tmpbuild', 'r12-export.djs');
+    let jName = '';
+    try {
+      const [dl] = await Promise.all([
+        page.waitForEvent('download', { timeout: 15000 }),
+        page.locator('button[title^="导出 JSON"]').click(),
+      ]);
+      jName = dl.suggestedFilename();
+      await dl.saveAs(jPath);
+    } catch (e) { bad('JSON download captured', String(e)); }
+    (jName && jName.endsWith('.djs')) ? ok('JSON filename extension (.djs)', jName) : bad('JSON filename extension', jName);
+    if (fs.existsSync(jPath)) {
+      try {
+        const o = JSON.parse(fs.readFileSync(jPath, 'utf8'));
+        (o && Array.isArray(o.cells) && o.cells.length >= 2)
+          ? ok('JSON parseable with circuit cells', `cells=${o.cells.length}`)
+          : bad('JSON cells', JSON.stringify(Object.keys(o || {})));
+      } catch (e) { bad('JSON parse', String(e)); }
+    } else bad('JSON file written', jPath);
+
+    // =====================================================================
+    console.log('[E] PNG 全下线 — 工具栏按钮 / QC 钩子 / 右键菜单都不得再给 PNG 出口');
+    const pngBtn = await page.locator('button[title^="导出 PNG"]').count();
+    pngBtn === 0 ? ok('no 导出 PNG button in toolbar') : bad('toolbar still has PNG button', `count=${pngBtn}`);
+    const hasPngHook = await page.evaluate(() => !!(window.__sandboxExport && 'pngDataUrl' in window.__sandboxExport));
+    hasPngHook ? bad('QC hook pngDataUrl still exposed') : ok('QC hook pngDataUrl removed');
+    await page.mouse.click(1100, 700, { button: 'right' }); await sleep(500);
+    const menuTxt = await page.evaluate(() => {
+      const m = document.querySelector('[data-context-menu]');
+      return m ? Array.from(m.querySelectorAll('button')).map((b) => (b.textContent || '').trim()).filter(Boolean) : null;
+    });
+    (menuTxt || []).some((t) => /PNG/i.test(t))
+      ? bad('canvas context menu still has PNG', JSON.stringify(menuTxt))
+      : ok('no PNG in canvas context menu');
+    (menuTxt || []).filter((t) => /导出 SVG|综合网表|导出 JSON/.test(t)).length >= 2
+      ? ok('context menu exports: SVG / 综合网表 / JSON', JSON.stringify(menuTxt))
+      : bad('context menu exports faded', JSON.stringify(menuTxt));
 
     dialogs.length === 0 ? ok('0 native dialogs') : bad('native dialogs', dialogs.join('; '));
     const typeErrors = errors.filter(e => /TypeError/i.test(e));

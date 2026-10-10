@@ -1,21 +1,21 @@
-// R84 验收（用户裁决 R-A：「要添加入口」＝部件绑定的**全局视图**）
+// R84 验收（用户裁决 R-B：「绑定入口统一」＝删掉多选总览，只留一个文件级绑定弹窗）
 //
-// 他要的不是"再多几颗右键项"——换绑此前只能一颗一颗实例地操作，而他想知道的是
-// "这张图里谁绑到哪儿了、哪个已经失效"。那是一个**表**。落点：沙盒左侧栏「设置」旁
-// 新增一颗「部件绑定」（`button[data-sandbox-bindings]`），打开 `BindingDialog`。
-// 换绑仍走现成的 `rebindSubcircuitCell`（重建实例 + 按端口名接回连线），
-// 所以这一格里没有第二套绑定逻辑可写——也就没有"弹窗自己算了一套、真解析另一套"的飘掉空间。
+// 真行为：沙盒工具栏那颗「部件绑定」（`button[data-sandbox-bindings]`）和文件树右键
+// 「绑定...」现在是**同一颗**弹窗（SandboxFileBindingDialog，`[data-file-binding-dialog]`）：
+// 都是对"该文件 graphJson 里的子电路实例按 celltype 名聚合出行"，每行下拉选部件定义文件，
+// 确认写 `file.partBindings`（gateSystem 解析最高优先），重新打开文件后生效。
 //
 // 判据（射程各自写清）：
-//   [1] 入口在：那颗按钮存在、可用、点开有弹窗；
-//   [2] 行数与画布对账：弹窗里的行数 == 画布上 Subcircuit 的颗数（成对判据，不是"大于 0"）；
-//   [3] 状态列说实话：把部件文件删掉后重扫 ⇒ 那一行从「已绑定」变「绑定失效」
-//       （他第 9 条的痛点：挂着名字但放不出来 / 展不开）；
-//   [4] 换绑真生效：在弹窗里把那颗**失效**实例换到 B ⇒ 画布上那颗的 celltype 变 B、端口数按 B 重算、
-//       提示条报「已换绑到」；
-//   [5] 实际解析列不许自说自话：DOM 里报的文件夹必须等于 `resolvePartRef(name, scope)`
-//       **现算**的结果，且夹具要真的构成遮蔽（同一颗名字在根与子文件夹各一份、两个作用域解析到
-//       不同文件），否则这格验不出"按作用域挑选"。
+//   [1] 入口与统一性：工具栏那颗按钮在、可用（活动文件是电路而非门定义），点开是
+//       文件级绑定弹窗且抬头＝本文件；右键那颗文件「绑定...」开的**也是它**（抬头同一个）；
+//   [2] 行数对账：弹窗里每行 `data-binding-name`（含 ×count）== 该文件 graphJson 里
+//       Subcircuit celltype 名聚合（成对判据，不是"有一行就算过"）；
+//   [3] 绑定写盘 & 重载生效：确定 ⇒ `file.partBindings[celltype]` = 选中的部件 id、
+//       提示条说「已保存」；重载后重开弹窗那一行还指着它（绑定是**存进文件**的，不是只在
+//       内存里），`resolvePartRef` 也按这条绑定解析；
+//   [4] 自动/失效说实话：没显式绑定时行**如实预选**到 autoMap 现算那颗（下拉值 =
+//       resolvePartRef 结果、store 无显式绑定）；把那个部件文件删掉后重开 ⇒ 下拉回到
+//       「-- 选择部件文件 --」、不画「已绑定」（不许给用户一个已消失的东西）。
 const { spawn } = require('child_process');
 const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
@@ -34,32 +34,55 @@ const skip = (n, d) => { unverified++; console.log(`  UNVERIFIED  ${n}（${d}）
 const ST = Date.now() % 100000;
 const PA = 'RaA' + ST;
 const PB = 'RaB' + ST;
-const SUB = 'r84sub';
 
-const subCount = (page) => page.evaluate(() => {
-  const p = window.__sandboxPaper;
-  if (!p) return { noPaper: true, n: 0, rows: [] };
-  const cs = p.model.getCells().filter((c) => !c.isLink() && String(c.get('type')) === 'Subcircuit');
-  return { n: cs.length, rows: cs.map((c) => ({ id: String(c.id), celltype: String(c.get('celltype') || ''), ports: (c.getPorts?.() || []).length })) };
-});
-/** 弹窗里的表格行（DOM 是唯一真相：列名、状态、实际解析都按屏幕上看到的读） */
-const dlgRows = (page) => page.evaluate(() => {
-  const dlg = document.querySelector('[data-binding-dialog]');
+/** 弹窗里的内容（DOM 是唯一真相：行名、×count、下拉当前项、已绑定徽章都按屏幕上看到的读） */
+const dlgState = (page) => page.evaluate(() => {
+  const dlg = document.querySelector('[data-file-binding-dialog]');
   if (!dlg) return null;
-  return Array.from(dlg.querySelectorAll('tbody tr')).map((tr) => {
-    const td = Array.from(tr.querySelectorAll('td'));
-    const sel = tr.querySelector('select');
+  const h2 = dlg.querySelector('h2');
+  const rows = Array.from(dlg.querySelectorAll('[data-binding-name]')).map((el) => {
+    const sel = el.querySelector('select');
+    const opt = sel ? sel.options[sel.selectedIndex] : null;
+    const cm = (el.textContent || '').match(/×(\d+)/);
     return {
-      inst: (td[0]?.textContent || '').replace(/定位$/, '').trim(),
-      state: (td[1]?.textContent || '').replace(/⟡/, '').trim(),
-      mark: (td[1]?.textContent || '').includes('⟡'),
-      bound: (td[2]?.textContent || '').trim(),
-      resolved: (td[3]?.textContent || '').trim(),
-      select: sel ? String(sel.value) : null,
-      selectId: sel ? String(sel.getAttribute('data-binding-select')) : null,
+      name: String(el.getAttribute('data-binding-name')),
+      count: cm ? Number(cm[1]) : 0,
+      val: opt ? String(opt.value) : null,
+      optLabel: opt ? opt.textContent.trim() : '',
+      bound: (el.textContent || '').includes('已绑定'),
     };
   });
+  return {
+    header: h2 ? h2.textContent.trim() : null,
+    sub: (() => { const p = dlg.querySelector('p'); return p ? p.textContent.trim() : null; })(),
+    nRows: rows.length,
+    rows,
+  };
 });
+/** 工具栏入口点开弹窗；没有那按钮直接返回 false（反向探针 M1 守这点，不许 FATAL） */
+async function openFileBinding(page) {
+  const b = page.locator('button[data-sandbox-bindings]');
+  if (!(await b.count())) return false;
+  await b.first().click(); await sleep(900);
+  return (await page.locator('[data-file-binding-dialog]').count()) === 1;
+}
+/** 关闭弹窗：统一走「取消」按钮（遮罩 inset:0，不先关掉会挡住后面一切点击） */
+async function closeFileBinding(page) {
+  const b = page.locator('[data-file-binding-dialog] button:has-text("取消")');
+  if (await b.count()) { await b.first().click(); await sleep(600); }
+}
+/** 文件树右键行 → 点菜单项；行找不到返回 null（前置没成要说话，不许 FATAL） */
+async function fileMenu(page, sel, label) {
+  const el = page.locator(sel).first();
+  if (!(await el.count())) return null;
+  await el.click({ button: 'right' }); await sleep(450);
+  const done = await page.evaluate((t) => {
+    const b = Array.from(document.querySelectorAll('[data-context-menu] button')).find((x) => String(x.textContent || '').trim() === t);
+    if (!b || b.disabled) return false; b.click(); return true;
+  }, label);
+  await sleep(800);
+  return done;
+}
 async function partFromCanvas(page, name) {
   await page.locator('button[title^="将当前电路保存为自定义门"]').first().click(); await sleep(400);
   await page.locator('input[placeholder="自定义门名称"]').fill(name); await sleep(200);
@@ -74,40 +97,23 @@ async function placePart(page, name) {
   await sleep(900);
   if (!hit) throw new Error(`左侧栏没有「放置部件 ${name}」那一行`);
 }
-/**
- * 点开绑定总览；**入口按钮不在就直接返回 false**。
- * ⚠ 这一句守的是反向探针 M1：把 `data-sandbox-bindings` 改名后，不带守卫的 `locator.click()`
- *   会在 30 s 超时里抛错 ⇒ 整颗闸门 FATAL，于是"入口没了"这件本该报 **FAIL** 的事
- *   被读成"后面几格没判定"。前置没了要各格自己说"未验证"，不是整颗崩掉。
- */
-async function openBindings(page) {
-  const b = page.locator('button[data-sandbox-bindings]');
-  if (!(await b.count())) return false;
-  await b.first().click(); await sleep(900);
-  return (await page.locator('[data-binding-dialog]').count()) === 1;
+/** 当前活动文件（含 Subcircuit 实例的电路文件）在 store 里的 id / name / 聚合行 */
+async function mainInfo(page, pa) {
+  return page.evaluate(async (pa) => {
+    const m = await import('/src/store/sandboxStore.ts');
+    const match = m.sandboxStore.list().map((f) => {
+      let j = null; try { j = JSON.parse(f.graphJson || '{}'); } catch { }
+      return { f, j };
+    }).find(({ f, j }) => f.role !== 'part' && (j.cells || []).some((c) => c?.type === 'Subcircuit' && c.celltype === pa));
+    if (!match) return null;
+    const counts = {};
+    for (const c of (match.j.cells || [])) {
+      if (c?.type === 'Subcircuit' && c.celltype) counts[String(c.celltype)] = (counts[String(c.celltype)] || 0) + 1;
+    }
+    return { id: match.f.id, name: match.f.name, counts };
+  }, pa);
 }
 
-async function fileMenu(page, sel, label) {  const el = page.locator(sel).first();
-  if (!(await el.count())) throw new Error(`找不到行 ${sel}`);
-  // 现场诊断：Playwright 的 call log 在流里会被截掉，看不清"谁拦住了点击"——自己读一次。
-  const who = await page.evaluate((s) => {
-    const e = document.querySelector(s);
-    if (!e) return { noEl: true };
-    const r = e.getBoundingClientRect();
-    const top = document.elementFromPoint(Math.round(r.x + r.width / 2), Math.round(r.y + r.height / 2));
-    return { rect: [Math.round(r.x), Math.round(r.y), Math.round(r.width), Math.round(r.height)],
-      top: top ? `${top.tagName}.${String(top.className).slice(0, 40)}` : null,
-      topAttrs: top ? Array.from(top.attributes || []).map((a) => `${a.name}=${a.value.slice(0, 24)}`).join(' ') : null };
-  }, sel);
-  console.log(`    [诊断 ${label}]`, J(who));
-  await el.click({ button: 'right' }); await sleep(450);
-  const done = await page.evaluate((t) => {
-    const b = Array.from(document.querySelectorAll('[data-context-menu] button')).find((x) => String(x.textContent || '').trim() === t);
-    if (!b || b.disabled) return false; b.click(); return true;
-  }, label);
-  await sleep(800);
-  return done;
-}
 (async () => {
   let server, browser;
   try {
@@ -119,7 +125,6 @@ async function fileMenu(page, sel, label) {  const el = page.locator(sel).first(
     if (!await fetch(URL).then((r) => r.ok).catch(() => false)) { console.log('FATAL 服务没起来'); process.exit(1); }
     browser = await PW.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
-    // 前置没成要在 9 s 内说话，别把 30 s 默认超时耗在等一颗不存在的按钮上（反向探针 M1 实测）
     page.setDefaultTimeout(30000);
     const perr = []; page.on('pageerror', (e) => perr.push(String(e).slice(0, 160)));
     await UI.boot(page, URL);
@@ -129,124 +134,134 @@ async function fileMenu(page, sel, label) {  const el = page.locator(sel).first(
     // 部件 A（根目录）：一张只放 Input/Output 的画布
     await UI.clickGate(page, 'Input'); await UI.clickGate(page, 'Output'); await sleep(400);
     await partFromCanvas(page, PA);
-    // 部件 B：**另开一张干净画布**再放 Input/Output ⇒ B 的定义与 A 无关。
-    // ⚠ 第一版在"已经放着 A 实例"的那张画布上直接存 B，于是 B 的定义里嵌着对 A 的引用；
-    //   [3] 删掉 A 之后 B 自己也成了"没有可用定义"，[4] 换绑必然取消 —— 那是夹具自己造的假红。
+    // 部件 B：**另开一张干净画布**再存 ⇒ B 的定义与 A 无关（旧版把 B 存进含 A 实例的画布，删 A 后 B 自己也失效，是夹具造的假红）
     await UI.newSandboxFile(page);
     await UI.clickGate(page, 'Input'); await UI.clickGate(page, 'Output'); await sleep(400);
     await partFromCanvas(page, PB);
-    // 主画布：另开一张，放一颗 A 实例
+    // 主画布：另开一张，放一颗 A 实例（celltype 聚合出 1 行：A）
     await UI.newSandboxFile(page);
     await placePart(page, PA);
-    await page.locator('button[data-activity="files"]').first().click(); await sleep(700);
 
-    // ===== [1] 入口在 =====
-    const btnCount = await page.locator('button[data-sandbox-bindings]').count();
-    const opened1 = btnCount ? await openBindings(page) : false;
-    (btnCount === 1 && opened1 ? ok : bad)('[1] 左侧栏有「部件绑定」入口，点开是总览弹窗',
-      `按钮=${btnCount} 弹窗开起来=${opened1}`);
-
-    // ===== [2] 行数 == 画布上的实例数 =====
-    const canvas = await subCount(page);
-    const rows = await dlgRows(page);
-    console.log('  [对账] 画布=', J(canvas), ' 弹窗行=', J(rows));
-    (rows && rows.length === canvas.n && canvas.n >= 1 ? ok : bad)(
-      '[2] 弹窗行数与画布上子电路实例数逐一对上（不是"有一行就算过"）',
-      `画布 ${canvas.n} 颗 / 弹窗 ${rows ? rows.length : '没读到'} 行`);
-
-    // ===== [3] 删掉部件文件 ⇒ 状态列改口「绑定失效」 =====
-    // ⚠ 弹窗是 `inset:0` 的遮罩：不先关掉，后面每次点文件树/画布都被它拦住
-    //   （本仓 R79 记过的位宽遮罩同一族）。这里先把"Esc 到没到 document"量出来再说结论——
-    //   遮罩关不掉可以有两种因：事件根本没到（键盘焦点问题）／到了但没人处理（处理器没挂上）。
-    const beforeState = (rows || []).find((r) => r.bound === PA);
-    await page.evaluate(() => { window.__escN = 0; const h = () => { window.__escN++; }; window.__escH = h; document.addEventListener('keydown', h); });
-    await page.keyboard.press('Escape'); await sleep(500);
-    const escProbe = await page.evaluate(() => {
-      if (window.__escH) document.removeEventListener('keydown', window.__escH);
-      return { reached: window.__escN ?? null, dlgStill: !!document.querySelector('[data-binding-dialog]') };
-    });
-    console.log('    [Esc 诊断]', J(escProbe));
-    const closed3 = escProbe.dlgStill === false;
-    const del = await fileMenu(page, `[data-sbfile$="${PA}.djs"]`, '删除');
-    const reopened3 = await openBindings(page);   // 重开＝重新扫描
-    const rows3 = await dlgRows(page);
-    const rowA = (rows3 || []).find((r) => r.bound === PA);
-    console.log('  [删部件后] Esc 关得掉=', closed3, ' ', J(rowA), ' 删除动作=', del, ' 重开=', reopened3);
-    (!del || !reopened3 || !rowA ? skip : rowA.state === '绑定失效' && beforeState && beforeState.state === '已绑定'
-      ? ok : bad)('[3] 删掉部件文件后重扫，那一行从「已绑定」变「绑定失效」（Esc 也关得掉弹窗）',
-      !del || !reopened3 || !rowA ? `删除=${del} 重开=${reopened3} 读到行=${J(rowA)}` : `点删除前=${J(beforeState && beforeState.state)} 现在=${J(rowA.state)} Esc=${closed3}`);
-
-    // ===== [4] 在弹窗里换绑 ⇒ 画布真变（此时那一行是「绑定失效」，正是他第 9 条的现场）=====
-    // 现场依据（r84-probe3 实测）：失效行同样换得回来 —— change 到了 React（chg=1）、
-    // 画布那颗 celltype 变 PB、端口 2 颗、提示条「已换绑到「PB」」。
-    // ⚠ 找行只认「绑定到」那一列：失效行的 <select> 读出来是空串（当前值在选项里不存在，
-    //   React 把选择框落回「（未绑定）」），拿 select.value 当绑定名会一行也找不到。
-    const rows4pre = await dlgRows(page);
-    const target = (rows4pre || []).find((r) => r.bound === PA);
-    const opts = target && target.selectId ? await page.evaluate((id) => {
-      const s = document.querySelector(`select[data-binding-select="${id}"]`);
-      return s ? Array.from(s.options).map((o) => o.value) : null;
-    }, target.selectId) : null;
-    let swapped = false;
-    if (target && target.selectId && opts && opts.includes(PB)) {
-      try { await page.selectOption(`select[data-binding-select="${target.selectId}"]`, PB); swapped = true; }
-      catch (e) { console.log('    !! selectOption 没成：', String(e).slice(0, 120)); }
-      await sleep(1600);
-    }
-    const toast4 = await UI.toastText(page);
-    const canvas4 = await subCount(page);
-    console.log('  [换绑后] 选项=', J(opts), ' 发起=', swapped, ' 画布=', J(canvas4), ' toast=', J(toast4));
-    (!swapped ? skip : canvas4.rows.length === 1 && canvas4.rows[0].celltype === PB && canvas4.rows[0].ports === 2
-      && /已换绑/.test(String(toast4)) ? ok : bad)(
-      '[4] 在总览里把那颗失效实例换绑到 B：画布上那颗的绑定名与端口数按 B 重算，提示条说实话',
-      !swapped ? `下拉里没有 B 这一项（选项=${J(opts)} 行=${J(target)}）` : `画布=${J(canvas4.rows)} toast=${J(toast4)}`);
-
-    // ===== [5] 「实际解析」列 == resolvePartRef 现算的结果（同名遮蔽时唯一能解释行为的字段）=====
-    await page.keyboard.press('Escape'); await sleep(500);
-    // 遮蔽夹具：往子文件夹再写一份**同名**部件（把根目录那一份的画布原样抄过去）。
-    // ⚠ 不走 UI 建文件：那要「先切到文件栏建文件夹 → 建文件 → 开它 → 切回放件栏放 Input/Output
-    //   → 再存部件 → 切回主文件」六步，而 r84-probe2 实测「放置部件」那一列在「文件」栏下根本
-    //   不在 DOM 里（`[放件] false`）—— 夹具在半路就静默空跑了。这一格只管"库里有两颗同名"。
-    const twin = await page.evaluate(async ({ n, sub }) => {
+    const mi = await mainInfo(page, PA);
+    const pbId = await page.evaluate(async (pb) => {
       const m = await import('/src/store/sandboxStore.ts');
-      const src = m.sandboxStore.list().find((f) => f.role === 'part' && f.name === n + '.djs');
-      if (!src) return { noSrc: true, have: m.sandboxStore.list().map((f) => `${f.name}|${f.role ?? ''}`) };
-      const created = m.sandboxStore.create(`${sub}/${n}.djs`, 'part');
-      m.sandboxStore.save(created.id, src.graphJson);
-      return { wrote: created.name };
-    }, { n: PB, sub: SUB });
-    console.log('  [遮蔽夹具]', J(twin));
-    // 弹窗抬头那句「库里有部件 N 颗」读的是 React 里的部件清单：直接写库它不会重扫 ⇒ 重载一次
-    // （顺带验一份真东西：换绑后的绑定是**存进文件**的，不是只在内存里）。
+      const f = m.sandboxStore.list().find((x) => x.role === 'part' && x.name.replace(/\.djs$/i, '').split('/').pop() === pb);
+      return f ? f.id : null;
+    }, PB);
+    console.log('  [夹具] 主文件=', J(mi), ' PB 部件 id=', pbId ? String(pbId).slice(0, 8) + '…' : null);
+    if (!mi || !pbId) { console.log('  FATAL 夹具没建起来'); process.exit(1); }
+    const headerOf = (name) => `部件绑定：${name.split('/').pop()}`;
+
+    // ===== [1] 工具栏入口 + 与文件右键同一颗弹窗 =====
+    const open1 = await openFileBinding(page);
+    const st1 = open1 ? await dlgState(page) : null;
+    (open1 && st1 && st1.header === headerOf(mi.name) ? ok : bad)(
+      '[1] 工具栏「部件绑定」点开的是文件级绑定弹窗，抬头＝当前电路文件',
+      st1 ? `抬头=${J(st1.header)}（要=${J(headerOf(mi.name))}）` : `弹窗没起来（open=${open1}）`);
+    await closeFileBinding(page);
+
+    await page.locator('button[data-activity="files"]').first().click(); await sleep(700);
+    const ctx = await fileMenu(page, `[data-sbfile$="${path.posix.basename(mi.name)}"]`, '绑定...');
+    const st1b = await dlgState(page);
+    if (ctx === null) {
+      skip('[1] 文件右键「绑定...」开的也是同一颗弹窗', '文件行没找到（前置未成，结论不作数）');
+    } else {
+      (st1b && st1b.header === headerOf(mi.name) ? ok : bad)(
+        '[1] 文件右键「绑定...」开的也是同一颗弹窗（抬头同一个文件）',
+        st1b ? `抬头=${J(st1b.header)}` : '右键菜单没开出弹窗');
+    }
+    await closeFileBinding(page);
+
+    // ===== [2] 行数对账：弹窗行 == 文件 graphJson 聚合 =====
+    const expect2 = Object.entries(mi.counts).map(([name, count]) => ({ name, count })).sort((a, b) => a.name.localeCompare(b.name));
+    const open2 = await openFileBinding(page);
+    const st2 = open2 ? await dlgState(page) : null;
+    const rowsOk2 = st2 && st2.rows.length === expect2.length
+      && expect2.every((e) => {
+        const r = st2.rows.find((x) => x.name === e.name);
+        return r && r.count === e.count;
+      });
+    (rowsOk2 ? ok : bad)(
+      '[2] data-binding-name 行与文件 graphJson 的 Subcircuit 聚合逐一对上（含 ×count）',
+      open2 === false ? '入口没起来' : `弹窗 ${J(st2 && { nRows: st2.nRows, rows: st2.rows })} 要=${J(expect2)}`);
+    await closeFileBinding(page);
+
+    // ===== [4] 自动/失效说实话（先于任何显式绑定）=====
+    // 这颗弹窗的"自动"是**如实预选**：没显式绑定时，下拉挂在 autoMap 现算那颗上
+    // （resolvePartRef 按作用域打分的结果），而不是自己发明一颗 —— 所以对照物是
+    // `resolvePartRef(PA, dirOf(主文件))` 的 file.id，外加"store 里没有任何显式绑定"。
+    const autoId = await page.evaluate(async (pa) => {
+      const g = await import('/src/lib/gateSystem.ts');
+      const r = g.resolvePartRef(pa, '');
+      return r ? String(r.file?.id || r.file?.name || r.file) : null;
+    }, PA);
+    const open4a = await openFileBinding(page);
+    const st4a = open4a ? await dlgState(page) : null;
+    const rowA4 = (st4a?.rows || []).find((r) => r.name === PA);
+    const dbPre = await page.evaluate(async (id) => {
+      const m = await import('/src/store/sandboxStore.ts');
+      return m.sandboxStore.get(id)?.partBindings || {};
+    }, mi.id);
+    const autoOk = (rowA4 && rowA4.val === autoId) && Object.keys(dbPre).length === 0;
+    (autoOk ? ok : bad)(
+      '[4] 未显式绑定时：行如实预选到 autoMap 现算的那颗（下拉值 = resolvePartRef 结果），store 无显式绑定',
+      `val=${J(rowA4 && rowA4.val)} auto=${J(autoId)} 显式绑定=${J(dbPre)}`);
+    await closeFileBinding(page);
+
+    // 删掉 A 的部件文件 ⇒ 重开：那行必须说实话"没得选了"
+    await page.locator('button[data-activity="files"]').first().click(); await sleep(700);
+    const del = await fileMenu(page, `[data-sbfile$="${PA}.djs"]`, '删除');
+    const open4b = await openFileBinding(page);
+    const st4b = open4b ? await dlgState(page) : null;
+    const rowA4b = (st4b?.rows || []).find((r) => r.name === PA);
+    (del !== true ? skip('no-op') : rowA4b && rowA4b.val === '' && rowA4b.optLabel === '-- 选择部件文件 --' && !rowA4b.bound ? ok : bad)(
+      '[4] 删掉部件文件后重开：那行落到「-- 选择部件文件 --」、不画「已绑定」（不给用户一个已消失的东西）',
+      !rowA4b ? `没读到 A 行 ${J(st4b)}` : `val=${J(rowA4b.val)} 选项=${J(rowA4b.optLabel)} bound=${J(rowA4b.bound)}`);
+    await closeFileBinding(page);
+
+    // ===== [3] 绑定写盘 & 重载生效 =====
+    const open3 = await openFileBinding(page);
+    const st3 = open3 ? await dlgState(page) : null;
+    let bound3 = false;
+    if (st3) {
+      try {
+        await page.locator(`[data-binding-name="${PA}"] select`).selectOption(pbId);
+        bound3 = true;
+      } catch (e) { console.log('    !! selectOption 没成：', String(e).slice(0, 120)); }
+      await sleep(500);
+      const confirmBtn = page.locator('[data-file-binding-dialog] button:has-text("确定")');
+      if (await confirmBtn.count()) { await confirmBtn.first().click(); await sleep(900); }
+    }
+    const toast3 = await UI.toastText(page);
+    const db = await page.evaluate(async (id) => {
+      const m = await import('/src/store/sandboxStore.ts');
+      return { pb: m.sandboxStore.get(id)?.partBindings || null };
+    }, mi.id);
+    (bound3 && db.pb && db.pb[PA] === pbId && /已保存/.test(String(toast3 || '')) ? ok : bad)(
+      '[3] 确定后 file.partBindings[celltype] 写库、提示条说「已保存」',
+      !bound3 ? '下拉没选中' : `partBindings=${J(db.pb)} toast=${J(toast3)}`);
+
+    // 重载：绑定必须从**文件**里回来（不是只在内存里），且 resolvePartRef 按它解析
     await UI.boot(page, URL, { reload: true });
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
     await page.locator('button[data-activity="sandbox"]').first().click(); await sleep(1500);
-    const back = await page.evaluate(() => !!window.__sandboxPaper);
-    if (!back) {
-      skip('[5] 「实际解析」列等于 resolvePartRef 现算的那一颗，且同名 ⟡ 标出来', '重载后沙盒画布没回来（前置未成，结论不作数）');
+    const back3 = await page.evaluate(() => !!window.__sandboxPaper);
+    if (!back3) {
+      skip('[3] 重载后绑定仍生效 + resolvePartRef 按绑定解析', '重载后沙盒画布没回来（前置未成，结论不作数）');
     } else {
-      const opened5 = await openBindings(page);
-      const rows5 = opened5 ? await dlgRows(page) : null;
-      const rowB = (rows5 || []).find((r) => r.bound === PB);
-      const calc = await page.evaluate(async ({ n, sub }) => {
+      const open3r = await openFileBinding(page);
+      const st3r = open3r ? await dlgState(page) : null;
+      const rowA3r = (st3r?.rows || []).find((r) => r.name === PA);
+      const res = await page.evaluate(async (pa) => {
         const g = await import('/src/lib/gateSystem.ts');
-        const dir = (f) => { const s = String(f.name); return s.includes('/') ? s.slice(0, s.lastIndexOf('/')) : ''; };
-        const sameName = (await import('/src/store/sandboxStore.ts')).sandboxStore.list()
-          .filter((f) => f.role === 'part').map((f) => f.name).filter((s) => s.replace(/\.djs$/, '').split('/').pop() === n).length;
-        const a = g.resolvePartRef(n, ''), b = g.resolvePartRef(n, sub);
-        return { sameName, root: a ? dir(a.file) : null, sub: b ? dir(b.file) : null };
-      }, { n: PB, sub: SUB });
-      console.log('  [遮蔽] 现算=', J(calc), ' 弹窗那行=', J(rowB));
-      (calc.sameName < 2 || twin.noSrc ? skip : calc.root === calc.sub ? skip : !rowB || calc.root === null ? skip
-        : rowB.resolved === (calc.root === '' ? '根目录' : `${calc.root}/`) && rowB.mark
-          ? ok : bad)(
-        '[5] 「实际解析」列等于 resolvePartRef 现算的那一颗，且同名 ⟡ 标出来',
-        calc.sameName < 2 || twin.noSrc ? `同名部件只有 ${calc.sameName} 颗（夹具=${J(twin)}），遮蔽没造起来`
-          : calc.root === calc.sub ? `两个作用域解析到同一颗（${J(calc)}）⇒ 这格验不出"按作用域挑选"`
-            : !rowB || calc.root === null ? `行/解析缺失 行=${J(rowB)} 现算=${J(calc)}`
-              : `列=${J(rowB.resolved)} 现算=${J(calc.root)} ⟡=${J(rowB.mark)}`);
+        const r = g.resolvePartRef(pa, '');
+        return r ? String(r.file?.id || r.file?.name || r.file) : null;
+      }, PA);
+      (rowA3r && rowA3r.val === pbId && rowA3r.bound && res === pbId ? ok : bad)(
+        '[3] 重载后那一行还指着选中的部件文件（绑定是存进文件的），resolvePartRef 也按它解析',
+        `行=${J(rowA3r)} 解析=${J(res)} 要=${String(pbId).slice(0, 8)}…`);
+      await closeFileBinding(page);
     }
-
 
     console.log('  PAGEERR:', J(perr.slice(0, 3)));
     console.log(`\n===== 结果: ${pass} pass, ${fail} fail, ${unverified} 未验证 =====`);

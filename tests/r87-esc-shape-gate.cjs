@@ -78,9 +78,10 @@ for (const v of out) console.log(`    射程外 ${v.site} 依赖表=${J(v.dep)}`
       : `全部收口（已收口 ${fixed.length} 处，射程外 ${out.length} 处）`);
 
 const sb = fs.readFileSync(path.join(ROOT, 'src/components/SandboxCanvas.tsx'), 'utf8');
-(sb.includes('data-binding-dialog') && sb.includes('data-sandbox-bindings') && sb.includes('data-bus-width-dialog') ? ok : bad)(
-  '[2] 反向臂：两层遮罩的 DOM 锚点都还在（不许靠删掉弹窗让静态判据变绿）',
-  `绑定总览=${sb.includes('data-binding-dialog')} 入口=${sb.includes('data-sandbox-bindings')} 位宽=${sb.includes('data-bus-width-dialog')}`);
+const sfd = fs.readFileSync(path.join(ROOT, 'src/components/SandboxFileBindingDialog.tsx'), 'utf8');
+(sb.includes('data-sandbox-bindings') && sb.includes('data-bus-width-dialog') && sfd.includes('data-file-binding-dialog') ? ok : bad)(
+  '[2] 反向臂：统一绑定弹窗与位宽弹窗的 DOM 锚点都还在（不许靠删掉弹窗让静态判据变绿）',
+  `绑定入口=${sb.includes('data-sandbox-bindings')} 统一弹窗=${sfd.includes('data-file-binding-dialog')} 位宽=${sb.includes('data-bus-width-dialog')}`);
 
 // ---- [3] 同一族第二病：⛔ 不许从自己写的文案里"认事" ----
 // 现场读数（2026-10-06）：本批 V2b 中文化之前全仓**只有 1 处**——
@@ -103,13 +104,15 @@ for (const rel of walkDir('src')) {
   proseHits.length ? `${proseHits.length} 处：${J(proseHits.slice(0, 4))}` : 'src 下 0 处（本批修掉的那处就是唯一一处）');
 
 // ---- [4] 反向臂之二：这一族**不许靠删监听**变绿（下界只管总数，删一颗不痛不痒）----
-// 现场读数（2026-10-06，批次 R93 之后）：已收口的 11 处分布在 10 个文件里
+// 现场读数（2026-10-06，批次 R93 之后，到本批 R-B/R-C/R-D 之前）：已收口的 11 处分布在 10 个文件里
 // （SandboxCanvas 有 2 处：绑定总览＋位宽对话框；R93 新增的 DffPortsModal 一颗）。
+// 本批改动：删掉绑定总览（旧 BindingDialog 的 Esc 监听），新增 PartSearchDialog 一颗
+// ⇒ 仍 11 处，但 SandboxCanvas 2→1、PartSearchDialog +1。
 // 按"哪个文件该有几处"逐颗点名 —— ⛔ 不钉行号（搬动就漂），也不钉那颗效果的变量名。
 const ROSTER = {
   'ConfirmDialog.tsx': 1, 'ContextMenu.tsx': 1, 'DffPortsModal.tsx': 1, 'ExamplesDialog.tsx': 1,
-  'FsmTableModal.tsx': 1, 'MemPortsModal.tsx': 1, 'SandboxCanvas.tsx': 2, 'SearchDialog.tsx': 1,
-  'SettingsPanel.tsx': 1, 'ShortcutsHelpDialog.tsx': 1,
+  'FsmTableModal.tsx': 1, 'MemPortsModal.tsx': 1, 'PartSearchDialog.tsx': 1, 'SandboxCanvas.tsx': 1,
+  'SearchDialog.tsx': 1, 'SettingsPanel.tsx': 1, 'ShortcutsHelpDialog.tsx': 1,
 };
 const fixedByFile = {};
 for (const v of fixed) fixedByFile[v.site.split(':')[0]] = (fixedByFile[v.site.split(':')[0]] || 0) + 1;

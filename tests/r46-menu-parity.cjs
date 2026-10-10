@@ -98,8 +98,8 @@ const rightClickAt = async (page, x, y) => {
       const stale = ['缩放至适应', '重置视图'];
       const hits = [...(compileMenu || []), ...(sbMenu || [])].filter((t) => stale.some((w) => t.includes(w)));
       hits.length === 0 ? ok('[B] 旧措辞已无残留') : bad('[B] 仍有旧措辞', JSON.stringify(hits));
-      const exp = ['导出 PNG', '导出 SVG', '导出 Verilog'].filter((w) => (sbMenu || []).some((t) => t.includes(w)));
-      exp.length === 3 ? ok('[C] 沙盒画布菜单补上了三项导出（与编译模式同一组词）') : bad('[C] 沙盒菜单缺导出', JSON.stringify({ exp, sbMenu }));
+      const exp = ['导出 SVG', '导出综合网表', '导出 JSON'].filter((w) => (sbMenu || []).some((t) => t.includes(w)));
+      exp.length === 3 ? ok('[C] 沙盒画布菜单导出三项（SVG / 综合网表 / JSON）') : bad('[C] 沙盒菜单缺导出', JSON.stringify({ exp, sbMenu }));
       const keep = ['放置部件', '插入示例', '粘贴', '全选', '撤销', '重做', '清除选择'].filter((w) => (sbMenu || []).some((t) => t.includes(w)));
       keep.length === 7 ? ok('[D] 沙盒菜单原有项未丢', JSON.stringify(keep)) : bad('[D] 沙盒菜单原有项丢失', JSON.stringify(keep));
       // ---- [G] 视图那一组：两边都要有四颗，且**相对顺序一致** ----
@@ -112,8 +112,11 @@ const rightClickAt = async (page, x, y) => {
       (cs.every((i) => i >= 0) && ss.every((i) => i >= 0) && ordered(cs) && ordered(ss) ? ok : bad)(
         '[G] 视图那一组两边齐且同序（放大→缩小→适应窗口→重置缩放，从 DOM 现读）',
         JSON.stringify({ 编译: cs, 沙盒: ss }));
-      const cExp = ['导出 SVG', '导出 PNG'].filter((w) => (compileMenu || []).some((t) => t.includes(w)));
-      cExp.length === 2 ? ok('[E] 编译模式导出项未受影响', JSON.stringify(cExp)) : bad('[E] 编译模式导出项异常', JSON.stringify(compileMenu));
+      const cExp = ['导出 SVG', '导出电路 JSON', '导出综合网表'].filter((w) => (compileMenu || []).some((t) => t.includes(w)));
+      cExp.length === 3 ? ok('[E] 编译模式导出项同步三个（SVG / 电路 JSON / 综合网表）', JSON.stringify(cExp)) : bad('[E] 编译模式导出项异常', JSON.stringify(compileMenu));
+      // 本批（任务四）PNG 全下线：两边都不许再出现 PNG 出口
+      const pngs = [...(compileMenu || []), ...(sbMenu || [])].filter((t) => /PNG/i.test(t));
+      pngs.length === 0 ? ok('[E2] 两边菜单都不再给「导出 PNG」') : bad('[E2] 仍有 PNG 词条', JSON.stringify(pngs));
     }
     perr.length ? bad('[F] 存在页面异常', perr[0]) : ok('[F] 全程无页面异常');
   } catch (e) { console.log('FATAL', e); fail++; } finally {

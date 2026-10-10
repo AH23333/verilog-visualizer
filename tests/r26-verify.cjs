@@ -40,7 +40,7 @@ async function waitForServer(t = 20000) {
 
     const exportV = async () => {
       const dl = page.waitForEvent('download', { timeout: 8000 });
-      await page.locator('button[title*="导出 Verilog"]').click();
+      await page.locator('button[title*="导出综合网表"]').click();
       const d = await dl;
       const p = await d.path();
       return fs.readFileSync(p, 'utf8');
