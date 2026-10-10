@@ -35,8 +35,8 @@ import PromptDialog from './PromptDialog';
 import ExprGenDialog from './ExprGenDialog';
 import ConfirmDialog from './ConfirmDialog';
 import {
-  ANNOTATION_TYPE, NOTE_FONT, NOTE_LINE_H, NOTE_PAD, NOTE_DEFAULT_W, NOTE_DEFAULT_H,
-  registerAnnotation, makeAnnotationCell, isAnnotation, ANNOTATION_CSS,
+  ANNOTATION_TYPE, NOTE_DEFAULT_W, NOTE_DEFAULT_H, noteMetrics,
+  registerAnnotation, makeAnnotationCell, isAnnotation, ANNOTATION_CSS, fitAnnotationToText,
 } from '../lib/annotationCell';
 
 /** 文件/文件夹名校验（与编译模式同名：`V_NAME_VALIDATE` 那一条规则，禁非法字符与空名） */
@@ -600,6 +600,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     //   attrs.label/text。直接写 attr 的话 prop 留旧值 ⇒ 序列化（label prop）
     //   与存盘重开全是旧字（r121 诊断探针3 定案）。
     try { cell.set('label', text); } catch { /* ignore */ }
+    // 提交后把盒子贴住文字（用户报"边框比文字宽、上下都有空隙"＝新建的 180×76 停在原地）；
+    // 手动拉过的注释不贴（noteUserSized），否则会把用户拉好的尺寸吃掉。
+    try { fitAnnotationToText(cell); } catch { /* ignore */ }
     commitRef.current?.();
   }, [noteEdit, noteDraft]);
   // 层次结构面板里展开的自定义门 id
@@ -4275,9 +4278,14 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
             const wrap = wrapperRef.current;
             if (!paper || !cell || !wrap) return null;
             const v = cell.findView(paper);
-            const r = v?.el?.getBoundingClientRect?.();
+            // ⛔ 视图 el 的 bbox（选中时含 8 颗手柄，文字长高时还含溢出部分）——
+            //   编辑框要贴的是**盒子**，取 noteBg 的矩形（90°/180° 旋转下它就是盒子本身）
+            const bgEl = v?.el?.querySelector?.('[joint-selector="noteBg"]') as SVGElement | null;
+            const r = (bgEl || v?.el)?.getBoundingClientRect?.();
             const wr = wrap.getBoundingClientRect();
             if (!r || !r.width) return null;
+            // 编辑框的字号/行距/内边距走**同一份** noteMetrics（⛔ 别在这重算一遍）
+            const nm = noteMetrics(cell);
             return (
               <textarea
                 data-note-edit=""
@@ -4297,9 +4305,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
                   zIndex: 26, resize: 'none', boxSizing: 'border-box',
                   background: 'rgba(20,26,34,0.94)', color: '#e4e4ec',
                   border: '1.5px solid var(--accent)', borderRadius: 6, outline: 'none',
-                  padding: `${NOTE_PAD - 2}px ${NOTE_PAD}px`,
+                  padding: `${Math.max(2, nm.pad - 2)}px ${nm.pad}px`,
                   fontFamily: "'Consolas', 'JetBrains Mono', monospace",
-                  fontSize: NOTE_FONT, lineHeight: `${NOTE_LINE_H}px`,
+                  fontSize: nm.font, lineHeight: `${nm.lineH}px`,
                 }}
               />
             );

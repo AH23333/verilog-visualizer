@@ -128,6 +128,10 @@ export function loadCells(
       if (c.angle) try { cell.set('angle', c.angle); } catch {}
       if (c.initial != null) try { cell.set('initial', c.initial); } catch {}
       if (c.order != null) try { cell.set('order', c.order); } catch {}
+      // 注释「用户手动拉过尺寸」标记（见 sandboxSerialize 同侧注释）：丢了它，重开后
+      // 一提交文字就会把用户拉好的盒子重新贴小。
+      if (c.noteUserSized) try { cell.set('noteUserSized', true); } catch {}
+      if (Number(c.noteFontScale) > 0) try { cell.set('noteFontScale', Number(c.noteFontScale)); } catch {}
       cellMap.set(cid ?? cell.id, cell);
       // 镜像翻转（R99→R100 模型级镜像）：mirror 在构造期名单里（ctorParams 已带上），
       // 但锚点/attrs/图形体的落地要靠 applyMirror 重挂——这里必须调，否则存盘重开镜像消失。

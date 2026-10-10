@@ -52,6 +52,12 @@ function serializeCellsOf(getCells: () => any[]): any[] {
     // 旧存档没有这个字段，sandboxLoad 的 migrateMirror 会按旧屏幕语义换算过来。
     // 不写标记的话，每次存盘重开都会把已迁移的器件再迁移一次（h/v 又对调回去）。
     if (cell.mirror && (cell.mirror.h || cell.mirror.v)) cell.mirrorVer = MIRROR_VER_LOCAL;
+    // 注释「用户手动拉过尺寸」的标记（annotationCell 的贴合律读它）：不存盘的话，
+    // 重开后一提交文字就会把用户拉好的盒子重新贴小。⛔ 不进 DEVICE_PARAM_KEYS——
+    // 那是 digitaljs 构造期参数的契约，这个标记没有电气含义。
+    if (type === 'Annotation' && c.get('noteUserSized')) cell.noteUserSized = true;
+    // 字号缩放数同理：丢了它，重开后拉伸就白做了（渲染字号的唯一驱动源，见 noteMetrics）
+    if (type === 'Annotation' && Number(c.get('noteFontScale')) > 0) cell.noteFontScale = Number(c.get('noteFontScale'));
     if (type === 'Subcircuit') {
       cell.subcircuitGraph = c.get('subcircuitGraph');
       // 编译模式的 Subcircuit 只有活 `graph`（joint.dia.Graph），没有可序列化的

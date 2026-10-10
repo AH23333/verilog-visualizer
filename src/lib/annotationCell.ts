@@ -49,31 +49,110 @@ export const NOTE_MIN_H = 26;
 export const NOTE_FONT = 13;
 export const NOTE_LINE_H = 17;
 export const NOTE_PAD = 8;
+const NOTE_FONT_PX = `${NOTE_FONT}px`;
 
-/** 深浅主题都可读的注释底色/描边（跟随 --accent 家族，SVG attrs 不吃 CSS var，写死同值） */
+/** 深浅主题都可读的注释底色/描边（跟随 --accent 家族，SVG attrs 不吃 CSS var，写死同值）
+ *  ⚠ label 里那串"看起来多余"的 null 是为了**压掉 Gate 基类默认值**：
+ *  Annotation extends Gate，基类 attrs 会深合进来——`refX:0.5/refDy:3` 让 joint 给
+ *  label 算出 `transform=translate(w*refX, h+refDy)`（r121 读数：文字被推到框外
+ *  (90,79)，用户报"编辑后文本和文本框分离严重"）；`fontSize:'8pt'` 压掉本文件字号
+ *  （"拉伸文本框没有缩放文本"的另一半）。body 的 `stroke:black/stroke-width:2`
+ *  继承给文字＝用户报的"黑体加粗描边"，由 define 的 body attrs 显式清空。 */
 const NOTE_STYLE = {
   noteBg: { fill: 'rgba(91,141,239,0.10)', stroke: '#5b8def', 'stroke-width': 1.2, rx: 6, ry: 6 },
-  label: { fill: '#e4e4ec', 'font-size': NOTE_FONT, 'font-family': "'Consolas', 'JetBrains Mono', monospace" },
+  label: {
+    fill: '#e4e4ec', fontFamily: NOTE_FONT_PX, 'font-size': NOTE_FONT_PX,
+    'font-family': "'Consolas', 'JetBrains Mono', monospace",
+    refX: null, refDy: null, textAnchor: 'start', 'text-anchor': 'start', x: 0, y: 0,
+  },
 };
 
+/** 缩放律：**字号/行距/内边距全部由 `noteFontScale` 这一个数驱动**（默认 1）。
+ *  ⚠ 曾经的做法是从盒宽反推字号（k = 宽/180）——那条路有两个死结：
+ *   ① 地板为了"贴完不会再缩"定在 k=1，于是贴过字的窄盒（实测 95 宽）拖到 185
+ *      字号几乎不动＝用户报的"拉伸文本框没有缩放文本"只修了一半；
+ *   ② 贴字律要按字号量宽，而字号又由宽度决定＝互相追。
+ *  现在只有用户拖手柄才改这个数（noteHandleDown 里按拖动的几何比例），
+ *  贴字与渲染都读它，没有回环。renderNote／编辑 overlay／fit 三处共用，⛔ 别各写各的。 */
+export const NOTE_FONT_MIN = 9;
+export const NOTE_FONT_MAX = 48;
+
+export function noteScaleOf(cell: any): number {
+  let k = 1;
+  try { k = Number(cell?.get?.('noteFontScale')) || 1; } catch { /* 默认 */ }
+  return Math.max(NOTE_FONT_MIN / NOTE_FONT, Math.min(NOTE_FONT_MAX / NOTE_FONT, k));
+}
+
+export function noteMetrics(scaleOrCell: number | any) {
+  const k = (scaleOrCell && typeof scaleOrCell === 'object') ? noteScaleOf(scaleOrCell)
+    : (Number(scaleOrCell) > 0 ? Number(scaleOrCell) : 1);
+  return { k, font: NOTE_FONT * k, lineH: NOTE_LINE_H * k, pad: NOTE_PAD * k };
+}
+
+/** 用**真实 SVG 排版**量一行文字的最宽值。
+ *  ⚠ ⛔ 拿 canvas measureText 顶替：字体回退与字距不同（实测同一句 CJK canvas 133、
+ *  SVG 111），贴出来的盒子右边还空一截＝"边框比文字宽"只修一半。量完即撤不留节点。 */
+function measureSvgLines(lines: string[], font: number): number {
+  let widest = 0;
+  try {
+    const NS = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', '0'); svg.setAttribute('height', '0');
+    svg.style.position = 'absolute'; svg.style.left = '-9999px'; svg.style.top = '0';
+    const t = document.createElementNS(NS, 'text');
+    t.setAttribute('font-size', String(font));
+    t.setAttribute('font-family', "'Consolas', 'JetBrains Mono', monospace");
+    svg.appendChild(t);
+    document.body.appendChild(svg);
+    for (const ln of lines) {
+      t.textContent = ln;
+      try { widest = Math.max(widest, t.getComputedTextLength()); } catch { /* 单行量不到 */ }
+    }
+    document.body.removeChild(svg);
+  } catch { /* 量不到就退回 canvas 估算 */ }
+  return widest;
+}
+
+/** 提交后把盒子贴住文字（用户报"边框比文字宽、上下都有空隙"＝默认 180×76 停在原地）。
+ *  只在这颗注释**从没被手动拉过**时执行（noteUserSized 标记），否则会把用户拉的尺寸吃掉。
+ *  量宽用**这颗便签当前的字号**（noteFontScale），与 renderNote 渲染的是同一个数。 */
+export function fitAnnotationToText(cell: any) {
+  try {
+    if (!cell || cell.get('noteUserSized')) return null;
+    const text = String(cell.get('label') ?? cell.attr('label/text') ?? '');
+    const { font, lineH, pad } = noteMetrics(cell);
+    // 折行上限取"3 行基准宽"这一档：贴字只管贴，长段落靠高度堆
+    const avail = Math.max(NOTE_MIN_W, NOTE_DEFAULT_W * noteScaleOf(cell)) - pad * 2;
+    const lines = text ? wrapNoteText(text, avail, font) : [''];
+    const widest = measureSvgLines(lines, font) || Math.max(0, ...lines.map((ln) => measureText(ln, font)));
+    const width = Math.max(NOTE_MIN_W, Math.round(widest + pad * 2));
+    const height = Math.max(NOTE_MIN_H, Math.round(pad * 2 + lines.length * lineH));
+    const size = { width, height };
+    cell.prop('size', size);
+    return size;
+  } catch { return null; }
+}
+
 let measureCtx: CanvasRenderingContext2D | null = null;
-function measureText(s: string): number {
+function measureText(s: string, px: number): number {
   try {
     if (!measureCtx) {
       const cv = document.createElement('canvas');
       measureCtx = cv.getContext('2d');
     }
-    if (!measureCtx) return s.length * NOTE_FONT * 0.62;
-    measureCtx.font = `${NOTE_FONT}px 'Consolas', 'JetBrains Mono', monospace`;
+    if (!measureCtx) return s.length * px * 0.62;
+    measureCtx.font = `${px}px 'Consolas', 'JetBrains Mono', monospace`;
     return measureCtx.measureText(s).width;
-  } catch { return s.length * NOTE_FONT * 0.62; }
+  } catch { return s.length * px * 0.62; }
 }
 
 /**
  * 自动换行：先按用户手打的 \n 分段，再按可用宽度贪心折行。
  * 断行策略：优先在空格后断（英文单词不断裂）；CJK 无空格时逐字断。
+ * ⚠ px 必须传**实际渲染字号**（noteMetrics），拿基准 13 去量 8pt 渲染的文本＝
+ *   折得比需要的早 ⇒ 盒子四周空一圈（用户报"边框比文字宽"的直接成因）。
  */
-export function wrapNoteText(text: string, widthPx: number): string[] {
+export function wrapNoteText(text: string, widthPx: number, px: number = NOTE_FONT): string[] {
   const maxW = Math.max(20, widthPx);
   const out: string[] = [];
   for (const para of String(text || '').split(/\r?\n/)) {
@@ -84,7 +163,7 @@ export function wrapNoteText(text: string, widthPx: number): string[] {
     for (let i = 0; i < para.length; i++) {
       const ch = para[i];
       const trial = line + pending + ch;
-      if (measureText(trial) > maxW && (line || pending)) {
+      if (measureText(trial, px) > maxW && (line || pending)) {
         if (lastSpace >= 0 && lastSpace > 0) {
           // 断在最后一个空格后：空格前落行，空格后（含当前词）续行
           out.push(line.slice(0, lastSpace));
@@ -141,8 +220,12 @@ export function registerAnnotation(djs: any): boolean {
         ...handleMarkup(),
       ],
       attrs: {
+        // ⛔ 清掉基类默认：joint 的 attrs 是**继承合并**，上一级留白会被继承——
+        //   这里把 body/label 的 stroke/refX/refDy 显式置 null，文字才不再带描边、
+        //   label 才不再被 translate(w*refX, h+refDy) 推出框外。
+        body: { stroke: null, 'stroke-width': null, refX: null, refDy: null },
         noteBg: { ...NOTE_STYLE.noteBg, width: NOTE_DEFAULT_W, height: NOTE_DEFAULT_H },
-        label: { ...NOTE_STYLE.label, x: NOTE_PAD, y: 18, 'text-anchor': 'start' },
+        label: { ...NOTE_STYLE.label },
       },
       size: { width: NOTE_DEFAULT_W, height: NOTE_DEFAULT_H },
     }, {
@@ -154,6 +237,17 @@ export function registerAnnotation(djs: any): boolean {
       //   且 joint 自己的拖拽起点监听注册在先、同元素 stopImmediate 拦不住）——
       //   落点在 renderNote 里给每颗手柄直接 addEventListener('mousedown')，
       //   目标元素上的监听先于祖先（视图 el）执行，stopImmediatePropagation 才拦得住。
+      // ⚠ noteFontScale / noteUserSized 是**本仓自定义的 prop**，joint 的视图不监听它们——
+      //   不设这条监听，任何"只改缩放数不改 size"的路径（存盘重开、撤销重做、换绑重建）
+      //   都会出现"模型里 1.968、DOM 还画着 13px"的错位（r121 [14b] 实测：重开后字号回到默认）。
+      initialize() {
+        try { GateViewBase.prototype.initialize?.apply(this, arguments as any); } catch { /* 基类尽力而为 */ }
+        try {
+          this.listenTo(this.model, 'change:noteFontScale change:noteUserSized', () => {
+            try { this.renderNote(); } catch { /* 视图尽力而为 */ }
+          });
+        } catch { /* 没有 listenTo 就不重绘，字号仍由 render/update 两条路刷新 */ }
+      },
       render() {
         GateViewBase.prototype.render.apply(this, arguments as any);
         this.renderNote();
@@ -162,26 +256,46 @@ export function registerAnnotation(djs: any): boolean {
         GateViewBase.prototype.update.apply(this, arguments as any);
         this.renderNote();
       },
-      /** 手动换行：text 内容 → 多 tspan；同时重排 8 个缩放手柄 */
+      /** 手动换行：text 内容 → 多 tspan；同时重排 8 个缩放手柄。
+       *  ⚠ 这个函数**拥有** label 的最终 DOM 状态：基类渗进来的 transform/font-size/
+       *  stroke 在这里一并压掉（attrs 侧的 null 只是第一道，DOM 侧是兜底），
+       *  并按 noteMetrics(盒宽) 等比缩放字号/行距/内边距（用户裁决：拉伸文本框要缩放文本）。 */
       renderNote() {
         try {
           const m = this.model;
           const size = m.size();
           const w = Math.max(NOTE_MIN_W, Number(size.width) || NOTE_DEFAULT_W);
           const h = Math.max(NOTE_MIN_H, Number(size.height) || NOTE_DEFAULT_H);
+          const { font, lineH, pad } = noteMetrics(m);
           const sel = (s: string): SVGElement | null =>
             (this.el.querySelector(`[joint-selector="${s}"]`) as SVGElement) || (this.el.querySelector(`[data-selector="${s}"]`) as SVGElement) || null;
           const bg = sel('noteBg');
           if (bg) { bg.setAttribute('width', String(w)); bg.setAttribute('height', String(h)); }
+          const bodyG = sel('body');
+          if (bodyG) { bodyG.removeAttribute('stroke'); bodyG.removeAttribute('stroke-width'); }
           const label = sel('label');
           if (label) {
+            label.removeAttribute('transform');           // 压掉 refX/refDy 算出来的平移
+            label.setAttribute('text-anchor', 'start');
+            label.setAttribute('stroke', 'none');
+            label.setAttribute('x', '0'); label.setAttribute('y', '0');
+            // ⚠ 字号/字重必须走 **inline !important**：index.css:626 那条
+            //   `.joint-paper text{font-size:9pt !important}`（为器件题注设的）压过呈现属性，
+            //   也压过普通 inline style；CSS 层叠里"内联 + important"才高于"作者 + important"
+            //   （探针：设 13px 后 computed 仍是 12px，就是这条规则的 9pt）。
+            label.style.setProperty('font-size', `${font}px`, 'important');
+            label.style.setProperty('font-weight', 'normal', 'important');
+            label.style.setProperty('font-family', "'Consolas', 'JetBrains Mono', monospace", 'important');
+            // 折行按**实际渲染字号**量宽——拿基准值去量缩放后的字＝折得比需要的早，
+            // 盒子四周空一圈（用户报"边框比文字宽"的成因）。
+            const renderedPx = (() => { try { return parseFloat(getComputedStyle(label).fontSize) || font; } catch { return font; } })();
             const text = String(m.attr('label/text') || '');
             while (label.firstChild) label.removeChild(label.firstChild);
-            const lines = text ? wrapNoteText(text, w - NOTE_PAD * 2) : [];
+            const lines = text ? wrapNoteText(text, w - pad * 2, renderedPx) : [];
             lines.forEach((ln, i) => {
               const ts = document.createElementNS('http://www.w3.org/2000/svg', 'tspan');
-              ts.setAttribute('x', String(NOTE_PAD));
-              ts.setAttribute('y', String(18 + i * NOTE_LINE_H));
+              ts.setAttribute('x', String(Math.round(pad)));
+              ts.setAttribute('y', String(Math.round(pad + renderedPx * 0.85 + i * lineH)));
               ts.textContent = ln;
               label.appendChild(ts);
             });
@@ -233,7 +347,7 @@ export function registerAnnotation(djs: any): boolean {
           evt.stopImmediatePropagation?.();
           evt.stopPropagation?.(); evt.preventDefault?.();
           const paper = this.paper; const m = this.model;
-          const orig = { pos: { ...m.position() }, size: { ...m.size() }, angle: Number(m.get('angle') || 0) };
+          const orig = { pos: { ...m.position() }, size: { ...m.size() }, angle: Number(m.get('angle') || 0), scale: noteScaleOf(m) };
           const start = paper.clientToLocalPoint(evt.clientX, evt.clientY);
           const a = (orig.angle * Math.PI) / 180;
           const ca = Math.cos(a), sa = Math.sin(a);
@@ -278,6 +392,18 @@ export function registerAnnotation(djs: any): boolean {
             const c1x = W0.x - (rlx * ca - rly * sa);
             const c1y = W0.y - (rlx * sa + rly * ca);
             const nx = c1x - nw / 2, ny = c1y - nh / 2;
+            // ⚠ **只有四角（端点）缩放字号**——按用户措辞分工：
+            //   「拖四个端点等比例缩放大小」＝整块一起缩放（盒与字号同比例 ⇒ 行数不变，
+            //   文字永远在框内）；「拖边缘改比例」＝只改外形，字号不动。
+            //   第一版四条边都放大字号：盒子高不变而文字长高，实测溢出框外 51px——
+            //   "文本与文本框分离"以更坏的形式回来了（r121 [14b] 现场读出来的）。
+            //   ⛔ 也别从盒宽反推字号：贴过字的窄盒要拖过基准宽才动，看着还是"没反应"。
+            if (CORNER.has(dir)) {
+              const target = Math.max(NOTE_FONT_MIN, Math.min(NOTE_FONT_MAX, NOTE_FONT * orig.scale * (nw / orig.size.width)));
+              // 视图自带 change:noteFontScale 监听（见 initialize），这里先落再落 size 只是
+              // 让拖动中的重绘少跑一次；⛔ 别把它当成"必须靠顺序才不花屏"的机制。
+              m.set('noteFontScale', Math.round((target / NOTE_FONT) * 1000) / 1000);
+            }
             m.prop('size', { width: Math.round(nw), height: Math.round(nh) });
             m.prop('position', { x: Math.round(nx), y: Math.round(ny) });
           };
@@ -285,6 +411,8 @@ export function registerAnnotation(djs: any): boolean {
             self.__annDragging = false;
             document.removeEventListener('mousemove', mv);
             document.removeEventListener('mouseup', up);
+            // 手动拉过 ⇒ 尺寸归用户所有，⛔ 提交文字时再自动贴合（fitAnnotationToText 认这个标记）
+            try { m.set('noteUserSized', true); } catch { /* ignore */ }
             try { paper.trigger('annotation:resized', m); } catch { /* ignore */ }
           };
           document.addEventListener('mousemove', mv);
@@ -352,8 +480,13 @@ export function overlayAnnotations(paper: any, djs: any, savedCells: any[] | und
   return n;
 }
 
-/** 供 CSS 注入：手柄只在选中态显示（sm-selected 打在注释 view 根 <g> 上，手柄是其后代） */
+/** 供 CSS 注入：手柄只在选中态显示（sm-selected 打在注释 view 根 <g> 上，手柄是其后代）。
+ *  ⚠ 注释的 body 是 `<g joint-selector="body">`、**没有 class="body"**——index.css 那族
+ *  `.sm-selected .body` 的紫色高亮打不到它，选中态描边在这里自己给一条（同 R99 主题紫）。 */
 export const ANNOTATION_CSS = `
 .joint-paper .ann-h { display: none; pointer-events: all; }
 .joint-paper .sm-selected .ann-h { display: block; }
+[data-theme] .joint-paper .sm-selected [joint-selector="noteBg"] {
+  stroke: var(--accent-hover) !important;
+}
 `;
