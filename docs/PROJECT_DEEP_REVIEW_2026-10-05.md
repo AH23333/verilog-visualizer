@@ -1802,3 +1802,23 @@ R113 给 `tests/_ui.cjs` 的 `menuClick` 加固时（防「命中上一次残留
 - **验证**：`tsc --noEmit` 0 错误 + `vite build` 通过 + Edge headless 探针（`.tmpbuild/verilog_slice.cjs`，serve dist 8126 + localStorage 注入沙盒文件 + 真右键菜单输入）七场景断言全过：`0:0` 初值 / `0:3`→{0,4} / `1:1`→{1,1} / `3:0`→{0,4} / `2:3`→{2,2} / `2:70` 拒绝不改 / total 4→3 钳出 {2,1,3}（旧逻辑此处会越界）。页面错误 0。
 - **探针插曲（均为探针问题，非产品缺陷）**：①沙盒按钮是 toggle，重复点击会退出沙盒；②沙盒空态无 activeFile 时 paper 不构建——用 localStorage 注入文件 + 点文件行激活解决。
 - 未提交 git；工作区另有在途代理改动。
+
+# 卷二十六 · R121 画布注释（接手中断批）＋深度自检统一验证轮（2026-10-10，接卷二十五）
+
+- **批次内容**（用户裁决六条：双击空白建签即输入／Esc 退出／二次编辑／自动换行／拖边改比例＋拖角等比／旋转镜像且编辑时正向文字提交后恢复／展开图可看且相对位置零误差）：
+  接手时工作树只有半成品（`annotationCell.ts` 新文件＋SandboxCanvas 五处接线＋sandboxLoad/subcircuitView 各一处），且文件头引用的探针证据 `.tmpbuild/joint_probe3.cjs` **不在盘上**——"实测定案"当时并无定案。补两处断环后收口。
+- **断环一**：`cellMirror.syncBodyTextCounterFlip` 缺注释豁免（文件头声称"对 Annotation 跳过字形回正"，代码里没有）⇒ 补 `type==='Annotation'` 早退（内联判型，⛔ import annotationCell——循环依赖）。
+- **断环二**：`overlayAnnotations` 定义了从未被调用（subcircuitView 注释写着"走 renderSubcircuitView 末尾叠加"）⇒ 在 `renderSubcircuitView` 委托渲染后接上，**autoLayout 开启时不叠加**（elk 挪器件注释跟不住，宁可暂隐）。
+- **闸门首跑 0/2 抓出的四个真缺陷**（全部诊断探针定位，无一是猜）：
+  1. joint 4.1 的事件名是 `blank:pointerdblclick`（joint.d.ts:2087），`blank:dblclick` 监听器挂了永远不响；
+  2. **文字主人是 `label` prop 不是 attrs**——Gate.initialize 的 `bindAttrToProp('label/text','label')` 拿构造期 `this.get('label')`（undefined）覆写 attrs，构造 attrs 里的文字当场被冲掉（diag3 实测序列化侧就丢字）；commitNote/makeAnnotationCell/overlayAnnotations 三处改走 prop，序列化白名单的 label 通道现成，存盘/撤销/复制/存部件零改动；
+  3. **joint 不应用 markup 条目自带的 attrs**（diag4：8 颗手柄 rect 渲染出来了但 width/height/fill/data-h 全没落上）⇒ renderNote 显式 setAttribute 全部手柄几何/样式；
+  4. **拖手柄＝拖便签**：joint 的拖拽起点是 ElementView 的 `'mousedown': 'pointerdown'`，监听绑在**视图 el 自己**——同元素上 stopPropagation 拦不住、pointer 事件的拦截管不到 mousedown 这个事件 ⇒ 改在 renderNote 里给每颗手柄直接 `addEventListener('mousedown')`（目标元素监听先于祖先）＋ `stopImmediatePropagation` ＋ 手势守卫。
+- **判据自己的三处错（先取读数再归因的兑现）**：[8]/[9] 初版把"镜像后 angle"钉成 90——flipCell 的 R113 本地轴语义＝屏幕水平翻转 ≡ 本地 x 取反＋**角度取反**（90→-90 是对的），期望改成以镜像后现态为基线；[10] 初版自制双击开弹窗不灵（diag：`cell:pointerdblclick` 计数 3、digitaljs `open:subcircuit` 计数 0——沙盒交互态下的 R38 同族）⇒ 改走现役配方 `UI.clickZoomInto`；[10] 夹具补 Input/Output（`handleSaveGate` 硬性要求 ≥1 输入脚＋≥1 输出脚，只有注释＋门的画布被拒存）。
+- **深度自检轮（本卷收尾）改的四项**：
+  1. **摘除两处误导性死码**：AnnView 的 `events()` 委托覆盖（实测在这套 Gate.define 子类上不参与生效，直接监听才是主人）；loadCells 的 `cellExtra.attrs`（构造 attrs 会被冲掉，留着读起来像文字还走 attrs）——连带 tsc 报的未用 import 一起清。
+  2. **文件头三处说法改真**：「文字存在 attrs.label.text」→ label prop；「导出会剥离 foreignObject（见 sandboxExport.ts）」→ 实况是 exportUtils.ts：SVG=整树克隆序列化、PNG=SVG blob 喂 `<img>`（image 安全模型下 foreignObject 不渲染，SVG text 存活）；指向不存在文件的探针引用改为闸门名。
+  3. **查过·不成立一笔**：曾疑 buildInnerGraph 重建的内嵌注释会丢字（ctorParams 不含 label）——读码证伪：`subcircuit.ts:86` 通用构造实参本来就带 `label: cc.label`，文字走现成通道，无需改动。自检把"疑点"写成"缺陷"之前先读被疑那两行。
+  4. 导出/DRC/撤销链路读码核对：runDrc 只迭代 links（无端口器件天然免疫）；undo/redo 走 rebuildFromJson→loadCells（label prop 在快照里）；空注释 Esc 自动移除是产品语义（diag4 第一版自己撞上，dump DOM 前别按 Esc）。
+- **验证（最终字节）**：`tsc --noEmit` 0 错误；`r121-annotation-gate` 10 pass / 0 fail / 0 未验证；**全量跑批 `RED=0 ENVRED=0 GREEN=68 NOVERDICT=0 共 68 格`**（`.out-runall-r121.txt`）——被本轮改动压着的邻族证人 r113（镜像/旋转）、r94/r95（构造期重建）、r99（高亮/换绑）、r85（位置保真）、r42/r44（部件展开）全绿。
+- **仍未做（登记，不是缺陷结论）**：注释的变异台架（r121-mutate：摘豁免→[3] 型臂红一类四颗）未建；镜像/旋转到 45° 非直角的编辑 overlay 位置仍取 AABB（功能正常、观感略歪）；编辑中平移画布 overlay 不跟（点击先提交，无数据损失）。
