@@ -228,10 +228,14 @@ digitaljs 原生的**位宽数组**（Map 形状会让高度变 NaN）。
   MC 数值极性（[3][7][8] 红、**[4] 必须绿**＝字形与语义两条臂各有射程）、MD 重建不接线（[5] 红、[4] 未验）、
   ME 重建不做 merge（[6][7] 红）、MF 名单去掉 bits（[7][9] 红）
 - `r60` 部件绑定、`r61` 深色文字（配对）、`r62` 可调速（数 `postUpdateGates` 而非信号翻转）
-- `r121-annotation-gate.cjs` — **画布注释十格**（[1] 双击空白创建＋输入框聚焦／[2] Esc 提交＋撤销整步移除、重做整步带回／
+- `r121-annotation-gate.cjs` — **画布注释十五格**（[1] 双击空白创建＋输入框聚焦／[2] Esc 提交＋撤销整步移除、重做整步带回／
   [3] 双击二次编辑带出原文／[4] 自动换行逐行宽 ≤ 盒宽-2×PAD／[5] 边手柄自由改宽、不动点＝对缘／[6] 角手柄等比缩放／
   [7] Ctrl+R 旋转＋右键水平镜像（与部件同一套变换通道）／[8] 旋转/镜像后编辑＝正向文字、变换原样保持／
-  [9] 存盘重开整套回来／[10] 部件展开图叠加且与器件**绝对坐标逐位相等**）
+  [9] 存盘重开整套回来／[10] 部件展开图叠加且与器件**绝对坐标逐位相等**／[11] 文字块落在框内（label 无 transform、
+  内缩＝pad、不越框）／[12] 无继承描边＋字重 400＋两个主题各自对比度成立／[13] 拖**角**等比放大字号且不溢出、拖**边**只改比例／
+  [14a] 提交后盒子贴住文字、[14b] 拉过之后不再被贴小且缩放数随存档走）
+  ⚠ 夹具教训：**取"盒子中心"要量 `noteBg` 的矩形**——视图 el 的 bbox 含 8 颗手柄与溢出文字，它的中心实测压在南手柄上，
+  双击于是起了缩放而不是进编辑（[14b] 第一版红在这里，读起来像"编辑没生效"）。
 - 夹具约定见 `tests/_ui.cjs`：`boot` 不用 `networkidle`（37 个脚本 + HMR WebSocket 永远不空闲）、
   落点一律现取坐标、位宽对话框会拦住后续点击（Esc 关）、`isLink` 是**方法**不是布尔。
   ⚠ 三条本轮新增：**`loadCells` 只有一份、四条调用路共用**，但按 `type === 'Input'` 过滤的变异只砍得动部件文件那一侧
@@ -321,13 +325,15 @@ FSM 器件有四个端口 `in / clk / arst / out`。**`arst` 悬空时机器不�
 ## 8. 画布注释（R121，用户裁决 2026-10-10）
 
 双击画布空白 → 就地建便签并立即进入输入态（`[data-note-edit]` 聚焦）；Esc 提交（新建且留空 ⇒ 直接删掉，不留空壳）；
-双击已有注释二次编辑。框内自动换行（`wrapNoteText` 手动 tspan，贪心折行、CJK 逐字断）；8 颗手柄＝4 边自由改比例、
-4 角等比缩放（取两轴更强拉伸意图，不动点＝对角/对边，反旋 angle 的本地系数学在 `noteHandleDown`）；Ctrl+R 旋转与
-右键水平/垂直镜像与部件同一套变换通道。已旋转/镜像的注释编辑时以**正向文字**呈现（编辑 overlay 不动变换），
+双击已有注释二次编辑。框内自动换行（`wrapNoteText` 手动 tspan，贪心折行、CJK 逐字断）；8 颗手柄按用户措辞分工＝
+**4 条边只改比例**（字号与另一轴都不动）、**4 个角整块等比缩放**（盒与字号同比例，行数不变 ⇒ 文字永不溢出；
+取两轴更强拉伸意图，不动点＝对角/对边，反旋 angle 的本地系数学在 `noteHandleDown`）。提交后盒子**贴住文字**
+（`fitAnnotationToText`，只在这颗从没被手动拉过时执行——标记 `noteUserSized` 与缩放数 `noteFontScale` 各自随存档走）。
+Ctrl+R 旋转与右键水平/垂直镜像与部件同一套变换通道。已旋转/镜像的注释编辑时以**正向文字**呈现（编辑 overlay 不动变换），
 提交后原样保持。
 
 实现主人在 `src/lib/annotationCell.ts`（唯一的 cell/View 定义与注册）＋ `SandboxCanvas` 的编辑 overlay。
-五条只有探针才教得出的形状：
+九条只有探针才教得出的形状：
 
 - **注册**：digitaljs 的 bundle 不暴露 joint，但 `cells.Gate/GateView` 是 public 导出（base.mjs:39/305）——
   `Gate.define('Annotation', …)` ＋把成品写回 `djs.cells.Annotation/AnnotationView` 即全局生效（digitaljs 的
@@ -344,12 +350,25 @@ FSM 器件有四个端口 `in / clk / arst / out`。**`arst` 悬空时机器不�
   子类上实测不生效 ⇒ 直接 `el.addEventListener('mousedown', …)`（renderNote 幂等绑定）＋双事件守卫。
 - **镜像语义与器件刻意不同**：注释镜像＝整块板翻转、**文字随翻**（`cellMirror.syncBodyTextCounterFlip` 对
   Annotation 跳过字形回正）；「编辑时正向文字」由 overlay 负责，提交后恢复变换。
+- **Gate 基类的 label/body 默认值会深合进来，把文字推出框外**（用户报"文本编辑后和文本框分离严重／黑体加粗描边"）：
+  读数＝label 带 `transform=matrix(1,0,0,1,90,79)`（基类 `refX:0.5/refDy:3` 算出来的居中平移）＋ `text-anchor:middle`，
+  而 body 是 `<g stroke=black stroke-width=2>`，**SVG 的 stroke 会继承给子 text** ⇒ 看着像加粗描边（不是 font-weight）。
+  修法在 renderNote 里把 label 的 transform/anchor/stroke 显式落地（⛔ 只改 define 的 attrs 覆盖不住基类）。
+- **`.joint-paper text{font-size:9pt !important}`（index.css:626，为器件题注设的）压过呈现属性，也压过普通 inline style**
+  ⇒ 注释字号必须 `style.setProperty('font-size', px, 'important')`（层叠里"内联＋important"才高过"作者＋important"）。
+  读数：设 13 后 computed 仍是 12px，就是这条规则。⛔ 别为了让注释生效去放宽那条全局规则。
+- **量文字宽度只能用 SVG，⛔ canvas measureText**：同一句 CJK 实测 canvas 133 / SVG 111 ⇒ 拿 canvas 贴出来的盒子
+  右边还空一截（"边框比文字宽"只修一半）。`measureSvgLines` 造一颗离屏 `<text>` 量完即撤。
+- **自定义 prop 不触发 joint 视图重绘**：`cell.set('noteFontScale')` 只改模型、DOM 停在上一帧（实测模型 1.968、
+  渲染仍 13px，存盘重开一次拉伸就白做）⇒ 视图 `initialize` 里 `listenTo(model, 'change:noteFontScale …')`，
+  ⛔ 让每个调用方去排"谁先落"的顺序。
 
-存档：`attrs` 整包透传（serialize 白名单）＋ label prop ＋ size/angle/mirror 走既有通道；`cellsToCircuitJson`
+存档：label prop（文字）＋ `noteFontScale`/`noteUserSized`（Annotation 专属通道，见 sandboxSerialize 同侧注释；
+⛔ 不进 DEVICE_PARAM_KEYS——那是 digitaljs 构造期参数的契约）＋ size/angle/mirror 走既有通道；`cellsToCircuitJson`
 刻意不把 Annotation 计入 devices（会被 buildGraph 判「无法识别的器件」计入 skippedDevices），展开图由
 `renderSubcircuitView` 末尾 `overlayAnnotations` 原位叠加——与部件**同一份本地坐标**、不重布局零误差；
 **autoLayout（elk 重排）开启时不叠加**（注释跟不住被挪位的器件，宁可暂隐也不给「相对位置有差错」）。
-注释不进 `circuit.devices` ⇒ 引擎/DRC/拖线等按端口迭代的逻辑天然跳过。
+注释不进 `circuit.devices` ⇒ 引擎/DRC/拖线等按端口迭代的逻辑天然跳过（runDrc 只迭代 links）。
 
 ⚠ 开内部电路弹窗的现役配方＝`UI.clickZoomInto`（单击放大镜 `a.zoom` → onZoom 分支）；自制双击路径实测不灵：
 joint 的 `cell:pointerdblclick` 照发（探针计数 3）、digitaljs 的 `open:subcircuit` 却从不发出（沙盒交互态下的

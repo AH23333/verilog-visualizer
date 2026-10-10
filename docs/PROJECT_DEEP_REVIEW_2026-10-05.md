@@ -1822,3 +1822,33 @@ R113 给 `tests/_ui.cjs` 的 `menuClick` 加固时（防「命中上一次残留
   4. 导出/DRC/撤销链路读码核对：runDrc 只迭代 links（无端口器件天然免疫）；undo/redo 走 rebuildFromJson→loadCells（label prop 在快照里）；空注释 Esc 自动移除是产品语义（diag4 第一版自己撞上，dump DOM 前别按 Esc）。
 - **验证（最终字节）**：`tsc --noEmit` 0 错误；`r121-annotation-gate` 10 pass / 0 fail / 0 未验证；**全量跑批 `RED=0 ENVRED=0 GREEN=68 NOVERDICT=0 共 68 格`**（`.out-runall-r121.txt`）——被本轮改动压着的邻族证人 r113（镜像/旋转）、r94/r95（构造期重建）、r99（高亮/换绑）、r85（位置保真）、r42/r44（部件展开）全绿。
 - **仍未做（登记，不是缺陷结论）**：注释的变异台架（r121-mutate：摘豁免→[3] 型臂红一类四颗）未建；镜像/旋转到 45° 非直角的编辑 overlay 位置仍取 AABB（功能正常、观感略歪）；编辑中平移画布 overlay 不跟（点击先提交，无数据损失）。
+
+# 卷二十七 · R121 追加：注释的三处视觉缺陷（用户报障，2026-10-10，接卷二十六）
+
+- **用户原话**："文本编辑后和文本框分离严重，且深色和浅色主题下都为黑体加粗描边，拉伸文本框没有缩放文本"。
+- **五处根因**（全部由读数定位，⛔ 有一条是猜的）：
+  1. **分离**＝Gate 基类默认 attrs 深合进注释的 label：`refX:0.5/refDy:3` 让 joint 算出 `transform=matrix(1,0,0,1,90,79)`，
+     而注释的 tspan 用的是绝对坐标 ⇒ 文字被整块推到框外右下（读数 txtRect y=435 vs 框底 425）；基类还带 `text-anchor:middle`。
+  2. **"黑体加粗描边"**＝不是 font-weight（computed 400）——`body` 是 `<g stroke=black stroke-width=2>`，**SVG 的 stroke 继承给子 text**
+     ⇒ 两个主题都像描边字。修法在 renderNote 里把 label 的 transform/anchor/stroke 与 body 的 stroke 显式落地
+     （⛔ 只改 define 的 attrs 覆盖不住基类合并）。
+  3. **字号压不住**＝我们自己的 `index.css:626` 有 `.joint-paper text{font-size:9pt !important}`（为器件题注设的），
+     呈现属性与普通 inline style 都压不过它（设 13 后 computed 仍 12px）⇒ 注释必须 `setProperty('font-size', px, 'important')`；
+     ⛔ 为了让注释生效去放宽那条全局规则。
+  4. **盒子四周空**＝贴字律最初用 `canvas.measureText` 量宽，同一句 CJK 实测 canvas 133 / SVG 111 ⇒ 贴完右边还空一截；
+     改成 `measureSvgLines`（离屏 `<text>` 量完即撤）。同时**提交后盒子贴住文字**（实测 180×76 → 95×50）。
+  5. **拉伸不缩放文字**＝字号原是常量。第一版把字号绑到盒宽（k=宽/180）——两个死结：贴过字的窄盒（95 宽）拖到 185 几乎不动
+     （地板 k=1 挡着），且"贴字要按字号量宽、字号又由宽度决定"互相追。定案＝**缩放数记在便签自己身上**（`noteFontScale`），
+     并且**只有四角缩放**（用户措辞：拖端点等比缩放 / 拖边改比例）：四条边都放大字号的第一版实测把文字溢出框外 51px，
+     "分离"以更坏的形式回来了。
+- **两条测试脚本自己的错（都记下来，因为它们都曾伪装成产品缺陷）**：
+  · [13] 期望 `宽/180×13`——驱动源换成 `noteFontScale` 后该式恒假 ⇒ 误红一格；产品没错，改期望并写下证据。
+  · [14b] 取"盒子中心"用了视图 el 的 bbox（含 8 颗手柄与溢出文字），实测那个点压在南手柄 `rect#h-s` 上 ⇒
+    双击起了缩放而不是进编辑（`cell:pointerdown` 计数 0），读起来像"编辑不生效"。改取 `noteBg` 矩形，
+    同一处教训回写进 src 的编辑 overlay（⛔ overlay 也别再用视图 el 的 bbox）。
+- **r18 的一格红＝竞态，不是产品**：全量跑批（`RED=1 ENVRED=0 GREEN=67 共 68 格`）里 r18 起手 `__sandboxPaper` 未就绪
+  → FATAL → 记成产品红；单跑 11/0 全绿。已给它补"等 paper 再放件"的守卫，并把这条路径改成打 UNVERIFIED 后干净收尾
+  （⛔ 用 FATAL 记——那会被跑批读成产品红；NOVERDICT 才是"今天没判成"的正确记法）。
+- **验证**：`tsc --noEmit` 0 错误；`r121-annotation-gate` 由十格扩到**十五格**（新增 [11] 文字落在框内、[12] 无继承描边＋两主题对比度、
+  [13] 角等比放大且不溢出／边只改比例、[14a] 贴字、[14b] 拉过不再贴小且缩放数随存档走），在最终字节上复跑；r18 单跑复绿。
+- 未做登记（不变）：r121 变异台架仍缺；45° 等非直角的编辑 overlay 仍取 AABB；编辑中平移画布 overlay 不跟（点击先提交）。

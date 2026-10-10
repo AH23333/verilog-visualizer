@@ -73,7 +73,8 @@ the editor opens focused, Esc commits (an empty new note is discarded); double-c
 re-edit — upright text even when the note is rotated or mirrored, transform preserved after the
 edit. Notes word-wrap, resize via edge (free) / corner (aspect-locked) handles, rotate & mirror
 like parts, persist with the save, and appear in the part drill-in view at their exact relative
-positions.
+positions. On commit the box hugs the text; dragging a corner scales the text with it (dragging
+an edge only reshapes).
 
 Right-click a device to reconfigure it — everything that digitaljs only accepts at
 construction time goes through a rebuild that keeps id, position, label and wires:
