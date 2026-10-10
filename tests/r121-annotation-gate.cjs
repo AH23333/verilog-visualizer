@@ -6,7 +6,7 @@
 //   已旋转/镜像的注释编辑时以**正向文字**呈现，编辑完成后恢复原位置和状态；
 //   注释内容在快捷展开图内也可查看，且**与部件的相对位置不可有差错**。
 //
-// 射程（10 格）：
+// 射程（17 格；变异证人名单与每颗变异"该红/该绿"见 r121-mutate.cjs）：
 //   [1] 双击空白 → Annotation cell 建立 + [data-note-edit] textarea 出现且 activeElement
 //   [2] Esc 提交退出：textarea 消失、文字进模型（attrs.label/text）；撤销整步移除、重做整步带回
 //   [3] 双击已有注释二次编辑：textarea 带出原文
@@ -14,6 +14,8 @@
 //   [5] 边手柄 e：宽 +Δ、高不变、锚点＝左缘（position.x 不动）
 //   [6] 角手柄 se：等比（纵横比保持，取两轴更强拉伸意图）
 //   [7] Ctrl+R 旋转 90°；右键「水平镜像」→ mirror.h=true（与部件同一套变换通道）
+//   [8b] 镜像落下的那一帧：body 带 scale(-1,…) 而 label 的 inline transform 为空
+//        （cellMirror.syncBodyTextCounterFlip 对 Annotation 的豁免＝"文字随板翻"）
 //   [8] 旋转/镜像后双击编辑：textarea（正向文字）出现、编辑期间 angle/mirror 不动、
 //       Esc 后新文字生效且 angle/mirror 原样保持（「恢复用户修改的位置和状态」）
 //   [9] 存盘重开：文字/尺寸/角度/镜像/位置整套回来（attrs 整包透传 + angle/mirror 在
@@ -21,6 +23,12 @@
 //   [10] 保存为自定义门（注释＋And 器件）→ 新画布放置实例 → 内部电路弹窗 __innerPaper：
 //        注释叠加（renderSubcircuitView 末尾 overlayAnnotations）且与器件**绝对坐标逐位相等**
 //        ——展开图 autoLayout 关（cells 自带位置）时零误差；angle/mirror 也随行。
+//   [11] label 无 transform（Gate 基类的 refX/refDy 居中平移已清）、内缩＝PAD、不越框
+//   [12] 文字无继承描边＋字重 400，深浅两主题各自亮度阈值成立
+//   [13] 拖**角**＝整块等比（字号随 noteFontScale 放大且不溢出）；拖**边**＝只改比例（字号与高都不动）
+//   [14a] 提交后盒子贴住文字（新建的 180×76 随文字收缩）
+//   [14b] 手动拉过 ⇒ noteUserSized 立起且随存档走，缩放数与算出的字号重开一致
+//   [15] 贴字**紧度**：盒宽 − 最宽行 = 2×PAD（±3）——钉住"量宽用 SVG 排版"（canvas 估算宽 20px）
 //
 // ⚠ 判据读模型与 DOM，不读 toast。⚠ 注释的镜像语义与器件刻意不同：**文字随板翻**
 //   （cellMirror.syncBodyTextCounterFlip 对 Annotation 跳过字形回正，annotationCell.ts 头注 #3）。
@@ -87,7 +95,11 @@ const NOTE = (a) => {
     handleE: handle('e'), handleSe: handle('se'),
     theme: document.documentElement.getAttribute('data-theme') || document.body.getAttribute('data-theme'),
     labelTransform: label ? (label.getAttribute('transform') || 'none') : null,
+    // 器件镜像的「字形回正」写在 label 的 **inline style**（cellMirror.syncBodyTextCounterFlip），
+    // 与上面那个 SVG 属性是两回事——注释刻意不回正，这一条才是那颗豁免的读数。
+    labelStyleTf: label ? (label.style.transform || '') : null,
     bodyStroke: bodyEl ? (bodyEl.getAttribute('stroke') || null) : 'no-body',
+    bodyTf: bodyEl ? (bodyEl.getAttribute('transform') || '') : null,
     labelStroke: cs ? cs.stroke : null,
     fontWeight: cs ? cs.fontWeight : null,
     fontPx: cs ? Math.round(parseFloat(cs.fontSize) * 100) / 100 : null,
@@ -205,6 +217,7 @@ const TXT3 = '变换后仍可编辑';
         skip('[5] 边手柄 e 拖拽：宽+Δ 高不变 锚点＝左缘', `手柄不可见：${J(s5 && s5.handleE)}`);
         skip('[6] 角手柄 se 等比缩放', '前置没满足');
         skip('[7] Ctrl+R 旋转 90°＋右键水平镜像', '前置没满足');
+        skip('[8b] 镜像后注释字形随板翻（豁免器件式字形回正）', '前置没满足');
         skip('[8] 旋转/镜像后双击编辑：正向文字＋状态保持', '前置没满足');
         skip('[9] 存盘重开整套回来', '前置没满足');
         skip('[10] 部件展开图注释叠加＋相对位置零误差', '前置没满足');
@@ -260,6 +273,17 @@ const TXT3 = '变换后仍可编辑';
             `angle=${s7.angle} mirror=${J(s7.mirror)}`)
           : bad('[7] Ctrl+R → angle=90；右键「水平镜像」→ mirror.h=true（与部件同一套变换通道）',
             J({ angle: s7 && s7.angle, mirror: s7 && s7.mirror }));
+
+        // ---- [8b] 镜像注释的字形随板翻（cellMirror 对 Annotation 的刻意豁免）----
+        // ⚠ 读数必须在 [8] 的编辑/提交之前取：这一格问的是"翻转落下的那一帧 DOM"，
+        //   编辑态走 overlay，不参与。豁免被摘掉时 label 会被写上 scaleX(-1)/scale(-1,-1)。
+        const read8b = await page.evaluate(NOTE, { id: s5.id });
+        const flipOk = read8b && /scale\(-1/.test(String(read8b.bodyTf)) && String(read8b.labelStyleTf || '') === '';
+        flipOk
+          ? ok('[8b] 镜像后注释**字形随板翻**：body 带 scale(-1,…) 而 label 没被器件那套「反向再翻一次」回正（⛔ 便签镜像看到反字是刻意的，正向文字由编辑 overlay 负责）',
+            `bodyTf=${read8b.bodyTf} labelStyleTf=${J(read8b.labelStyleTf)}`)
+          : bad('[8b] 镜像后注释**字形随板翻**：body 带 scale(-1,…) 而 label 没被器件那套「反向再翻一次」回正',
+            J(read8b && { bodyTf: read8b.bodyTf, labelStyleTf: read8b.labelStyleTf, mirror: read8b.mirror, angle: read8b.angle }));
 
         // ---- [8] 旋转/镜像后编辑：正向文字 + 状态保持 ----
         const rc8 = await page.evaluate((a) => {
@@ -410,7 +434,8 @@ const TXT3 = '变换后仍可编辑';
       ['[11] 文字块落在框内（label 无 transform、内缩＝pad、不越框）',
        '[12] 无继承描边＋字重 normal，且两个主题的 fill 都随主题翻转',
        '[13] 拉伸盒宽 ⇒ 字号等比放大（用户："拉伸文本框没有缩放文本"）',
-       '[14] 提交后盒子贴住文字；手动拉过之后不再被贴小（标记随存档走）']
+       '[14] 提交后盒子贴住文字；手动拉过之后不再被贴小（标记随存档走）',
+       '[15] 贴字紧度：盒宽 − 最宽行 = 2×PAD（±3），量宽必须是 SVG 排版']
         .forEach((n) => skip(n, '找不到第二处空白点'));
     } else {
       await page.mouse.dblclick(blank2.x, blank2.y);
@@ -425,6 +450,23 @@ const TXT3 = '变换后仍可编辑';
           `size=${n2.size.width}x${n2.size.height} lines=${n2.tspans} 行宽=${J(n2.lineWidths)}`)
         : bad('[14a] 提交后盒子贴住文字（新建默认 180×76 → 应随文字收缩）',
           J(n2 && { size: n2.size, tspans: n2.tspans, widths: n2.lineWidths }));
+
+      // ---- [15] 贴字**紧度**：盒宽 − 最宽行 = 2×PAD（±3）----
+      // [14a] 只钉上界（≤160），抓不到"量宽换了别的尺"：canvas measureText 与 SVG
+      // getComputedTextLength 对同一句 CJK 实测 133 / 111，盒子会宽出一截＝用户报的那句
+      // 「边框比文字宽」。这一格把紧度写成契约，MG/MF/MH 三种变异各有读数（见 r121-mutate）。
+      const padNow = Math.round(8 * (n2 && n2.fontScale ? n2.fontScale : 1));
+      if (!n2 || n2.tspans !== 2 || n2.lineWidths.some((w) => w < 0)) {
+        skip('[15] 贴字紧度：盒宽 − 最宽行 = 2×PAD（±3），量宽必须是 SVG 排版',
+          `前置不成立：tspans=${n2 && n2.tspans} 行宽=${n2 && J(n2.lineWidths)}`);
+      } else {
+        const tight = n2.size.width - Math.max(...n2.lineWidths);
+        Math.abs(tight - 2 * padNow) <= 3
+          ? ok('[15] 贴字紧度：盒宽 − 最宽行 = 2×PAD（±3）——量宽用 SVG 排版而不是 canvas 估算',
+            `width=${n2.size.width} 行宽=${J(n2.lineWidths)} pad=${padNow} tight=${tight}`)
+          : bad('[15] 贴字紧度：盒宽 − 最宽行 = 2×PAD（±3）——量宽用 SVG 排版而不是 canvas 估算',
+            J({ tight, expect: 2 * padNow, width: n2.size.width, lineWidths: n2.lineWidths, tspans: n2.tspans }));
+      }
 
       // ---- [11] label 与框同一坐标空间、内缩＝pad、不越框 ----
       const gOk = n2 && n2.labelTransform === 'none' && n2.inset
