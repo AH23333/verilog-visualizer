@@ -228,6 +228,10 @@ digitaljs 原生的**位宽数组**（Map 形状会让高度变 NaN）。
   MC 数值极性（[3][7][8] 红、**[4] 必须绿**＝字形与语义两条臂各有射程）、MD 重建不接线（[5] 红、[4] 未验）、
   ME 重建不做 merge（[6][7] 红）、MF 名单去掉 bits（[7][9] 红）
 - `r60` 部件绑定、`r61` 深色文字（配对）、`r62` 可调速（数 `postUpdateGates` 而非信号翻转）
+- `r121-annotation-gate.cjs` — **画布注释十格**（[1] 双击空白创建＋输入框聚焦／[2] Esc 提交＋撤销整步移除、重做整步带回／
+  [3] 双击二次编辑带出原文／[4] 自动换行逐行宽 ≤ 盒宽-2×PAD／[5] 边手柄自由改宽、不动点＝对缘／[6] 角手柄等比缩放／
+  [7] Ctrl+R 旋转＋右键水平镜像（与部件同一套变换通道）／[8] 旋转/镜像后编辑＝正向文字、变换原样保持／
+  [9] 存盘重开整套回来／[10] 部件展开图叠加且与器件**绝对坐标逐位相等**）
 - 夹具约定见 `tests/_ui.cjs`：`boot` 不用 `networkidle`（37 个脚本 + HMR WebSocket 永远不空闲）、
   落点一律现取坐标、位宽对话框会拦住后续点击（Esc 关）、`isLink` 是**方法**不是布尔。
   ⚠ 三条本轮新增：**`loadCells` 只有一份、四条调用路共用**，但按 `type === 'Input'` 过滤的变异只砍得动部件文件那一侧
@@ -313,3 +317,41 @@ FSM 器件有四个端口 `in / clk / arst / out`。**`arst` 悬空时机器不�
   反向探针 `r46-mutate.cjs` 三颗全咬：MA 摘掉放大/缩小 ⇒ [G][H] 同红；MB **只换顺序** ⇒ 只 [G] 红（[H] 保持绿）；MC 让 `zoomBy` 空转 ⇒ 只 [H] 红。
   ⚠ hint 只写了界面上真存在的（`Ctrl+滚轮`、`Shift+F`＝`canvas.fit`）；沙盒那颗「重置缩放」带 `Ctrl+0` 而编译模式没带，
   是因为 `shortcuts.ts` 的 `editor.zoomReset` 是 `editorOnly`（那是编辑器字号），⛔ 不许为了词面对齐把假提示抄过去。
+
+## 8. 画布注释（R121，用户裁决 2026-10-10）
+
+双击画布空白 → 就地建便签并立即进入输入态（`[data-note-edit]` 聚焦）；Esc 提交（新建且留空 ⇒ 直接删掉，不留空壳）；
+双击已有注释二次编辑。框内自动换行（`wrapNoteText` 手动 tspan，贪心折行、CJK 逐字断）；8 颗手柄＝4 边自由改比例、
+4 角等比缩放（取两轴更强拉伸意图，不动点＝对角/对边，反旋 angle 的本地系数学在 `noteHandleDown`）；Ctrl+R 旋转与
+右键水平/垂直镜像与部件同一套变换通道。已旋转/镜像的注释编辑时以**正向文字**呈现（编辑 overlay 不动变换），
+提交后原样保持。
+
+实现主人在 `src/lib/annotationCell.ts`（唯一的 cell/View 定义与注册）＋ `SandboxCanvas` 的编辑 overlay。
+五条只有探针才教得出的形状：
+
+- **注册**：digitaljs 的 bundle 不暴露 joint，但 `cells.Gate/GateView` 是 public 导出（base.mjs:39/305）——
+  `Gate.define('Annotation', …)` ＋把成品写回 `djs.cells.Annotation/AnnotationView` 即全局生效（digitaljs 的
+  `cellViewNamespace` 与 `djs.cells` 是同一对象引用，index.mjs:44）。幂等注册挂在画布 build effect 里。
+- **文字的主人＝`label` prop，⛔ 不是 attrs**：Gate.initialize 的 `bindAttrToProp('label/text','label')`
+  （bundle 实录：`this.attr(t, this.get(n))`）会拿 `this.get('label')`（构造期 undefined）覆写 attrs——
+  构造 attrs 里带的文字**当场被冲掉**（诊断探针3：序列化侧就丢字）。写文字一律 `cell.set('label', …)`
+  （change:label 自动同步 attr）；序列化白名单本来就带 label prop，存盘/撤销/复制粘贴/存部件全链路零改动。
+- **joint 的 markup 条目自带 attrs 不被应用**：手柄 rect 渲染出来了但 width/height/fill/data-h 全没落上
+  （只有 define **类级** attrs 才走更新管线）⇒ 全部几何/样式在 `renderNote` 里显式 `setAttribute`；
+  没有显式 data-h，连事件委托的选择器都活不成。
+- **手柄拖拽必须 stopImmediatePropagation**：joint 4.1 的元素拖拽起点＝ElementView 的 `'mousedown': 'pointerdown'`
+  （绑在**视图 el 自己**）——同元素上 `stopPropagation` 拦不住；且 joint 的 events 哈希委托在这套 Gate.define
+  子类上实测不生效 ⇒ 直接 `el.addEventListener('mousedown', …)`（renderNote 幂等绑定）＋双事件守卫。
+- **镜像语义与器件刻意不同**：注释镜像＝整块板翻转、**文字随翻**（`cellMirror.syncBodyTextCounterFlip` 对
+  Annotation 跳过字形回正）；「编辑时正向文字」由 overlay 负责，提交后恢复变换。
+
+存档：`attrs` 整包透传（serialize 白名单）＋ label prop ＋ size/angle/mirror 走既有通道；`cellsToCircuitJson`
+刻意不把 Annotation 计入 devices（会被 buildGraph 判「无法识别的器件」计入 skippedDevices），展开图由
+`renderSubcircuitView` 末尾 `overlayAnnotations` 原位叠加——与部件**同一份本地坐标**、不重布局零误差；
+**autoLayout（elk 重排）开启时不叠加**（注释跟不住被挪位的器件，宁可暂隐也不给「相对位置有差错」）。
+注释不进 `circuit.devices` ⇒ 引擎/DRC/拖线等按端口迭代的逻辑天然跳过。
+
+⚠ 开内部电路弹窗的现役配方＝`UI.clickZoomInto`（单击放大镜 `a.zoom` → onZoom 分支）；自制双击路径实测不灵：
+joint 的 `cell:pointerdblclick` 照发（探针计数 3）、digitaljs 的 `open:subcircuit` 却从不发出（沙盒交互态下的
+R38 同族）。另外 `handleSaveGate` 硬性要求画布 ≥1 Input＋≥1 Output（SandboxCanvas:3309），只有注释＋门的夹具
+会被拒存。

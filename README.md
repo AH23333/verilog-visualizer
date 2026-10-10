@@ -68,7 +68,12 @@ Sandbox flow: left ActivityBar → 沙盒 / 文件 / 部件. New canvas from the
 the grouped library, drag wires between ports, run / pause with the SPEED slider, open the
 waveform panel to watch channels, save a selection as a part (「保存为自定义门」) and place it
 again as a single instance. 部件绑定 in the same panel shows which instance resolves to which
-part file — and which ones are broken.
+part file — and which ones are broken. Double-click empty canvas to drop a sticky note (R121):
+the editor opens focused, Esc commits (an empty new note is discarded); double-click a note to
+re-edit — upright text even when the note is rotated or mirrored, transform preserved after the
+edit. Notes word-wrap, resize via edge (free) / corner (aspect-locked) handles, rotate & mirror
+like parts, persist with the save, and appear in the part drill-in view at their exact relative
+positions.
 
 Right-click a device to reconfigure it — everything that digitaljs only accepts at
 construction time goes through a rebuild that keeps id, position, label and wires:
