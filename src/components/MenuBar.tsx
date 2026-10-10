@@ -10,7 +10,6 @@ interface MenuBarProps {
   onCreateFile: () => void;
   currentTheme: Theme;
   onExportSVG?: () => void;
-  onExportPNG?: () => void;
   onExportJSON?: () => void;
   onExportVerilog?: () => void;
   onExportNetlist?: () => void;
@@ -33,7 +32,7 @@ interface MenuState {
   items: { label: string; action: () => void; shortcut?: string }[];
 }
 
-export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFitToWindow, onCreateFile, currentTheme, onExportSVG, onExportPNG, onExportJSON, onExportVerilog, onExportNetlist, onGlobalSearch, hasCircuit: _hasCircuit, onSave, onCompile, onUndo, onRedo, onFind, onToggleSidebar, onOpenExamples, onShowShortcuts, onOpenSettings }: MenuBarProps) {
+export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFitToWindow, onCreateFile, currentTheme, onExportSVG, onExportJSON, onExportVerilog, onExportNetlist, onGlobalSearch, hasCircuit: _hasCircuit, onSave, onCompile, onUndo, onRedo, onFind, onToggleSidebar, onOpenExamples, onShowShortcuts, onOpenSettings }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -76,7 +75,6 @@ export default function MenuBar({ onImportFile, onToggleTheme, onResetZoom, onFi
       label: '导出',
       items: [
         { label: '导出 SVG', action: () => { onExportSVG?.(); setOpenMenu(null); } },
-        { label: '导出 PNG', action: () => { onExportPNG?.(); setOpenMenu(null); } },
         { label: '导出电路 JSON', action: () => { onExportJSON?.(); setOpenMenu(null); } },
         { label: '导出 Verilog 源码', action: () => { onExportVerilog?.(); setOpenMenu(null); } },
         { label: '导出综合网表', action: () => { onExportNetlist?.(); setOpenMenu(null); } },

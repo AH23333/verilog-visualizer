@@ -31,7 +31,7 @@ export const SHORTCUTS: ShortcutDef[] = [
 
   { id: 'editor.undo',   combo: 'Ctrl+Z',        label: '撤销（编辑器）',          group: 'Editor', editorOnly: true },
   { id: 'editor.redo',   combo: 'Ctrl+Y',        label: '重做（编辑器）',          group: 'Editor', editorOnly: true },
-  { id: 'editor.find',   combo: 'Ctrl+F',        label: '查找 / 替换（编辑器）', group: 'Editor', editorOnly: true },
+  { id: 'editor.find',   combo: 'Ctrl+F',        label: '查找 / 部件搜索（按焦点分流：编辑器内查找替换，画布上搜部件）', group: 'Editor', editorOnly: true },
   { id: 'editor.zoomIn',   combo: 'Ctrl+=',        label: '增大字号',    group: 'Editor', editorOnly: true },
   { id: 'editor.zoomOut',  combo: 'Ctrl+-',        label: '减小字号',    group: 'Editor', editorOnly: true },
   { id: 'editor.zoomReset', combo: 'Ctrl+0',       label: '重置字号',       group: 'Editor', editorOnly: true },

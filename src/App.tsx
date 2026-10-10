@@ -21,6 +21,8 @@ import ShortcutsHelpDialog from './components/ShortcutsHelpDialog';
 import ExamplesDialog from './components/ExamplesDialog';
 import CommandPalette from './components/CommandPalette';
 import type { Command } from './components/CommandPalette';
+import PartSearchDialog from './components/PartSearchDialog';
+import { partSearchRegistry } from './lib/partSearch';
 import OnboardingDialog from './components/OnboardingDialog';
 import WaveformPanel from './components/WaveformPanel';
 import InputPanel from './components/InputPanel';
@@ -41,7 +43,7 @@ import { settingsStore, type ViewMode } from './store/settingsStore';
 import { projectConfigStore } from './store/projectConfigStore';
 import { sandboxStore } from './store/sandboxStore';
 import { collectToFolder, stripBoundInlineJson } from './lib/gateSystem';
-import { exportSVG, exportPNG, exportCircuitJSON, exportVerilogCode, exportNetlistVerilog } from './lib/exportUtils';
+import { exportSVG, exportCircuitJSON, exportVerilogCode, exportNetlistVerilog } from './lib/exportUtils';
 
 type Status = 'idle' | 'compiling' | 'done' | 'error';
 
@@ -101,6 +103,8 @@ export default function App() {
 
   // Command palette (Ctrl+Shift+P)
   const [commandPaletteVisible, setCommandPaletteVisible] = useState(false);
+  // 部件搜索（Ctrl+F 路由到画布时打开，见快捷键处「按焦点分流」注释）
+  const [partSearchOpen, setPartSearchOpen] = useState(false);
 
   // First-run onboarding
   const [onboardingVisible, setOnboardingVisible] = useState(() => {
@@ -421,13 +425,6 @@ export default function App() {
     const baseName = name.replace(/\.(v|sv|vh)$/, '');
     const ok = await exportSVG(canvasContainerRef.current, baseName);
     setMessage(ok ? 'SVG 已导出。' : '导出已取消，或画布上没有电路。');
-  }, [activeFile]);
-
-  const handleExportPNG = useCallback(async () => {
-    const name = activeFile?.name || 'circuit';
-    const baseName = name.replace(/\.(v|sv|vh)$/, '');
-    const ok = await exportPNG(canvasContainerRef.current, baseName);
-    setMessage(ok ? 'PNG 已导出。' : '导出已取消，或画布上没有电路。');
   }, [activeFile]);
 
   const handleExportJSON = useCallback(async () => {
@@ -1019,7 +1016,6 @@ export default function App() {
         { label: '重置缩放', action: () => canvasRef.current?.resetZoom() },
         { label: '---', disabled: true, action: () => {} },
         { label: '导出 SVG', action: () => handleExportSVG() },
-        { label: '导出 PNG', action: () => handleExportPNG() },
         { label: '导出电路 JSON', action: () => handleExportJSON() },
         { label: '导出综合网表', action: () => handleExportNetlist() },
         { label: '---', disabled: true, action: () => {} },
@@ -1027,7 +1023,7 @@ export default function App() {
         { label: '导入 Verilog 文件...', action: () => handleImportFile() },
       ],
     });
-  }, [handleCompile, handleImportFile, handleExportSVG, handleExportPNG, handleExportJSON, handleExportNetlist]);
+  }, [handleCompile, handleImportFile, handleExportSVG, handleExportJSON, handleExportNetlist]);
 
   // 右键在画布上是**平移**手势（Canvas 的 handleMouseDown），所以菜单不能在
   // 按下瞬间弹（浏览器就是在那一刻发 contextmenu，于是「一拖动就出菜单」）。
@@ -1113,7 +1109,13 @@ export default function App() {
             case 'canvas.fit': canvasRef.current?.fitToWindow(); return true;
             case 'editor.undo': codeEditorRef.current?.undo(); return true;
             case 'editor.redo': codeEditorRef.current?.redo(); return true;
-            case 'editor.find': codeEditorRef.current?.openFind(); return true;
+            // Ctrl+F 按焦点分流（用户裁决）：编辑器 / 输入框聚焦 → 编辑器内查找替换；
+            // 画布聚焦（编译模式与沙盒都是）→ 部件搜索弹窗。编辑器里的 Mod-f 由
+            // CodeMirror 自己的 keymap 先吃掉（preventDefault ⇒ defaultPrevented 在上面就 return 了），
+            // 不会走到这一颗；能走到这里的一定是「不在可编辑目标里」的 Ctrl+F。
+            case 'editor.find':
+              if (isEditableTarget(e.target)) { codeEditorRef.current?.openFind(); return true; }
+              setPartSearchOpen((v) => !v); return true;
             case 'editor.zoomIn': settingsStore.increaseFontSize(); return true;
             case 'editor.zoomOut': settingsStore.decreaseFontSize(); return true;
             case 'editor.zoomReset': settingsStore.resetFontSize(); return true;
@@ -1156,11 +1158,12 @@ export default function App() {
       { id: 'view.resetZoom', label: '重置电路缩放', run: () => canvasRef.current?.resetZoom() },
       { id: 'view.fitWindow', label: '电路适应窗口', run: () => canvasRef.current?.fitToWindow() },
       { id: 'view.exportSVG', label: '导出电路为 SVG', run: handleExportSVG },
-      { id: 'view.exportPNG', label: '导出电路为 PNG', run: handleExportPNG },
+      { id: 'view.exportJSON', label: '导出电路 JSON', run: handleExportJSON },
+      { id: 'view.exportNetlist', label: '导出综合网表', run: handleExportNetlist },
     );
     return list;
   }, [handleImportFile, handleCreateFile, handleSave, handleCompile, handleToggleSidebar,
-      handleToggleTheme, handleExportSVG, handleExportPNG]);
+      handleToggleTheme, handleExportSVG, handleExportJSON, handleExportNetlist]);
 
   // ============ Render Helpers ============
 
@@ -1189,7 +1192,6 @@ export default function App() {
           onCreateFile={handleCreateFile}
           currentTheme={theme}
           onExportSVG={handleExportSVG}
-          onExportPNG={handleExportPNG}
           onExportJSON={handleExportJSON}
           onExportVerilog={handleExportVerilog}
           onExportNetlist={handleExportNetlist}
@@ -1824,6 +1826,13 @@ export default function App() {
           }}
         />
       )}
+
+      {/* 部件搜索（Ctrl+F 画布聚焦时打开；编译模式与沙盒共用，源经 partSearchRegistry 现取） */}
+      <PartSearchDialog
+        open={partSearchOpen}
+        onClose={() => setPartSearchOpen(false)}
+        getSource={() => partSearchRegistry.get()}
+      />
 
       {/* Keyboard Shortcuts Help */}
       {shortcutsHelpVisible && (

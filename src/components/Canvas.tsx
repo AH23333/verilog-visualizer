@@ -3,8 +3,9 @@ import { foldArithConstants } from '../lib/displayFold';
 import { serializePaperJson } from '../lib/sandboxSerialize';
 import { settingsStore } from '../store/settingsStore';
 import { applyWireStyle } from '../lib/wireRouting';
-import { setSimInterval } from '../lib/simClock';
 
+import { setSimInterval } from '../lib/simClock';
+import { partSearchRegistry, collectPartHits } from '../lib/partSearch';
 /**
  * 取器件的输出信号向量。digitaljs 把 `outputSignals` 存在 **attributes** 上，
  * 直接读 `cell.outputSignals` 恒为 undefined —— 于是「单步」拨不动时钟、
@@ -1035,6 +1036,50 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       }
     };
   }, [circuitJson, onError, fitToWindow, applyThemeToPaper, applyFixed, clearSourceHighlight]);
+
+  // ---- 部件搜索（Ctrl+F 画布聚焦时，App 层 PartSearchDialog 经 bus 现取这棵源）----
+  // ⚠ 必须在 paper 就绪后注册、随画布重建同源注销：画布一卸，源跟着走，
+  //   不许留着指向已销毁 paper 的句柄（否则部件搜索会去搜一颗不存在的画布）。
+  useEffect(() => {
+    const src = {
+      list: (q: string) =>
+        collectPartHits(paperRef.current ? paperRef.current.model.getCells() : [], q),
+      locate: (id: string): boolean => {
+        const paper: any = paperRef.current;
+        const paperEl: any = paper ? (paper.el || paper.$el?.[0]) : null;
+        if (!paper || !paperEl) return false;
+        // 与 highlightSource 同一族做法：认 DOM 上的 [model-id]，再经 paper.model.getCell
+        // 回查 id —— digitaljs 设的 id 属性（如 'dev6'）与 joint 的 UUID key 不是一回事。
+        let target: Element | null = null;
+        for (const el of Array.from(paperEl.querySelectorAll('[model-id]') as NodeListOf<Element>)) {
+          const mid = el.getAttribute('model-id');
+          if (!mid) continue;
+          const model = paper.model?.getCell?.(mid);
+          if (model && String(model.id) === id) { target = el; break; }
+        }
+        if (!target) return false;
+        clearSourceHighlight();
+        target.classList.add('src-highlight');
+        highlightedRef.current = [target];
+        const wrap = wrapperRef.current, con = containerRef.current;
+        if (wrap && con) {
+          // wrapper 的 transform 是 translate(x,y) scale(z)（平移不被缩放），
+          // 所以"想让某点居中"的平移量 = 容器中心 − 目标当前屏幕中心，直接加到 pan 上。
+          const r = target.getBoundingClientRect();
+          const cr = con.getBoundingClientRect();
+          panRef.current = {
+            x: panRef.current.x + (cr.left + cr.width / 2 - (r.left + r.width / 2)),
+            y: panRef.current.y + (cr.top + cr.height / 2 - (r.top + r.height / 2)),
+          };
+          userViewRef.current = true;
+          applyTransform();
+        }
+        return true;
+      },
+    };
+    partSearchRegistry.register(src);
+    return () => partSearchRegistry.unregister(src);
+  }, [circuitJson, applyTransform, clearSourceHighlight]);
 
   // Pan and zoom mouse handlers
   // ⚠ panRef 的坐标系只有一个：容器相对（centerAtScale 与 handleWheel 都按它算）。
