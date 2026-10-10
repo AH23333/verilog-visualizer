@@ -9,7 +9,7 @@
  *    已旋转/镜像的注释在编辑时以**正向文字**呈现，编辑完成后保持原变换；
  *  - 注释内容在「内部电路」展开图里也要可见，且与部件的相对位置不可有差错。
  *
- * ── 实现要点（探针实测定案，.tmpbuild/joint_probe3.cjs）─────────────────
+ * ── 实现要点（形状均由 r121 闸门前置探针实测定案）─────────────────
  * digitaljs 的 bundle 不暴露 joint，但 cells 命名空间里 `Gate`/`GateView`
  * 是 public 导出（base.mjs:39/305），且 joint 4.1 的 ES5 `define/extend`
  * 完好：`Gate.define('Annotation', …)` + `GateView.extend(…)` 可用；把成品
@@ -19,14 +19,17 @@
  *
  * 三个刻意的形状：
  *  1. **纯 SVG text + 手动 tspan 换行**，不用 foreignObject：
- *     - 沙盒 PNG/SVG 导出会剥离 foreignObject（tainted canvas 防线，见
- *       sandboxExport.ts），SVG text 天然存活；
+ *     - 导出实况（exportUtils.ts）：SVG＝整树 cloneNode 后序列化（text 原样带走）；
+ *       PNG＝SVG blob 喂 `<img>` 栅格化——image 安全模型下 foreignObject 不渲染，
+ *       SVG text 天然存活；
  *     - 深色主题 `[data-theme=dark] svg text` 全局浅色规则自动覆盖；
  *     - 旋转/镜像是视图 transform，text 跟随，无 HTML 混合层问题。
  *     joint 的 text 属性**不**把 \n 拆成多行（探针实测 tspan=1），所以换行
  *     由本文件的 wrapNoteText 计算后重建 tspan。
- *  2. **文字内容存在 attrs.label.text**：sandboxSerialize 的 attrs 是整包
- *     透传字段，走它 = 零序列化改动（angle/mirror/size 也各有既有通道）。
+ *  2. **文字的主人＝`label` prop**（⛔ attrs.label.text——Gate.initialize 的
+ *     bindAttrToProp 会拿 this.get('label') 冲掉构造 attrs，见 makeAnnotationCell
+ *     注释）：sandboxSerialize 白名单本来就带 label prop，存盘/撤销/复制/存部件
+ *     零序列化改动（angle/mirror/size 也各有既有通道）。
  *  3. **body 是一个 <g>**（含底色 rect + text）：cellMirror 的镜像变换落在
  *     body 上 ⇒ 注释镜像＝整块板翻转、**文字随翻**（cellMirror 对
  *     Annotation 跳过字形回正——文本框镜像就该看到反字，这是与器件不同的
@@ -147,14 +150,10 @@ export function registerAnnotation(djs: any): boolean {
     });
     const GateViewBase = djs.cells.GateView;
     const AnnView = GateViewBase.extend({
-      events() {
-        const base = typeof GateViewBase.prototype.events === 'function'
-          ? GateViewBase.prototype.events.call(this) : (GateViewBase.prototype.events || {});
-        // ⚠ joint 4.1 的元素拖拽起点绑在 **mousedown**（bundle：`'mousedown': 'pointerdown'`），
-        //   只拦 pointer 事件拦不住（r121 闸门实测：拖手柄把便签整个拖走）；两个都绑＋手势
-        //   守卫（noteHandleDown 会被 pointer/mouse 各调一次，幂等）。
-        return { ...base, '[data-h] pointerdown': 'noteHandleDown', '[data-h] mousedown': 'noteHandleDown' };
-      },
+      // ⚠ 手柄交互不走 events 哈希委托（实测在 Gate.define 子类上不参与生效，
+      //   且 joint 自己的拖拽起点监听注册在先、同元素 stopImmediate 拦不住）——
+      //   落点在 renderNote 里给每颗手柄直接 addEventListener('mousedown')，
+      //   目标元素上的监听先于祖先（视图 el）执行，stopImmediatePropagation 才拦得住。
       render() {
         GateViewBase.prototype.render.apply(this, arguments as any);
         this.renderNote();
