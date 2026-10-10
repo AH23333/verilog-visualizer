@@ -34,6 +34,10 @@ import IOPanel, { type IOHost } from './IOPanel';
 import PromptDialog from './PromptDialog';
 import ExprGenDialog from './ExprGenDialog';
 import ConfirmDialog from './ConfirmDialog';
+import {
+  ANNOTATION_TYPE, NOTE_FONT, NOTE_LINE_H, NOTE_PAD, NOTE_DEFAULT_W, NOTE_DEFAULT_H,
+  registerAnnotation, makeAnnotationCell, isAnnotation, ANNOTATION_CSS,
+} from '../lib/annotationCell';
 
 /** 文件/文件夹名校验（与编译模式同名：`V_NAME_VALIDATE` 那一条规则，禁非法字符与空名） */
 const V_SB_NAME = (v: string): string | null =>
@@ -122,7 +126,9 @@ const NATIVE_SIZE_TYPES = ['Dff', 'Display7', 'Addition', 'Subtraction', 'Multip
   'Division', 'Modulo', 'Power', 'Ne', 'Le', 'Ge', 'Mux1Hot',
   'NumDisplay', 'NumEntry', ...EXTEND_TYPES, 'FSM', ...FSM_TYPES,
   // 稀疏选择器：40 宽、高度按分支行数堆（与合线器同式 16*n+8），套 60×32 会把端口叠住
-  ...SPARSE_MUX_TYPES];
+  ...SPARSE_MUX_TYPES,
+  // 注释便签：尺寸完全由用户拖拽决定（180×76 起步），不能被通用 60×32 钳掉
+  ANNOTATION_TYPE];
 
 /** 运算器位宽：输入 N 位，输出按运算规则加宽（乘法 2N、加减 N+1 含进位/借位）防溢出 */
 function arithBits(type: string, n: number) {
@@ -565,6 +571,37 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   const [drc, setDrc] = useState<DrcIssue[]>([]);
   const [settings, setSettings] = useState<SandboxSettings>(() => settingsStore.getSandboxSettings());
   const [innerCell, setInnerCell] = useState<any>(null);
+  // 注释编辑态（用户裁决 2026-10-10）：双击空白创建并立即输入；双击已有注释二次编辑。
+  // isNew 标记决定「提交时内容为空 → 直接删除便签」，避免留下空壳垃圾。
+  const [noteEdit, setNoteEdit] = useState<{ id: string; isNew: boolean } | null>(null);
+  const [noteDraft, setNoteDraft] = useState('');
+  /** 进入注释编辑态：载入现有文字（正向编辑——cell 的 angle/mirror 不动，提交后原样保持） */
+  const startNoteEdit = useCallback((cell: any, isNew: boolean) => {
+    try { setNoteDraft(String(cell?.get?.('label') ?? cell?.attr?.('label/text') ?? '')); } catch { setNoteDraft(''); }
+    setNoteEdit({ id: String(cell.id), isNew });
+  }, []);
+  const startNoteEditRef = useRef(startNoteEdit);
+  startNoteEditRef.current = startNoteEdit;
+  /** 提交：写回文字；新建且留空 → 直接移除（不留空壳） */
+  const commitNote = useCallback(() => {
+    const paper = paperRef.current;
+    if (!paper || !noteEdit) return;
+    const cell = paper.model.getCell(noteEdit.id);
+    setNoteEdit(null);
+    if (!cell) return;
+    const text = noteDraft;
+    if (!text.trim()) {
+      if (noteEdit.isNew) { try { cell.remove(); } catch { /* ignore */ } }
+      else { try { cell.set('label', ''); } catch { /* ignore */ } }
+      commitRef.current?.();
+      return;
+    }
+    // ⚠ 文字写 **label prop**（主人）；Gate 的 bindAttrToProp 会把它同步到
+    //   attrs.label/text。直接写 attr 的话 prop 留旧值 ⇒ 序列化（label prop）
+    //   与存盘重开全是旧字（r121 诊断探针3 定案）。
+    try { cell.set('label', text); } catch { /* ignore */ }
+    commitRef.current?.();
+  }, [noteEdit, noteDraft]);
   // 层次结构面板里展开的自定义门 id
   const [expandedSubs, setExpandedSubs] = useState<Set<string>>(new Set());
   // 起线函数缓存：空白处靠近端口按下时也要能起线（见 blank:pointerdown 处理）
@@ -1212,6 +1249,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       propagation: c.get('propagation'),
       size: c.get('size'),
       angle: c.get('angle'),
+      // 注释的文字活在 attrs.label.text——不带 attrs，复制粘贴会丢内容
+      attrs: c.get('type') === ANNOTATION_TYPE ? c.get('attrs') : undefined,
       subcircuitGraph: c.get('type') === 'Subcircuit' ? c.get('subcircuitGraph') : undefined,
     }));
     const links = paper.model.getLinks()
@@ -1249,7 +1288,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
           if (ports) cell.set('ports', { ...ports });
         } catch {}
       } else {
-        cell = spawnCell(c.type, snapVal((pos.x || 50) + gridSize), snapVal((pos.y || 50) + gridSize));
+        cell = spawnCell(c.type, snapVal((pos.x || 50) + gridSize), snapVal((pos.y || 50) + gridSize), undefined,
+          c.type === ANNOTATION_TYPE ? { attrs: c.attrs, size: c.size } : undefined);
       }
       if (!cell) continue;
       try { if (c.bits != null) cell.set('bits', c.bits); } catch {}
@@ -1945,6 +1985,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         showToast(`存储器已重建为 ${1 << Math.floor(n)} 字`);
       } } });
     }
+    if (type === ANNOTATION_TYPE) {
+      items.push({ label: '编辑注释', hint: '双击', action: () => startNoteEditRef.current?.(cell, false) });
+    }
     if (type === 'Subcircuit') {
       items.push({ label: '查看内部电路', hint: '双击', action: () => setInnerCell(cell) });
       // 绑定（与编译模式一致：「绑定...」开对话框；样式也同款）——实例按 celltype 名绑定
@@ -2210,6 +2253,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     const root = wrapperRef.current;
     if (!root) return;
     const digitaljs = (window as any).digitaljs;
+    // 注释 cell/View 幂等注册（Gate.define + cells 命名空间注入，见 annotationCell.ts）
+    try { registerAnnotation(digitaljs); } catch { /* 注释功能降级，不影响画布 */ }
 
     root.querySelectorAll('[data-sandbox-grid], [data-sandbox-paper-host], [data-sandbox-marquee]')
       .forEach(el => el.remove());
@@ -2573,6 +2618,19 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     };
     document.addEventListener('mousedown', onDocZoomDown, true);
 
+    // ---- 注释便签（用户裁决 2026-10-10）：双击空白创建并立即进入输入态 ----
+    // ⚠ joint 4.1 的事件名是 blank:pointerdblclick（joint.d.ts:2087）——不是 blank:dblclick
+    //   （那颗监听器挂上去永远不响，r121 闸门首跑 0/2 抓出来的）。
+    paper.on('blank:pointerdblclick', (evt: any, x: number, y: number) => {
+      if (evt.button !== 0) return;
+      const cell = makeAnnotationCell(digitaljs, snapVal(x - NOTE_DEFAULT_W / 2), snapVal(y - NOTE_DEFAULT_H / 2));
+      if (!cell) { showToast('注释功能不可用（digitaljs 命名空间缺失）'); return; }
+      paper.model.addCell(cell);
+      startNoteEditRef.current?.(cell, true);
+    });
+    // 手柄缩放结束 → 入历史
+    paper.on('annotation:resized', () => { commit(); scheduleDrc(); });
+
     // Box (rubber-band) selection on blank canvas drag
     paper.on('blank:pointerdown', (evt: any) => {
       if (evt.button === 2) return;
@@ -2834,6 +2892,12 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       if (lastClickId === id && now - lastClickAt < 400) {
         lastClickId = null;
         if (cellView.model.get('type') === 'Subcircuit') { setInnerCell(cellView.model); return; }
+        // 注释：双击进入二次编辑（正向文字，提交后保持原旋转/镜像状态）
+        if (isAnnotation(cellView.model)) {
+          setSelection([id]);
+          startNoteEditRef.current?.(cellView.model, false);
+          return;
+        }
       }
       lastClickId = id;
       lastClickAt = now;
@@ -4202,6 +4266,44 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         )}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           <div ref={wrapperRef} data-sandbox-wrapper style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
+          {/* 注释手柄只在选中态显示（annotationCell 的 View 画了 8 个 .ann-h） */}
+          <style>{ANNOTATION_CSS}</style>
+          {/* 注释编辑 overlay：正向文字（cell 的旋转/镜像保持不动，提交后原样呈现） */}
+          {noteEdit && (() => {
+            const paper = paperRef.current;
+            const cell = paper ? (paper.model.getCell(noteEdit.id) as any) : null;
+            const wrap = wrapperRef.current;
+            if (!paper || !cell || !wrap) return null;
+            const v = cell.findView(paper);
+            const r = v?.el?.getBoundingClientRect?.();
+            const wr = wrap.getBoundingClientRect();
+            if (!r || !r.width) return null;
+            return (
+              <textarea
+                data-note-edit=""
+                autoFocus
+                value={noteDraft}
+                onChange={(e) => setNoteDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Escape') { e.preventDefault(); commitNote(); }
+                  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') { e.preventDefault(); commitNote(); }
+                }}
+                onBlur={commitNote}
+                style={{
+                  position: 'absolute',
+                  left: r.left - wr.left + 2, top: r.top - wr.top + 2,
+                  width: Math.max(90, r.width - 4), height: Math.max(44, r.height - 4),
+                  zIndex: 26, resize: 'none', boxSizing: 'border-box',
+                  background: 'rgba(20,26,34,0.94)', color: '#e4e4ec',
+                  border: '1.5px solid var(--accent)', borderRadius: 6, outline: 'none',
+                  padding: `${NOTE_PAD - 2}px ${NOTE_PAD}px`,
+                  fontFamily: "'Consolas', 'JetBrains Mono', monospace",
+                  fontSize: NOTE_FONT, lineHeight: `${NOTE_LINE_H}px`,
+                }}
+              />
+            );
+          })()}
         {gateError && (
           <div style={{ position: 'absolute', top: 52, left: 10, zIndex: 24, fontSize: 'var(--fs-xs)',
             color: 'var(--danger)', background: 'var(--surface)', padding: '2px 6px',

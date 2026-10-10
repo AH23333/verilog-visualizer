@@ -13,6 +13,7 @@ import { serializeGraphCells } from './sandboxSerialize';
 import { ctorParams } from './deviceParams';
 import { resolveDefCells } from './gateSystem';
 import { applyMirror, MIRROR_VER_LOCAL } from './cellMirror';
+import { ANNOTATION_TYPE } from './annotationCell';
 
 export interface LoadCellsOptions {
   /** 绑定作用域：本画布文件所在文件夹（部件解析优先同文件夹，R39） */
@@ -102,6 +103,9 @@ export function loadCells(
     // 构造期参数按 deviceParams 的清单整体传入：这些字段 digitaljs 在
     // initialize()/构造期读走，事后 set 会被列进「不支持运行时修改」。
     const cellExtra: Record<string, any> = ctorParams(c);
+    // 注释便签的文字活在 attrs.label.text —— 不带 attrs 回读，存盘重开注释全空。
+    // （其余器件的 attrs 由类默认值驱动，不需要这条通道。）
+    if (c.type === ANNOTATION_TYPE && c.attrs) cellExtra.attrs = c.attrs;
     if (c.type === 'Memory' && c.memdataInit) {
       // digitaljs 的 Memory.prepare() 只认构造属性 memdata（Mem3vl.fromJSON）——
       // 只带 memdataInit 的话 memdata 全 x 初始化，组合读（rdports 无 clock_polarity）

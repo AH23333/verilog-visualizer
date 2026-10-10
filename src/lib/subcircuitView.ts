@@ -26,6 +26,7 @@ import { normalizeIoLabels, renameAutoCells } from './verilog';
 import { DEVICE_PARAM_KEYS, paramValue } from './deviceParams';
 import { zoomPaperAtClient } from './paperZoom';
 import { foldArithConstants } from './displayFold';
+import { overlayAnnotations } from './annotationCell';
 
 type AnyCell = any;
 
@@ -49,6 +50,10 @@ export function cellsToCircuitJson(json: { cells?: AnyCell[] } | null | undefine
     const connectors: any[] = [];
     let wireSeq = 0;
     for (const c of src?.cells || []) {
+      // 注释便签不是电路器件：不进 circuit.devices（否则被 buildGraph 的
+      // getCellType 判为「无法识别的器件」计入 skippedDevices 报缺口）。
+      // 展开图里的注释走 renderSubcircuitView 末尾的 overlayAnnotations 叠加。
+      if (c.type === 'Annotation') continue;
       // 兼容旧格式：有 source+target 的是 wire
       if (c.isLink || (c.source && c.target && c.source.id && c.target.id)) {
         connectors.push({
@@ -316,7 +321,16 @@ export function renderSubcircuitView(
   if (!cellsJson?.cells?.length) return null;
   const json = cellsToCircuitJson(cellsJson);
   if (!Object.keys(json.devices).length) return null;
-  return renderCircuitView(digitaljs, mount, json, opts);
+  const handle = renderCircuitView(digitaljs, mount, json, opts);
+  // 注释便签叠加（R121）：cellsToCircuitJson 刻意不把 Annotation 计入 devices，
+  // 器件走编译管线渲染完后，把同坐标系的注释 cell 原位叠回 paper —— position/
+  // angle/mirror 与部件**同一份本地坐标**，不重布局就零误差。autoLayout=true 时
+  // elk 会挪器件，注释跟不住 ⇒ 宁可暂隐，也不给「与部件相对位置有差错」的机会
+  // （用户裁决）。
+  if (handle && !opts.autoLayout) {
+    try { overlayAnnotations(handle.paper, digitaljs, cellsJson.cells); } catch { /* 展示层尽力而为 */ }
+  }
+  return handle;
 }
 
 /** 递归剥掉（嵌套模块里的）器件位置，交给 elk 重新布局 */

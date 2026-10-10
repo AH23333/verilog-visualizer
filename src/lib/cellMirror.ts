@@ -114,6 +114,10 @@ function pset(c: any, path: string, val: any): void {
 /** body 子树内的文本/foreignObject 反翻（视图层，字形回正）。重复调用安全。 */
 function syncBodyTextCounterFlip(c: any, paper: any, sx: number, sy: number): void {
   try {
+    // 注释便签（R121）：镜像＝整块板翻转、**文字随翻**（annotationCell.ts 文件头
+    // 「三个刻意的形状」#3）——器件的字形回正对它反而是错的，用户编辑时看到的
+    // 正向文字由编辑 overlay 负责，提交后恢复镜像态。
+    if (String(c?.get?.('type') || '') === 'Annotation') return;
     const v = paper && typeof paper.findViewByModel === 'function' ? paper.findViewByModel(c) : null;
     if (!v?.el) return;
     const bodies = v.el.querySelectorAll('[joint-selector="body"], [data-selector="body"]');
