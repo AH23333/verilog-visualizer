@@ -1923,3 +1923,24 @@ R122 及其后批：**驳回**——Q1 切档回归一行未修、闸门红着�
 - **push**：本卷修复提交后快进推送（ahead 清零）。
 
 *（卷二十九完 · 修复经 r122 9/9 + r121 17/17 + tsc 0 错三重验证）*
+
+---
+
+# 卷三十 · R123 部件循环依赖（套娃/互嵌）检测与断环（2026-10-11，用户报障直修）
+
+- **用户报障**：已保存的部件文件内添加该电路打包的自定义部件（套娃）导致渲染失败，且没有提示存在自嵌套或部件之间的相互嵌套循环。
+- **根因（诊断探针四连定位，非猜）**：
+  1. 物化侧 `resolveDefCells` 的祖先链守卫把环回边留成**空壳实例**（celltype 保留、无 subcircuitGraph）——本身不炸；
+  2. 渲染侧 `cellsToCircuitJson` 把定义平铺进一张 subcircuits 表，digitaljs `circuit.mjs:164` 按 `subcircuits[dev.celltype]` **直读建图无守卫**——空壳引用的表项**根本没人登记** ⇒ `Cannot read properties of undefined (reading 'devices')`（截图实锤：模态 failMsg 原样抛出）；
+  3. 若回边指向的是祖先**完整定义**（内嵌快照形态的环）⇒ `_makeGraph` 无限递归（另一死法）；
+  4. 附带发现：原实现 `chain.add(name)` 只进不回——兄弟同名实例全靠 `!flat[name]` 短路侥幸没被误判。
+- **修复（三层）**：
+  1. **渲染断环**（`subcircuitView.cellsToCircuitJson` Subcircuit 分支改三分支）：①celltype 命中祖先链＝环回边 → 改名 `${name}__cycle` 指空壳占位（label 带 ⟲循环）；②有内嵌图 → 正常展开，chain **加-建-删回溯**（兄弟实例不再有误判空间）；③空壳引用（部件已删/物化环回/坏档）→ 表里登记空壳占位——**任何 Subcircuit 实例的 celltype 在表里必有项**，digitaljs 两条死法全断。
+  2. **放置拦截**（`SandboxCanvas.placeCustomGateAt` + `gateSystem.findPartCycle` 新增 DFS）：把 X 放进 X 自己的定义（自嵌套）或 X 的闭包回指当前部件文件（互嵌）→ 当场拒绝并给出完整环路径（`循环依赖：baz → qux → baz`）；与当前文件无关的存量环 → 允许放置（渲染已兜底）。
+  3. **常驻警告**（重建 effect + 存为部件后）：当前画布闭包含环 → 画布顶部橙色警告条（`data-sb-cycle-warn`）点名环路径 + 指引「进部件定义删除嵌套实例」；展开图正常渲染断环空壳。
+- **闸门 `r123-cycle-gate` 6 格全绿**（fixture 直写 localStorage 构环——环档案是存量数据形状，不走被拦截的 UI 放置）：[1] 环档案展开图渲染完成（stages 到 done、无 undefined.devices 抛错）[2] 自嵌套放置拦截（实例数 1→1）[3] 互嵌拦截 [4] 警告条常驻点名 foo [5] 正常嵌套不误伤（inner 1→2、无警告）[6] pageerror 0。已注册进 run-all GATES。
+- **回归**：r121 注释 17/17、r122 切档 9/9、r85 位置保真 6/6、r89 嵌套部件探针输出健康；tsc 0 错、vite build 过。
+- **闸门脚本自身的两处错（如实记）**：①首版把断环断言钉在 `__cycle` 后缀名上——顶层空壳实例走的是分支③（保名登记空壳），改判「渲染完成 stages 到 done」；②部件放置按钮在 **modules 面板**（enterSandbox 后左面板默认不在 files），clickGate 只认元件库——补 placePartByName 先切 modules。
+- 未提交前验证读数：r123 6/6 + 四族回归全绿 + build 11.09s。
+
+*（卷三十完 · 提交随本卷落账）*
