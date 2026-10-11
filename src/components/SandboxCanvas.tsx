@@ -3089,7 +3089,11 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       sandboxStore.save(activeFile.id, stripBoundInlineJson(JSON.stringify(serializePaper(paperRef.current)), scopeRef.current));
     }
     sandboxStore.setActiveId(f.id);
-    setActiveFile(f);
+    // Q1（卷二十八质检）：f 是文件树 state 里的**旧列表快照**——commit 即时落盘只进
+    // store 不 refreshList，拿旧 f 重建画布会把「切走后又切回」的编辑显成丢失
+    // （数据其实在 store 里，reload 才回来）。重建一律读 store 最新实体
+    // （与 handleFileRename 路径「effect 读 activeFile.graphJson 旧快照」同款实测教训）。
+    setActiveFile(sandboxStore.get(f.id) ?? f);
   };
 
   const handleSave = () => {
