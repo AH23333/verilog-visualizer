@@ -2075,3 +2075,40 @@ R122 及其后批：**驳回**——Q1 切档回归一行未修、闸门红着�
 - 剩余大文件：SandboxCanvas 主 effect（深水区，hooks 化需专项设计）、App.tsx 1928（状态机耦合，同上）、Canvas.tsx 1182。这三处不再是机械搬家能解决的，建议作为下一个专项批次立项。
 
 *（卷三十三完）*
+
+---
+
+# 卷三十四 · R127 阶段性收尾：轮询可见性门（待验，未提交）＋ 瘦身线总账（2026-10-11 深夜，用户令停机休息）
+
+## 一、本批改动（**留在工作区未提交**——统一批未跑成，按纪律不进库）
+轮询组可见性门（卷一 W3 收口，四处 `document.hidden` 守卫，零行为差异：隐藏时用户看不到画面，回前台 ≤一个周期追平）：
+- `Canvas.tsx` L786 线值标签 300ms 轮
+- `WaveformPanel.tsx` L119 采样 60ms 轮（R103 定格语义保留，只加 hidden 门）
+- `IOPanel.tsx` L50 输入面板 200ms 轮
+- `FsmTableModal.tsx` L86 当前态 300ms 轮
+已验证：tsc 0 错、vite build 过。**未验证：全量闸门**——下轮开工第一件事：`node tests/run-all.cjs` 全绿后提交这 4 个文件。
+
+## 二、跑批中断的如实记录（教训入册）
+收尾停批时我的 vite 清扫误杀了仍在起跑的后续 gate 环境（ENVRED=40/90、pass=0 成片）——**该结果作废，不代表代码状态**。教训：**停批要先停主进程、后清端口，或直接等批自然结束**；ENVRED 成片时第一嫌疑是环境自伤，不是产品。
+
+## 三、瘦身线总账（R124→R126 三卷，已全部提交推送，HEAD 9c81879）
+| 文件 | 起点 | 现在 | Δ |
+|------|------|------|---|
+| SandboxCanvas.tsx | 4631 | 3776 | -855 |
+| verilog.ts | 1298 | 387 | -911（-70%） |
+| src 总计 | 22459 | 21512 | -947（净，新 lib 计入） |
+新增单一真源 lib ×6：sandboxDrc / sandboxWaveBridge / sandboxCellMenu / verilogCircuit / verilogParse / verilogConflicts；catalog 死码复活。
+每卷均过：tsc 0 + build + **全量 70 格 RED=0**（R124 两轮、R125、R126 各一次统一批）。
+
+## 四、深水区设计提案（下轮专项，不动代码先立项）
+1. **SandboxCanvas 主 effect（~1500 行）hooks 化**：拆 `useSandboxEngine`（paper/circuit 生命周期）+ `useSandboxTools`（拖线/框选/平移会话——顺带根治卷四 T1「会话级监听器孤儿」）+ `useSandboxGraphEvents`。约束：effect 依赖表 22 项是重建议风暴的根源，拆分时把「重建触发」收敛到 activeFile.id/resetNonce 两个最小真依赖。
+2. **App.tsx（1928 行）**：`useCompilePipeline`（编译链状态+函数）与 `usePanelLayout`（侧栏/宽度/折叠）两刀，41 个 useState 按域归堆。
+3. **Canvas.tsx（1185 行）**：tooltip/probeCellAt 收进 lib（顺带修卷四 W2 跨 paper 作用域）。
+4. 独立小项：ESLint 立项（S1）、A3/S3 Rust 导出链路（待真机）、r121-mutate 变异台架、PNG 下线待用户裁决确认。
+
+## 五、工作区快照（交给下轮）
+- 未提交：上述 4 个轮询门文件（M）+ 本账本（本次提交）。
+- 探针/手术脚本资产在 `D:\Visual Studio Code\Something\.tmpbuild\`（catalog_diff/palette_diff/check_refs/verilog_split/menu_switch 等，均为一次性工具可复用）。
+- 远端与本地同步至 9c81879；下轮从「跑统一批 → 提交轮询门」继续。
+
+*（卷三十四 · 阶段性收尾，机器休息）*
