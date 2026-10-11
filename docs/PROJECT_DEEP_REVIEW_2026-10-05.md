@@ -1944,3 +1944,68 @@ R122 及其后批：**驳回**——Q1 切档回归一行未修、闸门红着�
 - 未提交前验证读数：r123 6/6 + 四族回归全绿 + build 11.09s。
 
 *（卷三十完 · 提交随本卷落账）*
+
+---
+
+# 卷三十一 · R124 文档体系重建（双语+diátaxis）＋ 瘦身第一轮（catalog 合并/DRC/波形抽取）＋ sandboxStore 缓存（2026-10-11，用户指令：文档规范化 + 自检/重构/性能，点名「文件过于臃肿」）
+
+## 一、文档体系（中英双语 + 正规项目规范）
+
+新增/重写（每篇中文主体 + English 对照或双语并排）：
+- **README.md** 重写：徽章区、双语简介/特性矩阵、快速开始、**文档导航表**、闸门说明、许可证指引（原 184 行英文单语 → 双语门面）。
+- **docs/README.md** 文档地图：diátaxis 四象限（教程/指南/参考/解释）+ 归档说明 + 账本阅读法。
+- **docs/GETTING_STARTED.md** 入门教程（双语）：安装→第一个电路→钻取→沙盒→部件→往返。
+- **docs/USER_GUIDE.md** 用户指南（双语 how-to）：两模式全部操作、逐器件配置、表达式语法、注释便签、导出格式矩阵、快捷键、设置。
+- **docs/ARCHITECTURE.md** 架构（双语）：mermaid 进程/模块图、分层表、**七条关键决策 ADR 摘要**（白名单序列化、构造期参数清单、展开同管线、断环三层、模型级镜像、port id=net、闸门即验收）。
+- **docs/DEVELOPMENT.md** 开发（双语）：环境脚本、闸门六规（三态判定/判据不读文案/红闸三向归因/变异台架/夹具复用）、提交规范（-F/env 注入作者/fetch 核对）、账本规范、代码红线。
+- **docs/CHANGELOG.md**：keep-a-changelog 格式，R37→R123 里程碑全量提炼（自 git log）。
+- **docs/THIRD_PARTY_NOTICES.md**：`pnpm licenses list` 全量核对（67 包）——**新发现 @joint/core 是 MPL-2.0**（文件级 copyleft，零修改合规路径写明）、digitaljs 族 BSD-2 义务履行方式、elkjs EPL-2.0。卷一 L1 合规债正式清偿。
+- **归档**：docs/archive/ 收纳 10 份历史文档（git mv 保历史：可行性分析×3、交接×3、QC 指令链、工作报告、开发计划），archive/README.md 逐份标注时效。活文档（SANDBOX_DEV/FEATURES/账本/ADR）留原位。LICENSE 已存在确认 ✓。
+
+## 二、瘦身第一轮（重构，实测驱动）
+
+**前置纪律**：确认在途代理收工（工作区 clean、ahead/behind 0/0）→ **后台全量跑批拿基线 `RED=0 GREEN=70 NOVERDICT=0`** → 才动代码。
+
+### R124-1 catalog 死码合并（最大一笔）
+- **诊断实锤**：R122 抽出的 `sandboxCatalog.ts`（466 行、36 导出）**零消费者**——SandboxCanvas 仍用本地副本，是「建了文件没接线」的半成品双份。
+- **对拍**：34 个共享符号逐字节归一化对比 **same=34 diff=0**（`.tmpbuild/catalog_diff.cjs`）→ 切换零语义漂移。
+- **接线**：幂等补丁脚本删本地副本区（L43-510，保留 Props interface；`EXAMPLE_SEQ` 模块级计数器有意留消费方），import 指 catalog。中途 tsc 抓出 3 处残留（未用 import/PaletteItem 类型/EXAMPLE_SEQ）逐一收口。
+
+### R124-2 DRC 抽取 → `lib/sandboxDrc.ts`
+- `runCanvasDrc(paper)`（规则+sm-illegal 高亮落类）与 `validateConnectionEnds(paper,…)`（单条判定）**逐字对齐原实现**（含 CN_NAME 中文提示、占用/重复线检测）——第一版凭记忆写被自查推翻重写：抽出即分叉正是账本「两套算法」事故的头号来源。DrcIssue 类型随之迁 lib。
+
+### R124-3 波形桥抽取 → `lib/sandboxWaveBridge.ts`
+- `getWaveChannels/getWaveSample`（通道上限 24、Vector3vl 前缀剥除）；tick 自增留在消费方（React ref 语义）。
+
+**成果**：`SandboxCanvas.tsx` **4631 → 4116 行（-515）**，catalog 从死码变单一真源。
+
+## 三、性能：sandboxStore 读穿缓存（账本 B3 收口）
+- 旧：每个 list/get/save/rename 全量 JSON.parse + stringify 整库（palette 每次渲染都触发）。
+- 新：`filesCache/foldersCache` 读穿 + saveAll 写穿透；就地改→saveAll 的既有调用约定不变。
+- **附带正确性改进**：配额失败时旧实现下次读回旧值、UI 无声回滚；现在内存为准 + `vv-storage-error` 广播照旧。测试夹具直写 localStorage 均随 reload 起步，模块重载即失效，无兼容问题。
+
+## 四、验证
+- `tsc --noEmit` 0 错误 ×3 次迭代；`vite build` 6.55s ✓。
+- 定向回归：r121 注释 **17/17**、r123 断环 **6/6**、r81 连线 **9/9**、r122 切档 **9/9**、r92 走批 exit=0 ✓。
+- 终验全量跑批：首轮 `RED=2`（r37-verify [7]、r91-palette-coverage [2]）→ 两红各自归因修复（见下节）→ 复跑 **`RED=0 ENVRED=0 GREEN=70 NOVERDICT=0 共 70 格`** ✓。
+
+## 五、终验两红的归因与处置（「三向归因」纪律的现场兑现）
+
+### r37 [7] 重绑定异常 —— **真回归，锅在缓存**（改实现，不动断言）
+- 读数：重命名 `adder_top/sub1.djs→sub1r.djs` 后，库里**多出**一个根级 `sub1.djs`（先前臂的夹具文件，本应已被直写清理）。单跑复现，非顺序污染。
+- 根因：`loadAll()` 一旦建缓存就**永不回读 localStorage**；r37 这类老夹具**同窗口直写 localStorage 清理**（不发 storage 事件、不 reload），缓存拿着旧值，下一次 saveAll 把「已被外部删掉的条目」整体写回 ⇒ **僵尸复活**。卷三十一缓存注释里「夹具都随 reload 起步」的假设被证伪。
+- 修复：缓存加**原始串长度哨兵**——每次读先 `getItem` 比对长度，变了即重解析（getItem 是廉价字符串读，贵的 JSON.parse 只在真变化时跑，热路径仍收敛）；files/folders 两处同治。复跑 r37 14/14 绿。
+
+### r91 [2] 反向臂假红 —— **刮源码型闸门的「信号没跟着搬家」**
+- 该臂用正则刮 SandboxCanvas.tsx 里的 `const ARITH_TYPES=[...'UnaryPlus'...]` 与 `ARITH_TYPES.map(t=>P(t))`；常量搬进 catalog 后刮不到 ⇒ 假红。
+- 先证伪「合并方向错」猜想：`palette_diff.cjs` 逐字符对拍 head 本地 PALETTE vs catalog PALETTE **990==990 完全一致**、ARITH_TYPES 内容一致——数据没漂，纯粹是闸门读错了文件。
+- 修复：r91 的 `sbSrc` 改为 **SandboxCanvas.tsx ＋ sandboxCatalog.ts 拼接**再刮——所有判据（≥10 颗 *_TYPES、≥40 种 type、UnaryPlus 在列、ARITH 展开式）**原样保留不放宽**。复跑 2/2 绿。
+- 教训入册：抽件外迁时，**刮源码型闸门必须同批跟着改读取路径**，否则全量跑批必假红；本次靠终验跑批抓住（定向回归五族不含 r37/r91，幸有全量兜底）。
+
+## 五、未闭登记（第二轮候选，非本卷）
+- SandboxCanvas 仍 4116 行：主 effect（~1600 行）与右键菜单区是深水区，建议按 hooks 分拆（engine/tools/history）另立批次。
+- App.tsx 1928 行：useCompilePipeline/usePanelLayout 拆分。
+- Canvas.tsx 轮询暂停（W3）、45° 注释编辑 AABB（卷二十六遗留）。
+- ESLint/Prettier 立项（S1）；A3/S3 导出链路待真机（卷二十九遗留）。
+
+*（卷三十一完）*
