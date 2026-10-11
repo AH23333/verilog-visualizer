@@ -46,11 +46,38 @@ const SANDBOX_FOLDERS = 'verilog-viz-sandbox-folders';
 const GATES_KEY = 'verilog-viz-sandbox-gates'; // 旧版门存档（迁移源，R37 起只读）
 export const GATES_LEGACY_KEY = GATES_KEY;
 
+/**
+ * 读穿缓存（卷三十一 性能：账本 B3「每次操作全量 JSON.parse 整库」的收口）。
+ * 旧实现每个 list/get/save/rename 都 JSON.parse 整库 + stringify 整库，
+ * palette 每次渲染、每次 commit 都是 O(全库) 的解析风暴。
+ * 现在：loadAll 命中缓存直接返回引用；saveAll 写穿透。
+ * ⚠ 调用方约定不变：拿到的对象**可以就地改**（renameFolder/removeFolder 就是这么写的），
+ *   改完必须调 saveAll 落盘——这与缓存前的语义一致（以前就地改的对象随 loadAll 丢弃、
+ *   靠 saveAll 全量序列化带走；现在同一份引用即缓存，行为只会更一致）。
+ * 附带修一个正确性小坑：以前 setItem 配额失败后，下一次 loadAll 从 localStorage
+ * 读回**旧值**，UI 状态无声回滚；现在内存为准 + `vv-storage-error` 广播照旧提示。
+ * ⚠⚠ 新鲜度哨兵（r37 [7] 终验红坐实的教训）：**同窗口直写 localStorage 不发 storage 事件**，
+ *   老测试夹具（r37 等）就是直写清理不 reload——纯缓存会让被外部删掉的条目经下一次
+ *   saveAll「僵尸复活」。因此每次读先 getItem 比对**原始串长度**：不一致即重解析。
+ *   getItem 是廉价字符串读，贵的 JSON.parse 只在真变化时发生——热路径仍然收敛。
+ */
+let filesCache: Record<string, SandboxFile> | null = null;
+let filesCacheLen = -1;
+let foldersCache: string[] | null = null;
+let foldersCacheLen = -1;
+
 function loadAll(): Record<string, SandboxFile> {
+  let raw: string | null = null;
+  try { raw = localStorage.getItem(SANDBOX_KEY); } catch { raw = null; }
+  const len = raw == null ? -1 : raw.length;
+  if (filesCache && len === filesCacheLen) return filesCache;
+  let parsed: Record<string, SandboxFile>;
   try {
-    const raw = localStorage.getItem(SANDBOX_KEY);
-    return raw ? JSON.parse(raw) : {};
-  } catch { return {}; }
+    parsed = raw ? JSON.parse(raw) : {};
+  } catch { parsed = {}; }
+  filesCache = parsed;
+  filesCacheLen = len;
+  return parsed;
 }
 
 /**
@@ -74,19 +101,32 @@ function safeSetItem(key: string, val: string): boolean {
 }
 
 function saveAll(files: Record<string, SandboxFile>) {
-  safeSetItem(SANDBOX_KEY, JSON.stringify(files));
+  filesCache = files;
+  const s = JSON.stringify(files);
+  filesCacheLen = s.length;
+  safeSetItem(SANDBOX_KEY, s);
 }
 
 function loadFolders(): string[] {
+  let raw: string | null = null;
+  try { raw = localStorage.getItem(SANDBOX_FOLDERS); } catch { raw = null; }
+  const len = raw == null ? -1 : raw.length;
+  if (foldersCache && len === foldersCacheLen) return foldersCache;
+  let arr: string[];
   try {
-    const raw = localStorage.getItem(SANDBOX_FOLDERS);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
+    const parsed = raw ? JSON.parse(raw) : [];
+    arr = Array.isArray(parsed) ? parsed : [];
+  } catch { arr = []; }
+  foldersCache = arr;
+  foldersCacheLen = len;
+  return arr;
 }
 
 function saveFolders(folders: string[]) {
-  safeSetItem(SANDBOX_FOLDERS, JSON.stringify(folders));
+  foldersCache = folders;
+  const s = JSON.stringify(folders);
+  foldersCacheLen = s.length;
+  safeSetItem(SANDBOX_FOLDERS, s);
 }
 
 /** 取路径的最后一段（文件或文件夹的显示名） */
