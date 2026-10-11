@@ -96,6 +96,44 @@ export function partExists(name: string, scope = ''): boolean {
 }
 
 /**
+ * 部件循环依赖检测（用户报障 2026-10-11：部件文件里放自己的实例「套娃」，
+ * 展开渲染失败且毫无提示）。
+ *
+ * 沿「定义文件 → 画布里的 Subcircuit.celltype 引用 → 再解析定义」做 DFS，
+ * 命中祖先链即环，返回路径（如 ['foo','bar','foo']）；无环返回 null。
+ * 解析走 resolvePartRef（与实例展开同一套 scope 优先级），maxNodes 防坏档爆炸。
+ *
+ * ⚠ 与 resolveDefCells 的 `seen` 链不同层：那里防的是**物化递归**（已有守卫），
+ *   这里管**用户可见的环报告**——环的真正杀伤在展开渲染侧：cellsToCircuitJson
+ *   把定义平铺进一张 subcircuits 表，digitaljs._makeGraph 按 celltype 回查该表
+ *   递归建图且**自身无环守卫** ⇒ 环 = 无限递归爆栈（渲染失败无提示的根因）。
+ */
+export function findPartCycle(startName: string, scope = '', maxNodes = 200): string[] | null {
+  if (!startName) return null;
+  const stack: string[] = [];
+  const onStack = new Set<string>();
+  let budget = maxNodes;
+  const dfs = (name: string): string[] | null => {
+    if (onStack.has(name)) return [...stack.slice(stack.indexOf(name)), name];
+    if ((budget--) <= 0) return null;
+    const raw = partCellsRaw(name, scope);
+    if (!raw) return null;
+    const refs: string[] = [];
+    for (const c of raw.cells) {
+      if (c?.type === 'Subcircuit' && c.celltype) refs.push(String(c.celltype));
+    }
+    stack.push(name); onStack.add(name);
+    for (const ref of refs) {
+      const hit = dfs(ref);
+      if (hit) { stack.pop(); onStack.delete(name); return hit; }
+    }
+    stack.pop(); onStack.delete(name);
+    return null;
+  };
+  return dfs(startName);
+}
+
+/**
  * 解析绑定名 → **自足 cells 树**（下游 buildInnerGraph / cellsToCircuitJson
  * 均可直接消费）。绑定式嵌套实例在解析时递归物化各层 subcircuitGraph：
  * 遇到 celltype 命中定义、但无内嵌子图的 Subcircuit，就地展开该部件的 cells。

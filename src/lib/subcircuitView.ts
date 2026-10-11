@@ -66,17 +66,35 @@ export function cellsToCircuitJson(json: { cells?: AnyCell[] } | null | undefine
       }
       if (c.type === 'Subcircuit') {
         const name = c.celltype ? String(c.celltype) : `__sub${++subSeq}`;
-        // 同名实例共享一条定义（绑定）；内容以第一份非空内嵌图为准
+        // 同名实例共享一条定义（绑定）；内容以第一份非空内嵌图为准。
         const inner = c.subcircuitGraph || c.graph;
-        if (!flat[name] && inner?.cells?.length && !chain.has(name)) {
-          chain.add(name);
-          flat[name] = build(inner, chain);
+        // 断环三分支（用户报障 2026-10-11 套娃；digitaljs circuit.mjs:164 按
+        // `subcircuits[dev.celltype]` 直读建图，**表缺项 = undefined.devices 抛、
+        // 回边指回祖先完整定义 = 无限递归**——两种死法都要在这里断掉）：
+        //  ① celltype 命中祖先链＝循环回边 → 改名 __cycle 指空壳（label 带 ⟲）；
+        //  ② 有内嵌图 → 正常展开（chain 用**加-建-删**回溯，兄弟同名实例不误判环——
+        //     原实现只加不删，靠 flat 短路侥幸没炸，这里显式回溯）；
+        //  ③ 空壳引用（部件已删/物化环回/坏档）→ 表里登记空壳占位，渲染出空盒而非抛错。
+        const EMPTY_DEF = { devices: {}, connectors: [], subcircuits: {} };
+        const cyclic = chain.has(name);
+        let defName = name;
+        if (cyclic) {
+          defName = `${name}__cycle`;
+          if (!flat[defName]) flat[defName] = EMPTY_DEF;
+        } else if (inner?.cells?.length) {
+          if (!flat[defName]) {
+            chain.add(name);
+            flat[defName] = build(inner, chain);
+            chain.delete(name);
+          }
+        } else if (!flat[defName]) {
+          flat[defName] = EMPTY_DEF;
         }
         const inst: any = {
           id: c.id,
           type: 'Subcircuit',
-          celltype: name,
-          label: c.label || c.celltype || name,
+          celltype: defName,
+          label: c.label || (cyclic ? `${name} ⟲循环` : name),
           ...(c.position ? { position: c.position } : {}),
           ...(c.angle ? { angle: c.angle } : {}),
         };

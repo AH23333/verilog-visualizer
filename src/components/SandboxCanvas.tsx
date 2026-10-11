@@ -13,7 +13,7 @@ import { sandboxStore, customGateStore, baseName, dirOfName, dirOf, type Sandbox
 import {
   saveGateFromCellsToFolder, ensureDefsFromCells, stripBoundInlineJson, migrateLegacy,
   resolveDefCells, savePartFile, renamePartDef, rebindLiveGraph, resolvePartRef,
-  setActivePartBindings,
+  setActivePartBindings, findPartCycle,
 } from '../lib/gateSystem';
 import SandboxFileBindingDialog from './SandboxFileBindingDialog';
 import SandboxFileTree, { type RenameTarget, type CreateTarget } from './SandboxFileTree';
@@ -576,6 +576,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   // isNew 标记决定「提交时内容为空 → 直接删除便签」，避免留下空壳垃圾。
   const [noteEdit, setNoteEdit] = useState<{ id: string; isNew: boolean } | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
+  // 部件循环依赖（套娃/互嵌）常驻警告路径（用户报障 2026-10-11：环要看得见）
+  const [cycleWarn, setCycleWarn] = useState<string[] | null>(null);
   /** 进入注释编辑态：载入现有文字（正向编辑——cell 的 angle/mirror 不动，提交后原样保持） */
   const startNoteEdit = useCallback((cell: any, isNew: boolean) => {
     try { setNoteDraft(String(cell?.get?.('label') ?? cell?.attr?.('label/text') ?? '')); } catch { setNoteDraft(''); }
@@ -2557,6 +2559,17 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     if (sourceJson && sourceJson !== JSON.stringify({ cells: [] })) {
       try { loadCells(paper, digitaljs, sourceJson, spawnCell, wireCountRef, { scope: scopeRef.current }); } catch { /* corrupted */ }
     }
+    // 环检测（用户报障 2026-10-11：套娃/互嵌必须看得见）：从当前画布的部件引用出发
+    // 找第一条循环路径；渲染侧已有断环空壳兜底（cellsToCircuitJson __cycle），这里管提示。
+    try {
+      const refs = new Set<string>();
+      paper.model.getCells().forEach((c: any) => {
+        if (c.get('type') === 'Subcircuit' && c.get('celltype')) refs.add(String(c.get('celltype')));
+      });
+      let cyc: string[] | null = null;
+      for (const r of refs) { const h = findPartCycle(r, scopeRef.current); if (h) { cyc = h; break; } }
+      setCycleWarn(cyc);
+    } catch { setCycleWarn(null); }
     // 播种：让交叉耦合的门（锁存器 / 触发器）摆脱 x 锁定，详见 seedGateOutputs
     try { seedGateOutputs(digitaljs, paper); } catch { /* best effort */ }
     // 冲刷过期传播片（loadCells 批量建线的事件可能排到已消费的 tick 上）——
@@ -3230,6 +3243,23 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     const paper = paperRef.current;
     const digitaljs = (window as any).digitaljs;
     if (!paper || !digitaljs) { showToast('画布尚未就绪，无法放置自定义门'); return; }
+    // 环检测（用户报障 2026-10-11）：把 X 放进 X 自己的定义文件、或 X 的依赖闭包
+    // 回指当前部件文件 ⇒ 必成循环依赖——展开渲染会靠断环空壳兜底，但那是退化态，
+    // 放置当场就该拒绝并说清环路径。
+    const cur = activeFileRef.current;
+    const curPartName = cur && cur.role === 'part'
+      ? baseName(cur.name).replace(/\.(djs|gate|json)$/i, '') : '';
+    if (curPartName) {
+      if (gate.name === curPartName) {
+        showToast(`不能把部件「${curPartName}」放进它自己的定义里（自嵌套循环）`);
+        return;
+      }
+      const cyc = findPartCycle(gate.name, scopeRef.current);
+      if (cyc && cyc.includes(curPartName)) {
+        showToast(`循环依赖：放置后将形成 ${[curPartName, ...cyc].join(' → ')}，已阻止`);
+        return;
+      }
+    }
     const cellsSnap = resolveDefCells(gate.name, scopeRef.current);
     if (!cellsSnap?.cells?.length) {
       showToast(`部件「${gate.name}」内容为空或已损坏，请打开编辑后重新保存`);
@@ -3299,6 +3329,12 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     // 绑定式子部件递归入库并按名绑定 —— 与「复制到沙盒」递归迁移同语义。
     const r = saveGateFromCellsToFolder(name, serializePaper(paper), scopeRef.current);
     refreshGates();
+    // 存为部件后自检环（保存不拦——数据已在画布，拦了伤用户；如实警告 + 渲染断环兜底）
+    try {
+      const cyc = findPartCycle(name, scopeRef.current);
+      setCycleWarn(cyc);
+      if (cyc) showToast(`部件「${name}」存在循环依赖：${cyc.join(' → ')}（展开将显示空壳⟲）`);
+    } catch { /* ignore */ }
     setSavingGate(false);
     setGateName('');
     setGateError(null);
@@ -4305,6 +4341,13 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>
             点击 + 新建沙盒文件
+          </div>
+        )}
+        {cycleWarn && (
+          <div data-sb-cycle-warn style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
+            background: 'rgba(217,119,6,0.95)', color: '#fff', padding: '6px 12px', borderRadius: 6,
+            fontSize: 'var(--fs-xs)', zIndex: 29, maxWidth: '84%', boxShadow: '0 6px 18px rgba(0,0,0,.28)' }}>
+            部件循环依赖：{cycleWarn.join(' → ')} —— 回边层已按空壳⟲渲染，请进部件定义删除嵌套实例
           </div>
         )}
         {toast && (
