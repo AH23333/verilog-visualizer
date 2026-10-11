@@ -2009,3 +2009,40 @@ R122 及其后批：**驳回**——Q1 切档回归一行未修、闸门红着�
 - ESLint/Prettier 立项（S1）；A3/S3 导出链路待真机（卷二十九遗留）。
 
 *（卷三十一完）*
+
+---
+
+# 卷三十二 · R125 瘦身第二轮：器件右键菜单迁出 + verilog.ts 电路后处理域分离（2026-10-11）
+
+> 工作节奏调整（用户指令）：**批量修改、统一测试**——本轮两处大改完成后只跑一次全量批，
+> 不再每改一处测一轮。
+
+## 一、器件右键菜单整体迁出 → `lib/sandboxCellMenu.ts`
+- `SandboxCanvas.openCellMenu`（382 行、62 个菜单项构建）薄壳化为 ~40 行：builder 只做「取 cell → 组 ctx → 拼标题 → 落位」，菜单项构建进 `buildCellMenuItems(ctx)`。
+- **纯搬家纪律**：文案、校验话术、上游血泪注释（双有符号规则、fillx 语义、UnaryPlus 形状即语义、二级弹窗 setTimeout 时序坑）**逐字随迁**，一条不丢。
+- 组件耦合（9 个 setState、菜单动作、saveSubAsPart 序列化链）全部经 `CellMenuCtx` 注入。
+- 补丁脚本锚点替换（幂等守卫），tsc 迭代收口 4 处（一处括号手误 + 3 个未用 import）。
+- **SandboxCanvas 4116 → 3776 行（-340）**。
+
+## 二、verilog.ts 电路后处理域分离 → `lib/verilogCircuit.ts`
+- 迁出 `normalizeIoLabels` / `renameAutoCells` / `assignAutoNetNames`（只操作 circuit JSON、不依赖 yosys 运行时的纯后处理三连，264 行）。
+- verilog.ts 改 import + **re-export**——7 处 src 消费方与 21 处 tests 动态 `import('/src/lib/verilog.ts')` **零改动**（手术前用 Grep 工具盘清消费面定策略）。
+- **verilog.ts 1298 → 1043 行（-255）**。
+
+## 三、刮源码型闸门的第二次「信号跟搬」
+- 统一批首跑抓到 r95 [7] 假红：静态反向臂刮 SandboxCanvas 找 `reconfigureCell(cellId, { signed/fillx` —— 菜单搬家后刮不到。修法与 r91 同款：**两文件拼接再刮，「不许直 set」「必须经重建」两条判据原样保留**。
+- 教训升级入册：**凡刮组件源码的静态臂，抽件外迁的同一批必须盘一遍 tests/ 里对该文件的刮取**（本轮 r91 已修过同类，r95 是漏网——下次外迁先 `grep "readFileSync.*\.tsx"` tests/）。
+
+## 四、验证（统一一批）
+- tsc 0 错误（两处手术后）；vite build 9.57s ✓。
+- 全量 70 格终验：**`RED=0 ENVRED=0 GREEN=70 NOVERDICT=0 共 70 格`** ✓（一次跑批覆盖两处手术 + r95 修刮取）。
+
+## 五、两卷累计战果（R124+R125 瘦身线）
+| 文件 | 起点 | 现在 | Δ |
+|------|------|------|---|
+| SandboxCanvas.tsx | 4631 | 3776 | **-855** |
+| verilog.ts | 1298 | 1043 | -255 |
+| 新单一真源 lib | — | sandboxDrc/sandboxWaveBridge/sandboxCellMenu/verilogCircuit | catalog 死码复活 |
+- 下一刀候选（未动）：SandboxCanvas 主 effect（~1500 行，深水区需 hooks 化专项）、App.tsx 编译管线、Canvas.tsx 1182 行。
+
+*（卷三十二完）*
