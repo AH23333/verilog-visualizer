@@ -24,6 +24,10 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const CORE = process.env.R91_CORE_TS || path.join(ROOT, 'node_modules/yosys2digitaljs/src/core.ts');
 const SBX = path.join(ROOT, 'src/components/SandboxCanvas.tsx');
+// R124 卷三十一：器件目录常量（*_TYPES / PALETTE / P() 展开）已从 SandboxCanvas 抽到
+// sandboxCatalog.ts（单一真源）。本闸门的不变量不变，只是**刮的源码跟着搬家**——
+// 拼接两文件，仍要求扫到 ≥10 颗 *_TYPES、≥40 种 type、ARITH 组真的展开。
+const CAT = path.join(ROOT, 'src/lib/sandboxCatalog.ts');
 const J = (o) => JSON.stringify(o);
 let pass = 0, fail = 0, unver = 0;
 const ok = (n, d) => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
@@ -47,7 +51,9 @@ else {
 
 // ---- B：元件库的 type（*_TYPES 数组 ∪ P('X') 直列）----
 let pal = null, whyB = '', declCount = 0;
-const sbSrc = fs.existsSync(SBX) ? fs.readFileSync(SBX, 'utf8') : null;
+const sbSrc = fs.existsSync(SBX)
+  ? fs.readFileSync(SBX, 'utf8') + '\n' + (fs.existsSync(CAT) ? fs.readFileSync(CAT, 'utf8') : '')
+  : null;
 if (!sbSrc) whyB = '读不到 SandboxCanvas.tsx';
 else {
   pal = new Set();
