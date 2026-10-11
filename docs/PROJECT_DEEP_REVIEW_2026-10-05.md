@@ -2046,3 +2046,32 @@ R122 及其后批：**驳回**——Q1 切档回归一行未修、闸门红着�
 - 下一刀候选（未动）：SandboxCanvas 主 effect（~1500 行，深水区需 hooks 化专项）、App.tsx 编译管线、Canvas.tsx 1182 行。
 
 *（卷三十二完）*
+
+---
+
+# 卷三十三 · R126 瘦身第三轮：verilog.ts parse 域 + 冲突域分离（1298→387，累计 -70%）（2026-10-11）
+
+> 节奏沿用卷三十二确立的「批量修改 → 统一测试」：两刀攒齐后一次 build + 一次全量批。
+
+## 手术内容
+- **`lib/verilogParse.ts`（479 行）**：正则解析与接口校验域整体迁出——parseVerilogModules / parseVerilogInstances / parseModulePorts / parseInstantiations / cleanVerilogWithMap / lineAt / validateModuleInterfaces / estimateExpressionWidth / stripBom + PortInfo/ModuleDefInfo/PortConnection/InstanceInfo/ValidationError 类型。只依赖字符串与正则，零 yosys 依赖。
+- **`lib/verilogConflicts.ts`（189 行）**：多驱动冲突检测/摘除与标准单元归一域——PORT_DRIVER_PREFIX / conflictText / NetConflict / findNetConflicts / stripExtraDrivers / normalizeStdDffCells。**冲突分级语义的血泪注释（具名可出图标冲突、无名拒编、位级驱动表 side-channel）逐字随迁**。
+- verilog.ts 剩 387 行：yosys WASM 编排（initYosys/compileVerilog/compileSingleFile）+ 错误类 + parseMissingModules + buildViewJson；外部消费面（App/HierarchyViewer/ModulePanel/BindingDialog/fileStore + tests 动态 import）**经 import+re-export 零改动**——术前 Grep 盘清：冲突域纯内部消费、parse 域 6 处外部消费。
+
+## 手术中（如实记）
+- 首跑 tsc 报 4 错：三个私有符号（parseInstantiations/conflictText/PORT_DRIVER_PREFIX）跨文件被用但搬家时没升 export——按「私有域连 export 一起迁」守则补齐后 0 错误。
+- 内嵌 node -e 修 import 行时 PowerShell 转义**再次**碎裂（`from` 被 PS 解析为关键字）——当场改 Edit 工具完成，教训维持：修补一律落盘或 Edit。
+
+## 验证（统一一批）
+- tsc 0 错误；vite build 7.61s ✓。
+- 全量 70 格终验：**`RED=0 ENVRED=0 GREEN=70 NOVERDICT=0 共 70 格`** ✓（一次跑批覆盖双域分离全链）。
+
+## 瘦身线总账（R124→R126 三卷）
+| 文件 | 起点 | 现在 | Δ |
+|------|------|------|---|
+| SandboxCanvas.tsx | 4631 | 3776 | -855 |
+| verilog.ts | 1298 | **387** | **-911（-70%）** |
+| 新增单一真源 lib | — | sandboxDrc / sandboxWaveBridge / sandboxCellMenu / verilogCircuit / verilogParse / verilogConflicts | 6 个 |
+- 剩余大文件：SandboxCanvas 主 effect（深水区，hooks 化需专项设计）、App.tsx 1928（状态机耦合，同上）、Canvas.tsx 1182。这三处不再是机械搬家能解决的，建议作为下一个专项批次立项。
+
+*（卷三十三完）*
