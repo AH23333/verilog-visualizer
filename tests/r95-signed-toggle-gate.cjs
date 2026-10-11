@@ -409,7 +409,10 @@ const MENU_LABELS = () => [...document.querySelectorAll('[data-context-menu] but
     }
 
     // ---- [7] 静态反向臂：signed／fillx 只许经重建 ----
-    const sbxSrc = fs.readFileSync(path.join(PROJECT_ROOT, 'src/components/SandboxCanvas.tsx'), 'utf8')
+    // R125（卷三十二）：器件右键菜单整体迁至 lib/sandboxCellMenu.ts（纯搬家），
+    // 本臂刮的源码跟着拼接两处——「不许直 set」「必须经 reconfigureCell」两条判据原样保留。
+    const sbxSrc = (fs.readFileSync(path.join(PROJECT_ROOT, 'src/components/SandboxCanvas.tsx'), 'utf8')
+      + '\n' + fs.readFileSync(path.join(PROJECT_ROOT, 'src/lib/sandboxCellMenu.ts'), 'utf8'))
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '').replace(/^\s*\*.*$/gm, '');
     const setsSignedDirect = /\bset\(\s*'signed'\s*/.test(sbxSrc) || /setProp\([^)]*'signed'/.test(sbxSrc);
     const setsFillxDirect = /\bset\(\s*'fillx'\s*/.test(sbxSrc) || /setProp\([^)]*'fillx'/.test(sbxSrc);
