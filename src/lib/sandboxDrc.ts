@@ -1,0 +1,75 @@
+// 沙盒设计规则检查（DRC）纯函数 —— 从 SandboxCanvas 抽出（卷三十一 重构第一轮）。
+//
+// 只依赖 paper（joint Graph + views），不碰组件状态：读模型出 issues，并把
+// sm-illegal 类落到违规连线的 view 上（高亮通道与选中高亮 sm-selected 同款）。
+// 消费方：SandboxCanvas 的 runDrc/scheduleDrc 薄壳（保留 drcIssues 闭包、
+// window.__sandboxDrc QC 钩子与 setDrc 状态）。
+
+export interface DrcIssue { linkId: string; msg: string }
+
+/** 扫描全部连线的合法性；顺带刷 sm-illegal 高亮。返回问题清单。 */
+export function runCanvasDrc(paper: any): DrcIssue[] {
+  const issues: DrcIssue[] = [];
+  const links = paper.model.getLinks();
+  const byTarget = new Map<string, string[]>();
+  for (const l of links) {
+    const s = l.get('source') || {};
+    const t = l.get('target') || {};
+    if (!s.id || !s.port || !t.id || !t.port) { issues.push({ linkId: l.id, msg: '悬空连线：端点未接在端口上' }); continue; }
+    const sc = paper.model.getCell(s.id);
+    const tc = paper.model.getCell(t.id);
+    if (!sc || !tc) { issues.push({ linkId: l.id, msg: '连线指向已删除的部件' }); continue; }
+    const sp = typeof sc.getPort === 'function' ? sc.getPort(s.port) : null;
+    const tp = typeof tc.getPort === 'function' ? tc.getPort(t.port) : null;
+    if (!sp || !tp) { issues.push({ linkId: l.id, msg: `连线端口不存在：${s.port} → ${t.port}` }); continue; }
+    if (s.id === t.id) issues.push({ linkId: l.id, msg: '自环连线（部件连到自己）' });
+    if (sp.dir !== 'out' || tp.dir !== 'in') {
+      issues.push({ linkId: l.id, msg: `方向非法：${sp.dir} → ${tp.dir}（必须 输出 → 输入）` });
+    }
+    if (sp.bits !== tp.bits) issues.push({ linkId: l.id, msg: `位宽不匹配：${sp.bits} → ${tp.bits}` });
+    const key = `${t.id}:${t.port}`;
+    if (!byTarget.has(key)) byTarget.set(key, []);
+    byTarget.get(key)!.push(l.id);
+  }
+  for (const ids of byTarget.values()) {
+    if (ids.length > 1) {
+      for (const id of ids) issues.push({ linkId: id, msg: `多驱动冲突：同一输入被 ${ids.length} 条线同时驱动` });
+    }
+  }
+  const bad = new Set(issues.map(i => i.linkId));
+  for (const l of links) {
+    const v = l.findView(paper);
+    if (v?.el?.classList) v.el.classList[bad.has(l.id) ? 'add' : 'remove']('sm-illegal');
+  }
+  return issues;
+}
+
+import { CN_NAME } from './sandboxCatalog';
+
+/**
+ * 连线落点即时校验（拖线松手时）：与 runCanvasDrc 同一套规则的**单条**判定，
+ * 返回错误消息（null=合法）。ignoreId 供重建自身连线时豁免旧端点。
+ * 逐字对齐 SandboxCanvas 原实现（含 CN_NAME 中文提示与占用/重复线检测）——
+ * 抽出即分叉是「两套算法」类事故的头号来源，这里以原文为唯一基准。
+ */
+export function validateConnectionEnds(paper: any, srcId: string, srcPort: string, tgtId: string, tgtPort: string, ignoreId?: string): string | null {
+  if (!srcId || !tgtId || !srcPort || !tgtPort) return '连线不完整：两端都必须落在端口上';
+  if (srcId === tgtId) return '不能把部件连到它自己';
+  const sc = paper.model.getCell(srcId);
+  const tc = paper.model.getCell(tgtId);
+  if (!sc || !tc) return '部件不存在';
+  const sp = typeof sc.getPort === 'function' ? sc.getPort(srcPort) : null;
+  const tp = typeof tc.getPort === 'function' ? tc.getPort(tgtPort) : null;
+  if (!sp || !tp) return '端口不存在';
+  if (sp.dir !== 'out') return `起点必须是输出端口（${CN_NAME[sc.get('type')] || sc.get('type')}.${srcPort} 是${sp.dir === 'in' ? '输入' : sp.dir}）`;
+  if (tp.dir !== 'in') return `终点必须是输入端口（${CN_NAME[tc.get('type')] || tc.get('type')}.${tgtPort} 是${tp.dir === 'out' ? '输出' : tp.dir}）`;
+  if (sp.bits !== tp.bits) return `位宽不匹配（${sp.bits} 位 vs ${tp.bits} 位）`;
+  const occupied = paper.model.getLinks().find((l: any) =>
+    l.id !== ignoreId && l.get('target')?.id === tgtId && l.get('target')?.port === tgtPort);
+  if (occupied) return `输入 ${CN_NAME[tc.get('type')] || tc.get('type')}.${tgtPort} 已被占用：一个输入只能有一个驱动源`;
+  const dup = paper.model.getLinks().find((l: any) =>
+    l.id !== ignoreId && l.get('source')?.id === srcId && l.get('source')?.port === srcPort &&
+    l.get('target')?.id === tgtId && l.get('target')?.port === tgtPort);
+  if (dup) return '这两个端口之间已经有连线了';
+  return null;
+}
