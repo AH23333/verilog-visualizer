@@ -37,7 +37,7 @@ const CASES = [
   let server, browser;
   try {
     freePort(PORT);
-    server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: ROOT, shell: true, stdio: 'ignore' });
+    server = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: ROOT, stdio: 'ignore' });
     // ⚠ stdio 必须是 ignore 而且要 unref：用 'pipe' 时这颗 npx 的孙进程（真正的 vite）攥着父进程的
     //   标准流不放 ⇒ 汇总行印了进程却不退出，run-all 只读到 ETIMEDOUT/ENVRED（与 r48 同一因）。
     try { server.unref(); } catch { }

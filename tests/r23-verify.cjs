@@ -138,8 +138,8 @@ const setBits = async (page, id, n) => {
     // PROD=1 时跑生产构建（vite preview serve dist），否则 dev server
     const PROD = !!process.env.PROD;
     server = PROD
-      ? spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], { cwd: PROJECT_ROOT, stdio: 'pipe' })
-      : spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: PROJECT_ROOT, shell: true, stdio: 'pipe' });
+      ? spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: PROJECT_ROOT, stdio: 'pipe' })
+      : spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: PROJECT_ROOT, stdio: 'pipe' });
     await waitForServer();
     browser = await PLAYWRIGHT.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

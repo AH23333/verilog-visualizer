@@ -66,7 +66,7 @@ const canvasRead = (page, hook) => page.evaluate((h) => {
   let server, browser;
   const log = (...a) => console.log(...a);
   try {
-    server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: PROJECT_ROOT, shell: true, stdio: 'pipe' });
+    server = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: PROJECT_ROOT, stdio: 'pipe' });
     const deadline = Date.now() + 30000;
     while (Date.now() < deadline) { try { const r = await fetch(URL); if (r.ok) break; } catch { } await sleep(500); }
     browser = await PLAYWRIGHT.chromium.launch({ executablePath: EDGE, headless: true });

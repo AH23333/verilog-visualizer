@@ -66,7 +66,7 @@ const lampPaint = (page) => page.evaluate(() => {
   try {
     console.log('[1/6] starting vite dev server...');
     UI.freePort(PORT);
-    server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: PROJECT_ROOT, shell: true, stdio: 'ignore' });
+    server = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: PROJECT_ROOT, stdio: 'ignore' });
     try { server.unref(); } catch { }
     if (!await waitForServer()) { console.log('FATAL 服务没起来'); results.fail++; throw new Error('no server'); }
 

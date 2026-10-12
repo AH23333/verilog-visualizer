@@ -37,7 +37,7 @@ async function wire(page, s, sp, t, tp) {
     try { require('child_process').execSync(`powershell -Command "Get-NetTCPConnection -LocalPort ${PORT} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"`); } catch {}
     // 本格量的是**构建产物** ⇒ 先证明 dist 不比 src 旧（读旧壳会把已修好的东西判成没修，#265 一族）。
     console.log('产物新鲜度:', require('./_ui.cjs').ensureFreshDist(PROJECT_ROOT));
-    server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { cwd: PROJECT_ROOT, shell: true, stdio: 'pipe' });
+    server = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), 'preview', '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: PROJECT_ROOT, stdio: 'pipe' });
     const okSrv = await waitForServer();
     console.log('preview server:', okSrv ? 'OK' : 'FAIL');
     if (!okSrv) { console.log('FATAL 生产预览服务没起来'); process.exit(1); }

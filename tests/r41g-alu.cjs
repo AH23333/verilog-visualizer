@@ -11,7 +11,7 @@ const rd = (f) => fs.readFileSync(path.join(ROOT, 'test_files', f), 'utf8').repl
 (async () => {
   let s, b;
   try {
-    s = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: ROOT, shell: true, stdio: 'pipe' });
+    s = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: ROOT, stdio: 'pipe' });
     const d = Date.now() + 30000; while (Date.now() < d) { try { const r = await fetch(URL); if (r.ok) break; } catch { } await sleep(400); }
     b = await PW.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await b.newPage();

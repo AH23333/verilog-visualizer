@@ -29,7 +29,7 @@ const dump = (page) => page.evaluate(() => {
   let s, b;
   try {
     freePort(PORT);
-    s = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: ROOT, shell: true, stdio: 'pipe' });
+    s = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: ROOT, stdio: 'pipe' });
     const dl = Date.now() + 40000; while (Date.now() < dl) { try { const r = await fetch(URL); if (r.ok) break; } catch { } await sleep(500); }
     b = await PW.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await b.newPage({ viewport: { width: 1600, height: 950 } });

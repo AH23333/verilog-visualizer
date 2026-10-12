@@ -48,7 +48,7 @@ const canvasState = (page) => page.evaluate(() => {
   const errs = [];
   try {
     UI.freePort(PORT);
-    server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: ROOT, shell: true, stdio: 'ignore' });
+    server = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: ROOT, stdio: 'ignore' });
     server.unref?.();
     const dl = Date.now() + 90000; let up = false;
     while (Date.now() < dl) { try { if ((await fetch(URL)).ok) { up = true; break; } } catch { } await sleep(400); }

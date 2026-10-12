@@ -28,7 +28,7 @@ const rightClickAt = async (page, x, y) => {
   let server, b;
   try {
     freePort(PORT);
-    server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: ROOT, shell: true, stdio: 'ignore' });
+    server = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: ROOT, stdio: 'ignore' });
     server.unref?.();   // R74 那一族：stdio:'pipe' 的孙进程攥着标准流 ⇒ 闸门跑完不退，ENVRED 假红
     const dl = Date.now() + 45000; let up = false;
     while (Date.now() < dl) { try { const r = await fetch(URL); if (r.ok) { up = true; break; } } catch { } await sleep(500); }

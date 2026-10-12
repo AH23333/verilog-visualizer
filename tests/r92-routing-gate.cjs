@@ -63,7 +63,7 @@ const routersOf = (arr) => Array.from(new Set((arr || []).map((x) => x.router)))
   const errors = [];
   try {
     UI.freePort(PORT);
-    server = spawn('npx', ['vite', '--port', String(PORT), '--strictPort'], { cwd: PROJECT_ROOT, shell: true, stdio: 'ignore' });
+    server = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: PROJECT_ROOT, stdio: 'ignore' });
     server.unref?.();
     const dl = Date.now() + 45000;
     while (Date.now() < dl) { try { if ((await fetch(URL)).ok) break; } catch { } await sleep(500); }
