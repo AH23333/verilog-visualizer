@@ -6,6 +6,8 @@ import { applyWireStyle } from '../lib/wireRouting';
 
 import { setSimInterval } from '../lib/simClock';
 import { partSearchRegistry, collectPartHits } from '../lib/partSearch';
+import { getWaveChannels, getWaveSample } from '../lib/sandboxWaveBridge';
+import { probeSubcircuitAt } from '../lib/canvasProbe';
 /**
  * 取器件的输出信号向量。digitaljs 把 `outputSignals` 存在 **attributes** 上，
  * 直接读 `cell.outputSignals` 恒为 undefined —— 于是「单步」拨不动时钟、
@@ -398,62 +400,16 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       }
     },
     probeCellAt: (clientX: number, clientY: number) => {
-      const paper = paperRef.current;
-      if (!paper) return null;
-      const subs = (circuitJson as any)?.subcircuits || {};
-      // Don't rely on elementFromPoint alone: a wire (link) often overlaps a cell
-      // and would win the hit-test. Instead scan every rendered Subcircuit cell
-      // and return the one whose bounding box contains the point.
-      const nodes = Array.from(document.querySelectorAll('[model-id]'));
-      let best: { celltype: string; label: string; drillable: boolean; area: number } | null = null;
-      for (const el of nodes) {
-        const id = el.getAttribute('model-id');
-        if (!id) continue;
-        const model = paper.model?.getCell?.(id);
-        if (!model || model.get('type') !== 'Subcircuit') continue;
-        const celltype = String(model.get('celltype') || '');
-        const label = String(model.get('label') || '');
-        const drillable = !!celltype && !!subs[celltype];
-        if (!drillable) continue;
-        const r = el.getBoundingClientRect();
-        if (clientX >= r.left && clientX <= r.right && clientY >= r.top && clientY <= r.bottom) {
-          const area = r.width * r.height;
-          if (!best || area < best.area) best = { celltype, label, drillable, area };
-        }
-      }
-      return best ? { celltype: best.celltype, label: best.label, drillable: best.drillable } : null;
+      // 命中探测实现收口 lib/canvasProbe.ts（R128 浅刀：查询域同时从 document 级
+      // 收窄到 paper.el 内，修卷一 W2 跨 paper 串扰——展开模态同 DOM 时不再指错靶）。
+      return probeSubcircuitAt(paperRef.current, (circuitJson as any)?.subcircuits || {}, clientX, clientY);
     },
-    getWaveChannels: () => {
-      const paper = paperRef.current;
-      if (!paper) return [];
-      const seen = new Map<string, number>();
-      try {
-        for (const lk of paper.model.getLinks()) {
-          const net = lk.get('netname');
-          if (!net || seen.has(String(net))) continue;
-          seen.set(String(net), Number(lk.get('bits')) || 1);
-          if (seen.size >= 24) break;
-        }
-      } catch { /* ignore */ }
-      return Array.from(seen.entries()).map(([name, bits]) => ({ name, bits }));
-    },
+    getWaveChannels: () => getWaveChannels(paperRef.current),
     getWaveSample: () => {
-      const paper = paperRef.current;
       const circuit = circuitRef.current;
-      if (!paper || !circuit) return null;
-      const values: Record<string, string> = {};
-      const seen = new Set<string>();
-      for (const lk of paper.model.getLinks()) {
-        const net = lk.get('netname');
-        if (!net || seen.has(String(net))) continue;
-        seen.add(String(net));
-        // 逐根 net 各兜一次：某一条线里的向量坏了（String() 会抛）不该让整批采样停掉
-        try {
-          const sig = lk.get('signal');
-          values[String(net)] = sig != null ? String(sig).replace(/^Vector3vl\s+/, '') : 'x';
-        } catch { values[String(net)] = 'x'; }
-        if (seen.size >= 24) break;
-      }
+      if (!circuit) return null;
+      const values = getWaveSample(paperRef.current);
+      if (!values) return null;
       return { tick: Number((circuit as any).tick) || 0, values };
     },
     stepOnce: () => {

@@ -1417,6 +1417,11 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     const digitaljs = (window as any).digitaljs;
     // 注释 cell/View 幂等注册（Gate.define + cells 命名空间注入，见 annotationCell.ts）
     try { registerAnnotation(digitaljs); } catch { /* 注释功能降级，不影响画布 */ }
+    // T1（卷四在册）：鼠标会话（拖线/批量拖拽/框选）的 document 级监听由会话内
+    // onUp 自摘——若拖到一半 effect 被重建（切档/reset/在途依赖变化），闭包里的
+    // onMove/onUp 不在旧 cleanup 清单上，孤儿监听会对已销毁的 paper 继续计算。
+    // 注册表让 effect 销毁时能兜底摘除全部在途会话（removeEventListener 幂等，重复调无害）。
+    const activeSessions: Array<() => void> = [];
 
     root.querySelectorAll('[data-sandbox-grid], [data-sandbox-paper-host], [data-sandbox-marquee]')
       .forEach(el => el.remove());
@@ -1857,6 +1862,11 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
+      activeSessions.push(() => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        try { marquee.remove(); } catch { /* 已摘 */ }
+      });
     });
 
     paper.on('link:pointerdown', (linkView: any, evt: any) => {
@@ -1984,6 +1994,11 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
+      activeSessions.push(() => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        try { dropTempWire(tempLink); } catch { /* 会话已被 onUp 收走 */ }
+      });
     };
     wireDragStarterRef.current = startWireDrag;
     paper.on('cell:pointerdown', (cellView: any, evt: any) => {
@@ -2092,6 +2107,10 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       };
       document.addEventListener('mousemove', onMove);
       document.addEventListener('mouseup', onUp);
+      activeSessions.push(() => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      });
     });
 
     const onGraphChange = () => scheduleDrc();
@@ -2208,9 +2227,13 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       root.removeEventListener('wheel', onWheel);
       root.removeEventListener('mousedown', onPanDown);
       root.removeEventListener('contextmenu', onContextMenu);
-      document.removeEventListener('mousemove', onPanMove);
-      document.removeEventListener('mouseup', onPanUp);
-      document.removeEventListener('mousedown', onDocZoomDown, true);
+    document.removeEventListener('mousemove', onPanMove);
+    document.removeEventListener('mouseup', onPanUp);
+    document.removeEventListener('mousedown', onDocZoomDown, true);
+    // T1：兜底摘除全部在途会话（正常会话已由 onUp 自摘，removeEventListener 幂等）
+    while (activeSessions.length) {
+      try { activeSessions.pop()!(); } catch { /* 逐条尽力 */ }
+    }
       ro.disconnect();
       if (drcTimer) clearTimeout(drcTimer);
       // Persist the LIVE topology: switching panels unmounts this component.

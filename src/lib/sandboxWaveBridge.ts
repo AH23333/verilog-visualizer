@@ -21,7 +21,9 @@ export function getWaveChannels(paper: any): { name: string; bits: number }[] {
   return Array.from(seen.entries()).map(([name, bits]) => ({ name, bits }));
 }
 
-/** 一次全通道采样：net → 三值串（Vector3vl 前缀剥掉，与编译模式同款读数） */
+/** 一次全通道采样：net → 三值串（Vector3vl 前缀剥掉，与编译模式同款读数）。
+ *  逐根兜底（R128 对齐编译模式 Canvas 的更强语义）：某条线里的向量坏了
+ *  （String() 会抛）不该让整批采样停掉——坏的那根记 x，其余照常。 */
 export function getWaveSample(paper: any): Record<string, string> | null {
   if (!paper) return null;
   const values: Record<string, string> = {};
@@ -31,8 +33,10 @@ export function getWaveSample(paper: any): Record<string, string> | null {
       const net = lk.get('netname');
       if (!net || seen.has(String(net))) continue;
       seen.add(String(net));
-      const sig = lk.get('signal');
-      values[String(net)] = sig != null ? String(sig).replace(/^Vector3vl\s+/, '') : 'x';
+      try {
+        const sig = lk.get('signal');
+        values[String(net)] = sig != null ? String(sig).replace(/^Vector3vl\s+/, '') : 'x';
+      } catch { values[String(net)] = 'x'; }
       if (seen.size >= WAVE_CHANNEL_LIMIT) break;
     }
   } catch { /* ignore */ }
