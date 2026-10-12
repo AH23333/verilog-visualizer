@@ -2112,3 +2112,31 @@ R122 及其后批：**驳回**——Q1 切档回归一行未修、闸门红着�
 - 远端与本地同步至 9c81879；下轮从「跑统一批 → 提交轮询门」继续。
 
 *（卷三十四 · 阶段性收尾，机器休息）*
+
+---
+
+# 卷三十五 · R127 验证收口 + 沙盒主 effect 深水侦察（2026-10-11）
+
+## 一、R127 轮询可见性门收口
+- 统一批 r128：**`RED=0 ENVRED=0 GREEN=70 NOVERDICT=0 共 70 格`** ✓ → 四文件（Canvas/WaveformPanel/IOPanel/FsmTableModal）按纪律入库。
+
+## 二、主 effect 侦察实测（推翻卷三十四预估，如实修正）
+- 边界锚定：主 effect = **L1413 → L2230（~820 行）**，非预估的 ~1500 行——R125 菜单迁出 + 卷三十一 DRC/波形桥抽取后它已经瘦了一轮。
+- 内部分节：paper/circuit 构建（1413-1455）→ 选区 DEV 钩子 → DRC 薄壳（1556）→ **拖线会话**（1580-1765）→ 注释创建（1765）→ **pointerdown/平移/框选会话**（1800-2100）→ 滚轮/右键/事件绑定 → loadCells/播种/内存回写 + cleanup（2200-2230）。
+- **结论：不做整体 hooks 化**。理由：① 两段会话（拖线/批量拖拽）与 ctx（commit/scheduleDrc/showToast/snapVal/selection 操作/ensureSimRunning）强耦合，hooks 三段化需要 15+ 参数注入面，那是「重构」不是「搬家」，70 格闸门对会话交互的覆盖面本身就薄（无鼠标会话级断言）；② 依赖表虽有 20+ 项但全部经 ref 模式稳定化（卷四验收确认过 add/remove 配平与重建触发收敛），实际重建只由 activeFile.id/resetNonce 驱动；③ 收益（-400 行）抵不上回归风险面。
+- 改为登记**精准小刀清单**（下批候选，都是可独立验证的浅刀）：
+  1. **Canvas.tsx tooltip/probe 域**（hover tooltip 构建 + probeCellAt + 跨 paper 作用域修复 W2 一并做）→ `lib/canvasProbe.ts`，约 -120 行；
+  2. **SandboxCanvas 拖线会话**（startWireDrag + finalizeWire + connectWithAutoConvert，~200 行）→ `lib/sandboxWireSession.ts`（ctx 注入），顺带根治卷四 T1 会话监听器孤儿（cleanup 注册表）；
+  3. **App.tsx 对话框渲染区**（11 个模态的 JSX + 开关 state → `AppDialogs.tsx` 子组件），约 -250 行。
+- 若下轮用户仍要求「继续瘦身」，按 1→2→3 顺序攒批，每刀独立可测。
+
+## 三、瘦身线终态快照
+| 指标 | R124 起点 | 现在 |
+|------|-----------|------|
+| SandboxCanvas.tsx | 4631 | 3776 |
+| verilog.ts | 1298 | 387 |
+| src 总行 | 22459 | 21512（+4 轮询门微增） |
+| 单一真源 lib | — | +7（含本轮） |
+| 全量批基线 | 70 GREEN | 70 GREEN（每卷未退化） |
+
+*（卷三十五完 · R127/R128 收口）*
