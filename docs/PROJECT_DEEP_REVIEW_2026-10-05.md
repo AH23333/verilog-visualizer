@@ -2140,3 +2140,29 @@ R122 及其后批：**驳回**——Q1 切档回归一行未修、闸门红着�
 | 全量批基线 | 70 GREEN | 70 GREEN（每卷未退化） |
 
 *（卷三十五完 · R127/R128 收口）*
+
+---
+
+# 卷三十六 · R128 浅刀三连（波形桥收口/probe 抽件+W2/T1 会话注册表）＋ 测试黑窗根治（2026-10-11）
+
+## 一、浅刀三连（卷三十五小刀清单 1、2 的精准版落地）
+1. **波形通道协议收口**：Canvas 的 getWaveChannels/getWaveSample 改调 `lib/sandboxWaveBridge` —— 消灭 24 通道协议的**第三份拷贝**（账本「两套算法」教训家族）；bridge 的 getWaveSample 顺带升级为 Canvas 版更强的**逐根兜底**语义（单根坏向量不再停整批采样），tick 组装留各消费方。
+2. **probeCellAt → `lib/canvasProbe.ts`**：逐字随迁「连线盖器件赢命中测试」的原注释；**W2 一并修复**——查询域从 document 级收窄到 `paper.el` 内（主画布+展开模态+沙盒同 DOM 时不再跨 paper 指错靶）。
+3. **T1 会话监听器注册表**（卷四在册的孤儿监听根治）：主 effect 建 `activeSessions` 注册表，框选/拖线/器件拖拽三处 document 级会话挂 detach（拖线 detach 顺带 dropTempWire 防残线、框选顺带 remove marquee DOM），effect cleanup 排干。removeEventListener 幂等，正常会话自摘无副作用。
+- 手术前盘消费面：tests 里 `[model-id]` 全是运行时 DOM 查询非刮源码臂（R125 教训流程化执行）。
+- **Canvas.tsx 1185→1141、SandboxCanvas 3776→3799**（注册表净增 24 行为 T1 修复的代价，波形/probe 净减在 Canvas 侧）。
+
+## 二、测试黑窗根治（用户两度投诉：干扰用机 + 误点关窗杀进程）
+- **实锤**：r128b 批 r42-verify `exit=3221225786`（0xC000013A 控制台式中断）——正是用户误关黑窗杀掉的假红，非产品缺陷。
+- **根因**：Windows 下 `spawn` 默认 `windowsHide: false`，跑批主进程/各 gate/各 vite 全弹控制台窗。
+- **修复**：补丁脚本给 tests/ 全部 131 个含 spawn 的 cjs 注入 `windowsHide: true`（幂等，155 文件 `node --check` 全过）；跑批启动方（本会话脚本）同改。r128c 批全程无窗跑完 70/70 验证生效。
+- 补丁脚本自身两度踩坑如实记：v1 正则在 PowerShell 内嵌传参中引号被吞（老坑新形态）→ 一律落盘；v1 落盘版正则字面量解析失败 → 改 `new RegExp` 构造 + 砍掉罕见的无 options 形态匹配。
+
+## 三、验证
+- tsc 0 错误；统一批 **`RED=0 ENVRED=0 GREEN=70 NOVERDICT=0 共 70 格`**（r128c，无黑窗环境下完整跑通）。
+
+## 四、瘦身线快照
+SandboxCanvas 3799 / App 1928 / Canvas 1141 / verilog 387；src 总 21529。
+小刀清单余 1 项：App 对话框渲染区 → AppDialogs.tsx（下批候选）。
+
+*（卷三十六完 · R128 收口）*
