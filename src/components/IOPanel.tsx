@@ -47,7 +47,8 @@ export default function IOPanel({ host, open, onClose, inputsTitle = 'Inputs', o
   useEffect(() => {
     if (!open) return;
     refresh();
-    const t = setInterval(refresh, 200);
+    // 可见性门（卷三十四 W3）：面板开着但 webview 隐藏时不刷；回前台 ≤200ms 追平
+    const t = setInterval(() => { if (!document.hidden) refresh(); }, 200);
     return () => clearInterval(t);
   }, [open, refresh]);
 

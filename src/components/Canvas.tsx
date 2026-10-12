@@ -784,6 +784,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(function Canvas(
       // Wire value overlay: append live signal value to each named link's label.
       // Lightweight: only writes to joint model when the displayed value changes.
       const valueLabelTimer = setInterval(() => {
+        // 可见性门（卷三十四 性能 W3）：webview 隐藏时用户看不到画面，跳过整轮；
+        // 回到前台 ≤300ms 内追平，零行为差异。
+        if (document.hidden) return;
         try {
           for (const lk of paper.model.getLinks()) {
             const net = lk.get('netname');

@@ -117,6 +117,7 @@ export default function WaveformPanel({ getChannels, getSample, resetKey, onClos
   // poll + redraw。R103：**running=false 时只重绘、不采样也不推进时间窗** ⇒ 曲线定格在那一刻。
   useEffect(() => {
     const id = window.setInterval(() => {
+      if (document.hidden) return; // 可见性门（W3）：隐藏时不采样不重绘，回前台 ≤60ms 追平
       if (!running) { draw(); return; }
       const s = getSample();
       if (!s) return;

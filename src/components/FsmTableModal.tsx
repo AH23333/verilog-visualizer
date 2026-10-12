@@ -83,7 +83,8 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
   useEffect(() => {
     const on = () => { const c = cell.get('current_state'); setCur(c == null ? null : Number(c)); };
     cell.on('change:current_state', on);
-    const t = window.setInterval(on, 300);
+    // 可见性门（W3）：窗口开着但 webview 隐藏时不轮询；回前台 ≤300ms 追平当前态
+    const t = window.setInterval(() => { if (!document.hidden) on(); }, 300);
     return () => { cell.off('change:current_state', on); window.clearInterval(t); };
   }, [cell]);
   // Esc 关窗的回调要经 ref：父组件每次渲染都新建箭头函数，把它写进依赖表＝每渲染一次就
