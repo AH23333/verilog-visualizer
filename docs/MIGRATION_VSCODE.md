@@ -12,7 +12,7 @@
 
 前端调用层已中立化（`src/lib/host/`，提交 `4ef5860`）⇒ 换宿主不再需要挨处改 UI；
 套壳基座选定**微软官方 sample**（已拉取，不自己写）；**Extension Host 侧已落地**（`extension/`：
-面板装载 + 15 方法消息路由 + `workspace.fs` 项目目录 + `showSaveDialog` 另存为），
+面板装载 + **16** 方法消息路由（R140 片 4-C1 加了 `listSandboxTree`）+ `workspace.fs` 项目目录 + `showSaveDialog` 另存为），
 且那份 CSP 与资产改写**已过真浏览器判据**（`tests/r137-webview-csp-gate.cjs`，见 §3.5）。
 ⇒ **宿主＝VS Code 这一族**（R136–R138 落的中立层与壳都继续有效），但**交付形态已改**：
 最终宿主是**我们自己的 Code - OSS 分支二进制**（`studio/`，片 2 已实测跑通编译并起过窗口，读数在
@@ -82,7 +82,7 @@ base64、id 不串号、超时、hostFire 留痕）、`tsc --noEmit` 0 错、`es
 extension/package.json      命令「打开 Verilog 可视化窗口」+ retainContextWhenHidden
 extension/src/html.ts       **纯函数**：改写 Vite 产出的 dist/index.html（资产→asWebviewUri、注入 CSP + <base>、给每颗 <script> 挂 nonce）
 extension/src/projectStore.ts  sanitizeRel + 文件/文件夹 CRUD + 树 + 配置，语义逐条对齐 Rust `lib.rs`
-extension/src/extension.ts    面板装载 + 15 方法消息路由（saveExportFile 走 showSaveDialog，取消＝false）
+extension/src/extension.ts    面板装载 + 16 方法消息路由（saveExportFile 走 showSaveDialog，取消＝false）
 extension/{esbuild,sync-webview}.js  打包（external: vscode）／产物复制进 extension/webview 供 vsce
 ```
 
@@ -105,7 +105,7 @@ CSP 与改写器**从 `extension/src/html.ts` 现读**，⛔ 闸门里抄第二�
 | §9.6 步骤 | 状态 |
 |---|---|
 | 2/3 后端胶水 + 消息总线（**前端半段**） | ✅ `4ef5860`：调用层收成一份，`src` 内零直连 |
-| 3 消息总线（**宿主半段**：Extension Host handler） | ✅ R136：15 方法逐条对上 `vscodeHost`；CSP/装载过 R137 真浏览器判据 |
+| 3 消息总线（**宿主半段**：Extension Host handler） | ✅ R136：15 方法逐条对上 `vscodeHost`；CSP/装载过 R137 真浏览器判据。**R140 片 4-C1 ＝ 16 颗**（`listSandboxTree`）；两张表的对账由 `tests/unit/vscodeShell.test.ts` 钉（下限已从 15 提到 16，⛔ 改小） |
 | 1 脚手架（`extension/` 包 + 打包配置） | ✅ R136 建、**R138 补全**：pnpm workspace + `.vscode/{launch,tasks}.json` + `pnpm app` 启动器 + vsce 已装且真跑出过 `.vsix` |
 | 4 L1（`SecretStorage` / provider 列表） | ⛔ 本期不做（用户令：先不要搭 agent 功能） |
 | 5 路径语义迁移（`get_project_dir` → `Uri`） | ✅ **片 3a（R139）**：项目根＝**打开的工作区文件夹**（没开文件夹才退回 `globalStorageUri/project_files`；多根取第一颗＝在册取舍）；⚠ 这把"⛔ 用 workspace 文件夹"的旧理由**已反转**——文件树的主人要交给原生 Explorer。`partBindings` 存的是文件名还是绝对路径**仍⛔ 现场量** |

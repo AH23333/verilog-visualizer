@@ -120,7 +120,7 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
   （配置留在应用级，两颗根分开），并给 Extension Host 建起一面无头网（假宿主 + 25 格 + 8 臂台架）。
   这一步顺带解掉 R136 那颗"工程集合与工作区无关"的取舍，也让原生 Explorer 直接可用。
 - **片 4＝§0b 那三块板搬到宿主原语上（下一批起一笔一块；顺序 C 的文件那半 → A → B → C 的 UI 那半）**：
-  - **片 4-C1（下一刀）**：`.djs` 注册成 `customEditors` + 正文走 `TextDocument`——沙盒电路**成为工作区里的真文件**，
+  - **片 4-C1（进行中：宿主那半颗已落，见 §1d）**：`.djs` 注册成 `customEditors` + 正文走 `TextDocument`——沙盒电路**成为工作区里的真文件**，
     脏标记/保存/关闭/撤销交给 workbench。⚠ 与"正文搬出 webview `localStorage`"同批落（⛔ 两套主人并存，
     磁盘一份 + localStorage 一份，用户分不清哪份生效）；⚠ 动机已按 §6b 的读数改写：⛔ 是为了"防丢"
     （localStorage 在我们自己的二进制里跨启动稳定、5 次启动只有 1 颗 origin），而是**数据该是文件**
@@ -137,6 +137,25 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 - **片 5**：branding 收尾（图标、`startupEditor`、精简掉⛔ 用的内置扩展与菜单）、Windows 打包脚本、
   独立 `--user-data-dir`（产品 behave 得像自己的 App，⛔ 污染他日常 VS Code 配置）；
   §1b 记的那条"共享存储落在 C 盘家目录"也在这一片按 D 盘口径处理。
+
+## 1d. 片 4-C1 的宿主半颗（R140 已落地；下表全是跑完抄回来的读数）
+
+| 项 | 读数 |
+|---|---|
+| 一颗新 RPC | `listSandboxTree` ⇒ 方法表从 **15 → 16** 颗（前端 `vscodeHost.ts` ↔ 宿主 `extension.ts` 的对账判据下限同步提到 16，⛔ 改小） |
+| 为什么另起一颗而⛔ 合并进 `listProjectTree` | 现读 `src/store/fileStore.ts:473-544`：`refresh()` 把回的**每一颗**都 `readProjectFile` + `parseVerilogModules` 当 Verilog 源码导入（:507），还带一条"磁盘上没了就从状态删"（:482-485）⇒ `.djs` 混进去＝电路 JSON 被当模块解析（模块名一片垃圾）＋沙盒列表被那边牵动 |
+| 两颗表的实现 | `ProjectStore.collect(exts)` **共用一次 walk**（跳过规则、"相对根 / 分隔"、空文件夹上报三件事同源；复制两份 walk 将来只改一边就分岔）⇒ 台架 **M9** 就是"把 `.v` 也收进沙盒那颗表"，红了 2 格 |
+| 浏览器档 | `browserHost.listSandboxTree()` ＝ **reject**（⛔ 返回空表：调用方把空表当"磁盘上没了"就会删用户电路，这条不变量由 `tests/unit/host.test.ts` 钉） |
+| 真机 | 重新 `pnpm studio:brand` 后起自有二进制开 `D:\vv-studio\demo` ⇒ 标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`、exthost 激活行在、`[error]` 0 行；demo 目录仍只有 2 颗 `.v`（前端尚未调用这颗新方法，符合预期） |
+| 判据 | vitest **99/99**（97→99：新增两颗表的对账格 ×2）、台架 **9 臂全部有红**、根 tsc / extension typecheck / eslint / `pnpm build` 各 0 错 |
+
+⚠ 顺手抓到的一颗**假 fs 的毛病**：`vscodeShell.test.ts` 里那份内存 `memFs.readDirectory` 把根自己（`@root`）也当一颗子目录上报，
+旧的断言用的是 `toContain` 所以一直没露头；这一批新增的 `expect(folders).toEqual([])` 当场把它逼出来 ⇒ 修假 fs + 把那一格升成 `toEqual`。
+**规矩**：列表类判据⛔ 停在 `toContain`——松断言既放过分母也放过测试双的错。
+
+⬜ 剩下的半颗（下一批）：前端 `sandboxStore`（449 行、全同步、0 次宿主调用）接上这条通道——
+开机时一次性从磁盘 hydrate（异步一次），运行时仍走同步内存表，改动走 write-through `hostFire`；
+然后再谈 `customEditors` 把 `.djs` 变成编辑器标签里的那份文档。
 
 ## 3b. 版本线（2026-10-13 用户裁定，逐字）
 
@@ -185,7 +204,7 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 ## 5. 与既有几层的关系（⛔ 白扔）
 
 - `src/lib/host/` 统一调用层：⛔ 白做——片 3/4 之后所有宿主调用都走 `vscodeHost` 那条 RPC，接口⛔ 改。
-- `extension/src/{html,projectStore}.ts` 与那 15 方法消息路由：继续用，只是**宿主从"用户的 VS Code"变成"我们这份二进制"**，
+- `extension/src/{html,projectStore}.ts` 与那 16 方法消息路由：继续用，只是**宿主从"用户的 VS Code"变成"我们这份二进制"**，
   内置扩展读得到基座的 `resources/`，CSP/装载逻辑一字⛔ 改（判据 `r137-webview-csp-gate` 也继续有效）。
 - `pnpm app` 那颗启动脚本（R138）：降级为**开发用**入口，⛔ 再当成交付物；片 2 之后由基座产物取代
   （取代这件事现在**成立**：`scripts/code.bat --user-data-dir=D:\vv-studio\profile` 起的就是我们自己的二进制）。

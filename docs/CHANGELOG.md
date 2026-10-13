@@ -43,9 +43,20 @@
 - `README.md`「宿主」一节改成二次定形（含版本线与"⛔ 是网页壳"这句），`studio/README.md` 顶部决策块追记第二次纠正、
   §0 重写成 §0b 三块板 + §0c chrome 表、新增 **§3b 版本线**（两条线的落点与推送读数都写进去）。
 
-### 本轮⛔ 动的代码
-片 3a 之后的 97 格判据一字未改（vitest 97/97 仍绿），这一轮是**分线＋工单重写**——工单写歪比代码写歪更贵，
-因为它决定下一批往哪儿落刀。
+### 片 4-C1 的宿主半颗：`.djs` 开始有了磁盘这一份（新增第 16 颗 RPC）
+- `ProjectStore.listSandboxTree()`＋`collect(exts)`：Verilog 与沙盒**两颗表共用一次 walk**（跳过规则、
+  "相对根、`/` 分隔"、空文件夹上报三件事必须同源；复制两份 walk＝将来只改一边就分岔）。
+  另起一颗而⛔ 合并进 `listProjectTree` 的理由是现读的：`fileStore.refresh()`（`src/store/fileStore.ts:473-544`）
+  把回的每一颗都 `parseVerilogModules` 当 Verilog 导入（:507），还有一条"磁盘上没了就从状态删"（:482-485）
+  ⇒ `.djs` 混进去＝电路 JSON 被当模块解析＋沙盒那侧被牵动。
+- 方法表 **15 → 16**：`host.ts` 接口 + `vscodeHost.ts` + `browserHost`（**reject**，⛔ 返回空表——空表会让调用方把用户的电路当"已删除"）
+  + 宿主 `dispatch` 四处同一批；对账判据的计数下限从 15 提到 **16**（⛔ 改小）。
+- 抓出一颗**测试双自己的毛病**：`memFs.readDirectory` 把根 `@root` 当一颗子目录上报，旧断言用 `toContain` 所以从没露头；
+  新增的 `expect(folders).toEqual([])` 当场逼出 ⇒ 修假 fs 并把那格升成 `toEqual`。**列表类判据⛔ 停在 `toContain`。**
+- 读数：vitest **99/99**（97→99）、台架 `bench_139_hostnet.py` **9 臂全部有红**（新 M9＝"沙盒那颗表把 `.v` 也收了"，红 2 格）、
+  根 tsc / extension typecheck / eslint / `pnpm build` 各 0 错；重新 brand 后真机起自有二进制开 demo ⇒
+  标题 `Verilog Visualizer - demo - ...`、exthost `[error]` 0 行、demo 目录仍只有那 2 颗 `.v`（前端还⛔ 调这颗新方法，符合预期）。
+- ⬜ 下一批＝剩下的半颗：`sandboxStore`（449 行、全同步、宿主调用 0）开机一次性 hydrate + 改动 write-through，然后再上 `customEditors`。
 
 ---
 ## [未发布 Unreleased] — R139：方向纠正——自带 VS Code 源码分支出独立二进制（2026-10-13）

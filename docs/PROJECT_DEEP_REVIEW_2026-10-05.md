@@ -700,6 +700,27 @@ B 独立，随时可切。工单已写进 `studio/README.md` §0b/§0c/§3（每
 分线落在 git 结构上（`main`/`agent` 两条线＋一条指名 refspec），纠正落在**工单**上（§0b 那张表决定下一批往哪儿落刀）。
 **工单写歪比代码写歪更贵**——代码写歪下一批能测出来，工单写歪会让接下来几批都在⛔ 该做的面上做得很对。
 
+## 四、追加：片 4-C1 的**宿主半颗**落地（第 16 颗 RPC），与一颗藏了两轮的假 fs
+
+他令「继续逐步推进」，第一刀落在 §0b 板 C 的前半：**让 `.djs` 先有磁盘这一份**。
+
+| 项 | 读数 |
+|---|---|
+| 新增 RPC | `listSandboxTree` ⇒ 方法表 **15 → 16**（`host.ts` 接口、`vscodeHost.ts`、`browserHost`（**reject**）、宿主 `dispatch` 四处同一批；对账判据的计数下限同步提到 16） |
+| 为什么⛔ 合并进 `listProjectTree` | **源码现读**（派子代理 map 出锚点，⛔ 猜）：`src/store/fileStore.ts:473-544` 的 `refresh()` 把回的每一颗都 `readProjectFile` + `parseVerilogModules`（:507）当 Verilog 导入，另有一条"磁盘上没了就从状态删"（:482-485）⇒ `.djs` 混进那颗表＝电路 JSON 被当模块解析＋沙盒那侧被牵动 |
+| 两颗表的实现形状 | `ProjectStore.collect(exts)` **共用一次 walk**（跳过规则／"相对根、`/` 分隔"／空文件夹上报三件事同源）；台架 **M9**＝"沙盒那颗表把 `.v` 也收了" ⇒ 红 2 格 |
+| 前端接缝（下一批要动的） | `src/store/sandboxStore.ts`：`verilog-viz-sandbox-files` 是 `Record<id, SandboxFile>`（`graphJson` 正文 + `partBindings` 都**在同一份 JSON 里**，:32），`list/create/save/rename/remove/move/copy/duplicate` **全同步**（:153-:405），**宿主调用 0 次**；UI 侧靠手工 `refreshList()`（`SandboxCanvas.tsx:185/:246`）而⛔ pub/sub ⇒ 所以 C1 剩下那半颗的形状是"开机一次性 hydrate（异步一次）＋运行时同步内存表＋改动 write-through"，⛔ 把 45 个调用点改成异步 |
+| 真机 | brand 后起自有二进制开 demo ⇒ 标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`、exthost 激活行在、`[error]` 0 行；demo 目录仍只有那 2 颗 `.v`（前端还⛔ 调这颗新方法，符合预期——**"新方法已存在"与"用户已经看得见"是两件事，⛔ 混着报**） |
+| 判据 | vitest **99/99**（97→99）、台架 **9 臂全部有红**（还原后自检 0 红）、根 tsc / extension typecheck / eslint / `pnpm build` 各 0 错 |
+
+**一颗藏了两轮的假 fs**：`tests/unit/vscodeShell.test.ts` 里那份内存 `memFs.readDirectory` 把根 `@root` 自己也当一颗子目录上报。
+旧断言是 `expect(tree.folders).toContain('sub')` ⇒ 多出来的 `@root` 从没露头；这一批新增的 `expect(folders).toEqual([])` 当场逼出它。
+**记下的规矩**：列表类判据⛔ 停在 `toContain`——松断言既放过分母，也放过**测试双自己的错**。修法是改假 fs（⛔ 把断言改宽去迁就它），
+并把那一格升成 `toEqual`。
+
+⚠ 第三次踩同一颗字：往文档里写盘符路径时反斜杠 + `v` 又被吃成垂直制表符（同一坑 R139 踩过、`studioBrand` 那格也写过）。
+本轮起固化成收口动作：**写完先按字节扫 `0x0B`/`0x0C`**（这一批扫出 1 处，已修）。
+
 *（卷四十六完 · R140：`origin/main` 快进 5 笔到 `819563d`＝无 agent 那份；新分支 `agent`（他令：⛔ 中文分支名，建出来当轮就由 `agent版` 改名）从 `f050d56` 起接后续提交；
  套壳的定义改成"把绑定系统／模块／层次结构／沙盒搬到宿主已有的文件系统与原生视图上"，四刀顺序按依赖钉死；
  分支名按他后一句改成英文 `agent`）*
