@@ -13,7 +13,8 @@ import ContextMenu from './components/ContextMenu';
 import type { ContextMenuItem } from './components/ContextMenu';
 import MissingModulesDialog from './components/MissingModulesDialog';
 import ModulePanel from './components/ModulePanel';
-import OutputPanel, { type Problem } from './components/OutputPanel';
+import OutputPanel from './components/OutputPanel';
+import { useCompilePipeline } from './hooks/useCompilePipeline';
 import BindingDialog from './components/BindingDialog';
 import HierarchyViewer from './components/HierarchyViewer';
 import SearchDialog from './components/SearchDialog';
@@ -36,7 +37,7 @@ import {
 } from 'lucide-react';
 import type { VerilogExample } from './lib/examples';
 import { SHORTCUTS, matchesCombo } from './lib/shortcuts';
-import { compileVerilog, MissingModulesError, YosysCompileError, parseVerilogInstances, validateModuleInterfaces, buildViewJson } from './lib/verilog';
+import { buildViewJson } from './lib/verilog';
 import { fileStore, type FileEntry } from './store/fileStore';
 import { themeStore } from './store/themeStore';
 import { settingsStore, type ViewMode } from './store/settingsStore';
@@ -45,7 +46,6 @@ import { sandboxStore } from './store/sandboxStore';
 import { collectToFolder, stripBoundInlineJson } from './lib/gateSystem';
 import { exportSVG, exportCircuitJSON, exportVerilogCode, exportNetlistVerilog } from './lib/exportUtils';
 
-type Status = 'idle' | 'compiling' | 'done' | 'error';
 
 type ClipboardEntry = 
   | { type: 'files'; ids: string[] }
@@ -57,8 +57,6 @@ export default function App() {
   const [activeFileId, setActiveFileId] = useState<string | null>(null);
   const [openFiles, setOpenFiles] = useState<string[]>([]);
   const [dirtyMap, setDirtyMap] = useState<Record<string, boolean>>({});
-  const [status, setStatus] = useState<Status>('idle');
-  const [message, setMessage] = useState('');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('circuit');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -67,14 +65,7 @@ export default function App() {
   const canvasRef = useRef<CanvasHandle>(null);
   const canvasContainerRef = useRef<HTMLDivElement>(null);
 
-  // Missing modules dialog state
-  const [missingModules, setMissingModules] = useState<string[] | null>(null);
 
-  // Output panel state
-  const [yosysLog, setYosysLog] = useState('');
-  const [outputPanelVisible, setOutputPanelVisible] = useState(false);
-  // Structured problems for the Problems tab (validation errors + parseable compile errors)
-  const [problems, setProblems] = useState<Problem[]>([]);
 
   // IDE panel state: 'files' | 'modules' | 'hierarchy'
   const [leftPanel, setLeftPanel] = useState<'files' | 'modules' | 'hierarchy'>('files');
@@ -113,7 +104,6 @@ export default function App() {
 
   // Simulation control state (digitaljs engine)
   const [simLocked, setSimLocked] = useState(false); // default: interactive (unchanged from prior behavior); lock is opt-in
-  const [simPaused, setSimPaused] = useState(false);
   // "引擎因悬空/成环没起来"要是一颗**状态**，不能靠回头读自己写的那句文案认事
   // （V2b 把那句翻成中文后，原先那条英文正则就永远不命中 ⇒ 错误态清不掉）
   const [simBlocked, setSimBlocked] = useState(false);
@@ -279,144 +269,14 @@ export default function App() {
     setOpenFiles(newOrder);
   }, []);
 
-  // ============ Dependency Resolution ============
+  // ============ Compile Pipeline（hooks/useCompilePipeline，卷四十 迁出；同名解构 ⇒ 消费点零改动） ============
 
-  function resolveDependencies(targetFileId: string): FileEntry[] {
-    const allFiles = fileStore.getAll();
-    const targetFile = allFiles.find((f) => f.id === targetFileId);
-    if (!targetFile) return [];
-
-    const included = new Set<string>([targetFileId]);
-    const result: FileEntry[] = [targetFile];
-
-    const moduleToFile = new Map<string, FileEntry>();
-    for (const f of allFiles) {
-      if (f.definedModules) {
-        for (const mod of f.definedModules) { moduleToFile.set(mod, f); }
-      }
-    }
-
-    const queue = [targetFile];
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      const instances = parseVerilogInstances(current.content);
-      for (const modName of instances) {
-        const boundFileId = current.moduleBindings?.[modName];
-        if (boundFileId) {
-          const boundFile = allFiles.find((f) => f.id === boundFileId);
-          if (boundFile && !included.has(boundFile.id)) {
-            included.add(boundFile.id); result.push(boundFile); queue.push(boundFile);
-          }
-          continue;
-        }
-        const definingFile = moduleToFile.get(modName);
-        if (definingFile && !included.has(definingFile.id)) {
-          included.add(definingFile.id); result.push(definingFile); queue.push(definingFile);
-        }
-      }
-    }
-    return result;
-  }
-
-  // ============ Compilation ============
-
-  const tryCompileAll = useCallback(async (targetFileId: string) => {
-    const allFiles = fileStore.getAll();
-    if (allFiles.length === 0) return;
-    const targetFile = fileStore.getById(targetFileId);
-    if (!targetFile) return;
-
-    setStatus('compiling');
-    setMessage('正在编译…');
-    setYosysLog('');
-
-    const dependencyFiles = resolveDependencies(targetFileId);
-    const fileList = dependencyFiles.map((f) => ({ name: f.name, content: f.content }));
-    const topModule = targetFile.definedModules?.[0];
-
-    setYosysLog(`Compiling '${topModule || targetFile.name}' with ${dependencyFiles.length} file(s)...\n`);
-
-    const validationErrors = validateModuleInterfaces(fileList);
-    if (validationErrors.length > 0) {
-      let log = '========== Module Interface Validation Errors ==========\n\n';
-      for (const err of validationErrors) {
-        log += `[Error] ${err.message}\n  File: ${err.fileName}\n`;
-        if (err.instanceName) log += `  Instance: ${err.instanceName}\n`;
-        log += `  Module: ${err.moduleName}\n  Detail: ${err.detail}\n\n`;
-      }
-      log += `Total: ${validationErrors.length} error(s).\n`;
-      log += '========================================================\n';
-
-      // 行号直接用 validator 算好的**结构化字段**。⚠ 旧写法是从 `detail` 那句人话里
-      // 正则回捞 `/第(\d+)行/`：等于把"跳去哪一行"寄生在文案上，而且捞到的还是
-      // 那个"同模块多实例全同一行"的估值（V1）。给不出行的文件级错误就明确不跳。
-      const parsed = validationErrors.map((err) => ({
-        fileName: err.fileName,
-        line: err.line,
-        message: err.message,
-        severity: 'error' as const,
-      }));
-      setProblems(parsed);
-
-      fileStore.updateFile(targetFileId, {
-        status: 'error', errorMessage: `接口校验未通过：${validationErrors.length} 处错误`,
-        missingModules: undefined, circuitJson: null,
-      });
-      setStatus('error');
-      setMessage(`接口校验未通过：${validationErrors.length} 处错误`);
-      setYosysLog((prev) => prev + '\n' + log);
-      setOutputPanelVisible(true);
-      return;
-    }
-
-    try {
-      const result = await compileVerilog(fileList, topModule);
-      fileStore.updateFile(targetFileId, {
-        circuitJson: result.circuitJson, netlistVerilog: result.netlistVerilog, srcFileMap: result.srcFileMap, status: 'compiled',
-        errorMessage: undefined, missingModules: undefined,
-      });
-      setStatus('done');
-      setMissingModules(null);
-      setProblems([]);
-      if (result.netConflicts?.length) {
-        // 多驱动冲突：已剥掉多余驱动照常出图，但必须说出来 —— 画出来的不是原设计
-        // ⚠ 行号给不出（冲突是 yosys 图上的 net，不是源码某一行）⇒ 明确 null，
-        // 不再塞 `line: 1` 冒充"就在第一行"（点了会跳到文件头，看着像 bug）。
-        setProblems(result.netConflicts.map((c) => ({
-          fileName: c.module, line: null, severity: 'warning' as const,
-          message: `net「${c.net}」有 ${c.drivers.length} 个驱动（${c.drivers.join(' + ')}），已保留 ${c.drivers[0]}，其余驱动未画入`,
-        })));
-        setMessage(`编译完成，但有 ${result.netConflicts.length} 处多驱动冲突已标出（见 PROBLEMS）`);
-      } else {
-        setMessage('编译成功！');
-      }
-      setSimPaused(false); // a fresh build always starts running
-      setYosysLog((prev) => prev + '\n' + result.yosysLog);
-      setOutputPanelVisible(true);
-    } catch (err: any) {
-      const log = err instanceof MissingModulesError ? err.yosysLog :
-                  err instanceof YosysCompileError ? err.yosysLog : '';
-      if (err instanceof MissingModulesError) {
-        fileStore.updateFile(targetFileId, {
-          status: 'missing_deps', errorMessage: err.message,
-          missingModules: err.missingModules, circuitJson: null,
-        });
-        setMissingModules(err.missingModules);
-        setStatus('error'); setMessage(err.message);
-        setYosysLog((prev) => prev + '\n' + log);
-        setOutputPanelVisible(true);
-      } else {
-        fileStore.updateFile(targetFileId, {
-          status: 'error', errorMessage: err.message || '编译失败',
-          missingModules: undefined,
-        });
-        setStatus('error'); setMessage(err.message || '编译失败');
-        setYosysLog((prev) => prev + '\n' + (log || err.message || 'Unknown error'));
-        setOutputPanelVisible(true);
-        console.error(err);
-      }
-    }
-  }, []);
+  const {
+    status, setStatus, message, setMessage, yosysLog,
+    outputPanelVisible, setOutputPanelVisible, problems,
+    missingModules, setMissingModules, simPaused, setSimPaused,
+    tryCompileAll,
+  } = useCompilePipeline();
 
   // ============ Export ============
 
