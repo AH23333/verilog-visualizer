@@ -18,11 +18,15 @@ pnpm build          # tsc && vite build（base:'./'）—— 提交前必过；�
 pnpm -C extension check   # VS Code 壳：tsc + esbuild（产 extension/dist/extension.cjs）
 pnpm test           # vitest lib 层单测 + 壳的无头判据（tests/unit/**）
 pnpm ext:package    # 出 .vsix（vsce 已装为 devDependency；`code --install-extension <vsix>` 即装即用）
+pnpm studio:brand   # 把品牌合进 Code - OSS 基座，并把本扩展装成它的**内置扩展**（见 studio/README.md）
 ```
 
-> **宿主⛔ 是 VS Code 扩展壳**（`extension/`）——Tauri 那条线已于 R138 整条删除（`src-tauri/`、
-> `tauriHost`、自绘标题栏、三个 `@tauri-apps` 包都不在仓里）。要找回那一版走 git，⛔ 走"两条宿主并排维护"。
-> 前端⛔ 直连宿主：全部经 `src/lib/host/`（见下一节）。迁移台账＝`MIGRATION_VSCODE.md`。
+> **交付形态＝自带 Code - OSS 源码分支、出独立二进制**（`studio/`，用户 2026-10-13 裁定）：
+> workbench 本身就是 UI，我们的东西住进它的原生位置。`pnpm app` 与 `extension/` 那套**继续用**，
+> 但降级为**开发用入口**（在用户自己的 VS Code 里挂载本扩展），⛔ 当交付物。
+> Tauri 那条线已于 R138 整条删除（`src-tauri/`、`tauriHost`、自绘标题栏、三个 `@tauri-apps` 包都不在仓里）；
+> 要找回那一版走 git，⛔ 走"两条宿主并排维护"。
+> 前端⛔ 直连宿主：全部经 `src/lib/host/`（见下一节）。迁移台账＝`MIGRATION_VSCODE.md`，基座台账＝`studio/README.md`。
 
 TypeScript `strict` 全开（含 noUnusedLocals/noUnusedParameters）；**0 错误是最低门槛**。
 
@@ -95,8 +99,20 @@ pnpm test                       # vitest：host 层 + 壳的 html/projectStore/�
 node tests/r137-webview-csp-gate.cjs   # 按壳那份 CSP 在真浏览器里跑这张画布
 ```
 
-- **改前端**只需 `pnpm build` + 在扩展宿主里重载面板；**只有 `extension/src/**` 改了**才要重编扩展。
+基座那一条回路（片 2 起，全部读数在 `studio/README.md` §1b；⚠ 基座 checkout 的路径**含空格就编不过**）：
+
+```bash
+pnpm build && pnpm -C extension build   # 先有前端与扩展产物
+pnpm studio:brand                       # 覆盖层 → <fork>/product.json；扩展 → <fork>/extensions/verilog-visualizer
+cd D:\vv-studio\vscode && npm run compile-client && npm run electron
+D:\vv-studio\vscode\scripts\code.bat --user-data-dir=D:\vv-studio\profile   # ⛔ 污染他日常 VS Code 配置
+```
+
+- **改前端**只需 `pnpm build` + 在扩展宿主里重载面板；**只有 `extension/src/**` 改了**才要重编扩展
+  （装进基座那份要再跑一次 `pnpm studio:brand`——它是拷贝，⛔ 软链）。
 - `extension/src/html.ts` 保持**纯函数、⛔ `import 'vscode'`** —— 这样 CSP 与资产改写能在无头环境里被判据钉住。
+  `extension/src/startupPolicy.ts`（开局要不要自动弹面板）出于同一个理由单独成档：
+  判宽了＝抢别人的编辑器开局，判窄了＝我们自己的二进制启动后只剩一颗 Welcome 页，两边都⛔ 开窗口才看得见。
   要验壳的行为不必开 Extension Development Host：`r137-webview-csp-gate.cjs` 用静态服务器 + 那份 CSP 就够。
 - ⛔ 在闸门里另抄一份 CSP 字符串。两颗读者（`vscodeShell.test.ts` 与 `r137` 闸门）都**现读 `html.ts`**，
   抄的那份红了只能证明抄本有问题，证明不了壳里那份。

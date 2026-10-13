@@ -14,8 +14,12 @@
 套壳基座选定**微软官方 sample**（已拉取，不自己写）；**Extension Host 侧已落地**（`extension/`：
 面板装载 + 15 方法消息路由 + `workspace.fs` 项目目录 + `showSaveDialog` 另存为），
 且那份 CSP 与资产改写**已过真浏览器判据**（`tests/r137-webview-csp-gate.cjs`，见 §3.5）。
-⇒ **VS Code 是唯一的宿主**（R138）：一条 `pnpm app` 起壳（⛔ F5、⛔ 命令面板），Tauri 那条线整条删除（§8）。
-剩下的真开放项只有一颗大的：**webview 里的 `localStorage` 到底持不持久**（§6，未实测）。
+⇒ **宿主＝VS Code 这一族**（R136–R138 落的中立层与壳都继续有效），但**交付形态已改**：
+最终宿主是**我们自己的 Code - OSS 分支二进制**（`studio/`，片 2 已实测跑通编译并起过窗口，读数在
+[studio/README.md](../studio/README.md) §1b），`pnpm app` 那一颗**降级为开发用入口**（⛔ F5、⛔ 命令面板），
+Tauri 那条线整条删除（§8）。
+剩下的真开放项有两颗大的：① **webview 里的 `localStorage` 到底持不持久**（§6，未实测）；
+② **界面还没换成 workbench 原生位置**（片 3/4：`customEditors` + Explorer/Output/Problems/Settings 接管）。
 
 ## 1. 耦合面实测（2026-10-13）
 

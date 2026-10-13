@@ -28,8 +28,10 @@ workbench，我们的东西住进它的原生位置（Explorer / 编辑器标签
   要找回那一版走 git，账本卷四十三末尾有提交号）。
 - ✅ **宿主中立层已跑通**：`pnpm app` 能起一个挂了本扩展的开发窗口。⚠ 它是**开发用入口，⛔ 产品本身**，
   而且此刻界面仍是我们自绘的那套（还没换成 workbench 原生）——这一点上一批我写成"唯一宿主＝扩展壳"，方向报错了。
-- ⬜ 基座 checkout 已就位（仓库外 `vv-studio/vscode`，Code - OSS 1.143.0）；`pnpm studio:brand` 会把品牌
-  合进基座 `product.json` 并把我们的扩展装成它的内置扩展（这两步本轮真跑过）。**基座编译与 UI 换原生两片还没做。**
+- ⬜ **基座已就位并跑通过一次**（仓库外 `D:\vv-studio\vscode`，Code - OSS 1.143.0）：`pnpm studio:brand` 把品牌
+  合进基座 `product.json` 并把我们的扩展装成它的内置扩展；基座 `npm install` + `compile-client` + `electron`
+  本轮真跑通，起的是**我们自己的二进制**（`.build/electron/Verilog Visualizer.exe`，239,129,088 字节），
+  内置扩展在里头激活并自动把画布弹出来。**还没做的是把界面换成 workbench 原生位置**（片 3/4）。
 - 前端⛔ 直连宿主 API：文件/配置/另存为/剪贴板全部从 `src/lib/host/` 进出，按运行时探测 `vscodeHost` / `browserHost`。
 
 ## 简介

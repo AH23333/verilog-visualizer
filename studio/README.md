@@ -28,53 +28,99 @@
 ## 1. 基座怎么拿（这份 checkout 的事实，全部现读）
 
 ```
-位置：D:\Visual Studio Code\Something\vv-studio\vscode      # 仓库**外**，⛔ 把 1 GB 上游源码塞进我们的 git
-git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git
+位置：D:\vv-studio\vscode                              # 仓库**外**，⛔ 把 1 GB 上游源码塞进我们的 git
+                                                       # ⚠ 这一条路径是**测出来的**：见下方"路径⛔ 含空格"
+git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D:\vv-studio\vscode
 ```
 
 | 量到的事实 | 值 | 对计划的影响 |
 |---|---|---|
 | 上游版本 / 名称 | `code-oss-dev` **1.143.0** | 我们的是 Code - OSS（MIT），⛔ 微软那份带商标的二进制 |
-| `.nvmrc` | **24.18.0** | 本机 nvm 只有 18.20.8 / 20.19.5 / 22.20.0 ⇒ **要先装 24.18.0** |
+| `.nvmrc` | **24.18.0** | 本机 nvm 只有 18.20.8 / 20.19.5 / 22.20.0 ⇒ **要先装 24.18.0**（已装，见 §4） |
 | `preinstall` | `node build/npm/preinstall.ts` | 版本不对是**硬拒**（⛔ 绕过；绕过去的构建结果⛔ 可信） |
-| C++ 工具链 | VS 2022 Community + BuildTools 都有 `vcvars64.bat`；Python 3.13.0 | `node-pty` 等原生模块**编得动** |
-| D 盘空闲 | 63.6 GB | 装得下 node_modules + Electron（量级 15–20 GB） |
+| **路径⛔ 含空格** | 上游 `build/npm/preinstall.ts:143` spawn 时**⛔ 给路径加引号** | checkout 只要落在带空格的路径上，cmd 就在第一个空格切开：实测 `'D:\Visual' is not recognized as …`，**跑满四分钟才炸**。我们仓库自己就住在 `D:\Visual Studio Code\` 下面 ⇒ 基座**必须**放在仓库外（`apply-brand.mjs` 现在就检查，三秒内说清并给出替代命令） |
+| C++ 工具链 | VS 2022 Community + BuildTools 都有 `vcvars64.bat`；Python 3.13.0 | `node-pty` 等原生模块**编得动**，但要 **Spectre 缓解库**（MSB8040，见 §4） |
+| D 盘空闲 | 63.6 GB（装完 node_modules+Electron 后再量） | 装得下（量级 15–20 GB） |
 | `resources/win32/*.iss` | **0 颗** | Inno 安装器脚本⛔ 在 OSS 树里 ⇒ `win32x64UpdateId` 这类键全 checkout 被读 **0** 次（我第一版的覆盖层里写了三颗这种"看着像配置"的键，已删，见 `product.overrides.json` 的 `_comment`） |
 | 基座有没有内置市场 | `extensionsGallery` 基座⛔ 有，但 `build/lib/builtInExtensions.ts`、`build/hygiene.ts` 读它 | 要装扩展得指 **open-vsx**：微软 Marketplace 的条款⛔ 允许非 VS Code 产品调用（VSCodium 同理）——这条是法律边界⛔ 偏好 |
+| `isExtensionDevelopment` 的真义 | `src/vs/platform/environment/common/environmentService.ts:105` ⇒ **只在传了 `--extensionDevelopmentPath` 时为真** | 我们编进自己产品的内置扩展是 **Production**：任何按 `extensionMode === Development` 写的"开发态才做"的逻辑，在我们自己的二进制里**永不触发**（片 2 的自动弹窗口就栽过这一条，已改，见 §4b） |
+
+## 1b. 片 2 的实测读数（这一段⛔ 计划，是跑完抄回来的）
+
+| 步骤 | 读数 |
+|---|---|
+| `npm install`（在 `D:\vv-studio\vscode`） | `added 1590 packages in 6m`，日志里 `npm error` **0 行** |
+| `npm run compile-client` | `out/` **12,160 个文件**；`Finished compilation with 0 errors after 37397 ms`；`Finished 'compile' after 1.18 min` |
+| `npm run electron` | 产出 `.build/electron/Verilog Visualizer.exe` = **239,129,088 字节** —— 文件名来自我们合进去的 `product.json` ⇒ **branding 当场可见** |
+| 起窗口 `scripts/code.bat --user-data-dir=D:\vv-studio\profile` | 6 颗 `Verilog Visualizer.exe` 进程；窗口标题 `Verilog Visualizer - Verilog Visualizer Dev` |
+| 内置扩展装载 | exthost 日志：`ExtensionService#_doActivateExtension local.verilog-visualizer-vscode, activationEvent: 'onStartupFinished'`，该日志 `[error]` **0 行**；main/window1 两份日志 `[error]` **0 行** |
+| 共享存储落点 | `[shared storage] Creating shared storage database at 'c:\Users\34697\.verilog-visualizer-shared\...'` ⇒ 目录名走我们的 `dataFolderName`，但**家目录在 C 盘**——片 5 打包时要按"D 盘"这条硬约束处理（⚠ 在册，尚未改） |
+| 画布像素 | **UNVERIFIED**：取这一格要把窗口从最小化激活，而他此刻正在用这台电脑 ⇒ 抢焦点⛔ 算"程序要用户多做一步"。点验单见 §4b 末 |
 
 ## 2. 本目录的东西
 
 - `product.overrides.json` —— 覆盖层。每颗键都对照过基座：要么基座本来有，要么构建脚本确认读它。⛔ 整份覆盖 product.json。
 - `apply-brand.mjs` —— ① 合并覆盖层进 `<fork>/product.json`（幂等，合并后**自检那几颗键真的落到位置**）；
   ② 把 `extension/` 的产物（`package.json` + `dist/extension.cjs` + `webview/**`）装成基座的内置扩展
-  `extensions/verilog-visualizer/`。缺产物就报错并说清先跑哪条命令。
-- 判据：`tests/unit/studioBrand.test.mjs`（9 格，含"基座其余键一颗都⛔ 丢"“数组整体替换”“`_comment` ⛔ 进产物”
-  "覆盖层⛔ 出现基座读不到的键"“自检能抓到漏合”）。跑法 `pnpm test`。
+  `extensions/verilog-visualizer/`。缺产物就报错并说清先跑哪条命令；
+  ③ 基座路径**含空格就早退**（`pathLooksBuildable`，带实测证据与替代命令，⛔ 让人等一次长安装再失败）。
+  默认位置 `DEFAULT_FORK = 'D:/vv-studio/vscode'`，可用 `--fork=` 或 `VERILOG_STUDIO_FORK` 改指。
+- 判据：`tests/unit/studioBrand.test.mjs`（**14 格**，含"基座其余键一颗都⛔ 丢"“数组整体替换”“`_comment` ⛔ 进产物”
+  "覆盖层⛔ 出现基座读不到的键"“自检能抓到漏合”“默认位置自己就得通过空格检查”）。跑法 `pnpm test`。
+- 开局判据：`extension/src/startupPolicy.ts`（⛔ import vscode，纯函数）＋ `tests/unit/startupPolicy.test.ts` 12 格；
+  变异台架 `bin/R139/bench_139_startup.py`（4 臂，臂臂有红）。
+
 
 ## 3. 分期（每片都⛔ 破坏现有 73 格闸门能跑的那条路）
 
 - **片 1（本目录，已完成）**：基座 checkout + 覆盖层 + 内置扩展安装脚本 + 无头判据。
-- **片 2（⛔ 本目录脚本，要用户点头才跑）**：`npm install` 与 `compile-client` 在这台机器上真跑通（要先装 node 24.18.0，见 §4），
-  产物能起一个 Code - OSS 窗口；把我们的内置扩展在**那份产物**里跑起来（现在扩展只能靠 `--extensionDevelopmentPath`）。
-- **片 3**：文档模型换轨 —— `.djs` / `.viz` 注册成 `customEditors`，画布从"一个装满 SPA 的 panel"
+- **片 2（已完成，读数见 §1b）**：基座 `npm install` + `compile-client` + `electron` 在这台机器上真跑通，
+  产物能起一个窗口，我们的扩展作为**内置扩展**在那份产物里激活（⛔ 靠 `--extensionDevelopmentPath`）。
+  ⚠ 一处真缺陷在这一片露出来并被修掉：自动弹窗口原规则只看 `extensionMode === Development`，
+  而内置扩展在自家二进制里是 Production ⇒ 启动后只剩一颗 Welcome 页。判据搬到 `extension/src/startupPolicy.ts`。
+- **片 3（下一片）**：文档模型换轨 —— `.djs` / `.viz` 注册成 `customEditors`，画布从"一个装满 SPA 的 panel"
   变成"编辑器标签里的那份文档"；脏标记、保存、关闭交给 VS Code。项目根从 `globalStorageUri`
   改成**打开的工作区文件夹**（这一步顺带解掉 R136 那颗"工程集合与工作区无关"的取舍，也让原生 Explorer 直接可用）。
 - **片 4**：把 §0 表里"我们自绘"那几行逐个换成原生（文件树 → Explorer；日志 → Output；
   问题 → `DiagnosticCollection`；设置 → `contributes.configuration`；状态 → StatusBarItem），
   **换一颗删一颗**，⛔ 两套并存让人分不清哪个生效。
 - **片 5**：branding 收尾（图标、`startupEditor`、精简掉⛔ 用的内置扩展与菜单）、Windows 打包脚本、
-  独立 `--user-data-dir`（产品 behave 得像自己的 App，⛔ 污染他日常 VS Code 配置）。
+  独立 `--user-data-dir`（产品 behave 得像自己的 App，⛔ 污染他日常 VS Code 配置）；
+  §1b 记的那条"共享存储落在 C 盘家目录"也在这一片按 D 盘口径处理。
 
-## 4. 要用户点头才做的两件事（都动到他的机器状态）
+## 4. 装基座的实测前置（这一节是**跑过之后**写的，每条都对应一次真失败）
 
-1. **装 node 24.18.0**（`nvm install 24.18.0`，落在 `D:\NVM\nvm\v24.18.0`，满足"外部工具在 D 盘"）。
-   我们的脚本会把该版本目录**只加进自己的 PATH**，⛔ 执行 `nvm use` 切他的全局默认。
-2. **跑一次基座安装/编译**：`npm install`（数 GB、几十分钟）+ `compile-client`（更久）。
-   这段时间机器会被占住，所以我⛔ 自己开着跑——上一批已经量到这台机器在中途会被别的东西挤到闸门超时。
+他这一批的原话授权：**「跑，你直接帮我装node，node use允许修改到更新的版本，可跑基座，顺便把缓存清空」**。
+
+1. **node 24.18.0**：`preinstall` 硬拒低版本 ⇒ 装 24.18.0。本机是 nvm-windows（根 `D:\NVM\nvm`，
+   满足"外部工具在 D 盘"），按许可 `nvm use` 切了全局默认。
+2. **MSB8040 = Spectre 缓解库缺失**：`node-pty` 一类原生模块编不过。VS Installer 加组件
+   `Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64.Spectre`（⚠ 这个 id 是从
+   `C:\ProgramData\Microsoft\VisualStudio\Packages\_Channels\f40d10d6\catalog.json` 现读的；
+   我先按社区流传的 `…VC.Lts.Spectre` 试，报 `Cannot find package in product graph`）。
+   ⚠ 另一条：**非管理员跑 Installer 的 `--passive/--quiet` 直接 exit 5007** ⇒ 必须一开始就提权
+   （`Start-Process -Verb RunAs`），⛔ 指望"失败后再以管理员重试"——那是把一步手工动作留给用户。
+3. **`@vscode/ripgrep` 走 api.github.com 会 403**（本机 IP 未认证）：先把那份 zip 塞进它的下载缓存
+   （`%LOCALAPPDATA%\@vscode\ripgrep\...`）⇒ 命中缓存就⛔ 打网络。这是网络边界，⛔ 产品缺陷。
+4. **checkout 路径⛔ 含空格**（见 §1 那行实测）：`apply-brand.mjs` 现在会早退并给替代命令。
+5. `node-gyp` 的 Electron headers 会落在 `C:\Users\…\AppData\Local\node-gyp\Cache\43.7.7\`（日志现读）——
+   这一处⛔ 我们的脚本能改，属上游默认；片 5 打包时若要统一落 D 盘再一起处理（在册）。
+
+### 4b. 开局窗口那颗判据（片 2 露出来的真缺陷）
+
+旧规则 `extensionMode === Development` 在我们自己的二进制里**永不成立**（源码现读 `environmentService.ts:105`）。
+新规则在 `extension/src/startupPolicy.ts`：环境变量 `VERILOG_VIZ_AUTOOPEN=1` ⇒ 开；开发宿主 ⇒ 开；
+**扩展编在 `appRoot` 里（＝这就是我们的产品）** ⇒ 开；其余（我们被装进别人的编辑器）⇒ ⛔ 开。
+按位置判⛔ 按 `env.appName` 字符串判——那是把行为押在品牌文案上，改一次名字就静默失效。
+
+**⛔ 能自动化测的**（已按"他此刻在用电脑"处理，记 UNVERIFIED）：把最小化的 `Verilog Visualizer - Verilog Visualizer Dev`
+窗口点回来，看编辑区是不是那张画布（有 `编译模式 / 沙盒模式` 那颗切换、⛔ 白屏、DevTools Console 0 错）。
+
 
 ## 5. 与既有几层的关系（⛔ 白扔）
 
 - `src/lib/host/` 统一调用层：⛔ 白做——片 3/4 之后所有宿主调用都走 `vscodeHost` 那条 RPC，接口⛔ 改。
 - `extension/src/{html,projectStore}.ts` 与那 15 方法消息路由：继续用，只是**宿主从"用户的 VS Code"变成"我们这份二进制"**，
   内置扩展读得到基座的 `resources/`，CSP/装载逻辑一字⛔ 改（判据 `r137-webview-csp-gate` 也继续有效）。
-- `pnpm app` 那颗启动脚本（R138）：降级为**开发用**入口，⛔ 再当成交付物；片 2 之后由基座产物取代。
+- `pnpm app` 那颗启动脚本（R138）：降级为**开发用**入口，⛔ 再当成交付物；片 2 之后由基座产物取代
+  （取代这件事现在**成立**：`scripts/code.bat --user-data-dir=D:\vv-studio\profile` 起的就是我们自己的二进制）。

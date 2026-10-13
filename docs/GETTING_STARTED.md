@@ -9,7 +9,9 @@
 
 ### 0. 安装
 
-**宿主＝VS Code 扩展壳**（Tauri 那条线已于 R138 整条删除，见 `MIGRATION_VSCODE.md` §8）。
+**产品形态＝自带 VS Code 源码分支、出独立二进制**（Cursor / Windsurf 同族，用户 2026-10-13 裁定）。
+那一份还在迁移中（基座已实测编得出来，台账 [`studio/README.md`](../studio/README.md)）；
+下面两条是**现在就能跑起来的开发回路**（Tauri 那条线已于 R138 整条删除，见 `MIGRATION_VSCODE.md` §8）。
 
 ```bash
 pnpm install
@@ -66,7 +68,10 @@ pnpm dev             # 浏览器预览 → http://localhost:1420（功能一致�
 
 ### 0. Install
 
-The host is a **VS Code extension shell** (the Tauri line was fully removed in R138 — see `MIGRATION_VSCODE.md` §8).
+The product form is **our own fork of the VS Code sources shipped as a standalone binary** (the Cursor /
+Windsurf pattern, decided by the user on 2026-10-13). That migration is still in progress (the base is
+proven to build — see [`studio/README.md`](../studio/README.md)); the two routes below are the
+**development loops that already work** (the Tauri line was fully removed in R138 — `MIGRATION_VSCODE.md` §8).
 
 ```bash
 pnpm install

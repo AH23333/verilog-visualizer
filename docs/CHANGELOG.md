@@ -18,9 +18,9 @@
   合并与内置扩展安装在 `studio/apply-brand.mjs`，分期与实测前置写在 `studio/README.md`。
 - `pnpm studio:brand`（本轮真跑通）：① 把覆盖层合进基座 `product.json`，合并后**自检关心键真落到位置**；
   ② 把 `extension/` 的产物装成基座的内置扩展 `extensions/verilog-visualizer/`。
-- `tests/unit/studioBrand.test.mjs` 12 格（vitest **58/58**）：基座其余键一颗都⛔ 丢、嵌套对象深合、
+- `tests/unit/studioBrand.test.mjs` 14 格（vitest **72/72**）：基座其余键一颗都⛔ 丢、嵌套对象深合、
   数组整体替换、`_comment` ⛔ 进产物、**覆盖层⛔ 出现基座读不到的键**、漏合要能红、
-  以及"写回时保住基座自己的缩进与行尾"。
+  "写回时保住基座自己的缩进与行尾"、**默认基座位置自己就得通过空格检查**。
 
 ### Fixed
 - **覆盖层里三颗我脑补的键**（`win32x64UpdateId` / `quality` / `win32Arm64AppId`）：
@@ -31,12 +31,45 @@
 
 ### Changed
 - README 的「宿主」一节改成**诚实版进度**：上一批写的是"唯一宿主＝VS Code 扩展壳"，方向错；
-  `pnpm app`（R138）降级为**开发用入口**，⛔ 再当交付物。
+  `pnpm app`（R138）降级为**开发用入口**，⛔ 再当交付物——片 2 之后由基座产物取代，这件事现在**成立**。
 
-### 实测前置（决定后面两片能不能跑）
-`.nvmrc` 要 node **24.18.0**，本机 nvm 只有 18.20.8 / 20.19.5 / 22.20.0，且 `preinstall` 是硬拒；
-C++ 工具链与 Python 齐（VS 2022 Community + BuildTools 的 `vcvars64.bat`、Python 3.13.0）；D 盘空闲 63.6 GB。
-⇒ 装 node 24.18.0 与跑基座 `npm install` + `compile-client` 都要他点头（动他的机器状态、且会占住机器几十分钟）。
+### 片 2：基座在这台机器上真的编出来、也真的起来了（他点头后跑的）
+
+授权逐字：**「跑，你直接帮我装node，node use允许修改到更新的版本，可跑基座，顺便把缓存清空」**。
+
+| 步骤 | 读数 |
+|---|---|
+| `npm install` | `added 1590 packages in 6m`，日志 `npm error` **0 行** |
+| `npm run compile-client` | `out/` **12,160 文件**；`Finished compilation with 0 errors after 37397 ms` |
+| `npm run electron` | `.build/electron/`**`Verilog Visualizer.exe` = 239,129,088 字节**（名字来自我们合进去的 `product.json` ⇒ branding 当场可见） |
+| 起窗口（`--user-data-dir=D:\vv-studio\profile`，⛔ 碰他日常 VS Code 配置） | 6 颗自有进程；标题 `Verilog Visualizer - Verilog Visualizer Dev` |
+| 内置扩展 | exthost：`_doActivateExtension local.verilog-visualizer-vscode`（`onStartupFinished`）；exthost/main/renderer 三份日志 `[error]` **0 行** |
+| 画布像素 | **UNVERIFIED**——取这一格要把窗口从最小化激活，而他此刻在用这台电脑（抢焦点＝要用户多做一步，按本仓判据⛔ 做）。点验一行写在 `studio/README.md` §4b |
+
+清缓存那一刀：删的是 `src-tauri/target`（**9.0 GB**，R138 拆完 Tauri 后它就是纯产物）。⛔ 动任何源码。
+
+### 实测前置（每条都对应一次真失败，⛔ 是抄来的说明书）
+1. **node 24.18.0**：`.nvmrc` 硬门槛 + `preinstall` 硬拒；本机 nvm 只有 18/20/22 ⇒ 按许可装了 24.18.0 并 `nvm use`（nvm-windows 根在 `D:\NVM\nvm`，满足"D 盘"）。
+2. **MSB8040（Spectre 缓解库）**：`node-pty` 一类原生模块编不过。组件 id 现读 catalog 才对——
+   先按社区流传的 `…VC.Lts.Spectre` 试，报 `Cannot find package in product graph`；真 id
+   `Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64.Spectre`。
+   ⚠ 另一条：**非管理员跑 Installer 的 `--passive/--quiet` 直接 exit 5007** ⇒ 必须一开始就提权（`Start-Process -Verb RunAs`）。
+3. **`@vscode/ripgrep` 打 api.github.com 得 403**（本机未认证）⇒ 先把那份 zip 塞进它的下载缓存，命中就⛔ 打网络。
+4. **checkout 路径⛔ 含空格**：上游 `build/npm/preinstall.ts:143` spawn 时**⛔ 加引号**，
+   实测 `'D:\Visual' is not recognized as …`（跑满四分钟才炸）。我们仓库自己就住在 `D:\Visual Studio Code\` 下面 ⇒
+   `DEFAULT_FORK` 改成从仓库相对位置推**会掉回同一个坑**，现在钉成 `D:/vv-studio/vscode` 并在 `apply-brand.mjs` 里**早退**（含空格就三秒内说清＋给替代命令，⛔ 让人等一次长安装再失败）。
+5. `node-gyp` 的 Electron headers 落 `C:\Users\…\AppData\Local\node-gyp\Cache\43.7.7\`（日志现读）、
+   共享存储落 `c:\Users\34697\.verilog-visualizer-shared\`——两处都⛔ 由我们的脚本决定，按"D 盘"这条口径**在册待处理**（片 5）。
+
+### 片 2 露出来的一颗真缺陷：我们自己的二进制启动后只剩一颗 Welcome 页
+旧规则是 `extensionMode === Development` 才自动弹面板。源码现读 `src/vs/platform/environment/common/environmentService.ts:105`
+⇒ `isExtensionDevelopment` **只在传了 `--extensionDevelopmentPath` 时为真**，所以我们编进自家产品的内置扩展是 **Production**，
+旧规则永不触发。修法：判据搬进 `extension/src/startupPolicy.ts`（⛔ import vscode，纯函数、可无头判）——
+环境变量 `=1` / 开发宿主 / **扩展编在 `appRoot` 里（＝这就是我们的产品）** 三种来路各开一次，其余⛔ 开。
+按**位置**判内置⛔ 按 `env.appName` 字符串判（后者把行为押在品牌文案上，改一次名字就静默失效）。
+新增判据 `tests/unit/startupPolicy.test.ts` **12 格**（含"归一那一步是必要的"那颗变异证人、
+"两边都空⛔ 算内置"、三档输入穷举）；台架 `bin/R139/bench_139_startup.py` **4 臂全部有红**。
+vitest **72/72**（60→72）。
 
 ## [未发布 Unreleased] — R138：一条命令起壳 + Tauri 整条拆除（2026-10-13）
 

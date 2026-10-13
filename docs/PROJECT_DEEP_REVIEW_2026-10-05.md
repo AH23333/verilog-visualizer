@@ -500,3 +500,91 @@ ENVRED 按定义⛔ 算通过，全量绿要在机器安静时再跑一遍。
 **记下来的规矩**：`pass=0 + goto 超时` 这种形状，先问"**重跑一次判决会不会变**"，⛔ 先问"是不是我改坏了"。
 两者都⛔ 靠猜——测一次就有答案，而且测法是逐颗单跑（并跑会自己造出第二轮噪声，名册 241 已经为这件事红过一次）。
 
+
+---
+
+# 卷四十五 · R139：方向纠正 + 基座真的编出来了（片 1–2，2026-10-13）
+
+> 两句触发，逐字。纠正方向那句：**「你完全没明白我的意思，我是说UI风格直接套壳vscode，而不是叫你在vscode打开，
+> 更没叫你自己写运行脚本，当前只是要你进行框架的迁移，整体UI使用vscode套壳，类似当前各大厂商的agent/IDE产品」**；
+> 授权动手那句：**「跑，你直接帮我装node，node use允许修改到更新的版本，可跑基座，顺便把缓存清空」**。
+> 前一句判掉我连着两轮的两件事：① 把"套壳"做成"装进**他的** VS Code 一个标签页"，② 为此另写一颗 `pnpm app` 脚本。
+> 形态他选项里选的是**自带 VS Code 源码分支、出独立二进制**（Cursor / Windsurf 同族）——用户⛔ 需要另外装 VS Code。
+
+## 一、量差距：我们自绘的那套该换成哪个原生位置
+
+`studio/README.md` §0 那张表是这一片的准绳（逐行）：`MenuBar.tsx` 183 行 → 命令面板/原生菜单；
+`Sidebar.tsx` + `ProjectStore` → **原生 Explorer**（项目根改成"打开的那个文件夹"）；
+整块 `WebviewPanel` → **`customEditors`**；`OutputPanel.tsx` 238 行 → Output 通道；
+自绘 PROBLEMS（V1 那颗行号缺陷的主人）→ `DiagnosticCollection`；`SettingsPanel.tsx` → `contributes.configuration`。
+拆完的收益⛔ 只是"少写点代码"：V1／V2b 那一族自绘缺陷会随宿主接管而**消失**，中文／主题／快捷键／无障碍一并继承。
+
+## 二、片 1（脚手架）与片 2（基座真跑通）的读数
+
+| 项 | 读数 |
+|---|---|
+| 基座 | `D:\vv-studio\vscode`，`code-oss-dev` **1.143.0**，浅克隆 + `blob:none`（⛔ 在仓库里，那份是 1 GB 上游源码） |
+| `pnpm studio:brand` | 覆盖 **17 颗**品牌键 + 内置扩展装到 `extensions/verilog-visualizer/`；幂等（diff 稳定 **21 增 / 16 删**） |
+| `npm install` | `added 1590 packages in 6m`，`npm error` **0 行** |
+| `npm run compile-client` | `out/` **12,160 文件**；`Finished compilation with 0 errors after 37397 ms` |
+| `npm run electron` | `.build/electron/Verilog Visualizer.exe` = **239,129,088 字节**（文件名就是我们合进去的 `nameShort` ⇒ branding 当场可见） |
+| 起窗口 | `scripts/code.bat --user-data-dir=D:\vv-studio\profile`（⛔ 碰他日常 VS Code 配置）⇒ 6 颗自有进程，标题 `Verilog Visualizer - Verilog Visualizer Dev` |
+| 内置扩展装载 | exthost：`_doActivateExtension local.verilog-visualizer-vscode`（`onStartupFinished`）；exthost/main/renderer 三份日志 `[error]` **0 行** |
+| 画布像素 | **UNVERIFIED**：取这一格要把最小化的窗口激活，而他此刻在用这台电脑 ⇒ 抢焦点＝"程序要用户多做一步"，按本仓判据⛔ 做。点验一行在 `studio/README.md` §4b |
+| 清缓存 | 删 `src-tauri/target`（**9.0 GB**，R138 拆完 Tauri 后它就是纯产物），⛔ 动源码 |
+| 判据 | vitest **72/72**（60→72：`studioBrand` 14 格、新增 `startupPolicy` 12 格）；`pnpm -C extension check` 0 错 |
+
+## 三、四条**测出来**的前置（每条都对应一次真失败，⛔ 是抄来的说明书）
+
+1. **node 24.18.0**：`.nvmrc` 硬门槛 + `preinstall` 硬拒（⛔ 绕过，绕过去的产物⛔ 可信）。
+2. **MSB8040＝Spectre 缓解库缺失**：`node-pty` 一类编不过。组件 id 要从
+   `C:\ProgramData\Microsoft\VisualStudio\Packages\_Channels\f40d10d6\catalog.json` 现读——我先按社区流传的
+   `…VC.Lts.Spectre` 试，报 `Cannot find package in product graph`；真 id `Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64.Spectre`。
+   ⚠ 且**非管理员跑 Installer 的 `--passive/--quiet` 直接 exit 5007** ⇒ 必须一开始就提权（`Start-Process -Verb RunAs`），
+   ⛔ 指望"失败后再以管理员重试"——那是把一步手工动作留给用户。
+3. **`@vscode/ripgrep` 打 api.github.com 得 403**（本机未认证）⇒ 把那份 zip 预塞进它的下载缓存，命中就⛔ 打网络。
+4. **checkout 路径⛔ 含空格**：上游 `build/npm/preinstall.ts:143` spawn 时**⛔ 给路径加引号**，
+   实测 `D:Visual is not recognized as an internal or external command`，**跑满四分钟才炸**。
+   我们仓库自己就住在 `D:\Visual Studio Code\` 下面 ⇒ `DEFAULT_FORK` **⛔ 从仓库相对位置推**（那会掉回同一个坑），
+   钉成 `D:/vv-studio/vscode` 并在 `apply-brand.mjs` 里早退：含空格就三秒内说清＋给替代命令。
+
+## 四、片 2 露出来的一颗真产品缺陷：我们自己的二进制启动后只剩一颗 Welcome 页
+
+自动弹面板的旧规则是 `extensionMode === Development`。源码现读
+`src/vs/platform/environment/common/environmentService.ts:105`：`isExtensionDevelopment`
+**只在传了 `--extensionDevelopmentPath` 时为真** ⇒ 我们编进自家产品的内置扩展是 **Production**，旧规则永不触发。
+判据搬进 `extension/src/startupPolicy.ts`（⛔ `import "vscode"`，纯函数、可无头判）：
+`VERILOG_VIZ_AUTOOPEN=1` / 开发宿主 / **扩展编在 `appRoot` 里（＝这就是我们的产品）** 三种来路各开一次，其余⛔ 开。
+⚠ 按**位置**判内置，⛔ 按 `vscode.env.appName` 字符串判——后者把行为押在品牌文案上，改一次名字就静默失效；
+⚠ 归一（反斜杠／大小写／尾斜杠）是必要的：Windows 上裸 `startsWith` 在我们自己的二进制上判 false ⇒ 症状与原缺陷一模一样，
+所以那一臂写成"归一这一步⛔ 是装饰"的变异证人（`extPath.startsWith(appRoot)` 现场为 false，函数为 true）。
+
+## 五、这一轮我自己的三处（都改在这一批里）
+
+1. **`tests/unit/vscodeShell.test.ts` 里残留着一句假"实测缺陷"**——"R137：`import()` 出来的分块**带不上 nonce**"。
+   那句在 R137 就被我自己的变异臂当场否掉（本机 Chromium 会把 nonce 传给 `import()`），可它作为**注释**活到了这一批。
+   同一条教训第二次落地：⛔ 只有代码里的"实测"两个字要证据，**注释与测试里的"实测／带不上"一样要证据**。已改成"⛔ 押 nonce 传不传得过去"的口径。
+2. **判据自己也会被硬钉坑**：`studioBrand` 里那份基座 `product.json` 路径是手打的相对位置，基座搬过一次家 ⇒
+   查不到文件就**静默退回小样本**，把 10 颗合法键全报成"我发明的字段"。红是红了，红的⛔ 它想问的事。
+   现改成跟 `DEFAULT_FORK` 走（主人只有一处）。
+3. **台架崩在还原之前＝源码带着变异活下去**：`bin/R139/bench_139_startup.py` 第一版把 `print(out)` 放在
+   `restore()` 前面，控制台 gbk 编不了 `⛔` 当场抛异常 ⇒ M1 那颗变异留在 `startupPolicy.ts` 里。
+   下一轮"**基线就红**"才把它抓出来。改法：还原一律走 `finally`，收尾再自检一次"还原后 0 红"。
+   （台架读数：**4 臂全部有红**，M1/M2 各红 2 格、M3/M4 各红 1 格。）
+
+## 六、还欠着的（下一片从这里切）
+
+1. **片 3（下一刀）**：`.djs` / `.viz` 注册成 `customEditors`——画布从"一个装满 SPA 的 panel"变成"编辑器标签里的那份文档"，
+   脏标记/保存/关闭交给 workbench；项目根从 `globalStorageUri/project_files` 改成**打开的工作区文件夹**
+   （顺带解掉 R136 那颗"工程集合与工作区无关"的取舍，也让原生 Explorer 直接可用）。
+2. ⚠ 卷四十四那句"面板由扩展自己弹：`activate` 里 `extensionMode === Development`（或 `VERILOG_VIZ_AUTOOPEN=1`）"**已被本卷取代**
+   （原文⛔ 删，只追记这一行——那条规则在自家二进制里是漏的）。
+3. 画布在我们二进制里的**像素级观感**＝UNVERIFIED（见 §2 末行）。
+4. 上一卷的四条还挂着：`.vsix` 已跑过但 `code --install-extension` 仍要他点头；扩展端到端台架（真开 EPH 驱动 webview）⛔ 建；
+   Prism 两颗 CDN 引用未落 `public/`；T-3（`parseVerilogInstances` 返回外部模块名）、#5 编译模式 FSM、#8 显示归一化仍在册。
+5. ⚠ 两处落盘在 C 盘：`node-gyp` 的 Electron headers（`%LOCALAPPDATA%\node-gyp\Cache\43.7.7\`）、
+   共享存储 `c:\Users\34697\.verilog-visualizer-shared\`——都⛔ 由我们的脚本决定，按"D 盘"这条硬约束**在册待处理**（片 5）。
+
+*（卷四十五完 · R139 片 1–2：方向改成"自带 Code - OSS 分支出独立二进制"，基座真编出来并真起过窗口，
+ 开局判据从 `extensionMode` 搬到"扩展在不在 appRoot 里"；vitest 72/72，画布观感仍记 UNVERIFIED）*
+
