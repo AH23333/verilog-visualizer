@@ -47,8 +47,9 @@ describe('webview HTML 改写', () => {
     expect(csp).toContain("style-src vscode-webview://ext 'unsafe-inline'"); // joint 运行时注 <style>
     expect(csp).toContain("worker-src vscode-webview://ext blob:");
     expect(csp).toContain("script-src 'nonce-NONCE123'");
-    // R137：`import()` 出来的分块**带不上 nonce**（宿主层靠动态 import 挑实现），
-    // 所以 script-src 里必须有 webview origin，否则每一次 getHost() 静默失败。
+    // 动态 import 挑宿主实现这一条路，⛔ 断言"nonce 传不传得过去"——本机 Chromium 实测**传得过去**，
+    // 但那是运行时行为，⛔ 押它。所以 script-src 里带上 webview origin 是**不赌注**的决定，
+    // 而⛔ 把它写成"已测缺陷"（上一批我这样写过，被自己的变异臂当场否掉，见 R137 那节）。
     expect(csp).toMatch(/script-src[^;]*vscode-webview:\/\/ext/);
     expect(csp).not.toMatch(/script-src[^;]*'unsafe-inline'/); // ⛔ 用 unsafe-inline 等于把 CSP 关掉
   });
