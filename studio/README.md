@@ -7,23 +7,45 @@
 > 这句话纠正了我两轮的答非所问：R136–R138 做的是"把我们那套**自绘的**假 VS Code 界面塞进用户的 VS Code 标签页，
 > 再写一颗脚本帮他打开"。⛔ 产品该长这样。真正的方向是：**workbench 本身就是 UI**，
 > 我们的东西住进它的原生位置，产品是自己的一颗二进制，用户⛔ 需要另外装 VS Code。
+>
+> ⚠ **同日第二次纠正（写在 §0b，那是本轮的工单）**：光"workbench 是壳"还不够——
+> 「不是让你在vscode的壳内打开一个网页作为我的项目，而是应该将**绑定系统**移植到当前vscode壳**已有的文件系统**上，
+> 以及移植**模块、层次结构**两个板块，以及**沙盒系统**」。⇒ 装整套 SPA 的那颗 `WebviewPanel`⛔ 是终态，它按 §3 的片 4 逐块退役。
 
-## 0. 现状与目标的差距（先量，再改）
+## 0. 目标形态（2026-10-13 用户**第二次**定形，逐字）
+
+> **「当前套壳vscode不是让你在vscode的壳内打开一个网页作为我的项目，
+> 而是应该将绑定系统移植到当前vscode壳已有的文件系统上，以及移植模块、层次结构两个板块，以及沙盒系统」**
+
+这句话判掉的是我这轮的做法：**把整套 React SPA 塞进一颗 `WebviewPanel` 里当产品**——那还是"在壳内打开一个网页"，
+workbench 只是浏览器。真正的意思是**三块东西搬到宿主已有的原语上**（下表 §0b 的 A/B/C），
+搬完之后那颗装 SPA 的面板就该退役（画布本身留在编辑器里，见 C）。
+
+### 0b. 三块移植面（按他点名的顺序）
+
+| 板 | 现在住在哪（行数现读） | 搬到宿主的哪个原语上 | 判定"搬完了"的样子 |
+|---|---|---|---|
+| **A 绑定系统** | `src/lib/gateSystem.ts` 578 行：`activePartBindings`（名字→文件名的映射）**存在 localStorage 里**，解析靠 `sandboxStore` 那份内存文件表（`resolvePartRef`/`partExists`/`resolveDefCells`/`findPartCycle`/`rebindLiveGraph`/`ensureDefsFromCells`） | **壳已有的文件系统**：部件＝工作区里的真文件，绑定＝**相对路径的解析**（`workspace.fs` + 原生 Explorer 的文件/文件夹），改名/删除由 workbench 发事件，我们只跟着重绑 | 沙盒里实例化一个部件 ⇒ 磁盘上就是一颗 `.djs`；重命名那颗文件 ⇒ 所有引用它的画布自己更新（原生 Explorer 里做，⛔ 我们的弹窗）；`partBindings` 那把 localStorage 表**没有存在必要** |
+| **B 模块 + 层次结构两个板块** | `src/components/ModulePanel.tsx` 456 行、`src/components/HierarchyViewer.tsx` 301 行（都是自绘 React 侧栏） | **原生两棵树**：模块 ⇒ `DocumentSymbolProvider`（进 workbench 的 **Outline** 与面包屑，⛔ 我们再造一棵树）；层次结构 ⇒ `TreeView`（`contributes.views`，实例展开、双击钻取走 `openEditor`） | 侧栏里那两块是 workbench 画的树：跟随主题、能折叠、能搜索、F1/F2 快捷键与无障碍都由宿主给；⚠ 顺带结掉在册 **T-3**（`parseVerilogInstances` 回的是**外部模块名**⛔ 实例名，`HierarchyViewer` 用错过） |
+| **C 沙盒系统** | `src/components/SandboxCanvas.tsx` 3798 行 + `src/store/sandboxStore.ts` 449 行（`.djs` 正文**只在 webview localStorage**，宿主调用计数 0）+ `src/App.tsx` 1786 行的模式编排 | **文档 = 真文件**：`.djs` 注册成 `customEditors`，正文走 `TextDocument`（脏标记/保存/关闭/撤销都由 workbench）；器件库与逐器件配置 ⇒ 命令 + QuickPick/原生视图；**只有 joint 画布与仿真时钟留在 webview**（那是⛔ 能用原生 UI 画的） | 打开一个文件夹 ⇒ Explorer 里点 `.djs` 就在编辑器标签里开出画布；标题栏有脏点、Ctrl+S 保存、关闭询问都归 workbench；换机/清 profile⛔ 丢电路（§6b 那条"数据该是文件"的理由） |
+
+⚠ **A 与 C 必须同一批落**：绑定解析的 substrate 就是"部件＝文件"，而文件这件事只有等 `.djs` 进宿主文件系统才成立。
+所以顺序是 **C 的文件那半 → A → B → C 的 UI 那半**（B 独立，随时可切）。
+
+### 0c. 其余自绘 chrome 的去向（换一颗删一颗，⛔ 两套并存）
 
 | 位置 | 现在 | 目标 |
 |---|---|---|
-| 窗口/标题栏 | 我们自绘（`App.tsx` 顶栏 + 曾经自绘的窗口三颗） | 基座原生 |
+| 窗口/标题栏 | `App.tsx` 顶栏（窗口三颗已于 R138 删） | 基座原生 |
 | 菜单 | `components/MenuBar.tsx` 183 行自绘下拉 | `menus.commandPalette` + 编辑器标题栏动作 + 原生菜单 |
-| 文件树 | `components/Sidebar.tsx` + 我们的 `ProjectStore` 扫 `globalStorageUri/project_files` | **原生 Explorer**：项目根改成"打开的那个文件夹"（✅ 片 3a 已换轨），文件/重命名/拖拽/右键全交给 workbench（⬜ 树的主人还在我们手里，片 4 交出去） |
-| 画布 | 一整块 `WebviewPanel`（一个标签页里装整个 SPA） | **custom editor**（`.djs` / `.viz` 文档 → 编辑器标签，脏标记/保存/关闭由 VS Code 管） |
-| 层级／绑定／器件表 | 我们的 React 侧栏与弹窗 | `viewsContainers.activityBar` + `views`（`TreeDataProvider` / `WebviewView`） |
-| 日志 | `components/OutputPanel.tsx` 238 行自绘 | `Output` 通道 + `window.createOutputChannel({ log: true })` |
-| 问题列表 | 我们自绘 PROBLEMS 面板（含 V1 那颗行号缺陷） | `DiagnosticCollection` → 原生 Problems，行号/跳转/多文件都由 workbench 给 |
-| 状态提示 | 我们的状态栏组件 | `window.setStatusBarMessage` / 自定义 `StatusBarItem` |
-| 设置 | `components/SettingsPanel.tsx` + `projectConfigStore` | `contributes.configuration`（能进 Settings UI、可按工作区覆盖） |
+| 文件树 | `components/Sidebar.tsx` 604 行 + 我们的 `ProjectStore` 扫描 | **原生 Explorer**（根已于片 3a 换成打开的文件夹） |
+| 日志 | `components/OutputPanel.tsx` 238 行自绘 | `Output` 通道（`createOutputChannel({ log: true })`） |
+| 问题列表 | 自绘 PROBLEMS 面板（V1 那颗行号缺陷的主人） | `DiagnosticCollection` → 原生 Problems |
+| 状态提示 | 我们的状态栏组件（V2b 那 50 处反馈语） | `StatusBarItem` / `setStatusBarMessage` |
+| 设置 | `components/SettingsPanel.tsx` + `projectConfigStore` | `contributes.configuration`（进 Settings UI、可按工作区覆盖） |
 
-⇒ 拆完的收益⛔ 只是"少写点代码"：V1（问题面板行号恒等）、V2b（状态栏反馈语）那一族自绘缺陷会随宿主接管而**消失**，
-中文／主题／快捷键／无障碍也一并继承。
+⇒ 拆完的收益⛔ 只是"少写点代码"：V1／V2b 那一族自绘缺陷会随宿主接管而**消失**，中文／主题／快捷键／无障碍一并继承。
+
 
 ## 1. 基座怎么拿（这份 checkout 的事实，全部现读）
 
@@ -97,19 +119,39 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 - **片 3a（已完成，读数见 §1c）**：项目根从 `globalStorageUri/project_files` 换成**打开的工作区文件夹**
   （配置留在应用级，两颗根分开），并给 Extension Host 建起一面无头网（假宿主 + 25 格 + 8 臂台架）。
   这一步顺带解掉 R136 那颗"工程集合与工作区无关"的取舍，也让原生 Explorer 直接可用。
-- **片 3b（下一片）**：`.djs` / `.viz` 注册成 `customEditors`——画布从"一个装满 SPA 的 panel"
-  变成"编辑器标签里的那份文档"，脏标记、保存、关闭交给 VS Code。
-  ⚠ 这一片必须与"沙盒电路正文从 webview `localStorage` 搬进宿主文件"同批落：`.djs` 一旦成为真文件就出现在树里，
-  ⛔ 两套主人并存（磁盘一份 + localStorage 一份）让用户分不清哪份生效。
-  ⚠ **动机已按读数改写**（见 `MIGRATION_VSCODE.md` §6b）：webview 的 `localStorage` 在我们自己的二进制里
-  **确实跨启动稳定**（profile 的 `Local Storage/leveldb` 里读到 `verilog-viz-files` / `-folders` / `-onboarded`，
-  5 次启动只有 1 颗 origin）⇒ 这一片⛔ 是为了"防丢"，而是**数据该是文件**（进 git、进 Explorer、能被另存为带走）。
-- **片 4**：把 §0 表里"我们自绘"那几行逐个换成原生（文件树 → Explorer；日志 → Output；
-  问题 → `DiagnosticCollection`；设置 → `contributes.configuration`；状态 → StatusBarItem），
-  **换一颗删一颗**，⛔ 两套并存让人分不清哪个生效。
+- **片 4＝§0b 那三块板搬到宿主原语上（下一批起一笔一块；顺序 C 的文件那半 → A → B → C 的 UI 那半）**：
+  - **片 4-C1（下一刀）**：`.djs` 注册成 `customEditors` + 正文走 `TextDocument`——沙盒电路**成为工作区里的真文件**，
+    脏标记/保存/关闭/撤销交给 workbench。⚠ 与"正文搬出 webview `localStorage`"同批落（⛔ 两套主人并存，
+    磁盘一份 + localStorage 一份，用户分不清哪份生效）；⚠ 动机已按 §6b 的读数改写：⛔ 是为了"防丢"
+    （localStorage 在我们自己的二进制里跨启动稳定、5 次启动只有 1 颗 origin），而是**数据该是文件**
+    （进 git、进 Explorer、能被原生另存为带走）。
+  - **片 4-A**：绑定系统搬到那片文件系统上（`gateSystem` 的解析改走相对路径 + `workspace.fs`，
+    `activePartBindings` 那把 localStorage 表随之失去存在必要）。⇒ **A 依赖 C1**，⛔ 先动 A。
+  - **片 4-B**：模块 ⇒ `DocumentSymbolProvider`（进原生 Outline/面包屑）、层次结构 ⇒ `contributes.views` 的 `TreeView`；
+    这两块独立、随时可切，顺带结掉在册 **T-3**（`parseVerilogInstances` 回的是**外部模块名**⛔ 实例名）。
+  - **片 4-C2**：沙盒剩下的 UI 逐块搬（器件库/逐器件配置/波形…），**只有 joint 画布与仿真时钟留在 webview**；
+    `App.tsx`（1786 行）那层"模式编排 + 顶栏 + 状态栏"随 §0c 逐行退役，
+    最后**那颗装整个 SPA 的 `WebviewPanel` 删掉**——它就是这次被判掉的东西。
+  - **片 4-chrome**：日志 → Output、问题 → `DiagnosticCollection`、设置 → `contributes.configuration`、状态 → StatusBarItem，
+    **换一颗删一颗**，⛔ 两套并存让人分不清哪个生效。
 - **片 5**：branding 收尾（图标、`startupEditor`、精简掉⛔ 用的内置扩展与菜单）、Windows 打包脚本、
   独立 `--user-data-dir`（产品 behave 得像自己的 App，⛔ 污染他日常 VS Code 配置）；
   §1b 记的那条"共享存储落在 C 盘家目录"也在这一片按 D 盘口径处理。
+
+## 3b. 版本线（2026-10-13 用户裁定，逐字）
+
+**按"含⛔ 含 agent 功能"分两个版本**：**「当前项目我要另起一个版本，建议推送819563d5ecb7deff50f9da26176d3561348986b3，
+往后的提交使用新的分支"agent版"提交（可先只推几个提交，但不要全部推送），我要根据是否含有agent功能分为两个版本」**。
+
+| 线 | 落点 | 本轮读数 |
+|---|---|---|
+| `main`＝**无 agent 版** | 已推到 **`819563d`**（R135 那批：自包含 SVG 导出 + 证人 + 账本） | `git push origin 819563d…:refs/heads/main` ⇒ `54ce537..819563d`＝**5 笔**，fast-forward、⛔ force、`git diff --name-only` 15 颗文件里⛔ 敏感命名/无凭证串（唯一 `token` 命中的是 CSS 变量名） |
+| **`agent版`**＝往后所有提交 | 本地分支，指向 `f050d56`（R139 片 3a 收口那颗）；**本轮⛔ 推这条分支**（他那句"不要全部推送"） | `git rev-parse --abbrev-ref HEAD` ＝ `agent版`；`origin/agent版` ⛔ 存在 |
+
+⚠ 这条分线⛔ 表示"agent 功能已经写了"：到 `f050d56` 为止 agent 面仍是 **0 行代码**
+（`docs/MIGRATION_VSCODE.md` §4 状态表里第 4/6 步＝⛔ 未开工；他另有一条令：先⛔ 搭 agent 功能）。
+分线的意义在**发布口径**：无 agent 那份停在成熟骨架上，迁移（与新功能）都在 `agent版` 上走。
+推 `agent版` 与推 main 一样，**一事一授权**。
 
 ## 4. 装基座的实测前置（这一节是**跑过之后**写的，每条都对应一次真失败）
 

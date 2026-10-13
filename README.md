@@ -2,12 +2,12 @@
 
 # Verilog Visualizer
 
-**Verilog 编译 + 可交互电路图 + 自由逻辑沙盒 —— VS Code 里的本地桌面工具**
-**Verilog compilation, interactive circuit diagrams & a free-form logic sandbox — as a VS Code extension**
+**Verilog 编译 + 可交互电路图 + 自由逻辑沙盒 —— 自带 VS Code 骨架的离线桌面应用（迁移中）**
+**Verilog compilation, interactive circuit diagrams & a free-form logic sandbox — a standalone VS Code–based app (migration in progress)**
 
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#-快速开始--quick-start)
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![VS Code](https://img.shields.io/badge/host-VS%20Code%20extension-007acc)](./docs/MIGRATION_VSCODE.md)
+[![Host](https://img.shields.io/badge/host-our%20own%20Code%20--%20OSS%20build-007acc)](./studio/README.md)
 [![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
 [![Gates](https://img.shields.io/badge/regression%20gates-70%2B-brightgreen)](./docs/DEVELOPMENT.md)
 
@@ -17,11 +17,13 @@
 
 ---
 
-## 宿主 / Host（2026-10-13 定形）
+## 宿主 / Host（2026-10-13 二次定形）
 
-**目标形态＝自带 VS Code 源码分支、出独立二进制**（Cursor / Windsurf 同族做法）：整体 UI 就是 VS Code 的
-workbench，我们的东西住进它的原生位置（Explorer / 编辑器标签 / Output / Problems / Settings），
-用户⛔ 需要另外装 VS Code。分期与实测前置见 [studio/README.md](./studio/README.md)。
+**目标形态＝自带 VS Code 源码分支、出独立二进制**（Cursor / Windsurf 同族做法），且**⛔ 是"在壳里打开一个网页"**：
+要做的是把三块东西**移植到宿主已有的原语上**——**绑定系统 → 壳的文件系统**、**模块／层次结构两个板块 → 原生 Outline 与 TreeView**、
+**沙盒系统 → `.djs` 成为工作区里的真文档**；搬完那颗装整套 SPA 的面板就退役。工单与实测前置见 [studio/README.md](./studio/README.md)（§0b/§3）。
+
+**版本线**（同日裁定）：`main` ＝ **无 agent 功能**那份，已推到 `819563d`（R135）；往后的提交都走**新分支 `agent版`**（本地，⛔ 未推）。
 
 诚实版进度：
 - ✅ **Tauri 那条线整条已拆**（`src-tauri/`、Rust 后端 14 颗命令、`tauriHost`、自绘标题栏 `WindowControls.tsx`；
@@ -31,10 +33,11 @@ workbench，我们的东西住进它的原生位置（Explorer / 编辑器标签
 - ⬜ **基座已就位并跑通过一次**（仓库外 `D:\vv-studio\vscode`，Code - OSS 1.143.0）：`pnpm studio:brand` 把品牌
   合进基座 `product.json` 并把我们的扩展装成它的内置扩展；基座 `npm install` + `compile-client` + `electron`
   本轮真跑通，起的是**我们自己的二进制**（`.build/electron/Verilog Visualizer.exe`，239,129,088 字节），
-  内置扩展在里头激活并自动把画布弹出来。**还没做的是把界面换成 workbench 原生位置**（片 3b/4）。
+  内置扩展在里头激活并自动把画布弹出来（含在**未信任的工作区**里——那颗坑见 `studio/README.md` §1c）。
 - ⬜ **片 3a 已落**：项目根＝**打开的那个文件夹**（⛔ 文件夹时退回旧家），原生 Explorer 从此看得见工程文件；
   工程配置留在应用级（⛔ 往用户仓库里扔配置文件）；并给 Extension Host 建起一面无头网
   （`tests/unit/vscodeApiStub.ts` + `tests/unit/extensionHost.test.ts` 25 格，vitest 97/97）。
+  ⬜ **下一刀＝片 4-C1**：`.djs` 注册成 `customEditors`、正文进宿主文件系统（绑定系统那板依赖它）。
 - 前端⛔ 直连宿主 API：文件/配置/另存为/剪贴板全部从 `src/lib/host/` 进出，按运行时探测 `vscodeHost` / `browserHost`。
 
 ## 简介

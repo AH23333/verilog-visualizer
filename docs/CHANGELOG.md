@@ -7,6 +7,45 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R140：版本分线（main＝无 agent 版）+ 方向第二次纠正（2026-10-13）
+
+> 他这次说了两件事，逐字。分线：**「当前项目我要另起一个版本，建议推送819563d5ecb7deff50f9da26176d3561348986b3，
+> 往后的提交使用新的分支"agent版"提交（可先只推几个提交，但不要全部推送），我要根据是否含有agent功能分为两个版本」**；
+> 纠正：**「当前套壳vscode不是让你在vscode的壳内打开一个网页作为我的项目，
+> 而是应该将绑定系统移植到当前vscode壳已有的文件系统上，以及移植模块、层次结构两个板块，以及沙盒系统」**。
+
+### 版本线（本轮真跑过的推送）
+- `origin/main` **快进到 `819563d`**（`54ce537..819563d`＝**5 笔**，R135 那批：自包含 SVG 导出 + 证人 + 账本）。
+  推送前查过三件事：**是 fast-forward**（⛔ force）、`git diff --name-only` 只有 **15** 颗源码/文档/测试、
+  凭证形状 grep **0** 命中（唯一 `token` 那句是 `getComputedStyle` 的 CSS 变量名）。
+  ⚠ 用的是 `git push origin <sha>:refs/heads/main` 这种**指名 refspec**，⛔ `git push origin main`——后者会把全部 23 笔一起推上去，
+  正是他那句"不要全部推送"要挡掉的。
+- 新建本地分支 **`agent版`** 指向 `f050d56`（R139 片 3a 收口那颗）并切过去，**往后的提交都落这条线**。
+  这条分支本轮**⛔ 推**（等他逐次点头）。⚠ 分线⛔ 等于"agent 功能已存在"：到 `f050d56` 为止 agent 面仍是 **0 行代码**，
+  分的是**发布口径**（无 agent 那份停在成熟骨架，迁移与新功能都在 `agent版` 上走）。
+
+### 方向第二次纠正：⛔"在壳里打开一个网页"，而是要**移植**
+我这轮交的是"一整块 `WebviewPanel` 装下整个 React SPA"＋"画布以后变成 custom editor"——按他这句话，
+前者⛔ 是产品，后者还不够：要把**三块东西搬到宿主已有的原语上**。工单落进 `studio/README.md` §0b/§3（各带"判定搬完了的样子"一列）：
+
+| 板 | 现在的住法（行数现读） | 搬到哪 |
+|---|---|---|
+| **A 绑定系统** | `src/lib/gateSystem.ts` 578 行：`activePartBindings`（名→文件）存在 **localStorage**，解析靠 `sandboxStore` 那份内存文件表 | **壳已有的文件系统**：部件＝工作区里的真文件，绑定＝相对路径解析；改名/删除由 workbench 发事件，我们只跟着重绑 |
+| **B 模块 + 层次结构** | `ModulePanel.tsx` 456 行、`HierarchyViewer.tsx` 301 行（自绘 React 侧栏） | 模块 ⇒ `DocumentSymbolProvider`（进原生 **Outline**/面包屑）；层次结构 ⇒ `contributes.views` 的 **`TreeView`**；顺带结掉在册 **T-3** |
+| **C 沙盒系统** | `SandboxCanvas.tsx` 3798 行 + `sandboxStore.ts` 449 行（`.djs` 正文**只在 webview localStorage**）+ `App.tsx` 1786 行的模式编排 | `.djs` ⇒ **`customEditors` + `TextDocument`**（脏标记/保存/关闭归 workbench）；器件库与配置 ⇒ 命令 + QuickPick/原生视图；**只有 joint 画布与仿真留在 webview** |
+
+⇒ 顺序被依赖钉死：**C 的文件那半（片 4-C1）→ A → B → C 的 UI 那半（片 4-C2）**，最后那颗装 SPA 的面板删掉。
+⚠ A⛔ 先动：绑定解析的 substrate 就是"部件＝文件"，而这件事要 C1 落地才成立。
+
+### Changed
+- `README.md`「宿主」一节改成二次定形（含版本线与"⛔ 是网页壳"这句），`studio/README.md` 顶部决策块追记第二次纠正、
+  §0 重写成 §0b 三块板 + §0c chrome 表、新增 **§3b 版本线**（两条线的落点与推送读数都写进去）。
+
+### 本轮⛔ 动的代码
+片 3a 之后的 97 格判据一字未改（vitest 97/97 仍绿），这一轮是**分线＋工单重写**——工单写歪比代码写歪更贵，
+因为它决定下一批往哪儿落刀。
+
+---
 ## [未发布 Unreleased] — R139：方向纠正——自带 VS Code 源码分支出独立二进制（2026-10-13）
 
 > **我连续两轮把方向理解错了**，先记这句。他要的是「**UI 风格直接套壳 vscode**」：workbench 本身就是产品界面，

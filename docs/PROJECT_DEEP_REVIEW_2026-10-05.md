@@ -647,3 +647,51 @@ R136 起挂着的那颗：webview 里的 `localStorage` 到底持不持久（沙
  开局判据从 `extensionMode` 搬到"扩展在不在 appRoot 里"，项目根换成打开的文件夹并建起 Extension Host 的无头网；
  真机另抓到一颗"受限模式下宿主根本不激活我们"，已按清单声明修好；vitest 97/97，画布观感仍记 UNVERIFIED）*
 
+
+
+---
+
+# 卷四十六 · R140：版本分线（main＝无 agent 版）+ 方向**第二次**纠正（2026-10-13）
+
+> 两句都逐字。分线：**「当前项目我要另起一个版本，建议推送819563d5ecb7deff50f9da26176d3561348986b3，
+> 往后的提交使用新的分支"agent版"提交（可先只推几个提交，但不要全部推送），我要根据是否含有agent功能分为两个版本」**；
+> 纠正：**「当前套壳vscode不是让你在vscode的壳内打开一个网页作为我的项目，
+> 而是应该将绑定系统移植到当前vscode壳已有的文件系统上，以及移植模块、层次结构两个板块，以及沙盒系统」**。
+
+## 一、分线：推送只推"指名那几笔"
+
+| 项 | 读数 |
+|---|---|
+| 那颗 sha 是什么 | `819563d`＝`docs(R135): 账本卷四十一补记八~十节`，**是 HEAD 的祖先**（不是分叉、⛔ 新提交） |
+| `origin/main` 推前在哪 | `54ce537`（代收 Agent 架构文档那笔） |
+| 这段范围 | `54ce537..819563d`＝**5 笔**（R135：自包含 SVG 导出 + 证人 + 账本），**fast-forward ⇒ ⛔ force** |
+| 推前查秘密 | `git diff --name-only` 只有 **15** 颗源码/文档/测试；凭证形状 grep **0** 命中（唯一 `token` 那句是 `getComputedStyle(...)` 的 CSS 变量名） |
+| 用的命令 | `git push origin 819563d5...:refs/heads/main`——**指名 refspec**。⛔ `git push origin main`：那会把本地 23 笔全推上去，正是他那句"不要全部推送"要挡掉的形状 |
+| 新分支 | `git branch agent版 f050d56` + `git checkout agent版`；`origin/agent版` **⛔ 建**（推不推仍一事一授权） |
+
+⚠ **分线⛔ 等于"agent 功能已经写了"**：到 `f050d56` 为止 agent 面是 **0 行代码**（`MIGRATION_VSCODE.md` §4 状态表里 L1/工具门面两步＝⛔ 未开工，
+他另有令：先⛔ 搭 agent 功能）。分的是**发布口径**：无 agent 那份停在 R135 的成熟骨架，迁移与新功能都在 `agent版` 上走。
+
+## 二、方向第二次纠正：⛔"在壳里打开一个网页"，而是要**移植**
+
+我这两轮（R136–R139）的交付形状是"一整块 `WebviewPanel` 装下整个 React SPA"，加上"以后把画布变成 custom editor"。
+按他这句话，前者⛔ 是产品形态（workbench 沦为浏览器），后者还不够——**要搬的是三块功能，⛔ 是一块面板**：
+
+| 板 | 现在的住法（行数现读，⛔ 猜） | 搬到宿主的哪个原语 | 判定"搬完了"的样子 |
+|---|---|---|---|
+| **A 绑定系统** | `src/lib/gateSystem.ts` **578** 行：`setActivePartBindings/getActivePartBindings` 那把**名→文件**的表存在 localStorage，`resolvePartRef`/`partExists`/`resolveDefCells`/`findPartCycle`/`rebindLiveGraph`/`ensureDefsFromCells` 全靠 `sandboxStore` 那份**内存文件表** | **壳已有的文件系统**：部件＝工作区里的真文件，绑定＝相对路径解析；改名/删除由 workbench 发事件，我们只跟着重绑 | 重命名 Explorer 里那颗文件 ⇒ 所有引用它的画布自己更新；`activePartBindings` 那把 localStorage 表失去存在必要 |
+| **B 模块 + 层次结构** | `ModulePanel.tsx` **456** 行、`HierarchyViewer.tsx` **301** 行（都是自绘 React 侧栏） | 模块 ⇒ `DocumentSymbolProvider`（进原生 **Outline** 与面包屑）；层次结构 ⇒ `contributes.views` 的 **`TreeView`** | 那两块树是宿主画的：主题/折叠/搜索/快捷键/无障碍全继承；⚠ 顺带结掉在册 **T-3**（`parseVerilogInstances` 回**外部模块名**⛔ 实例名，`HierarchyViewer` 用错过） |
+| **C 沙盒系统** | `SandboxCanvas.tsx` **3798** 行 + `sandboxStore.ts` **449** 行（`.djs` 正文**只在 webview localStorage**，宿主调用计数 0）+ `App.tsx` **1786** 行的模式编排 | `.djs` ⇒ **`customEditors` + `TextDocument`**（脏标记/保存/关闭/撤销归 workbench）；器件库与逐器件配置 ⇒ 命令 + QuickPick/原生视图；**只有 joint 画布与仿真时钟留在 webview**（那⛔ 能用原生 UI 画） | Explorer 点 `.djs` ⇒ 编辑器标签里开出画布，标题栏有脏点、Ctrl+S 保存、关闭询问都由宿主给 |
+
+**顺序被依赖钉死**：A 的解析 substrate 就是"部件＝文件"，而"文件"这件事要 C 的文件那半落地才成立 ⇒
+**片 4-C1（`.djs` 成文档）→ 4-A（绑定搬过去）→ 4-B（两块树）→ 4-C2（沙盒其余 UI，最后删掉那颗装 SPA 的面板）**；
+B 独立，随时可切。工单已写进 `studio/README.md` §0b/§0c/§3（每块板都带"判定搬完了的样子"那一列，⛔ 让下一批自己解释）。
+
+## 三、这一轮⛔ 动的代码，与为什么值得单独一笔
+
+判据一字未改（vitest **97/97** 仍绿、台架 4+8 臂不变）。分线与方向这两件事都⛔ 靠代码表达：
+分线落在 git 结构上（`main`/`agent版` 两条线＋一条指名 refspec），纠正落在**工单**上（§0b 那张表决定下一批往哪儿落刀）。
+**工单写歪比代码写歪更贵**——代码写歪下一批能测出来，工单写歪会让接下来几批都在⛔ 该做的面上做得很对。
+
+*（卷四十六完 · R140：`origin/main` 快进 5 笔到 `819563d`＝无 agent 那份；新分支 `agent版` 从 `f050d56` 起接后续提交；
+ 套壳的定义改成"把绑定系统／模块／层次结构／沙盒搬到宿主已有的文件系统与原生视图上"，四刀顺序按依赖钉死）*
