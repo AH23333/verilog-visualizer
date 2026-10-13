@@ -38,3 +38,20 @@
 5. 裁决闭环：PNG 导出下线经用户确认（本卷首节）。
 
 *（卷三十八补记完 · 双代理协同，文件级分工无冲突）*
+
+---
+
+# 卷三十九 · R131 收口：ESLint 批与黑窗补漏验证入库 + 批完成信号机制（2026-10-12）
+
+## 一、验证与入库
+- 统一批 r131：**`RED=0 ENVRED=0 GREEN=70 NOVERDICT=0 共 70 格`** ✓（覆盖待验全集：ESLint 工具链、tsconfig lib ES2022、subcircuitView cause、annotationCell args 转发、run-all+12 mutate 的 spawnSync windowsHide）。
+- 逐文件归属提交（在途代理的 AGENT docs/_ui.cjs **不碰**，留其自提）。
+
+## 二、批完成信号机制（用户需求："跑测试要有输出信号标志"）
+- 新增 `tests/notify_done.cjs`：轮询批日志 → 汇总出现即弹 **Windows toast 通知**（✅ 全绿 / ⚠️ 有红，含红格名单）。
+- **新惯例**：起跑批后必须随手 `node tests/notify_done.cjs <log> <批名>` 挂信号器——用户不再需要盯进度或猜何时叫继续。已对 R131 批实践生效。
+
+## 三、r130 超时根因的修正补记
+- `vite optimize` 实测输出 **"Hash is consistent. Skipping."** —— pnpm install 后预构建缓存并未失效（卷三十八第三节推断被修正）。r130 ENVRED 的真因收敛为卷三十八补记第 4 条观察项：**批运行窗口与在途代理改 tests/ 文件重叠**，触发 vite 依赖图重扫/重编译，冷启动超时。惯例补充：**跑批前确认并行代理空闲**，或批内日志出现连续 goto 超时即判定"并行污染"，作废重跑。
+
+*（卷三十九完 · 待验集清零）*
