@@ -48,7 +48,8 @@ for (const g of list) {
     continue;
   }
   const port = gatePort(file);
-  const r = spawnSync('node', [file], { cwd: ROOT, encoding: 'utf8', timeout: 900000, maxBuffer: 64 * 1024 * 1024 });
+    // windowsHide（用户裁决：跑批禁弹控制台窗——每格一个窗会干扰用机且易误关杀进程）
+    const r = spawnSync('node', [file], { cwd: ROOT, encoding: 'utf8', timeout: 900000, maxBuffer: 64 * 1024 * 1024, windowsHide: true });
   const reaped = reap(port);
   const out = (r.stdout || '') + '\n' + (r.stderr || '');
   fs.writeFileSync(path.join(LOGDIR, g + '.log'), out, 'utf8');

@@ -64,7 +64,7 @@ const MUTANTS = [
 ];
 
 function runGate(port) {
-  const r = spawnSync('node', [path.join(ROOT, 'tests/r113-mirror-rotate-gate.cjs')], {
+  const r = spawnSync('node', [path.join(ROOT, 'tests/r113-mirror-rotate-gate.cjs')], { windowsHide: true,
     cwd: ROOT, encoding: 'utf8', timeout: 900000, maxBuffer: 64 * 1024 * 1024,
   });
   UI.reapViteByPort(port);

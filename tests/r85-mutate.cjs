@@ -89,7 +89,7 @@ try {
     restore(); apply(m);
     console.log(`\n########## ${m.id} —— ${m.why}`);
     cooldown();
-    const r = spawnSync('node', ['tests/r85-posfidelity-gate.cjs'], { cwd: ROOT, encoding: 'utf8', timeout: 560000 });
+    const r = spawnSync('node', ['tests/r85-posfidelity-gate.cjs'], { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 560000 });
     const out = (r.stdout || '') + (r.stderr || '');
     const p = parse(out);
     if (p.fatal) {
@@ -124,7 +124,7 @@ try {
   console.log(bad ? '  ★源码没回到快照' : '  已还原并逐字节比对一致（4 个文件）');
   console.log('\n########## 还原后基线重跑');
   cooldown();
-  const r = spawnSync('node', ['tests/r85-posfidelity-gate.cjs'], { cwd: ROOT, encoding: 'utf8', timeout: 560000 });
+  const r = spawnSync('node', ['tests/r85-posfidelity-gate.cjs'], { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 560000 });
   const out = (r.stdout || '') + (r.stderr || '');
   const p = parse(out);
   console.log('  逐格', ARMS.map((a) => `${a}:${p.map[a] ? p.map[a].verdict : '无判定'}`).join(' '), '|', p.summary);

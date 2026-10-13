@@ -76,7 +76,7 @@ try {
     console.log(`\n########## ${m.id}\n  ${m.why}`);
     const err = m.apply();
     if (err) { console.log(`  ★${err} —— 不作数（跳过≠通过）`); verdict = 1; continue; }
-    const r = spawnSync('node', ['tests/r92-routing-gate.cjs'], { cwd: ROOT, encoding: 'utf8', timeout: 420000 });
+    const r = spawnSync('node', ['tests/r92-routing-gate.cjs'], { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 420000 });
     const out = (r.stdout || '') + (r.stderr || '');
     const map = parse(out);
     const keys = Object.keys(map).sort();

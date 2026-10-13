@@ -23,7 +23,7 @@ function replaceOnce(file, from, to) {
 
 const run = (env) => {
   const r = spawnSync('node', ['tests/r91-palette-coverage-gate.cjs'],
-    { cwd: ROOT, encoding: 'utf8', timeout: 120000, env: { ...process.env, ...env } });
+    { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 120000, env: { ...process.env, ...env } });
   const out = (r.stdout || '') + (r.stderr || '');
   const map = {};
   for (const line of out.split(/\r?\n/)) {

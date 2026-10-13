@@ -79,7 +79,7 @@ try {
     apply(m);
     console.log(`\n########## ${m.id} —— ${m.why}`);
     cooldown();
-    const r = spawnSync('node', [path.join('tests', 'r84-binding-gate.cjs')], { cwd: ROOT, encoding: 'utf8', timeout: 420000 });
+    const r = spawnSync('node', [path.join('tests', 'r84-binding-gate.cjs')], { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 420000 });
     const out = (r.stdout || '') + (r.stderr || '');
     const p = parse(out);
     if (p.fatal) {
@@ -108,7 +108,7 @@ try {
   if (back !== ORIG) { console.log('★还原后内容与快照不一致 —— 先手工核对 src/components/SandboxCanvas.tsx'); bad++; }
   else console.log('  已还原并逐字节比对一致');
   console.log('\n########## 还原后基线重跑');
-  const r = spawnSync('node', [path.join('tests', 'r84-binding-gate.cjs')], { cwd: ROOT, encoding: 'utf8', timeout: 420000 });
+  const r = spawnSync('node', [path.join('tests', 'r84-binding-gate.cjs')], { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 420000 });
   const out = (r.stdout || '') + (r.stderr || '');
   const p = parse(out);
   console.log('  逐格', ARMS.map((a) => `${a}:${p.map[a] ? p.map[a].verdict : '无判定'}`).join(' '), '|', p.summary);

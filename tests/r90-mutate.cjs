@@ -61,7 +61,7 @@ try {
       fs.writeFileSync(f, src.replace(from, to));
     }
     if (!usable) { console.log('  SKIPPED（锚点不唯一，跳过≠通过，也不计作咬住）'); verdict = 1; continue; }
-    const r = spawnSync('node', ['tests/r90-single-owner-gate.cjs'], { cwd: ROOT, encoding: 'utf8', timeout: 120000 });
+    const r = spawnSync('node', ['tests/r90-single-owner-gate.cjs'], { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 120000 });
     const out = (r.stdout || '') + (r.stderr || '');
     const map = parse(out);
     const keys = Object.keys(map).sort();

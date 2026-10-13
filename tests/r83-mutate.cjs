@@ -18,7 +18,7 @@ try {
   if (n !== 2) { console.log(`★锚点 ${n} 次（要 2）—— 不动文件`); verdict = 1; }
   else {
     fs.writeFileSync(FILE, ORIG.split(FROM).join(TO));
-    const r = spawnSync('node', ['tests/r83-errorcopy-gate.cjs'], { cwd: ROOT, encoding: 'utf8', timeout: 420000 });
+    const r = spawnSync('node', ['tests/r83-errorcopy-gate.cjs'], { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 420000 });
     const out = (r.stdout || '') + (r.stderr || '');
     const map = {};
     for (const line of out.split(/\r?\n/)) {

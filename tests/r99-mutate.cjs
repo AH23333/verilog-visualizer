@@ -93,7 +93,7 @@ try {
     console.log(`\n########## ${m.id}\n  ${m.why}`);
     const err = m.apply();
     if (err) { console.log(`  ★${err} —— 不作数（跳过≠通过）`); verdict = 1; continue; }
-    const r = spawnSync('node', ['tests/r99-ui-unify-gate.cjs'], { cwd: ROOT, encoding: 'utf8', timeout: 540000, maxBuffer: 64 * 1024 * 1024 });
+    const r = spawnSync('node', ['tests/r99-ui-unify-gate.cjs'], { windowsHide: true, cwd: ROOT, encoding: 'utf8', timeout: 540000, maxBuffer: 64 * 1024 * 1024 });
     const out = (r.stdout || '') + (r.stderr || '');
     const map0 = parse(out);
     // 声明为未验的臂若随跳（如 [5c] 在 if(dlg.open) 里）缺席，记 UNVERIFIED——缺席≠没咬住
