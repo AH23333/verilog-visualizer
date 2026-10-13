@@ -15,8 +15,10 @@
 //   [6] 句式·屏幕层：状态栏那颗 `[data-status-message]` 上**显示出来的**句子不许是整句英文
 //       （采样两颗时刻：错误态那句＋点 PROBLEMS 跳行之后那句）。⛔ 不扫整页——整页含 Verilog 源码，
 //       那样判据恒红。
-//   [7] 句式·源码层：`App.tsx` 里 `setMessage(...)` 实参按同一条句式规则数出来必须是 0 句英文
-//       （V2b 的完整射程＝50 处，见 docs/PROJECT_DEEP_REVIEW §卷六；摘取器与 [6] 共用 `_ui.cjs` 一份）。
+//   [7] 句式·源码层：**生产侧文件集合**（`App.tsx` + 组件 + `src/hooks/*`）里 `setMessage(...)` 实参
+//       按同一条句式规则数出来必须是 0 句英文（V2b 的完整射程＝50 处，见 docs/PROJECT_DEEP_REVIEW §卷六；
+//       摘取器与 [6] 共用 `_ui.cjs` 一份）。⚠ 集合含 hooks 是 R136 补的：R132 把编译管线搬进
+//       `useCompilePipeline.ts` 后，只扫 App.tsx 会让这一格**看不见搬家后的句子**（假绿灯）。
 //       ⚠ `Compiling...` 这类**单词句**不在句式规则射程内（规则要 ≥2 个单词），但这一批也一并改成了中文。
 const { spawn } = require('child_process');
 const path = require('path'); const fs = require('fs');
@@ -125,8 +127,17 @@ const screenHas = (page, needles) => page.evaluate((list) => {
       rows.length === 0 ? '一行都没读到（锚点或面板状态不对，不作数）' : `读到=${J(nums)}（共 ${rows.length} 行）`);
 
     // 形状闸门：源码里那四句英文必须绝迹（整句 + 子串两种措辞）
+    // ⚠ 集合要跟着"文案住在哪"长：R132 编译管线 hooks 化（commit `2ed2db1`）之后，
+    //   「正在编译…」「编译成功！」这类句子已经从 App.tsx 搬进 `hooks/useCompilePipeline.ts`。
+    //   只盯 App.tsx 是双向坏：[4]/[7] 变成看不见 hook 的**假绿灯**，[4b]/[7b] 反而误红。
     const srcFiles = ['src/App.tsx', 'src/components/OutputPanel.tsx', 'src/components/Canvas.tsx'];
-    const joined = srcFiles.filter((f) => fs.existsSync(path.join(ROOT, f))).map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
+    try {
+      for (const f of fs.readdirSync(path.join(ROOT, 'src', 'hooks'))) {
+        if (/[.](ts|tsx|js)$/.test(f)) srcFiles.push('src/hooks/' + f);
+      }
+    } catch { /* 没有 hooks 目录就按旧集合判 */ }
+    const presentFiles = srcFiles.filter((f) => fs.existsSync(path.join(ROOT, f)));
+    const joined = presentFiles.map((f) => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
     const whole = EN.filter((s) => joined.includes(s));
     const parts = ['Code is clean', 'No output yet', 'validation failed', 'No problems'].filter((s) => joined.includes(s));
     (whole.length === 0 && parts.length === 0 ? ok : bad)('[4] 这几句英文在源码里绝迹（整句与关键子串各查一遍，防换词绕过）',
@@ -153,14 +164,16 @@ const screenHas = (page, needles) => page.evaluate((list) => {
 
     // ===== [7] 源码层同一条句式规则：`setMessage(...)` 里不许再留整句英文 =====
     //   与 [6] 配对：[6] 管"看得见的"，[7] 管"躲在没被走到的分支里"的（那一族屏幕闸门看不见）。
-    const appSrc = fs.readFileSync(path.join(ROOT, 'src/App.tsx'), 'utf8');
-    const lit = UI.setMessageLiterals(appSrc);
-    (lit.length === 0 ? ok : bad)('[7] App.tsx 里 setMessage 的实参按句式数出来是 0 句英文（V2b 全量）',
-      `命中 ${lit.length} 处：${J(lit.slice(0, 5).map((h) => `${h.line}:${h.text}`))}`);
+    const litByFile = presentFiles.map((f) => ({
+      f, hits: UI.setMessageLiterals(fs.readFileSync(path.join(ROOT, f), 'utf8')),
+    }));
+    const lit = litByFile.reduce((n, x) => n + x.hits.length, 0);
+    (lit === 0 ? ok : bad)('[7] 生产侧（App + 组件 + 编译 hooks）里 setMessage 的实参按句式数出来是 0 句英文（V2b 全量）',
+      `命中 ${lit} 处：${J(litByFile.filter((x) => x.hits.length).slice(0, 5).map((x) => `${x.f}@${x.hits[0].line}:${x.hits[0].text}`))}｜扫过 ${presentFiles.length} 颗文件`);
     const zh2b = ['正在编译', '已保存文件', '剪贴板', '仿真运行中', '已跳到', '缺少模块实现', '浏览模式', '高亮'];
-    const present = zh2b.filter((s) => appSrc.includes(s));
-    (present.length === zh2b.length ? ok : bad)('[7b] 对应中文确实在源码里（不是把句子删了冒充修好）',
-      `命中 ${present.length}/${zh2b.length}，缺=${J(zh2b.filter((s) => !present.includes(s)))}`);
+    const gotZh = zh2b.filter((w) => joined.includes(w));
+    (gotZh.length === zh2b.length ? ok : bad)('[7b] 对应中文确实在源码里（不是把句子删了冒充修好）',
+      `命中 ${gotZh.length}/${zh2b.length}，缺=${J(zh2b.filter((w) => !gotZh.includes(w)))}（扫过 ${J(presentFiles)}）`);
 
     (perr.length ? bad : ok)('[5] 全程无页面异常', perr.slice(0, 3).join(' | '));
     console.log(`\n===== 结果: ${pass} pass, ${fail} fail, ${unverified} 未验证 =====`);

@@ -120,15 +120,29 @@ async function validate(page, files) {
     });
     (mism.length === 0 && all.errors.length > 0 ? ok : bad)('[5] 结构化 line 与 detail 里的「第 N 行」逐条相等（两栏互证）', mism.length ? J(mism.map((e) => `${e.inst}:${J(e.line)} vs ${e.detail.slice(0, 40)}`)) : `${all.errors.length} 条都对得上`);
 
-    // ===== [6] 生产侧形状：App 读字段，不再从文案回捞、也不塞假行号 =====
-    const appSrc = fs.readFileSync(path.join(ROOT, 'src', 'App.tsx'), 'utf8').replace(/^\uFEFF/, '');
-    const noComment = appSrc.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
-    const grabsBack = /第\((?:\\d|\[0-9\])\)\+行/.test(noComment) || /detail\s*\.match\s*\(/.test(noComment);
-    const fakesLine = /line:\s*1\b/.test(noComment);
-    const readsField = /line:\s*err\.line\b/.test(noComment);
-    (grabsBack ? bad : fakesLine ? bad : readsField ? ok : bad)(
-      '[6] App.tsx 不回去文案里捞行号：改读结构化 err.line（三种罪状三种措辞）',
-      grabsBack ? '仍在捞 `/第(\\d+)行/` 或 `detail.match(...)`' : fakesLine ? '还在塞 `line: 1`' : `读字段=${readsField}`);
+    // ===== [6] 生产侧形状：读结构化字段，不从文案回捞、也不塞假行号 =====
+    // ⚠ 这一格在 R136 修过一次"指错文件"的账：R132 把编译管线 hooks 化（commit `2ed2db1`，
+    //   App 1928→1788）时，PROBLEMS 那条映射从 `App.tsx` 搬进了 `hooks/useCompilePipeline.ts`，
+    //   而这颗证人只读 App.tsx ⇒ 产品没坏、证人自己变红。**搬家必须同批回写证人**——
+    //   现在把"生产侧"定义为"编译那一条链上的源文件集合"，并报告读到的落在哪颗文件里。
+    const PROD_FILES = [
+      path.join(ROOT, 'src', 'App.tsx'),
+      path.join(ROOT, 'src', 'hooks', 'useCompilePipeline.ts'),
+    ];
+    const prod = PROD_FILES.map((f) => ({
+      file: path.basename(f),
+      src: (() => { try { return fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, ''); } catch { return ''; } })(),
+    })).filter((x) => x.src.length > 0);
+    const strip = (t) => t.split('\n').filter((l) => !/^\s*(\/\/|\*)/.test(l)).join('\n');
+    const inAny = (re) => prod.filter((x) => re.test(strip(x.src))).map((x) => x.file);
+    const grabsBack = inAny(/第\((?:\\d|\[0-9\])\)\+行/) .length > 0 || inAny(/detail\s*\.match\s*\(/).length > 0;
+    const fakesLine = inAny(/line:\s*1\b/).length > 0;
+    const readsFieldIn = inAny(/line:\s*err\.line\b/);
+    (grabsBack ? bad : fakesLine ? bad : readsFieldIn.length ? ok : bad)(
+      '[6] 生产侧（App + 编译 hooks）不回去文案里捞行号：改读结构化 err.line（三种罪状三种措辞）',
+      grabsBack ? `仍在捞 \`/第(\\d+)行/\` 或 detail.match(...)：${J(inAny(/detail\s*\.match\s*\(/))}`
+        : fakesLine ? `还在塞 \`line: 1\`：${J(inAny(/line:\s*1\b/))}`
+          : `读字段=${J(readsFieldIn)}（搜过 ${J(prod.map((x) => x.file))}——一处都没有＝红）`);
 
     // ===== [7] 文件级错误（重复定义）行号＝ null =====
     const dupErr = all.errors.find((e) => /重复定义/.test(e.detail));
