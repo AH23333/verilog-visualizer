@@ -9,6 +9,9 @@
 
     /* Bundler mode */
     "moduleResolution": "bundler",
+    /* 测试里 `import * as vscode from 'vscode'` 指的是那颗无头桩（运行时同名的 alias 在 vitest.config.ts）。
+       ⛔ 只配这里的一半：那样 tsc 过、跑起来找不到模块。 */
+    "paths": { "vscode": ["./tests/unit/vscodeApiStub.ts"] },
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
     "isolatedModules": true,

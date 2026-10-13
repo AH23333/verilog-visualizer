@@ -31,7 +31,7 @@ export function activate(context: vscode.ExtensionContext) {
       try { await then(vscode.workspace.fs.createDirectory(root)); } catch { /* 已存在也算成功 */ }
       try { await vscode.commands.executeCommand('revealFileInOS', root); } catch { /* 某些平台不支持 ⇒ 下面仍给路径 */ }
       await vscode.env.clipboard.writeText(root.fsPath);
-      void vscode.window.showInformationMessage(`项目文件目录：${root.fsPath}（路径已复制）`);
+      void vscode.window.showInformationMessage(`项目根目录：${root.fsPath}（路径已复制）`);
     }),
   );
   if (vscode.window.registerWebviewPanelSerializer) {
@@ -94,12 +94,30 @@ async function findIndexHtml(context: vscode.ExtensionContext): Promise<{ uri: v
 }
 
 /**
- * 项目根：`context.globalStorageUri/project_files`，与当年 Tauri 的
- * `app_data_dir()/project_files` 一一对应（⛔ 用 workspace 文件夹——那会让"打开哪个工程"
- * 决定文件可见性，而现有实现的工程集合是与工作区无关的单一目录）。
+ * 工程配置的家：⚠ **一直**是 `globalStorageUri/project_files`，跟着工作区走的是源文件（见 `projectRoot`）。
+ * 分成两颗是有理由的：把 `project_config.json` 扔进用户打开的那个文件夹＝在他的仓库里造一颗
+ * 没人要求的文件（`git status` 当场脏）；而 VS Code 自己的对等物是 `.vscode/settings.json`，
+ * 那一层片 4 会整颗换成 `contributes.configuration`。在换掉之前，配置按应用级算，
+ * 与 R137 起的落点一字不差（⛔ 用户改过的设置随换轨消失）。
  */
-function projectRoot(context: vscode.ExtensionContext): vscode.Uri {
+function configRoot(context: vscode.ExtensionContext): vscode.Uri {
   return vscode.Uri.joinPath(context.globalStorageUri, 'project_files');
+}
+
+/**
+ * 项目根＝**打开的那个文件夹**（R139 片 3 换轨）。
+ *
+ * 旧规则是 `globalStorageUri/project_files`，当年那句理由（"工程集合与工作区无关"）已被形态决定推翻：
+ * 整体 UI 就是 workbench，文件树那颗主人是**原生 Explorer**，而 Explorer 只看得见工作区里的真文件——
+ * 把工程藏进 globalStorage ＝ Explorer 对着我们的源文件是瞎的，"用 VS Code 的 UI"这句话就⛔ 成立。
+ *
+ * ⚠ 没打开任何文件夹时退回旧家（`globalStorageUri/project_files`）：那里的东西还在，⛔ 一升级就"文件全没了"。
+ * ⚠ 多根工作区只认第一颗（在册取舍，片 4 换 Explorer 时一起处理）；扫描跳过 `node_modules` 与点开头目录，
+ *   否则"打开一份大仓库"会让一次 refresh 走进几万颗目录（`ProjectStore.SKIP_DIRS`）。
+ */
+export function projectRoot(context: vscode.ExtensionContext): vscode.Uri {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  return folder ? folder.uri : configRoot(context);
 }
 
 /** `workspace.fs` → 我们的 `FsLike`（字符串路径以 `@root` 打头，落回 Uri） */
@@ -173,7 +191,9 @@ function wirePanel(context: vscode.ExtensionContext, panel: vscode.WebviewPanel)
 }
 
 async function dispatch(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
+  // 两颗根：源文件跟着工作区走，工程配置留在应用级（为什么分开见 `configRoot` 的说明）
   const store = new ProjectStore(vscodeFs(projectRoot(context)), '@root');
+  const cfg = new ProjectStore(vscodeFs(configRoot(context)), '@root');
   switch (method) {
     case 'saveProjectFile': return store.saveFile(args.name, args.content);
     case 'listProjectTree': return store.listTree();
@@ -185,14 +205,13 @@ async function dispatch(context: vscode.ExtensionContext, method: string, args: 
     case 'moveProjectFolder': return store.moveFolder(args.oldName, args.newName);
     case 'copyProjectFile': return store.copyFile(args.source, args.dest);
     case 'copyProjectFolder': return store.copyFolder(args.source, args.dest);
-    case 'readProjectConfig': return store.readConfig();
-    case 'saveProjectConfig': return store.saveConfig(args.content);
+    case 'readProjectConfig': return cfg.readConfig();
+    case 'saveProjectConfig': return cfg.saveConfig(args.content);
 
     case 'saveExportFile': {
       // 与 Rust 那颗同语义：取消＝返回 false（⛔ 报错，前端把 false 显示成"导出已取消"）
       const target = await vscode.window.showSaveDialog({
-        defaultUri: vscode.Uri.joinPath(
-          vscode.workspace.workspaceFolders?.[0]?.uri ?? projectRoot(context), args.defaultName),
+        defaultUri: vscode.Uri.joinPath(projectRoot(context), args.defaultName),
         filters: filtersFor(args.defaultName),
       });
       if (!target) return false;

@@ -28,6 +28,15 @@ export interface FsLike {
 const VERILOG_EXT = ['v', 'sv', 'vh'];
 export const CONFIG_FILE = 'verilog-viz.config.json';
 
+/**
+ * 目录树扫描⛔ 进这两类目录：`node_modules`（依赖树里那颗 `.v` 是别人的东西）与**任何点开头目录**
+ * （`.git`、`.vscode`、`.venv`……）。
+ * 这条规则是**片 3 换轨带来的**：项目根从"我们自己的 `project_files` 目录"变成"用户打开的那个文件夹"，
+ * 一次 `refresh()` 就可能落在一整仓代码上；旧家⛔ 会有这问题 ⇒ ⛔ 把它当成 Rust 版的老规矩照抄。
+ * 判据在 `tests/unit/vscodeShell.test.ts`「项目目录后端」那一组（同名但⛔ 点开头的目录必须仍上报）。
+ */
+const shouldSkipDir = (name: string) => name === 'node_modules' || name.startsWith('.');
+
 /** 相对路径 → 分隔符归一；绝对路径或含 `..` 一律拒（对齐 Rust `sanitize_path`） */
 export function sanitizeRel(name: string): string {
   const rel = String(name || '').replace(/\\/g, '/');
@@ -128,6 +137,7 @@ export class ProjectStore {
       for (const e of entries) {
         const rel = dirRel ? `${dirRel}/${e.name}` : e.name;
         if (e.type === 'dir') {
+          if (shouldSkipDir(e.name)) continue;      // ⛔ 走进去，也⛔ 把它当空文件夹上报
           await walk(rel);
           folders.push(rel);
           continue;

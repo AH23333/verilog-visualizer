@@ -17,6 +17,12 @@
   "activationEvents": [
     "onStartupFinished"
   ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": true,
+      "description": "本扩展不起子进程、不执行工作区里带来的可执行文件：Yosys/DigitalJS 是打进包里的 WASM，工作区内容只当文本读、当图渲染（前端两处 innerHTML 都只赋空串，webview 那份 CSP 的 script-src 只有 nonce + webview origin）。少了这一句，在一个从没信任过的新文件夹里宿主根本不会被激活——症状是启动后只剩一颗 Welcome（受限模式）页，不报错、日志里也一行都没有。"
+    }
+  },
   "contributes": {
     "commands": [
       {

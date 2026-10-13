@@ -149,7 +149,7 @@ export function main(argv = process.argv.slice(2)) {
   copyTree(path.join(extSrc, 'webview'), path.join(dst, 'webview'));
   // 内置扩展⛔ 有 devDependencies，也⛔ 走 vsce：基座的 gulp 会把 extensions/** 直接打进产物
   process.stdout.write(`内置扩展已装到 ${dst}（webview 产物 ${info.hasWebview ? '在' : '⚠ 缺 index.html'}）\n`);
-  process.stdout.write('下一步见 studio/README.md §3 片 2（基座安装与编译，要先装 node 24.18.0）\n');
+  process.stdout.write('起窗口：D:\\vv-studio\\vscode\\scripts\\code.bat --user-data-dir=D:\\vv-studio\\profile [<要打开的工程文件夹>]\n');
   return 0;
 }
 
