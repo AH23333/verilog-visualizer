@@ -7,6 +7,37 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R139：方向纠正——自带 VS Code 源码分支出独立二进制（2026-10-13）
+
+> **我连续两轮把方向理解错了**，先记这句。他要的是「**UI 风格直接套壳 vscode**」：workbench 本身就是产品界面，
+> 我们做"把我们的界面装进 VS Code 的一个标签页"，还写了一颗脚本帮他打开——他那句
+> 「更没叫你自己写运行脚本」就是对这两轮的判决。**目标形态＝Cursor / Windsurf 同族：自带 Code - OSS 分支，出我们自己的二进制。**
+
+### Added
+- **`studio/`：基座脚手架**（片 1）。`product.overrides.json` 只放"我们改哪几颗品牌键"，
+  合并与内置扩展安装在 `studio/apply-brand.mjs`，分期与实测前置写在 `studio/README.md`。
+- `pnpm studio:brand`（本轮真跑通）：① 把覆盖层合进基座 `product.json`，合并后**自检关心键真落到位置**；
+  ② 把 `extension/` 的产物装成基座的内置扩展 `extensions/verilog-visualizer/`。
+- `tests/unit/studioBrand.test.mjs` 12 格（vitest **58/58**）：基座其余键一颗都⛔ 丢、嵌套对象深合、
+  数组整体替换、`_comment` ⛔ 进产物、**覆盖层⛔ 出现基座读不到的键**、漏合要能红、
+  以及"写回时保住基座自己的缩进与行尾"。
+
+### Fixed
+- **覆盖层里三颗我脑补的键**（`win32x64UpdateId` / `quality` / `win32Arm64AppId`）：
+  现读结果——`win32x64UpdateId` 在整个 checkout 里被读 **0** 次且 Code - OSS 的 `resources/win32` **一颗 `.iss` 都⛔**；
+  `quality` 基座⛔ 有这颗键而我们⛔ 更新服务。加了没人读的键＝假装那是个决定，删。
+- **`product.json` 被整档重排**：第一版按 2 空格写回，"只改 17 颗键"在 `git diff` 里是 **253 增 / 248 删**
+  的缩进噪声；改成从原文认缩进后是 **21 增 / 16 删**，且再跑一次数字不变（幂等）。
+
+### Changed
+- README 的「宿主」一节改成**诚实版进度**：上一批写的是"唯一宿主＝VS Code 扩展壳"，方向错；
+  `pnpm app`（R138）降级为**开发用入口**，⛔ 再当交付物。
+
+### 实测前置（决定后面两片能不能跑）
+`.nvmrc` 要 node **24.18.0**，本机 nvm 只有 18.20.8 / 20.19.5 / 22.20.0，且 `preinstall` 是硬拒；
+C++ 工具链与 Python 齐（VS 2022 Community + BuildTools 的 `vcvars64.bat`、Python 3.13.0）；D 盘空闲 63.6 GB。
+⇒ 装 node 24.18.0 与跑基座 `npm install` + `compile-client` 都要他点头（动他的机器状态、且会占住机器几十分钟）。
+
 ## [未发布 Unreleased] — R138：一条命令起壳 + Tauri 整条拆除（2026-10-13）
 
 > 触发是他这两句：「我想要的效果是直接改成 vscode 套壳，但是当前启动方式还是原来的 tauri，
@@ -58,6 +89,7 @@
 - `.vsix` 装到用户机器上那一步（`code --install-extension`）**我没执行**——那是改他的编辑器状态，等他点头。
 - 上一批的两条仍欠：扩展端到端台架（真开 EPH 驱动 webview）、webview `localStorage` 持久性读数。
 
+---
 ## [未发布 Unreleased] — R136 → R137：VS Code 壳落地（2026-10-13）
 
 ### Added

@@ -17,13 +17,20 @@
 
 ---
 
-## 宿主 / Host（2026-10-13 定稿）
+## 宿主 / Host（2026-10-13 定形）
 
-**唯一宿主＝VS Code 扩展壳**（`extension/`：Extension Host 开 `WebviewPanel` 装这份 React 前端，
-VS Code 本身跑在 Electron 上）。Tauri 那条线**已于 R138 整条拆除**——`src-tauri/`、Rust 后端 14 颗命令、
-`tauriHost`、自绘标题栏 `WindowControls.tsx` 都不在仓里了；要找回那一版走 git（账本卷四十三末尾有提交号），
-决策与执行台账见 [docs/MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md)。
-前端也不直连宿主 API：文件/配置/另存为/剪贴板全部从 `src/lib/host/` 进出，按运行时探测 `vscodeHost` / `browserHost`。
+**目标形态＝自带 VS Code 源码分支、出独立二进制**（Cursor / Windsurf 同族做法）：整体 UI 就是 VS Code 的
+workbench，我们的东西住进它的原生位置（Explorer / 编辑器标签 / Output / Problems / Settings），
+用户⛔ 需要另外装 VS Code。分期与实测前置见 [studio/README.md](./studio/README.md)。
+
+诚实版进度：
+- ✅ **Tauri 那条线整条已拆**（`src-tauri/`、Rust 后端 14 颗命令、`tauriHost`、自绘标题栏 `WindowControls.tsx`；
+  要找回那一版走 git，账本卷四十三末尾有提交号）。
+- ✅ **宿主中立层已跑通**：`pnpm app` 能起一个挂了本扩展的开发窗口。⚠ 它是**开发用入口，⛔ 产品本身**，
+  而且此刻界面仍是我们自绘的那套（还没换成 workbench 原生）——这一点上一批我写成"唯一宿主＝扩展壳"，方向报错了。
+- ⬜ 基座 checkout 已就位（仓库外 `vv-studio/vscode`，Code - OSS 1.143.0）；`pnpm studio:brand` 会把品牌
+  合进基座 `product.json` 并把我们的扩展装成它的内置扩展（这两步本轮真跑过）。**基座编译与 UI 换原生两片还没做。**
+- 前端⛔ 直连宿主 API：文件/配置/另存为/剪贴板全部从 `src/lib/host/` 进出，按运行时探测 `vscodeHost` / `browserHost`。
 
 ## 简介
 
@@ -96,7 +103,7 @@ node tests/run-all.cjs   # 全量回归闸门（headless Edge，73 格）
 | [📖 用户指南 User Guide](./docs/USER_GUIDE.md) | 两模式全部操作（双语 how-to） |
 | [🏗 架构 Architecture](./docs/ARCHITECTURE.md) | 模块图、数据流、关键决策（双语） |
 | [🧪 开发与测试 Development](./docs/DEVELOPMENT.md) | 环境、闸门体系、提交规范（双语） |
-| [📜 变更日志 CHANGELOG](./docs/CHANGELOG.md) | R37 → R138 里程碑（keep-a-changelog） |
+| [📜 变更日志 CHANGELOG](./docs/CHANGELOG.md) | R37 → R139 里程碑（keep-a-changelog） |
 | [🔌 VS Code 套壳迁移台账](./docs/MIGRATION_VSCODE.md) | 宿主真值：已落地层、CSP 实测结论、步骤射程、**真机点验单** |
 | [⚖️ 第三方许可 Third-Party Notices](./docs/THIRD_PARTY_NOTICES.md) | MPL-2.0 / BSD-2 / EPL-2.0 等义务声明 |
 | [🔧 沙盒实现细节 SANDBOX_DEV](./docs/SANDBOX_DEV.md) | 活文档：沙盒管线与探针教训 |

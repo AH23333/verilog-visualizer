@@ -15,7 +15,8 @@
     "ext:build": "pnpm -C extension build",
     "ext:watch": "pnpm -C extension watch",
     "ext:check": "pnpm -C extension check",
-    "ext:package": "pnpm build && pnpm -C extension webview:sync && pnpm -C extension package"
+    "ext:package": "pnpm build && pnpm -C extension webview:sync && pnpm -C extension package",
+    "studio:brand": "node studio/apply-brand.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",

@@ -1,0 +1,36 @@
+{
+  "nameShort": "Verilog Visualizer",
+  "nameLong": "Verilog Visualizer",
+  "applicationName": "verilog-visualizer",
+  "dataFolderName": ".verilog-visualizer",
+  "sharedDataFolderName": ".verilog-visualizer-shared",
+  "win32MutexName": "verilogvisualizer",
+  "win32DirName": "Verilog Visualizer",
+  "win32NameVersion": "Verilog Visualizer",
+  "win32RegValueName": "VerilogVisualizer",
+  "win32x64AppId": "{{7A2D0D3B-6C4E-4F9B-9E21-5C0D7B1A4E63}",
+  "desktopName": "com.verilogvisualizer.app.desktop",
+  "urlProtocol": "verilog-visualizer",
+  "licenseUrl": "https://github.com/AH23333/verilog-visualizer/blob/main/LICENSE",
+  "reportIssueUrl": "https://github.com/AH23333/verilog-visualizer/issues",
+  "serverApplicationName": "verilog-visualizer-server",
+  "serverDataFolderName": ".verilog-visualizer-server",
+  "extensionsGallery": {
+    "serviceUrl": "https://open-vsx.org/vscode/gallery",
+    "itemUrl": "https://open-vsx.org/vscode/item"
+  },
+  "_comment": [
+    "这是覆盖层，⛔ 整份 product.json；合进基座的逻辑在 studio/apply-brand.mjs 的 mergeProduct()（纯函数，判据在 tests/unit/studioBrand.test.mjs）。",
+    "每一颗键都是**现读这份 checkout 确认过**的：要么基座 product.json 里本来就有（nameShort…win32x64AppId），",
+    "要么基座构建脚本确实读它（extensionsGallery → build/lib/builtInExtensions.ts·build/hygiene.ts；",
+    "desktopName → build/gulpfile.vscode.ts）。对不上的键一律⛔ 往这里加——加了也没人读，只会假装那是个决定。",
+    "因此这三颗被**删掉**（第一版我按「VS Code 应该有」写的，实测读数在下面）：",
+    "  · win32x64UpdateId：全 checkout 被读 0 次，且 Code - OSS 的 resources/win32 里⛔ Inno 脚本（*.iss 数 0）。",
+    "  · quality：基座⛔ 这颗键；我们既⛔ 更新服务，写个 stable 反而像是配了更新通道。",
+    "  · win32Arm64AppId：基座⛔（只有 win32x64AppId 有）。",
+    "⚠ win32x64AppId 保持「{{GUID」这个**少一个右括号**的形状——基座原值就是这个形状，照它写。",
+    "⚠ extensionsGallery 指 open-vsx⛔ 微软 Marketplace：那份条款只允许微软产品调用，",
+    "  带我们自己的二进制去调就是越界（VSCodium 同理）；这条是**法律边界**，⛔ 当成偏好改回去。",
+    "⛔ 在这层放 telemetry key / 更新服务地址 / 签名主体：那些是微软的资产，拿来就是冒充。"
+  ]
+}
