@@ -240,20 +240,20 @@ export function registerAnnotation(djs: any): boolean {
       // ⚠ noteFontScale / noteUserSized 是**本仓自定义的 prop**，joint 的视图不监听它们——
       //   不设这条监听，任何"只改缩放数不改 size"的路径（存盘重开、撤销重做、换绑重建）
       //   都会出现"模型里 1.968、DOM 还画着 13px"的错位（r121 [14b] 实测：重开后字号回到默认）。
-      initialize() {
-        try { GateViewBase.prototype.initialize?.apply(this, arguments as any); } catch { /* 基类尽力而为 */ }
+      initialize(...args: any[]) {
+        try { GateViewBase.prototype.initialize?.apply(this, args); } catch { /* 基类尽力而为 */ }
         try {
           this.listenTo(this.model, 'change:noteFontScale change:noteUserSized', () => {
             try { this.renderNote(); } catch { /* 视图尽力而为 */ }
           });
         } catch { /* 没有 listenTo 就不重绘，字号仍由 render/update 两条路刷新 */ }
       },
-      render() {
-        GateViewBase.prototype.render.apply(this, arguments as any);
+      render(...args: any[]) {
+        GateViewBase.prototype.render.apply(this, args);
         this.renderNote();
       },
-      update() {
-        GateViewBase.prototype.update.apply(this, arguments as any);
+      update(...args: any[]) {
+        GateViewBase.prototype.update.apply(this, args);
         this.renderNote();
       },
       /** 手动换行：text 内容 → 多 tspan；同时重排 8 个缩放手柄。

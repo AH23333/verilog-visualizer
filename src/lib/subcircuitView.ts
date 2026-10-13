@@ -528,8 +528,8 @@ export function constructCircuit(digitaljs: any, json: any): {
     try {
       circuit = new digitaljs.Circuit(strip(json), { layoutEngine: 'elkjs' });
     } catch (e2) {
-      // 器件级异常连净化都拦不住 —— 把真实原因交给弹窗提示
-      throw new Error(String((e2 as Error)?.message || e2));
+      // 器件级异常连净化都拦不住 —— 把真实原因交给弹窗提示（cause 保留原始栈，ESLint preserve-caught-error）
+      throw new Error(String((e2 as Error)?.message || e2), { cause: e2 });
     }
     // 降级 3：逐模块补线（真实 Circuit 图环境）。注意坏线在 addCell 时会
     // 「先插入图、后抛异常」，所以补线前先做端口存在性预检（与 joint 的
