@@ -1,0 +1,23 @@
+{
+  // R136/R137 迁移：F5「运行 扩展开发宿主」→ 弹出的那个 VS Code 里 Ctrl+Shift+P →「打开 Verilog 可视化窗口」
+  //
+  // 前置只有一条：`pnpm build`（产出 dist/）。
+  // ⛔ 在这里写"还要先起 pnpm dev"——壳读的是 **dist/index.html**（asWebviewUri 走文件系统），
+  // 根本连不到 Vite dev server；写了反而让人以为不起 dev 就白屏。
+  // 开发回路就是「改前端 → pnpm build → 在扩展宿主里重载面板」；
+  // 只有 Extension Host 那侧（extension/src/**）改动才需要 `pnpm -C extension watch` 或再按一次 F5。
+  //
+  // 打包分发：pnpm build && pnpm -C extension webview:sync && pnpm -C extension package
+  //（package 要 @vscode/vsce，本轮⛔ 没装 ⇒ 那条路还没实测，见 docs/MIGRATION_VSCODE.md §5）
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "运行 扩展开发宿主",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": ["--extensionDevelopmentPath=${workspaceFolder}/extension"],
+      "outFiles": ["${workspaceFolder}/extension/dist/**/*.cjs"],
+      "preLaunchTask": "扩展：esbuild 打包"
+    }
+  ]
+}

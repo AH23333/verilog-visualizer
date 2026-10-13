@@ -1,0 +1,13 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "扩展：esbuild 打包",
+      "type": "shell",
+      "command": "pnpm",
+      "args": ["-C", "extension", "build"],
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}

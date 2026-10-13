@@ -1,2 +1,8 @@
+packages:
+  - '.'
+  - 'extension'
+
+# esbuild 要装平台二进制（postinstall）：⛔ 留着 "set this to true or false" 这种占位文本，
+# pnpm 会当成已配置而跳过构建 ⇒ 扩展侧 build 时报找不到二进制。
 allowBuilds:
-  esbuild: set this to true or false
+  esbuild: true

@@ -1,0 +1,46 @@
+{
+  "name": "verilog-visualizer-vscode",
+  "displayName": "Verilog Visualizer",
+  "description": "Verilog 可视化与数字电路沙盒（digitaljs 仿真）在 VS Code 内的宿主壳",
+  "version": "0.0.1",
+  "private": true,
+  "publisher": "local",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.100.0",
+    "node": ">=18"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./dist/extension.cjs",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "verilogVisualizer.open",
+        "title": "打开 Verilog 可视化窗口",
+        "category": "Verilog Visualizer"
+      },
+      {
+        "command": "verilogVisualizer.revealProjectDir",
+        "title": "打开项目文件所在文件夹（落盘核对用）",
+        "category": "Verilog Visualizer"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "typecheck": "tsc -p ./ --noEmit",
+    "package": "node esbuild.js --production && vsce package --no-dependencies",
+    "webview:sync": "node sync-webview.js",
+    "check": "tsc -p ./ --noEmit && node esbuild.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/vscode": "^1.100.0",
+    "esbuild": "^0.25.0",
+    "typescript": "~5.8.3"
+  }
+}

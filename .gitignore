@@ -6,6 +6,9 @@ dist/
 dist-ssr/
 .npm-cache/
 .npm-local-cache/
+# 套壳打包态：sync-webview.js 把 dist 复制进这里给 vsce 用（产物，⛔ 入库）
+extension/webview/
+*.vsix
 
 # Tauri / Rust
 src-tauri/target/
@@ -28,6 +31,9 @@ lerna-debug.log*
 # IDE
 .vscode/*
 !.vscode/extensions.json
+# 套壳的开发回路：F5「运行 扩展开发宿主」靠这两颗才跑得起来 ⇒ 入库
+!.vscode/launch.json
+!.vscode/tasks.json
 .idea/
 .DS_Store
 *.suo
