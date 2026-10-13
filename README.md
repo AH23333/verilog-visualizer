@@ -53,7 +53,7 @@ The two modes interoperate: one click copies a compiled circuit (constructor-tim
 
 ```bash
 # 前置 Prerequisites: Node.js ≥ 18, pnpm ≥ 8, Rust（Tauri 构建用）
-pnpm install
+pnpm install                    # 包管理是 pnpm（有 pnpm-lock.yaml；⛔ 别混用 npm/yarn 生成第二把锁）
 
 # 桌面开发（需 Rust 工具链）Desktop dev (needs Rust toolchain)
 pnpm tauri dev
@@ -83,13 +83,14 @@ pnpm dev          # → http://localhost:1420
 `tests/` 内是 Playwright 驱动的验收闸门（headless Edge 对本地 Vite 服务）。
 
 ```bash
-pnpm test                         # lib 层单测（vitest，tests/unit/**：解析/冲突分级/电路后处理的实测行为）
+pnpm test                         # lib 层单测（vitest，tests/unit/**：解析/冲突分级/电路后处理/宿主调用层的实测行为）
 node tests/run-all.cjs              # 全量跑批：三态判定 pass / fail / 未验证
 node tests/r84-binding-gate.cjs     # 单跑一个闸门
 node tests/r84-mutate.cjs --check   # 变异台架：验证闸门在功能坏掉时确实会红
 ```
 
 约定：**新能力必配新闸门**，闸门先过变异检查才计入覆盖面。详见 [DEVELOPMENT.md](./docs/DEVELOPMENT.md)。
+宿主能力（文件/配置/另存为/剪贴板/窗口）只从 `src/lib/host/` 进出——UI 里 ⛔ 直连 `@tauri-apps`；VS Code 套壳迁移的执行台账见 [MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md)。
 导出面：两个模式各给 **SVG / 电路 JSON / 综合网表**（PNG 已按裁决全线砍掉）；沙盒导出的 SVG 是
 自包含图形（计算样式内联、底色跟随主题、按模型包围盒取景），编译模式走同一份构建器。
 

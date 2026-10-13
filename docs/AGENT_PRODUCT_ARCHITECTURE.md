@@ -20,7 +20,7 @@
 | agent 运行时 / 工具注册表 | **无** | 须从零建 |
 | 持久化 / 日志 | **无**（仅散落 console + 未接线 Rust tracing） | 须新建（§14） |
 
-> **宿主决策（2026-10-12 升为主方案）**：采用 **VS Code 扩展壳** 替代 Tauri 自研桌面（详见 §9，原「未采纳备选」现升为决策）。理由：目标用户为开发者、可接受装 VS Code；VS Code 原生提供文件树/编辑器/终端/设置/输出/ Chat Participant / SecretStorage / LanguageModel API，砍掉用户喊"辛苦"的周围 UI；Tauri 现有后端（`lib.rs` ≈385 行纯文件 CRUD）整段删除，仅 5 个前端文件 + 16 处 `invoke` 需改。**digitaljs 画布与全部 React 渲染代码原样搬迁**（两种宿主都跑 Webview，与宿主无关）。本表其余"代码基础"行指当前 Tauri 实测态，迁移时对应能力改走 VS Code API。
+> **宿主决策（2026-10-12 升为主方案）**：采用 **VS Code 扩展壳** 替代 Tauri 自研桌面（详见 §9，原「未采纳备选」现升为决策）。理由：目标用户为开发者、可接受装 VS Code；VS Code 原生提供文件树/编辑器/终端/设置/输出/ Chat Participant / SecretStorage / LanguageModel API，砍掉用户喊"辛苦"的周围 UI；Tauri 现有后端（`lib.rs` ≈385 行纯文件 CRUD）整段删除，仅 5 个前端文件 + 20 处直连调用需改（R136 实测：1+14+2+3，⛔ 沿用本行早先写的 16 处；`listen` 事件实测 **0** 处）。**该 5 颗文件已于 R136 收成一份中立调用层 `src/lib/host/`，`src` 内除该目录外 `@tauri-apps` 引用为 0**，执行台账见 `docs/MIGRATION_VSCODE.md`。**digitaljs 画布与全部 React 渲染代码原样搬迁**（两种宿主都跑 Webview，与宿主无关）。本表其余"代码基础"行指当前 Tauri 实测态，迁移时对应能力改走 VS Code API。
 
 ---
 
@@ -35,7 +35,7 @@
 - **前提已确认**：目标用户为开发者、可接受安装 VS Code。若未来要面向非开发者独立 App，则回退 Tauri 路径。
 - **收益**：文件树/编辑器/终端/设置/输出通道/Chat Participant/`SecretStorage`(密钥)/`LanguageModel API`(LLM 接入) 全用 VS Code 原生——砍掉用户喊"辛苦"的**周围 UI**（仪表盘/规则/聊天/日志/文件树/设置），且 L1 接入被大幅减负。
 - **不减的苦**：`digitaljs` 画布 + `SandboxCanvas`(3798 行) 仍须自研（黑盒约束不变），且须执行后端胶水迁移（§9.2.1/§9.4）。该画布两种宿主零变化。
-- **迁移成本上限（实测）**：仅 5 个前端文件 + 16 处 `invoke` + Rust `lib.rs`≈385 行纯文件 CRUD 须改写；绑定系统等纯前端能力零 Tauri 直连、随 `fileStore` 抽象自动迁移（§9.2.2）。
+- **迁移成本上限（实测）**：仅 5 个前端文件 + 20 处直连调用（R136 已收口到 `src/lib/host/`）+ Rust `lib.rs` **402 行 / 14 颗命令**纯文件 CRUD 须改写；`listen` 事件 0 处（本文件早先按 16 处 invoke + 若干 listen 估算，R136 现场改数）；绑定系统等纯前端能力零 Tauri 直连、随 `fileStore` 抽象自动迁移（§9.2.2）。
 
 ---
 
@@ -216,7 +216,7 @@ L0  宿主（VS Code 扩展：Extension Host + Webview + React + digitaljs 渲�
 - **不减的苦**：`digitaljs` 画布 + `SandboxCanvas` 3798 行仍是自研硬骨头；VS Code **不替你画电路**。若辛苦源是画布本身，套壳无济于事。
 
 ### 9.4 代价 / 风险
-- **后端胶水重写（中，但封顶）**：Tauri IPC→VS Code `acquireVsCodeApi().postMessage(...)` + Extension Host 消息处理；`listen` 事件→webview 消息事件。16 处 `invoke` 机械替换，但异步契约需逐点核对；`WindowControls.tsx` 整文件删除（VS Code 自带标题栏）。
+- **后端胶水重写（中，但封顶）**：Tauri IPC→VS Code `acquireVsCodeApi().postMessage(...)` + Extension Host 消息处理；`listen` 事件→webview 消息事件。20 处直连调用机械替换，但异步契约需逐点核对；`WindowControls.tsx` 整文件删除（VS Code 自带标题栏）——R136 已先把它改成认 `host.hasWindowControls`，所以删除那天起不会有第二处探测留在仓里。
 - **路径语义变更（低–中）**：Tauri `get_project_dir`（真实 OS 路径）→ VS Code `vscode.Uri`/workspace folder。通用 `fileStore` 隐藏了差异，但**绑定系统等一切经 fileStore 持久化的数据**需确认无绝对路径硬编码（§9.2.2）。
 - **webview↔extension host 每步 tool call 多一层序列化**：agent 工具门面（§3.3）若改为「Webview 持 paper + Extension Host 持运行时」，跨边界调用有少量开销——但比 Tauri「全挤 renderer」更干净（多数工具可在 Node 侧 headless 跑）。
 - **失去独立二进制**：须装 VS Code；Electron 壳体积更重；构建/测试回路改为 `vsce package` + 扩展开发宿主。
@@ -232,7 +232,7 @@ L0  宿主（VS Code 扩展：Extension Host + Webview + React + digitaljs 渲�
 
 1. **脚手架**：建 `extension/` 包（`package.json` + `extension.ts` 入口 + `vscode` 依赖），`yarn/npm` 工作区接现有 React 前端；`vsce` 打包配置。
 2. **L0 后端胶水**：删 `src-tauri/`（Rust）；新建 Extension Host 模块承接文件 CRUD → `workspace.fs`、配置 → `settings`、导出 → `window.showSaveDialog`、剪贴板 → `env.clipboard`。
-3. **消息总线**：前端加 `acquireVsCodeApi()` 封装，把 5 个文件的 16 处 `invoke` 改为 postMessage + Extension Host handler；事件 `listen`→webview 消息。（§9.4）
+3. **消息总线**：前端加 `acquireVsCodeApi()` 封装，把 5 个文件的 20 处直连调用改为 postMessage + Extension Host handler；事件 `listen`→webview 消息（实测 **0 处**，该条本期空）。✅ **前端半段已于 R136 完成**（`src/lib/host/`：探测每次现读、浏览器档 reject 而非返回空表、VS Code 档带 id 配对与超时的 JSON-RPC + base64 传字节）；⬜ 宿主半段（Extension Host handler）未做。（§9.4）
 4. **L1 接入**：接 `SecretStorage` +（可选）`LanguageModel API` 自定义 provider；provider 列表 `{baseUrl, apiKey, model}` 持久化到 `settings`。（§3.1）
 5. **路径迁移**：`get_project_dir`→`vscode.Uri`；**实测确认 `partBindings`/绑定值无绝对路径**，必要时首开做 Uri 重映射。（§9.2.2）
 6. **agent 子系统（与迁移并行，非阻塞）**：按 §3 / §4–§6 推进日志/评测/工具门面；工具门面落成「Webview 持 paper + Extension Host 持运行时」。（§3.3）

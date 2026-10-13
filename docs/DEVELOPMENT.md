@@ -60,6 +60,22 @@ pnpm test                 # = vitest run，命中 tests/unit/**.test.ts
 - 期望值一律"按实测写"（R135：`parseVerilogInstances` 返回的是**外部模块名**而非实例名、
   `normalizeIoLabels` 只在 `attrs.label.text` 已存在时同步）。凭函数名/印象写用例＝当场红。
 
+### 宿主中立调用层（`src/lib/host/`，R136 起）
+
+前端**唯一**允许碰宿主能力（文件、配置、另存为、剪贴板、窗口）的地方是 `src/lib/host/`：
+`ProjectHost` 一份接口 + 三档实现（`tauriHost` / `vscodeHost` / `browserHost`），按运行时标记现读挑档。
+
+```bash
+grep -rn "@tauri-apps" src | grep -v "src/lib/host/"   # 期望：0 行
+```
+
+- 新增宿主能力＝**三档一起补**（浏览器那档若"这宿主根本没有"，就 reject，⛔ 返回空结果骗过调用方），
+  并给 `tests/unit/host.test.ts` 加一颗：resolve 臂 + reject 臂 + 超时/配对臂都算证人，⛔ 只测能跑通的那条。
+- ⛔ 在 UI 代码里再写 `__TAURI_INTERNALS__` 探测或 `import('@tauri-apps/...')`：探测必须收在一处且
+  **每次调用现读**（`r12-export` 的 [F] 三格靠"点击前注入桩"验原生保存路径，加载期求值＝假绿灯）。
+- VS Code 那档的消息是 JSON 序列化的：二进制走 base64；一问一答按 id 配对，⛔ 拿"最后一条回复"当结果。
+- 迁移进度与拉取的官方基座见 `docs/MIGRATION_VSCODE.md`。
+
 ### 提交规范
 
 - 格式：`type(scope): 摘要`（feat/fix/test/docs/refactor/chore + 中文摘要可）；
