@@ -26,6 +26,9 @@
 **版本线**（同日裁定）：`main` ＝ **无 agent 功能**那份，已推到 `819563d`（R135）；往后的提交都走**新分支 `agent`**（本地，⛔ 未推；他令分支名⛔ 带中文 ⇒ 口径名「agent版」落到 ref 上叫 `agent`）。
 
 诚实版进度：
+- ✅ **产品入口已能一条命令跑起来**：`pnpm studio:run`（编前端 → 编扩展 → 装进基座 → 起我们自己的二进制），
+  本轮真跑过全链路（窗口标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`）。
+  一次性前置＝基座那份 checkout 要先 `npm install` + `compile-client` 编过——缺哪一步脚本会把整条命令打印给你。
 - ✅ **Tauri 那条线整条已拆**（`src-tauri/`、Rust 后端 14 颗命令、`tauriHost`、自绘标题栏 `WindowControls.tsx`；
   要找回那一版走 git，账本卷四十三末尾有提交号）。
 - ✅ **宿主中立层已跑通**：`pnpm app` 能起一个挂了本扩展的开发窗口。⚠ 它是**开发用入口，⛔ 产品本身**，
@@ -74,33 +77,44 @@ The two modes interoperate: one click copies a compiled circuit (constructor-tim
 
 ## 快速开始 / Quick Start
 
+**产品形态＝我们自己的二进制**（自带 Code - OSS 分支，⛔ 要你另外装 VS Code）。一条命令：
+
 ```bash
-# 前置 Prerequisites: Node.js ≥ 18, pnpm ≥ 8, VS Code
 pnpm install                    # 包管理是 pnpm（有 pnpm-lock.yaml；⛔ 别混用 npm/yarn 生成第二把锁）
-pnpm app                        # ← 就这一条：缺产物就编，找到 VS Code 就开窗口，画布自己弹出来
+pnpm studio:run                 # ← 就这一条：编前端 → 编 Extension Host → 装进基座 → 起我们自己的二进制
+pnpm studio:run D:\我的工程目录   # 带一个文件夹参数＝让它打开那个工程（原生 Explorer 与画布都从那儿取文件）
 ```
 
-`pnpm app` 干三件事（`scripts/run-in-vscode.mjs`）：① `dist/` 缺、或 `src/` 里有比它新的文件 ⇒ 先 `pnpm build`；
-② 编 Extension Host（`extension/dist/extension.cjs`）；③ 用 `--extensionDevelopmentPath` 起一个 VS Code 窗口——
-扩展在开发宿主模式下**自己把画布面板弹出来**，⛔ 要你按 F5、⛔ 要你去命令面板找命令。
-找不到 `code` 命令行时，它会列出试过的位置并给一条 `VSCODE_BIN=<路径> pnpm app` 的退路。
-只想看它打算干什么（⛔ 真开窗口）：`pnpm app:check`。
+`pnpm studio:run`（`scripts/run-studio.mjs`）替你排四步，每步只在缺的时候才跑：① `dist/` 缺或 `src/` 更新 ⇒ `pnpm build`；
+② `extension/dist/extension.cjs` 缺 ⇒ 编扩展；③ 把品牌与内置扩展装进基座（`pnpm studio:brand`）；
+④ 起基座那份 `scripts/code.bat`，并**显式给一个与基座同级的 `--user-data-dir`**——
+⛔ 动你日常 VS Code 的配置。只想看它打算干什么（⛔ 构建、⛔ 起窗口）：`pnpm studio:run --check`。
 
-**装进你自己的 VS Code（一次装好，之后从侧栏点开即可）**
+**唯一一次性的前置**：基座那份 checkout 得先装好依赖并编过一次（那是 1590 颗包 / 几分钟到几十分钟 / 几 GB，
+`studio:run` 会**把整条命令打印出来给你**，⛔ 替你默默发起这种量级的动作）：
 
 ```bash
-pnpm ext:package                                    # 产 extension/verilog-visualizer-vscode-<版本>.vsix
-code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix
+# ⚠ 路径⛔ 含空格：上游 preinstall spawn 时⛔ 给路径加引号，带空格会在第一个空格处炸（实测跑满四分钟才报错）
+git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D:\vv-studio\vscode
+cd D:\vv-studio\vscode && npm install && npm run compile-client && npm run electron
 ```
 
-**另两条入口**
+基座这一条要 **node 24.18.0**（`.nvmrc` 写死，`preinstall` 是硬拒），另需 VS 2022 的 C++ 工具链**含 Spectre 缓解库**
+（缺它会撞 MSB8040）。逐条实测前置与踩坑记录＝[studio/README.md](./studio/README.md) §4。
+指路退路：基座⛔ 放在默认位置时用 `VERILOG_STUDIO_FORK=<路径> pnpm studio:run`。
+
+**开发用回路（在我们自己的二进制里调试才需要）**
 
 ```bash
+pnpm app                 # 起一个"挂了本扩展的开发宿主"窗口（用你日常装的那份 VS Code），画布自己弹出来
+pnpm app:check           # 只报现场：找到哪颗 CLI／产物新不新／打算跑什么命令
 pnpm dev                 # 纯浏览器预览 → http://localhost:1420（⛔ 宿主落盘，导出退化为 <a download>）
 node tests/run-all.cjs   # 全量回归闸门（headless Edge，73 格）
 ```
 
+`pnpm app` 那两条⛔ 是交付物——它们是调试入口；产品入口只有 `pnpm studio:run`。
 改前端后的回路是「`pnpm build` → 重载那个窗口」；只有 `extension/src/**` 改了才需要重编扩展（或 `pnpm ext:watch`）。
+
 
 ## 文档 / Documentation
 

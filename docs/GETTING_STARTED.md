@@ -10,17 +10,28 @@
 ### 0. 安装
 
 **产品形态＝自带 VS Code 源码分支、出独立二进制**（Cursor / Windsurf 同族，用户 2026-10-13 裁定）。
-那一份还在迁移中（基座已实测编得出来，台账 [`studio/README.md`](../studio/README.md)）；
-下面两条是**现在就能跑起来的开发回路**（Tauri 那条线已于 R138 整条删除，见 `MIGRATION_VSCODE.md` §8）。
+入口是一条命令（Tauri 那条线已于 R138 整条删除，见 `MIGRATION_VSCODE.md` §8）：
 
 ```bash
 pnpm install
-pnpm app             # ← 一条命令：缺产物就编、编好扩展、开一个挂了本扩展的 VS Code 窗口，画布自己弹出来
-# 或最快的一条：
+pnpm studio:run      # ← 一条命令起**我们自己的二进制**：编前端 → 编扩展 → 装进基座 → 起窗口（画布自己弹出来）
+pnpm studio:run D:\我的工程目录    # 带文件夹参数＝让它打开那个工程
+```
+
+> ⚠ **一次性的前置**：基座那份 checkout 要先 `npm install` + `npm run compile-client` + `npm run electron`
+> 编过一次（几分钟到几十分钟、几 GB——`studio:run` 会**把整条命令打印出来**，⛔ 替你默默发起这种量级的动作）。
+> 路径⛔ 含空格、且需要 node 24.18.0 与含 Spectre 缓解库的 C++ 工具链：逐条实测前置见 [`studio/README.md`](../studio/README.md) §4。
+> 基座⛔ 在默认位置时用 `VERILOG_STUDIO_FORK=<路径> pnpm studio:run`。只想看它打算干什么：`pnpm studio:run --check`。
+
+**开发回路**（⛔ 交付物，调试用）
+
+```bash
+pnpm app             # 用你日常装的那份 VS Code 起一个挂了本扩展的开发宿主窗口
+pnpm app:check       # 只报现场（找到哪颗 CLI／产物新不新／打算跑什么命令）
 pnpm dev             # 浏览器预览 → http://localhost:1420（功能一致，导出对话框退化为浏览器下载）
 ```
 
-> 装进你自己的 VS Code：`pnpm ext:package` 出 `.vsix`（vsce 已是 devDependency），再
+> 也可以装进你自己的 VS Code：`pnpm ext:package` 出 `.vsix`（vsce 已是 devDependency），再
 > `code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix`。
 > `pnpm app` 找不到 `code` 命令行时，会列出试过的位置并给一条 `VSCODE_BIN=<路径> pnpm app` 的退路。
 
@@ -68,19 +79,32 @@ pnpm dev             # 浏览器预览 → http://localhost:1420（功能一致�
 
 ### 0. Install
 
-The product form is **our own fork of the VS Code sources shipped as a standalone binary** (the Cursor /
-Windsurf pattern, decided by the user on 2026-10-13). That migration is still in progress (the base is
-proven to build — see [`studio/README.md`](../studio/README.md)); the two routes below are the
-**development loops that already work** (the Tauri line was fully removed in R138 — `MIGRATION_VSCODE.md` §8).
+The product form is **our own fork of the VS Code sources, shipped as a standalone binary** (the Cursor /
+Windsurf pattern, decided by the user on 2026-10-13). One command starts it (the Tauri line was fully
+removed in R138 — `MIGRATION_VSCODE.md` §8):
 
 ```bash
 pnpm install
-pnpm app             # ← one command: builds what's missing, bundles the extension, opens a VS Code window with it loaded; the canvas opens itself
-# or the fastest route:
+pnpm studio:run      # ← one command for OUR OWN binary: build web → build extension → install into the base → launch (canvas opens itself)
+pnpm studio:run D:\my\project      # pass a folder and it opens that project
+```
+
+> ⚠ **One-time prerequisite**: the base checkout must have been installed and compiled once
+> (`npm install` + `npm run compile-client` + `npm run electron` — minutes to tens of minutes, several GB).
+> `studio:run` prints those exact commands instead of silently kicking off work that size. The checkout path
+> must contain **no spaces**, and the base needs node 24.18.0 plus a C++ toolchain **with Spectre-mitigated
+> libraries** — every prerequisite is a measured finding in [`studio/README.md`](../studio/README.md) §4.
+> Base somewhere else? `VERILOG_STUDIO_FORK=<path> pnpm studio:run`. Dry run: `pnpm studio:run --check`.
+
+**Development loops** (⛔ not the deliverable)
+
+```bash
+pnpm app             # loads this extension into the VS Code you already installed, via --extensionDevelopmentPath
+pnpm app:check       # report only: which CLI was found / is dist fresh / what it would run
 pnpm dev             # browser preview → http://localhost:1420 (same features; export dialogs fall back to downloads)
 ```
 
-> To install into your own VS Code: `pnpm ext:package` builds the `.vsix` (vsce is a devDependency now), then
+> You can also install it into your own VS Code: `pnpm ext:package` builds the `.vsix` (vsce is a devDependency now), then
 > `code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix`.
 
 ### 1. Your first circuit (Compile mode)

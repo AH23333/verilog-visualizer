@@ -43,6 +43,34 @@
 - `README.md`「宿主」一节改成二次定形（含版本线与"⛔ 是网页壳"这句），`studio/README.md` 顶部决策块追记第二次纠正、
   §0 重写成 §0b 三块板 + §0c chrome 表、新增 **§3b 版本线**（两条线的落点与推送读数都写进去）。
 
+### 一条命令起我们自己的二进制：`pnpm studio:run`（他要先能测）
+
+产品入口从"两条手工命令 + 一串路径"收成一条（`scripts/run-studio.mjs`）：
+① `dist/` 缺或 `src/`/`package.json` 更新 ⇒ `pnpm build`；② 扩展 bundle 缺 ⇒ `pnpm -C extension build`；
+③ `apply-brand` 装进基座；④ 起基座的 `scripts/code.bat`，**`--user-data-dir` 显式给到与基座同级的 `profile`**
+（⛔ 动他日常 VS Code 的配置）。可带一个文件夹参数＝让它打开那个工程。
+⚠ **一次性的那步⛔ 代跑**：基座还⛔ 装依赖／⛔ 编过时，脚本把整条命令打印出来（那是几分钟到几十分钟、几 GB——
+替用户默默发起这种量级的动作⛔ 是"尽力而为"，是鲁莽）；`--check` 只报现场、⛔ 构建、⛔ 起窗口。
+指路退路 `VERILOG_STUDIO_FORK=<路径>` / `VERILOG_STUDIO_PROFILE=<路径>`。
+
+- **这条命令是被"真跑一遍"修好的**：第一版把构建与起窗口共用一个 `cwd`（＝基座目录），
+  于是 `pnpm build` 落进 Code - OSS 那份 checkout 里执行，报
+  `[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command "build" not found`——症状看着像"本仓的 build 脚本坏了"。
+  18 格判据当时**全绿**，因为它只记 `file/args`、⛔ 记 `cwd` ⇒ 补了一条"构建步骤的 cwd 必须是仓库根、
+  起窗口那颗才在基座"的断言，这一族才第一次有臂。
+- 另两颗无头判到的形状：基座⛔ 就绪时 `main` **一颗进程都⛔ spawn** 并返回 3（否则起的是上一份产物＝"我改的没生效"）；
+  步骤顺序＝构建 → 装基座 → 起窗口，任何一步非 0 当场停。
+- ⚠ 测试自己污染过一次全局：`process.env.X = saved` 在 `saved` 是 `undefined` 时写成字符串 `"undefined"`
+  ⇒ 后面每一格都读到那颗 undefined，症状是"main 全部报基座还⛔ 就绪"。改成分路还原（没有就 `delete`）+ 一格自证。
+- 文档同批改口径：`README.md` 快速开始（产品入口一条 + 一次性前置那条命令写全 + 空格与 node 24.18.0 的警告）、
+  `docs/GETTING_STARTED.md`（中英两处都改成 `studio:run` 打头，`pnpm app` 降级为"开发回路"）、
+  `docs/DEVELOPMENT.md`（脚本表加 `studio:run`/`:check`，"基座那一条回路"从四行手工命令收成一行 + 一次性那步的说明）、
+  `studio/README.md` §2 加这颗脚本的条目。
+- 读数：`pnpm studio:run --check` ⇒ `状态 ready`、`本轮要先编: pnpm build`、spawn 串带 `--user-data-dir`；
+  **`pnpm studio:run` 全链路真跑过**：`› pnpm build`（2073 modules）→ `› 装进基座`（17 颗键 + 内置扩展）→
+  `› 起我们自己的二进制` ⇒ 窗口标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`（10 颗自有进程）。
+  vitest **117/117**（99→117：`studioLauncher` 18 格）。
+
 ### 片 4-C1 的宿主半颗：`.djs` 开始有了磁盘这一份（新增第 16 颗 RPC）
 - `ProjectStore.listSandboxTree()`＋`collect(exts)`：Verilog 与沙盒**两颗表共用一次 walk**（跳过规则、
   "相对根、`/` 分隔"、空文件夹上报三件事必须同源；复制两份 walk＝将来只改一边就分岔）。

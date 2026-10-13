@@ -721,6 +721,39 @@ B 独立，随时可切。工单已写进 `studio/README.md` §0b/§0c/§3（每
 ⚠ 第三次踩同一颗字：往文档里写盘符路径时反斜杠 + `v` 又被吃成垂直制表符（同一坑 R139 踩过、`studioBrand` 那格也写过）。
 本轮起固化成收口动作：**写完先按字节扫 `0x0B`/`0x0C`**（这一批扫出 1 处，已修）。
 
+## 五、追加：一条命令起我们自己的二进制——这颗 bug 只有"真跑一遍"抓得到，而判据当时全绿
+
+他先要能测 ⇒ 产品入口收成 `pnpm studio:run`（`scripts/run-studio.mjs`：编缺的 → 编扩展 → 装进基座 →
+起基座的 `code.bat`，`--user-data-dir` 显式给到与基座同级的 `profile`）。⚠ 一次性那步（基座 `npm install` /
+`compile-client`，几 GB、几十分钟）**⛔ 代跑**，只把整条命令打印出来——替用户默默发起这种量级的动作是鲁莽。
+
+**第一版这颗脚本是坏的，而 18 格判据全绿**：构建步骤与起窗口**共用了同一个 `cwd`（＝基座目录）**，
+于是 `pnpm build` 在 Code - OSS 那份 checkout 里执行：
+
+```
+[ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL] Command "build" not found
+Did you mean "pnpm build-fast"?
+```
+
+症状看着像"本仓的 build 脚本坏了"，⛔ 是启动器把 cwd 传错了。判据测不到它的原因很具体：
+注入的假 `spawn` 只记 `file/args`，**⛔ 记 `cwd`** ⇒ 补上"构建那颗的 cwd 必须等于仓库根、
+只有起窗口那颗在基座"这两条断言，这一族才第一次有臂。
+
+**规矩（本卷最值的一条）**：新写一颗会 `spawn` 的启动器时，判据至少要记**四件事**——`file`、`args`、`options`、**`cwd`**；
+只记前三件的判据可以让"在⛔ 该跑的目录里跑"整族静默通过。而且这类"编排外部命令"的脚本，
+**收口前必须真跑一次全链路**（这次就是真跑炸出来的：`› pnpm build` 2073 modules → `› 装进基座` 17 颗键 →
+`› 起我们自己的二进制` ⇒ 窗口标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`，10 颗自有进程）。
+
+另外两处自己造的坑（都在同一批修掉）：
+① 测试里 `process.env.X = saved` 在 `saved === undefined` 时会写成字符串 `"undefined"`
+   ⇒ 后面每一格读到那颗 undefined，症状是"main 全部报基座还⛔ 就绪"（看着像产品逻辑错，其实是台架污染）；
+   改成分路还原（原来没有就 `delete`）并加一格 `toBeUndefined()` 自证。
+② `path.join('a','b').replace(/\/g, ...)` 这类"在 python heredoc 里写正则反斜杠"的操作第三次翻车
+   （escape 被吃掉，测试文件直接语法错）⇒ 改成 `expect(calls[0].split(' @ ')[1]).toBe(ROOT)` ——**能比原值就⛔ 自己再规范化一遍**。
+
+判据：vitest **117/117**（99→117，新增 `tests/unit/studioLauncher.test.mjs` 18 格）。
+文档同批改口径：`README.md` 快速开始、`docs/GETTING_STARTED.md`（中英两处）、`docs/DEVELOPMENT.md`（脚本表 + 基座回路收成一行）、`studio/README.md` §2。
+
 *（卷四十六完 · R140：`origin/main` 快进 5 笔到 `819563d`＝无 agent 那份；新分支 `agent`（他令：⛔ 中文分支名，建出来当轮就由 `agent版` 改名）从 `f050d56` 起接后续提交；
  套壳的定义改成"把绑定系统／模块／层次结构／沙盒搬到宿主已有的文件系统与原生视图上"，四刀顺序按依赖钉死；
  分支名按他后一句改成英文 `agent`）*

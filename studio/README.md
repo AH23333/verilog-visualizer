@@ -97,6 +97,11 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 
 ## 2. 本目录的东西
 
+- **产品入口＝`pnpm studio:run`**（`scripts/run-studio.mjs`）：一条命令排四步——编缺的前端 → 编扩展 →
+  `apply-brand` 装进基座 → 起基座那份 `code.bat`，并**显式把 `--user-data-dir` 给到与基座同级的 `profile`**
+  （⛔ 动他日常 VS Code 的配置）。`--check` 只报现场、⛔ 构建、⛔ 起窗口。
+  ⚠ 它⛔ 替你跑那一次性的一步（基座 `npm install` / `compile-client`，几分钟到几十分钟、几 GB）——
+  把**整条命令打印出来**（⛔ 一句"请先自行安装基座"）。判据 `tests/unit/studioLauncher.test.mjs` 18 格。
 - `product.overrides.json` —— 覆盖层。每颗键都对照过基座：要么基座本来有，要么构建脚本确认读它。⛔ 整份覆盖 product.json。
 - `apply-brand.mjs` —— ① 合并覆盖层进 `<fork>/product.json`（幂等，合并后**自检那几颗键真的落到位置**）；
   ② 把 `extension/` 的产物（`package.json` + `dist/extension.cjs` + `webview/**`）装成基座的内置扩展
