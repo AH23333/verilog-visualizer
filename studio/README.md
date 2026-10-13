@@ -146,12 +146,12 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 | 线 | 落点 | 本轮读数 |
 |---|---|---|
 | `main`＝**无 agent 版** | 已推到 **`819563d`**（R135 那批：自包含 SVG 导出 + 证人 + 账本） | `git push origin 819563d…:refs/heads/main` ⇒ `54ce537..819563d`＝**5 笔**，fast-forward、⛔ force、`git diff --name-only` 15 颗文件里⛔ 敏感命名/无凭证串（唯一 `token` 命中的是 CSS 变量名） |
-| **`agent版`**＝往后所有提交 | 本地分支，指向 `f050d56`（R139 片 3a 收口那颗）；**本轮⛔ 推这条分支**（他那句"不要全部推送"） | `git rev-parse --abbrev-ref HEAD` ＝ `agent版`；`origin/agent版` ⛔ 存在 |
+| **`agent`**＝往后所有提交 | 本地分支，指向 `f050d56`（R139 片 3a 收口那颗），建出来当轮就按他的令从 `agent版` **改名成英文**（`git branch -m`，纯本地操作，`origin` 那侧⛔ 有引用要跟着动）；**本轮⛔ 推这条分支**（他那句"不要全部推送"） | `git rev-parse --abbrev-ref HEAD` ＝ `agent`；`origin/agent` ⛔ 存在 |
 
 ⚠ 这条分线⛔ 表示"agent 功能已经写了"：到 `f050d56` 为止 agent 面仍是 **0 行代码**
 （`docs/MIGRATION_VSCODE.md` §4 状态表里第 4/6 步＝⛔ 未开工；他另有一条令：先⛔ 搭 agent 功能）。
-分线的意义在**发布口径**：无 agent 那份停在成熟骨架上，迁移（与新功能）都在 `agent版` 上走。
-推 `agent版` 与推 main 一样，**一事一授权**。
+分线的意义在**发布口径**：无 agent 那份停在成熟骨架上，迁移（与新功能）都在 `agent` 上走（他原话里的「agent版」是**口径名**，落到 ref 上按他的令用英文）。
+推 `agent` 与推 main 一样，**一事一授权**。
 
 ## 4. 装基座的实测前置（这一节是**跑过之后**写的，每条都对应一次真失败）
 
