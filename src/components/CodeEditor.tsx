@@ -31,6 +31,7 @@ import {
 import { oneDark } from '@codemirror/theme-one-dark';
 import { verilog } from '@codemirror/legacy-modes/mode/verilog';
 import { settingsStore } from '../store/settingsStore';
+import { getHost } from '../lib/host/host';
 
 interface CodeEditorProps {
   code: string;
@@ -55,6 +56,28 @@ export interface CodeEditorHandle {
   jumpToLine: (line: number) => void;
   /** Current primary-cursor line (1-based), or null when no editor instance. */
   getCursorLine: () => number | null;
+}
+
+/**
+ * 剪贴板走统一调用层：Tauri 插件 / VS Code Extension Host 各按宿主实现；拿不到
+ * （浏览器那档直接抛 HostUnsupported）就退回 DOM textarea 选中复制。
+ * 这条兜底路径与迁移前逐处重复三遍的写法等价（⛔ 在每个 keymap 里再抄一遍 DOM 咒语）。
+ */
+function domCopy(text: string): void {
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  document.execCommand('copy');
+  document.body.removeChild(ta);
+}
+function hostCopy(text: string): void {
+  getHost().then((h) => h.clipboardWrite(text)).catch(() => domCopy(text));
+}
+function hostPaste(put: (text: string) => void): void {
+  // 宿主读不到就什么都不做，让宿主自己的原生粘贴接管（迁移前三处注释写的就是这个意思）
+  getHost().then((h) => h.clipboardRead()).then(put).catch(() => { });
 }
 
 const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEditor({
@@ -123,61 +146,18 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
       { key: 'Mod-c', run: (view) => {
         const sel = view.state.selection.main;
         if (sel.empty) return false;
-        const text = view.state.doc.sliceString(sel.from, sel.to);
-        // Prefer Tauri clipboard plugin
-        import('@tauri-apps/api/core').then(({ invoke }) => {
-          invoke('plugin:clipboard-manager|write_text', { text }).catch(() => {
-            // Fallback: DOM textarea trick
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.position = 'fixed'; ta.style.left = '-9999px';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-          });
-        }).catch(() => {
-          const ta = document.createElement('textarea');
-          ta.value = text;
-          ta.style.position = 'fixed'; ta.style.left = '-9999px';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-        });
+        hostCopy(view.state.doc.sliceString(sel.from, sel.to));
         return true;
       }},
       { key: 'Mod-v', run: (view) => {
-        import('@tauri-apps/api/core').then(({ invoke }) => {
-          invoke('plugin:clipboard-manager|read_text').then((text) => {
-            if (typeof text === 'string') view.dispatch(view.state.replaceSelection(text));
-          }).catch(() => { /* fallback: let browser native handle via DOM */ });
-        }).catch(() => { /* fallback: let browser native handle */ });
+        hostPaste((text) => view.dispatch(view.state.replaceSelection(text)));
         return true;
       }},
       { key: 'Mod-x', run: (view) => {
         const sel = view.state.selection.main;
         if (sel.empty) return false;
         const text = view.state.doc.sliceString(sel.from, sel.to);
-        import('@tauri-apps/api/core').then(({ invoke }) => {
-          invoke('plugin:clipboard-manager|write_text', { text }).catch(() => {
-            const ta = document.createElement('textarea');
-            ta.value = text;
-            ta.style.position = 'fixed'; ta.style.left = '-9999px';
-            document.body.appendChild(ta);
-            ta.select();
-            document.execCommand('copy');
-            document.body.removeChild(ta);
-          });
-        }).catch(() => {
-          const ta = document.createElement('textarea');
-          ta.value = text;
-          ta.style.position = 'fixed'; ta.style.left = '-9999px';
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand('copy');
-          document.body.removeChild(ta);
-        });
+        hostCopy(text);
         view.dispatch(view.state.replaceSelection(''));
         return true;
       }},

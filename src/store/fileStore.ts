@@ -1,7 +1,7 @@
 // File metadata and management store
 // Stores imported Verilog files and folders in memory with Tauri-backed project directory persistence
 
-import { invoke } from '@tauri-apps/api/core';
+import { getHost, hostFire } from '../lib/host/host';
 import { parseVerilogModules } from '../lib/verilog';
 import { parentDir } from '../lib/vpath';
 
@@ -140,9 +140,7 @@ export const fileStore = {
     saveFilesToLocalStorage(files);
 
     // Save to project directory via Tauri backend
-    invoke('save_project_file', { name, content }).catch((err) => {
-      console.warn('Failed to save file to project directory:', err);
-    });
+    hostFire('Failed to save file to project directory:', (h) => h.saveProjectFile(name, content));
 
     notify();
     return entry;
@@ -164,7 +162,7 @@ export const fileStore = {
     };
     files = [...files, entry];
     saveFilesToLocalStorage(files);
-    invoke('save_project_file', { name, content }).catch(console.warn);
+    hostFire('Failed to save project file:', (h) => h.saveProjectFile(name, content));
     notify();
     return entry;
   },
@@ -175,9 +173,7 @@ export const fileStore = {
     folders = [...folders, name];
     saveFoldersToLocalStorage(folders);
 
-    invoke('create_project_folder', { name }).catch((err) => {
-      console.warn('Failed to create folder:', err);
-    });
+    hostFire('Failed to create folder:', (h) => h.createProjectFolder(name));
     notify();
   },
 
@@ -192,9 +188,7 @@ export const fileStore = {
     folders = folders.filter((f) => f !== name && !f.startsWith(prefix));
     saveFoldersToLocalStorage(folders);
 
-    invoke('delete_project_folder', { name }).catch((err) => {
-      console.warn('Failed to delete folder:', err);
-    });
+    hostFire('Failed to delete folder:', (h) => h.deleteProjectFolder(name));
     notify();
   },
 
@@ -212,7 +206,7 @@ export const fileStore = {
       const updated = { ...file, content, definedModules: modules };
       files = files.map((f) => (f.id === id ? updated : f));
       saveFilesToLocalStorage(files);
-      invoke('save_project_file', { name: file.name, content }).catch(console.warn);
+      hostFire('Failed to save project file:', (h) => h.saveProjectFile(file.name, content));
       notify();
     }
   },
@@ -239,9 +233,7 @@ export const fileStore = {
   deleteFile(id: string): void {
     const file = files.find((f) => f.id === id);
     if (file) {
-      invoke('delete_project_file', { name: file.name }).catch((err) => {
-        console.warn('Failed to delete file from project directory:', err);
-      });
+      hostFire('Failed to delete file from project directory:', (h) => h.deleteProjectFile(file.name));
     }
     files = files.filter((f) => f.id !== id);
     saveFilesToLocalStorage(files);
@@ -264,9 +256,7 @@ export const fileStore = {
       resolvedName = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
     }
 
-    invoke('move_project_file', { oldName, newName: resolvedName }).catch((err) => {
-      console.warn('Failed to move file on disk:', err);
-    });
+    hostFire('Failed to move file on disk:', (h) => h.moveProjectFile(oldName, resolvedName));
 
     files = files.map((f) => (f.id === id ? { ...f, name: resolvedName, filePath: resolvedName } : f));
     saveFilesToLocalStorage(files);
@@ -291,9 +281,7 @@ export const fileStore = {
       resolvedPath = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
     }
 
-    invoke('move_project_file', { oldName, newName: resolvedPath }).catch((err) => {
-      console.warn('Failed to move file on disk:', err);
-    });
+    hostFire('Failed to move file on disk:', (h) => h.moveProjectFile(oldName, resolvedPath));
 
     files = files.map((f) =>
       f.id === id ? { ...f, name: resolvedPath, filePath: resolvedPath } : f
@@ -318,9 +306,7 @@ export const fileStore = {
       resolvedPath = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
     }
 
-    invoke('move_project_folder', { oldName: oldPath, newName: resolvedPath }).catch((err) => {
-      console.warn('Failed to move folder on disk:', err);
-    });
+    hostFire('Failed to move folder on disk:', (h) => h.moveProjectFolder(oldPath, resolvedPath));
 
     // Update all files under the moved folder
     files = files.map((f) => {
@@ -407,9 +393,7 @@ export const fileStore = {
     const uniqueName = this.getUniqueName(fileName, parentFolder || undefined);
     const newPath = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
 
-    invoke('copy_project_file', { source: file.name, dest: newPath }).catch((err) => {
-      console.warn('Failed to copy file on disk:', err);
-    });
+    hostFire('Failed to copy file on disk:', (h) => h.copyProjectFile(file.name, newPath));
 
     const entry: FileEntry = {
       id: generateId(),
@@ -435,9 +419,7 @@ export const fileStore = {
     const uniqueName = this.getUniqueName(folderName, parentFolder || undefined);
     const newPath = parentFolder ? parentFolder + '/' + uniqueName : uniqueName;
 
-    invoke('copy_project_folder', { source: sourcePath, dest: newPath }).catch((err) => {
-      console.warn('Failed to copy folder on disk:', err);
-    });
+    hostFire('Failed to copy folder on disk:', (h) => h.copyProjectFolder(sourcePath, newPath));
 
     const prefix = sourcePath + '/';
     const newPrefix = newPath + '/';
@@ -490,9 +472,7 @@ export const fileStore = {
   async refresh(): Promise<void> {
     const tryLoad = async (retries: number): Promise<void> => {
       try {
-        const tree = await invoke<{ files: Array<{ name: string; size: number; modified: number }>; folders: string[] }>(
-          'list_project_tree'
-        );
+        const tree = await (await getHost()).listProjectTree();
 
         // Build a set of disk file names for quick lookup
         const diskFileNames = new Set(tree.files.map((f) => f.name));
@@ -510,7 +490,7 @@ export const fileStore = {
             // Update content if file was modified on disk
             if (existing.importedAt < info.modified) {
               try {
-                const content = await invoke<string>('read_project_file', { name: info.name });
+                const content = await (await getHost()).readProjectFile(info.name);
                 existing.content = content;
                 existing.definedModules = parseVerilogModules(content);
                 existing.status = 'pending';
@@ -522,7 +502,7 @@ export const fileStore = {
           } else {
             // New file on disk — import it
             try {
-              const content = await invoke<string>('read_project_file', { name: info.name });
+              const content = await (await getHost()).readProjectFile(info.name);
               const modules = parseVerilogModules(content);
               files = [...files, {
                 id: generateId(),

@@ -1,7 +1,7 @@
 // Project configuration store
 // Reads/writes verilog-viz.config.json in the project directory via Tauri backend
 
-import { invoke } from '@tauri-apps/api/core';
+import { getHost } from '../lib/host/host';
 
 export interface ProjectConfig {
   topModule?: string;
@@ -33,7 +33,7 @@ export const projectConfigStore = {
   async load(): Promise<ProjectConfig> {
     if (loaded) return config;
     try {
-      const raw = await invoke<string>('read_project_config', {});
+      const raw = await (await getHost()).readProjectConfig();
       if (raw) {
         config = { ...defaultConfig, ...JSON.parse(raw) };
       }
@@ -49,7 +49,7 @@ export const projectConfigStore = {
   async save(): Promise<void> {
     try {
       const json = JSON.stringify(config, null, 2);
-      await invoke('save_project_config', { content: json });
+      await (await getHost()).saveProjectConfig(json);
     } catch (err) {
       console.warn('Failed to save project config:', err);
     }

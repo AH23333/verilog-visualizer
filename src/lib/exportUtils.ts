@@ -1,15 +1,15 @@
 // Export utilities for circuit diagrams and Verilog code
 
-import { invoke } from '@tauri-apps/api/core';
+import { getHost, hostId } from './host/host';
 
-// Tauri 运行时探测：生产窗口里有 __TAURI_INTERNALS__，浏览器（dev / 无头 QC）没有。
+// Tauri 运行时探测挪到 `lib/host/host.ts`（⛔ 让探测长回某个具体文件里，换宿主又得挨处找）。
 // 每次调用现读（不是模块加载期求值），测试可在点击前注入桩来验证走的是原生保存路径。
-export const isTauri = (): boolean =>
-  typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
+export const isTauri = (): boolean => hostId() === 'tauri';
 
 /**
  * 统一导出落盘 —— 单一真源（消除编译模式「Tauri 原生对话框」与沙盒「<a download>」双轨）：
  *  - Tauri：`invoke('save_export_file')`，弹系统保存对话框；用户取消返回 false。
+ *  - VS Code Webview：经 Extension Host 的"另存为"（`lib/host/vscodeHost.ts`）。
  *  - 浏览器（dev / 无头 QC）：回退 `<a download>`，让 r12/audit3/r26/r37 等下载类闸门仍可判。
  */
 export async function saveExport(
@@ -17,27 +17,11 @@ export async function saveExport(
   defaultName: string,
   mime = 'application/octet-stream',
 ): Promise<boolean> {
-  if (isTauri()) {
-    try {
-      const path = await invoke<string | null>('save_export_file', {
-        content: Array.from(bytes),
-        defaultName,
-      });
-      return path != null;
-    } catch {
-      return false;
-    }
+  try {
+    return await (await getHost()).saveExportFile(bytes, defaultName, mime);
+  } catch {
+    return false;
   }
-  const blob = new Blob([bytes], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = defaultName;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 1000);
-  return true;
 }
 
 // 编译模式与沙盒共用这一份「自包含 SVG」构建器（唯一主人，⛔ 两处各写一套）。
