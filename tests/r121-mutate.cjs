@@ -103,7 +103,7 @@ if (checkOnly) {
 
 const runGate = (gate) => {
   try {
-    return execFileSync('node', [path.join(__dirname, gate + '.cjs')], { encoding: 'utf8', timeout: 600000 });
+    return execFileSync('node', [path.join(__dirname, gate + '.cjs')], { windowsHide: true, encoding: 'utf8', timeout: 600000 });
   } catch (e) { return String(e.stdout || '') + '\n[exit!=0]'; }
 };
 

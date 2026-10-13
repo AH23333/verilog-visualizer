@@ -505,7 +505,7 @@ function reapViteByPort(port) {
   if (!port) return 0;
   let pids = [];
   try {
-    const out = require('child_process').execSync('netstat -ano', { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
+    const out = require('child_process').execSync('netstat -ano', { windowsHide: true, encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
     pids = out.split('\n').filter((l) => l.includes('LISTENING') && new RegExp(':' + port + '\\b').test(l))
       .map((l) => l.trim().split(/\s+/).pop()).filter((x) => /^\d+$/.test(x));
     pids = [...new Set(pids)];
