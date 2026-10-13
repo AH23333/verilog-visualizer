@@ -97,11 +97,12 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 
 ## 2. 本目录的东西
 
-- **产品入口＝`pnpm studio:run`**（`scripts/run-studio.mjs`）：一条命令排四步——编缺的前端 → 编扩展 →
-  `apply-brand` 装进基座 → 起基座那份 `code.bat`，并**显式把 `--user-data-dir` 给到与基座同级的 `profile`**
-  （⛔ 动他日常 VS Code 的配置）。`--check` 只报现场、⛔ 构建、⛔ 起窗口。
-  ⚠ 它⛔ 替你跑那一次性的一步（基座 `npm install` / `compile-client`，几分钟到几十分钟、几 GB）——
-  把**整条命令打印出来**（⛔ 一句"请先自行安装基座"）。判据 `tests/unit/studioLauncher.test.mjs` 18 格。
+- **启动⛔ 我们自己的脚本（R141 起）**：跑产品＝基座官方 `scripts/code.bat --user-data-dir=<与基座同级的 profile> [<工程文件夹>]`；
+  调试本扩展＝官方 `--extensionDevelopmentPath`；打包＝官方 `npm run gulp vscode-win32-x64-min`
+  （任务名按平台/架构在 `build/gulpfile.vscode.ts:610` 生成，聚合任务在 :626；⚠ 这条⛔ 跑过＝UNVERIFIED，归片 5）。
+  本目录唯一留下的自写脚本是 `apply-brand.mjs`——它只做"把产物放进官方位置"这一件事。
+  ⚠ 被删掉的两颗包装（`scripts/run-in-vscode.mjs`、`scripts/run-studio.mjs`）连同它们 27 格判据都能走 git 历史找回；
+  删的是包装，⛔ 是那段历史里"一条命令起产品"的真跑读数（§1d 那张表照留）。
 - `product.overrides.json` —— 覆盖层。每颗键都对照过基座：要么基座本来有，要么构建脚本确认读它。⛔ 整份覆盖 product.json。
 - `apply-brand.mjs` —— ① 合并覆盖层进 `<fork>/product.json`（幂等，合并后**自检那几颗键真的落到位置**）；
   ② 把 `extension/` 的产物（`package.json` + `dist/extension.cjs` + `webview/**`）装成基座的内置扩展
@@ -211,5 +212,6 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 - `src/lib/host/` 统一调用层：⛔ 白做——片 3/4 之后所有宿主调用都走 `vscodeHost` 那条 RPC，接口⛔ 改。
 - `extension/src/{html,projectStore}.ts` 与那 16 方法消息路由：继续用，只是**宿主从"用户的 VS Code"变成"我们这份二进制"**，
   内置扩展读得到基座的 `resources/`，CSP/装载逻辑一字⛔ 改（判据 `r137-webview-csp-gate` 也继续有效）。
-- `pnpm app` 那颗启动脚本（R138）：降级为**开发用**入口，⛔ 再当成交付物；片 2 之后由基座产物取代
-  （取代这件事现在**成立**：`scripts/code.bat --user-data-dir=D:\vv-studio\profile` 起的就是我们自己的二进制）。
+- 启动脚本（R138 `pnpm app`、R140 `pnpm studio:run`）**R141 整颗删除**：跑起来只用官方命令
+  （`scripts/code.bat --user-data-dir=D:\vv-studio\profile [<工程文件夹>]` 起的就是我们自己的二进制）。
+  准绳是他这一句：**「不要使用你自己编写的命令脚本，尽可能使用官方框架的运行命令」**。

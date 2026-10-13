@@ -42,7 +42,7 @@ export function activate(context: vscode.ExtensionContext) {
       },
     });
   }
-  // 开发宿主（`pnpm app` 或 F5）与**我们自己的二进制**里直接把窗口弹出来：
+  // 开发宿主（官方 flag `--extensionDevelopmentPath`，或 F5）与**我们自己的二进制**里直接把窗口弹出来：
   // 多一步"去命令面板找那条命令"就是要消掉的东西。被别人安装的扩展⛔ 抢着开——那是别人的编辑器。
   // ⚠ 判据⛔ 只看 `extensionMode`：实测 `environmentService.ts:105`， Development 只在传了
   //   `--extensionDevelopmentPath` 时为真 ⇒ 我们编进自己产品的内置扩展是 Production，旧规则永不触发

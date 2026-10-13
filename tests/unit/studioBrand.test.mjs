@@ -82,15 +82,37 @@ describe('内置扩展要落的那几颗文件', () => {
   });
 
   it('缺 dist/extension.cjs 时要报出来（先编再装，⛔ 把源码目录整个塞进基座）', () => {
-    const r = builtinExtFiles('/ext', fakeFs(['package.json']));
+    const r = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json']));
     expect(r.missing).toEqual([path.join('dist', 'extension.cjs')]);
+    expect(r.hasWebview).toBe(false);
   });
 
-  it('webview/index.html 缺时给警告字段（装载⛔ 找到产物时扩展自己会显示那句话）', () => {
-    const r = builtinExtFiles('/ext', fakeFs(['package.json', path.join('dist', 'extension.cjs')]));
-    expect(r.missing).toEqual([]);
+  it('两处都⛔ 有 webview 时 hasWebview=false（⛔ 装出一颗"扩展在、画布白屏"的基座）', () => {
+    const r = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json', path.join('dist', 'extension.cjs')]));
+    expect(r.missing).toEqual([]);          // 缺的是 webview，⛔ 是 bundle——报错要分得开
     expect(r.hasWebview).toBe(false);
     expect(r.outDirName).toBe('verilog-visualizer');
+  });
+
+  it('webview 的来源**优先用 Vite 的 dist/**（这一步⛔ 再要我自己写的 `webview:sync`）', () => {
+    // 为什么钉这一格：`pnpm -C extension webview:sync` 是我加的复制步骤，而它真正服务的只有 vsce 打包
+    //（vsce 只收 extension/ 目录）。内置装载走基座官方那条扫描（extensions/*/package.json），
+    // 直接拿 dist/ 就够 ⇒ 少一步手工动作，也少一处"两边副本不同步"的分岔。
+    // ⚠ 这一格⛔ 能沿用上面那颗 `endsWith` 的假 fs：两条候选路径都以 `index.html` 结尾，
+    //    用后缀匹配就分不出"来源是 dist 还是 extension/webview"，优先级那半句等于没判。 ⇒ 精确集合比对。
+    const has = (list) => {
+      const s = new Set(list.map((x) => String(x).replace(/\\/g, '/')));
+      return { existsSync: (p) => s.has(String(p).replace(/\\/g, '/')) };
+    };
+    const BUNDLE = ['/ext/package.json', '/ext/dist/extension.cjs'];
+    // ⚠ 比之前先归一：`webviewSrc` 是 `path.join` 出来的，Windows 上是反斜杠——手打正斜杠去比就是假红
+    //   （上一格刚为同一件事红过一次，这一格⛔ 再犯）。集合里那份已经归一过，所以判据⛔ 因此变松。
+    const norm = (x) => String(x).replace(/[\\]/g, '/');
+    expect(norm(builtinExtFiles('/ext', '/repo/dist', has([...BUNDLE, '/repo/dist/index.html', '/ext/webview/index.html'])).webviewSrc)).toBe('/repo/dist');
+    expect(norm(builtinExtFiles('/ext', '/repo/dist', has([...BUNDLE, '/ext/webview/index.html'])).webviewSrc)).toBe('/ext/webview');
+    // 没给 repoDist（⛔ dist 那格）时也⛔ 炸：仍用 extension/webview
+    expect(norm(builtinExtFiles('/ext', undefined, has([...BUNDLE, '/ext/webview/index.html'])).webviewSrc)).toBe('/ext/webview');
+    expect(builtinExtFiles('/ext', '/repo/dist', has(BUNDLE)).hasWebview).toBe(false);
   });
 });
 

@@ -11,10 +11,10 @@
 
 ```bash
 pnpm install
-pnpm studio:run     # ← 产品入口，就这一条：编缺的 → 编扩展 → 装进基座 → 起**我们自己的二进制**（⛔ 动他日常 VS Code 配置）
-pnpm studio:run:check  # 只报现场（基座在哪一格／本轮要不要重编／打算跑什么命令），⛔ 构建、⛔ 起窗口
-pnpm app            # 开发用：把本扩展挂到"你日常装的那份 VS Code"里起一颗开发宿主窗口
-pnpm app:check      # 只报现场（找到哪颗 CLI／dist 新不新／打算跑什么命令），⛔ 真开窗口
+# 跑起来＝用基座的官方启动脚本（R141 起本仓⛔ 自写启动脚本）：
+#   cd D:\vv-studio\vscode && scripts\code.bat --user-data-dir=D:\vv-studio\profile [<工程文件夹>]
+# 调本扩展＝官方 flag：scripts\code.bat --extensionDevelopmentPath="<本仓库根>\extension" --user-data-dir=...
+# 改基座源码＝官方 watch：cd D:\vv-studio\vscode && npm run watch-client
 pnpm dev            # Vite dev server → http://localhost:1420（浏览器预览，⛔ 宿主能力）
 pnpm build          # tsc && vite build（base:'./'）—— 提交前必过；壳与跑 dist 的闸门都读它
 pnpm -C extension check   # VS Code 壳：tsc + esbuild（产 extension/dist/extension.cjs）
@@ -24,7 +24,7 @@ pnpm studio:brand   # 只做第 3 步：把品牌合进 Code - OSS 基座，并�
 ```
 
 > **交付形态＝自带 Code - OSS 源码分支、出独立二进制**（`studio/`，用户 2026-10-13 裁定）：
-> workbench 本身就是 UI，我们的东西住进它的原生位置。`pnpm app` 与 `extension/` 那套**继续用**，
+> workbench 本身就是 UI，我们的东西住进它的原生位置。`pnpm dev` 与 `extension/` 那套**继续用**，
 > 但降级为**开发用入口**（在用户自己的 VS Code 里挂载本扩展），⛔ 当交付物。
 > Tauri 那条线已于 R138 整条删除（`src-tauri/`、`tauriHost`、自绘标题栏、三个 `@tauri-apps` 包都不在仓里）；
 > 要找回那一版走 git，⛔ 走"两条宿主并排维护"。
@@ -94,23 +94,25 @@ grep -rn "@tauri-apps\|__TAURI" src/ extension/ tests/   # 期望：0 行（R138
 ### VS Code 壳的开发回路（`extension/`，R137 起）
 
 ```bash
-pnpm app                        # ← 开发宿主那一条（编缺的 + 起挂载本扩展的 VS Code 窗口 + 面板自己弹）；产品入口是 `pnpm studio:run`
+# 开发宿主那一条＝官方 flag（面板会自己弹，因为那时 extensionMode 是 Development）：
+#   scripts\code.bat --extensionDevelopmentPath="<本仓库根>\extension" --user-data-dir=D:\vv-studio\profile
 pnpm build                      # 只改前端时：编完在扩展宿主窗口里重载面板即可
 pnpm -C extension check         # tsc + esbuild（extension/dist/extension.cjs）
 pnpm test                       # vitest：host 层 + 壳的 html/projectStore/启动器（tests/unit/**）
 node tests/r137-webview-csp-gate.cjs   # 按壳那份 CSP 在真浏览器里跑这张画布
 ```
 
-基座那一条回路——日常只有**一条**（`scripts/run-studio.mjs`，读数在 `studio/README.md` §1d）：
+基座那一条回路——**全部是官方命令**（R141 起本仓⛔ 自写启动器；读数在 `studio/README.md` §1b/§1d）：
 
 ```bash
-pnpm studio:run [<要打开的工程文件夹>]   # 编缺的 → 编扩展 → 装进基座 → 起自己的二进制，profile 显式给到基座同级目录
+cd D:\vv-studio\vscode
+npm install && npm run compile-client && npm run electron      # 一次性（几 GB、几十分钟）
+scripts\code.bat --user-data-dir=D:\vv-studio\profile D:\我的工程   # 起我们自己的二进制
 ```
 
-它⛔ 替你跑的是**那一次性的一步**：基座 checkout 还⛔ 装依赖／⛔ 编过时，脚本会把整条命令打印给你
-（`no-deps` ⇒ `npm install`；`not-compiled` ⇒ `npm run compile-client && npm run electron`）——
-那是几分钟到几十分钟、几 GB 的动作，替用户默默发起⛔ 是"尽力而为"，是鲁莽。
-⚠ 基座 checkout 的路径**含空格就编不过**（上游 `preinstall` spawn 时⛔ 给路径加引号，实测跑满四分钟才炸）。
+⚠ 基座路径**含空格就编不过**（上游 `preinstall` spawn 时⛔ 给路径加引号，实测跑满四分钟才炸）；
+`.nvmrc` 要 node 24.18.0（`preinstall` 硬拒），原生模块要 Spectre 缓解库（缺它撞 MSB8040）。
+
 
 - **改前端**只需 `pnpm build` + 在扩展宿主里重载面板；**只有 `extension/src/**` 改了**才要重编扩展
   （装进基座那份要再跑一次 `pnpm studio:brand`——它是拷贝，⛔ 软链）。

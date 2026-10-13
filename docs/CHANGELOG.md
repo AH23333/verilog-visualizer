@@ -7,6 +7,46 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R141：⛔ 自写启动脚本——跑起来只用官方框架的命令（2026-10-14）
+
+> 触发逐字：**「不要使用你自己编写的命令脚本，尽可能使用官方框架的运行命令」**。
+> 这句话判掉的是我连做三批的东西：R138 的 `scripts/run-in-vscode.mjs`（`pnpm app`）与 R140 的
+> `scripts/run-studio.mjs`（`pnpm studio:run`）——它们把"起一颗编辑器"包装成我们自己的 CLI，
+> 而基座本身就是 Code - OSS：`scripts/code.bat` 加官方参数 `--user-data-dir` / `--extensionDevelopmentPath`
+> 才是那个框架给的正解。
+
+### Removed
+- **两颗自写启动脚本整颗删**（`scripts/run-in-vscode.mjs`、`scripts/run-studio.mjs`）＋它们的 npm 别名
+  （`app` / `app:check` / `studio:run` / `studio:run:check`）＋两份专用判据
+  （`tests/unit/launcher.test.mjs` 9 格、`tests/unit/studioLauncher.test.mjs` 18 格）。
+  走 git 历史可回退。**删的是包装，⛔ 是那段历史里的真跑读数**（"Windows 上 `.cmd` 必须 shell、
+  参数要各自带引号"、"一条命令起产品真跑通过全链路"这些结论仍然有效，写在 §1d/卷四十五里）。
+- `apply-brand.mjs` 里 webview 的来源**优先改成 Vite 的 `dist/`**：
+  ⇒ 内置装载这条路⛔ 再要我自己发明的 `pnpm -C extension webview:sync`（那一步真正服务的只有 `vsce` 打包，
+  因为 vsce 只收 `extension/` 目录；内置装载走基座官方那条 `extensions/<id>/package.json` 扫描）。
+
+### 现在的口径（README 与三份开发文档同步改完）
+| 要做的事 | 官方命令 |
+|---|---|
+| 一次性编基座 | `npm install` → `npm run compile-client` → `npm run electron`（在 fork 里） |
+| 起我们自己的二进制 | `scripts/code.bat --user-data-dir=<与基座同级的 profile> [<工程文件夹>]` |
+| 调本扩展 | 同一个脚本加官方 flag `--extensionDevelopmentPath="<本仓库根>\extension"` |
+| 改基座源码 | 官方 `npm run watch-client` |
+| 编我们的产物 | `pnpm build`（tsc + vite，官方工具）+ `pnpm -C extension build`（esbuild） |
+| 放进基座的官方位置 | `pnpm studio:brand` ——**本仓唯一剩下的自写脚本**，它只做文件摆放 + 合并 `product.json` |
+| 打包安装物 | 官方 `npm run gulp vscode-win32-x64-min`（任务名按平台/架构在 `build/gulpfile.vscode.ts:610` 生成）；⚠ **本轮⛔ 跑过** ⇒ 记 UNVERIFIED，归片 5 |
+
+### 读数（改完真跑过）
+- 官方那条起窗口命令**真跑**：`scripts\code.bat --user-data-dir=D:\vv-studio\profile D:\vv-studio\demo`
+  ⇒ 窗口标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`；exthost 里
+  `_doActivateExtension local.verilog-visualizer-vscode` 1 行、`[error]` **0 行**；
+  `pnpm studio:brand` 输出改成"webview 取自 <仓库>\dist"，装进去 9 颗文件。
+- 判据：vitest **91/91**（117−27＝删掉的两份启动器判据）；根 tsc / extension typecheck / eslint / `pnpm build` 各 0 错。
+- ⚠ 本轮自己造的两处（都当场修掉并记下）：① 代码块注释里写 `extensions/*/package.json` 会**把块注释提前关掉**
+  （`*/` 就在那里），`apply-brand.mjs` 当场语法错——"注释里的星号斜杠"是新的一类自伤；
+  ② 用 heredoc 的 python 往文档写盘符路径，反斜杠**第四次**被吃成垂直制表符（README 一处、迁移台账一处，
+  按字节扫 `0x0B` 全抓出并改回；结论：**这类块改用不解释转义的写法**）。
+
 ## [未发布 Unreleased] — R140：版本分线（main＝无 agent 版）+ 方向第二次纠正（2026-10-13）
 
 > 他这次说了两件事，逐字。分线：**「当前项目我要另起一个版本，建议推送819563d5ecb7deff50f9da26176d3561348986b3，

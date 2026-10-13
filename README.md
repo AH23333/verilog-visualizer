@@ -26,13 +26,14 @@
 **版本线**（同日裁定）：`main` ＝ **无 agent 功能**那份，已推到 `819563d`（R135）；往后的提交都走**新分支 `agent`**（本地，⛔ 未推；他令分支名⛔ 带中文 ⇒ 口径名「agent版」落到 ref 上叫 `agent`）。
 
 诚实版进度：
-- ✅ **产品入口已能一条命令跑起来**：`pnpm studio:run`（编前端 → 编扩展 → 装进基座 → 起我们自己的二进制），
-  本轮真跑过全链路（窗口标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`）。
-  一次性前置＝基座那份 checkout 要先 `npm install` + `compile-client` 编过——缺哪一步脚本会把整条命令打印给你。
+- ✅ **我们自己的二进制跑得起来**：基座官方启动脚本 `scripts/code.bat --user-data-dir=<独立目录> <工程文件夹>`
+  已在 2026-10-13 真跑通（窗口标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`）。
+  ⚠ 本仓⛔ 自写启动脚本（`pnpm app` / `pnpm studio:run` 那一族 R138–R140 的包装已按用户令删除，见 R141）。
 - ✅ **Tauri 那条线整条已拆**（`src-tauri/`、Rust 后端 14 颗命令、`tauriHost`、自绘标题栏 `WindowControls.tsx`；
   要找回那一版走 git，账本卷四十三末尾有提交号）。
-- ✅ **宿主中立层已跑通**：`pnpm app` 能起一个挂了本扩展的开发窗口。⚠ 它是**开发用入口，⛔ 产品本身**，
-  而且此刻界面仍是我们自绘的那套（还没换成 workbench 原生）——这一点上一批我写成"唯一宿主＝扩展壳"，方向报错了。
+- ✅ **宿主中立层已跑通**：官方 flag `--extensionDevelopmentPath` 能把本扩展挂到任意一份 VS Code / 我们自己的二进制上。
+  ⚠ 那是**开发用入口，⛔ 产品本身**，而且此刻界面仍是我们自绘的那套（还没换成 workbench 原生）——
+  这一点上一批我写成"唯一宿主＝扩展壳"，方向报错了。
 - ⬜ **基座已就位并跑通过一次**（仓库外 `D:\vv-studio\vscode`，Code - OSS 1.143.0）：`pnpm studio:brand` 把品牌
   合进基座 `product.json` 并把我们的扩展装成它的内置扩展；基座 `npm install` + `compile-client` + `electron`
   本轮真跑通，起的是**我们自己的二进制**（`.build/electron/Verilog Visualizer.exe`，239,129,088 字节），
@@ -77,43 +78,54 @@ The two modes interoperate: one click copies a compiled circuit (constructor-tim
 
 ## 快速开始 / Quick Start
 
-**产品形态＝我们自己的二进制**（自带 Code - OSS 分支，⛔ 要你另外装 VS Code）。一条命令：
+跑起来**只用官方框架自己的命令**——本仓⛔ 提供自写的启动脚本（原来那两颗 `pnpm app` / `pnpm studio:run` 已于 R141 删除）。
+基座是 Code - OSS，所以"启动脚本"就是它自带的 `scripts/code.bat` / `./scripts/code.sh`。
 
 ```bash
-pnpm install                    # 包管理是 pnpm（有 pnpm-lock.yaml；⛔ 别混用 npm/yarn 生成第二把锁）
-pnpm studio:run                 # ← 就这一条：编前端 → 编 Extension Host → 装进基座 → 起我们自己的二进制
-pnpm studio:run D:\我的工程目录   # 带一个文件夹参数＝让它打开那个工程（原生 Explorer 与画布都从那儿取文件）
-```
-
-`pnpm studio:run`（`scripts/run-studio.mjs`）替你排四步，每步只在缺的时候才跑：① `dist/` 缺或 `src/` 更新 ⇒ `pnpm build`；
-② `extension/dist/extension.cjs` 缺 ⇒ 编扩展；③ 把品牌与内置扩展装进基座（`pnpm studio:brand`）；
-④ 起基座那份 `scripts/code.bat`，并**显式给一个与基座同级的 `--user-data-dir`**——
-⛔ 动你日常 VS Code 的配置。只想看它打算干什么（⛔ 构建、⛔ 起窗口）：`pnpm studio:run --check`。
-
-**唯一一次性的前置**：基座那份 checkout 得先装好依赖并编过一次（那是 1590 颗包 / 几分钟到几十分钟 / 几 GB，
-`studio:run` 会**把整条命令打印出来给你**，⛔ 替你默默发起这种量级的动作）：
-
-```bash
-# ⚠ 路径⛔ 含空格：上游 preinstall spawn 时⛔ 给路径加引号，带空格会在第一个空格处炸（实测跑满四分钟才报错）
+# ① 一次性：拉基座并编出来（⚠ 路径⛔ 含空格；另需 node 24.18.0 与含 Spectre 缓解库的 C++ 工具链）
 git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D:\vv-studio\vscode
-cd D:\vv-studio\vscode && npm install && npm run compile-client && npm run electron
+cd D:\vv-studio\vscode
+npm install                      # 1590 颗包、几分钟到几十分钟
+npm run compile-client           # 官方脚本：编 out/
+npm run electron                 # 官方脚本：拉 Electron 运行时到 .build/electron/
+
+# ② 每次改完前端或扩展后：编产物，并把它放进基座的"官方内置扩展位置"
+cd <本仓库根目录>
+pnpm build                       # tsc && vite build ⇒ dist/
+pnpm -C extension build          # esbuild ⇒ extension/dist/extension.cjs
+pnpm studio:brand                # 唯一一处本仓自写脚本：合并 <fork>/product.json + 拷进 <fork>/extensions/
+
+# ③ 起我们自己的二进制：官方启动脚本 + 官方参数
+cd D:\vv-studio\vscode
+scripts\code.bat --user-data-dir=D:\vv-studio\profile D:\我的工程目录
 ```
 
-基座这一条要 **node 24.18.0**（`.nvmrc` 写死，`preinstall` 是硬拒），另需 VS 2022 的 C++ 工具链**含 Spectre 缓解库**
-（缺它会撞 MSB8040）。逐条实测前置与踩坑记录＝[studio/README.md](./studio/README.md) §4。
-指路退路：基座⛔ 放在默认位置时用 `VERILOG_STUDIO_FORK=<路径> pnpm studio:run`。
+`--user-data-dir` 与位置参数都是 VS Code 的**官方 CLI 参数**：前者让这颗二进制用自己**独立**的用户数据目录
+（⛔ 污染你日常 VS Code 的配置），后者就是要打开的工程文件夹——原生 Explorer 与画布都从它取文件。
+改了基座源码时用它自带的 watch：`npm run watch-client`。
+指路退路（基座⛔ 在默认位置时）：`VERILOG_STUDIO_FORK=<路径> pnpm studio:brand`。
 
-**开发用回路（在我们自己的二进制里调试才需要）**
+**打包成安装包**（官方 gulp 目标；任务名按平台/架构在 `build/gulpfile.vscode.ts:610` 生成，聚合任务在 :626）：
 
 ```bash
-pnpm app                 # 起一个"挂了本扩展的开发宿主"窗口（用你日常装的那份 VS Code），画布自己弹出来
-pnpm app:check           # 只报现场：找到哪颗 CLI／产物新不新／打算跑什么命令
+cd D:\vv-studio\vscode && npm run gulp vscode-win32-x64-min
+```
+
+> ⚠ 这条打包命令**本轮⛔ 跑过**（记 UNVERIFIED，归片 5）；上面 ①②③ 每一步都在 2026-10-13 真跑过，
+> 读数与踩坑记录在 [studio/README.md](./studio/README.md) §1b/§1d/§4。
+
+**开发回路与闸门（同样全是官方入口）**
+
+```bash
 pnpm dev                 # 纯浏览器预览 → http://localhost:1420（⛔ 宿主落盘，导出退化为 <a download>）
+# 把本扩展挂到任意一份 VS Code（或我们自己的二进制）上调试＝官方 flag：
+scripts\code.bat --extensionDevelopmentPath="<本仓库根>\extension" --user-data-dir=D:\vv-studio\profile
+# 或者用仓库里入库的 .vscode/launch.json 按 F5
 node tests/run-all.cjs   # 全量回归闸门（headless Edge，73 格）
 ```
 
-`pnpm app` 那两条⛔ 是交付物——它们是调试入口；产品入口只有 `pnpm studio:run`。
-改前端后的回路是「`pnpm build` → 重载那个窗口」；只有 `extension/src/**` 改了才需要重编扩展（或 `pnpm ext:watch`）。
+改前端后的回路是「`pnpm build` → 在窗口里重载」；只有 `extension/src/**` 改了才需要 `pnpm -C extension build`
+（或 `pnpm ext:watch`）；要把改动带进我们自己的二进制，再跑一次 `pnpm studio:brand` 就行。
 
 
 ## 文档 / Documentation

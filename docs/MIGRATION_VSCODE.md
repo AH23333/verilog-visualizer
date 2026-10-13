@@ -16,7 +16,7 @@
 且那份 CSP 与资产改写**已过真浏览器判据**（`tests/r137-webview-csp-gate.cjs`，见 §3.5）。
 ⇒ **宿主＝VS Code 这一族**（R136–R138 落的中立层与壳都继续有效），但**交付形态已改**：
 最终宿主是**我们自己的 Code - OSS 分支二进制**（`studio/`，片 2 已实测跑通编译并起过窗口，读数在
-[studio/README.md](../studio/README.md) §1b），`pnpm app` 那一颗**降级为开发用入口**（⛔ F5、⛔ 命令面板），
+[studio/README.md](../studio/README.md) §1b），启动**只用基座官方脚本** `scripts/code.bat --user-data-dir=… [<工程文件夹>]`（R141 起，自写包装脚本已删）（⛔ F5、⛔ 命令面板），
 Tauri 那条线整条删除（§8）。
 剩下的真开放项：① ~~webview `localStorage` 到底持不持久~~ ⇒ **R139 片 3a 已有读数**（§6b：存储层跨启动稳定、
 origin 不漂；只剩"用户画的电路正文跨重启"那一格要点验）；
@@ -106,20 +106,20 @@ CSP 与改写器**从 `extension/src/html.ts` 现读**，⛔ 闸门里抄第二�
 |---|---|
 | 2/3 后端胶水 + 消息总线（**前端半段**） | ✅ `4ef5860`：调用层收成一份，`src` 内零直连 |
 | 3 消息总线（**宿主半段**：Extension Host handler） | ✅ R136：15 方法逐条对上 `vscodeHost`；CSP/装载过 R137 真浏览器判据。**R140 片 4-C1 ＝ 16 颗**（`listSandboxTree`）；两张表的对账由 `tests/unit/vscodeShell.test.ts` 钉（下限已从 15 提到 16，⛔ 改小） |
-| 1 脚手架（`extension/` 包 + 打包配置） | ✅ R136 建、**R138 补全**：pnpm workspace + `.vscode/{launch,tasks}.json` + `pnpm app` 启动器 + vsce 已装且真跑出过 `.vsix` |
+| 1 脚手架（`extension/` 包 + 打包配置） | ✅ R136 建、**R138 补全**：pnpm workspace + `.vscode/{launch,tasks}.json` + `pnpm app` 启动器（**R141 已删**）+ vsce 已装且真跑出过 `.vsix` |
 | 4 L1（`SecretStorage` / provider 列表） | ⛔ 本期不做（用户令：先不要搭 agent 功能） |
 | 5 路径语义迁移（`get_project_dir` → `Uri`） | ✅ **片 3a（R139）**：项目根＝**打开的工作区文件夹**（没开文件夹才退回 `globalStorageUri/project_files`；多根取第一颗＝在册取舍）；⚠ 这把"⛔ 用 workspace 文件夹"的旧理由**已反转**——文件树的主人要交给原生 Explorer。`partBindings` 存的是文件名还是绝对路径**仍⛔ 现场量** |
 | 6 agent 子系统 | ⛔ 未开工（同上令） |
 | 7 删 `WindowControls.tsx` / 清 `isTauri` 守卫 | ✅ **R138**：`WindowControls.tsx`、`tauriHost.ts`、接口上那五颗窗口控制方法与 `hasWindowControls`、`exportUtils.isTauri`、两处 `data-tauri-drag-region` 全部拔掉（回退方案改为"走 git 历史"，§8） |
-| 8 回归 | 部分：浏览器档 + 壳的 CSP/装载档各有闸门（R138 全量 73 格，见 §7）；**R139 片 3a 起多了一面无头网**：`tests/unit/vscodeApiStub.ts`（回 `Thenable` 的假宿主）+ `tests/unit/extensionHost.test.ts` 25 格，走真 req/res 通道判"选哪颗根 / 落盘落点对不对 / webview HTML 装没装上 / 面板该不该自己弹"（8 臂台架全有红）；它证的是⛔ 我们这侧的接线，**真开 EPH 驱动 webview 那颗台架仍⛔ 建**，`pnpm app` 那条路本身有 `pnpm app:check` 与 `tests/unit/launcher.test.mjs` 兜住"找到 CLI / 参数带引号 / 该不该重编"，⛔ 等于"点过窗口" |
+| 8 回归 | 部分：浏览器档 + 壳的 CSP/装载档各有闸门（R138 全量 73 格，见 §7）；**R139 片 3a 起多了一面无头网**：`tests/unit/vscodeApiStub.ts`（回 `Thenable` 的假宿主）+ `tests/unit/extensionHost.test.ts` 25 格，走真 req/res 通道判"选哪颗根 / 落盘落点对不对 / webview HTML 装没装上 / 面板该不该自己弹"（8 臂台架全有红）；它证的是⛔ 我们这侧的接线，**真开 EPH 驱动 webview 那颗台架仍⛔ 建**，R138 那条 `pnpm app` 路当时有 `pnpm app:check` 与 9 格判据兜住"找到 CLI / 参数带引号 / 该不该重编"（**R141 连脚本带判据整颗删除**，改用官方 `scripts/code.bat`），⛔ 等于"点过窗口" |
 
 ## 5. 点验单（真机）
 
-### 5A 壳（VS Code，`pnpm app`）——优先打这一组
+### 5A 壳（我们自己的二进制，官方 `scripts/code.bat`）——优先打这一组
 
-1. **能开**：`pnpm app` ⇒ 起一个挂了本扩展的 VS Code 窗口，**画布面板自己弹出来**（⛔ 再按 F5、⛔ 再去命令面板找命令）。
+1. **能开**：`scripts\code.bat --user-data-dir=D:\vv-studio\profile [<工程文件夹>]` ⇒ 起我们自己的二进制，
    若显示"找不到前端构建产物"那句话＝`dist/` 有问题，程序已把下一步写在页面上（⛔ 让人去猜）。
-   想先干跑一遍看它打算干什么：`pnpm app:check`。
+   ⚠ R141 起⛔ `pnpm app:check` 那颗包装：要"只看不开"就直接读 `studio/README.md` §1d 的官方命令清单。
 2. **能画**：进沙盒 → 放 Input/And/Lamp → 连线 → 点运行 → 灯变色。（这颗 R137 已在无头浏览器里判过，真机那一遍是验 webview 环境差异：`acquireVsCodeApi`、`vscode-webview:` origin、剪贴板。）
 3. **能存**：导出任一 SVG/JSON/网表 ⇒ 弹**系统保存对话框**；取消提示"导出已取消"（⛔ 报错、⛔ 静默）。
 4. **能落盘**：新建 `.v` 文件/文件夹、重命名、移动、删除 ⇒ 用命令
@@ -128,7 +128,7 @@ CSP 与改写器**从 `extension/src/html.ts` 现读**，⛔ 闸门里抄第二�
    ⚠ 片 3a 起这颗**打开的就是你工作区那个文件夹**（没开文件夹时才是旧的 globalStorage 家）；
    工程配置仍留应用级（⛔ 往用户仓库里扔 `verilog-viz.config.json`），这一格因此要**分两头看**。
 5. **⛔ 数据还在不在（§6 那颗；R139 已有 §6b 的读盘半份，这一格是剩下那半份）**：画一个电路存成沙盒文件 →
-   **关掉面板 → 关掉那个 VS Code 窗口 → 重新 `pnpm app` → 再看文件树** ⇒ 那颗还在吗？内容对吗？
+   **关掉面板 → 关掉那个 VS Code 窗口 → 重新跑那条 `scripts/code.bat` → 再看文件树** ⇒ 那颗还在吗？内容对吗？
    设置项（主题/字号/自动保存）还在吗？—— 三条各自记"在/没了"。
    ⚠ 走这一格⛔ 用 F5 的开发宿主（那是临时 profile，读数⛔ 代表产品）；要么用我们自己的二进制
    （`studio/README.md` §1b 那条 `code.bat`），要么显式加 `--user-data-dir`。
@@ -151,6 +151,12 @@ R138 删掉 Tauri 之后，"与改前一致"这条基准⛔ 再有第二个宿�
 6. 深色/浅色主题各导一张 SVG：打开文件应看到**与屏幕一致**的底与字（R135 那三项观感）。
 
 ## 8. R138：一条命令起壳 + Tauri 整条拆除
+
+> ⚠ **R141 起这一节整节变成历史**：那颗自写启动器（`scripts/run-in-vscode.mjs` / `pnpm app`）与它的 9 格判据
+> 已删除（用户令：**「不要使用你自己编写的命令脚本，尽可能使用官方框架的运行命令」**）。
+> 现在跑产品＝基座官方 `scripts\code.bat --user-data-dir=<独立目录> [<工程文件夹>]`；调本扩展＝官方
+> `--extensionDevelopmentPath`；打包＝官方 `npm run gulp vscode-win32-x64-min`。本节里"找 CLI／参数带引号"
+> 那两套实测教训仍然成立（官方脚本自己也要面对同一件事），只是**不再由我们代劳**。
 
 **触发是他这两句**：「我想要的效果是直接改成 vscode 套壳，但是当前启动方式还是原来的 tauri，
 你给的 `pnpm -C extension build` 非常麻烦，应该是直接一行代码运行的，而不是你文档里那么麻烦还要 F5」＋
@@ -280,7 +286,7 @@ R138 删掉 Tauri 之后，"与改前一致"这条基准⛔ 再有第二个宿�
 | `r12-export`（[F] 三格改 VS Code 桩） | **28 pass / 0 fail** |
 | `r13-custom-gate`（boot 改 `UI.boot`） | **15 pass / 0 fail** |
 | `r137-webview-csp-gate` | **11 pass / 0 fail / 1 UNVERIFIED**（那颗 UNVERIFIED 是 R137 既有结论） |
-| `pnpm app:check` | CLI 走 PATH 命中；`needsBuild` 正确；命令串含空格参数各自带引号 |
+| ~~`pnpm app:check`~~（**R141 随启动脚本整颗删除**；当时的 9 格判据 `tests/unit/launcher.test.mjs` 一并撤，走 git 历史可回退） |
 | `pnpm ext:package` | `.vsix` 产出：**21 个文件 / 7.03 MB** ⇒ 这条⛔ 再是"没实测" |
 | 全量跑批 | **今天没能一次跑完 73 格**：两次分别在第 24／28 格后**成块**掉 ENVRED（掉的⛔ 同一批），
   把 16 颗掉出闸门**逐颗单跑全绿（0 fail）**，r20～r24 连着再跑一遍也全绿 ⇒ 产品面没发现真红，

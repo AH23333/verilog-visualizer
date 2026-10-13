@@ -11,7 +11,7 @@
 
 | 事实 | 实测 | 对架构的含义 |
 |---|---|---|
-| 宿主（**2026-10-13 R138 实测态**） | **VS Code 扩展壳＝唯一宿主**：Extension Host（Node）+ `WebviewPanel` 装 React 前端，`pnpm app` 一条命令起。Tauri 那条线**已整条删除**（`src-tauri/`、`tauriHost`、自绘标题栏）。画布侧不变：`Canvas.tsx`(1140) 持 `paperRef` | 电路模型内嵌 `paper.model`，**无独立 headless 模型对象**（换宿主⛔ 改这一条） |
+| 宿主（**2026-10-14 R141 现势**） | 目标形态＝**自带 Code - OSS 分支出独立二进制**；跑起来只用基座**官方**命令（`scripts/code.bat` + `--user-data-dir` / 位置参数；调试用官方 `--extensionDevelopmentPath`），⛔ 自写启动脚本（R138 的 `pnpm app`、R140 的 `pnpm studio:run` 已删）。"扩展壳＝唯一宿主"那句已作废：整套 SPA 塞进一颗 `WebviewPanel` ⛔ 是产品，绑定／模块／层次／沙盒要搬到宿主原生位置（工单＝`studio/README.md` §0b）。Tauri 那条线仍**整条删除**。画布侧不变：`Canvas.tsx`(1140) 持 `paperRef` | 电路模型内嵌 `paper.model`，**无独立 headless 模型对象**（换宿主⛔ 改这一条） |
 | 电路读写唯一出口 | `serializePaperJson(paper)` + `paper.model.getCell/getElements` | 工具无法脱离 UI 直接操作模型 → 工具必须 in-renderer |
 | 巨组件 | `SandboxCanvas.tsx` **3798 行**、`App.tsx` 1927 | 放置/编排逻辑未抽出，抽取=大重构 |
 | headless 种子（低 DOM） | `verilogCircuit.ts` 263 / `deviceParams.ts` 123 / `sandboxSerialize.ts` 103 / `sandboxDrc.ts` 75 / `canvasProbe.ts` 33 / `gateSystem.ts` 263 | 编译/参数/序列化/分析/探针已有干净雏形 |

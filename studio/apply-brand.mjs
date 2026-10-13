@@ -58,12 +58,18 @@ export function mergeProduct(base, overrides) {
 /**
  * 内置扩展要落哪几颗文件：`package.json` + `extension.cjs` + `webview/**`。
  * 抽成纯函数是为了能判"⛔ 把 dist 之外的东西（src/、node_modules/、.vsix）一起塞进去"。
+ *
+ * ⚠ webview 的来源**优先用 Vite 的产物 `dist/`**：那条路只有官方工具（`pnpm build`）参与，
+ * ⛔ 要再跑一次"复制进 extension/webview/"（那一步是给 `vsce` 打包 `.vsix` 用的——
+ * vsce 只收 `extension/` 目录，所以它才需要那份副本；内置装载这条路由基座自己扫 `extensions/<id>/package.json`，⛔ 我们的目录）。
  */
-export function builtinExtFiles(extSrcDir, fsImpl = fs) {
+export function builtinExtFiles(extSrcDir, repoDistDir, fsImpl = fs) {
   const need = ['package.json', path.join('dist', 'extension.cjs')];
   const missing = need.filter((f) => !fsImpl.existsSync(path.join(extSrcDir, f)));
-  const hasWebview = fsImpl.existsSync(path.join(extSrcDir, 'webview', 'index.html'));
-  return { missing, hasWebview, outDirName: BUILTIN_EXT_ID };
+  let webviewSrc = null;
+  if (repoDistDir && fsImpl.existsSync(path.join(repoDistDir, 'index.html'))) webviewSrc = repoDistDir;
+  else if (fsImpl.existsSync(path.join(extSrcDir, 'webview', 'index.html'))) webviewSrc = path.join(extSrcDir, 'webview');
+  return { missing, webviewSrc, hasWebview: !!webviewSrc, outDirName: BUILTIN_EXT_ID };
 }
 
 /** 幂等检查用的指纹：合并结果里我们关心的那几颗键必须真在（⛔ 只看"脚本跑成功了"） */
@@ -132,11 +138,13 @@ export function main(argv = process.argv.slice(2)) {
   process.stdout.write(`product.json 已覆盖 ${Object.keys(overrides).filter((k) => k !== '_comment').length} 颗键 → ${productPath}\n`);
 
   const extSrc = path.join(REPO_ROOT, 'extension');
-  const info = builtinExtFiles(extSrc);
-  if (info.missing.length) {
+  const info = builtinExtFiles(extSrc, path.join(REPO_ROOT, 'dist'));
+  if (info.missing.length || !info.hasWebview) {
     process.stderr.write([
-      `扩展侧缺这些产物，先编再装：${info.missing.join(', ')}`,
-      '  pnpm -C extension build && pnpm build && pnpm -C extension webview:sync',
+      `缺这些产物：${[...info.missing, ...(info.hasWebview ? [] : ['webview 的 index.html'])].join(', ')}`,
+      '先编（两条都是官方工具的脚本，⛔ 我的编排）：',
+      '  pnpm build                       # tsc && vite build ⇒ dist/',
+      '  pnpm -C extension build          # esbuild ⇒ extension/dist/extension.cjs',
       '',
     ].join('\n'));
     return 3;
@@ -146,10 +154,14 @@ export function main(argv = process.argv.slice(2)) {
   fs.mkdirSync(path.join(dst, 'dist'), { recursive: true });
   fs.copyFileSync(path.join(extSrc, 'package.json'), path.join(dst, 'package.json'));
   fs.copyFileSync(path.join(extSrc, 'dist', 'extension.cjs'), path.join(dst, 'dist', 'extension.cjs'));
-  copyTree(path.join(extSrc, 'webview'), path.join(dst, 'webview'));
+  copyTree(info.webviewSrc, path.join(dst, 'webview'));
   // 内置扩展⛔ 有 devDependencies，也⛔ 走 vsce：基座的 gulp 会把 extensions/** 直接打进产物
-  process.stdout.write(`内置扩展已装到 ${dst}（webview 产物 ${info.hasWebview ? '在' : '⚠ 缺 index.html'}）\n`);
-  process.stdout.write('起窗口：D:\\vv-studio\\vscode\\scripts\\code.bat --user-data-dir=D:\\vv-studio\\profile [<要打开的工程文件夹>]\n');
+  process.stdout.write(`内置扩展已装到 ${dst}（webview 取自 ${info.webviewSrc}）\n`);
+  process.stdout.write([
+    '起我们自己的二进制（基座的**官方**启动脚本，⛔ 我另写一颗）：',
+    `  cd ${fork.replace(/\\/g, '/')} && scripts/code.bat --user-data-dir=${path.join(path.dirname(fork), 'profile')} [<要打开的工程文件夹>]`,
+    '',
+  ].join('\n'));
   return 0;
 }
 

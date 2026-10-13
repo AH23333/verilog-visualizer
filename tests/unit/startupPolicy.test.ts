@@ -16,7 +16,7 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const DEV = 2, PROD = 3;
 
 describe('自动开窗：三种来路各判一次', () => {
-  it('开发宿主（pnpm app / F5）⇒ 开（R138 定的"⛔ 让人去命令面板找"仍然有效）', () => {
+  it('开发宿主（官方 flag --extensionDevelopmentPath / F5）⇒ 开（R138 定的"⛔ 让人去命令面板找"仍然有效）', () => {
     expect(shouldAutoOpen({ extensionMode: DEV, developmentMode: DEV, builtIntoThisApp: false })).toBe(true);
   });
 

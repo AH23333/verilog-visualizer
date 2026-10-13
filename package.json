@@ -4,8 +4,6 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "app": "node scripts/run-in-vscode.mjs",
-    "app:check": "node scripts/run-in-vscode.mjs --check",
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
@@ -16,9 +14,7 @@
     "ext:watch": "pnpm -C extension watch",
     "ext:check": "pnpm -C extension check",
     "ext:package": "pnpm build && pnpm -C extension webview:sync && pnpm -C extension package",
-    "studio:brand": "node studio/apply-brand.mjs",
-    "studio:run": "node scripts/run-studio.mjs",
-    "studio:run:check": "node scripts/run-studio.mjs --check"
+    "studio:brand": "node studio/apply-brand.mjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6",

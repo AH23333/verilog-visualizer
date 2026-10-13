@@ -757,3 +757,53 @@ Did you mean "pnpm build-fast"?
 *（卷四十六完 · R140：`origin/main` 快进 5 笔到 `819563d`＝无 agent 那份；新分支 `agent`（他令：⛔ 中文分支名，建出来当轮就由 `agent版` 改名）从 `f050d56` 起接后续提交；
  套壳的定义改成"把绑定系统／模块／层次结构／沙盒搬到宿主已有的文件系统与原生视图上"，四刀顺序按依赖钉死；
  分支名按他后一句改成英文 `agent`）*
+
+---
+
+# 卷四十七 · R141：⛔ 自写启动脚本——跑起来只用官方框架的命令（2026-10-14）
+
+> 触发逐字：**「不要使用你自己编写的命令脚本，尽可能使用官方框架的运行命令」**。
+
+## 一、这一句判掉的是我连做三批的东西
+
+R138 我写了 `scripts/run-in-vscode.mjs`（`pnpm app`），R140 又写了 `scripts/run-studio.mjs`（`pnpm studio:run`）——
+两批都是"把起一颗编辑器包装成我们自己的 CLI"。可基座本身就是 Code - OSS：
+**`scripts/code.bat` 就是那个框架自带的启动脚本**，`--user-data-dir` 与位置参数就是它的官方 CLI 参数，
+`--extensionDevelopmentPath` 是官方调试入口，`npm run gulp vscode-win32-x64-min` 是官方打包任务
+（任务名按平台/架构在 `build/gulpfile.vscode.ts:610` 生成，聚合任务在 :626）。我⛔ 该再造一层。
+
+同批删掉：两个 npm 别名组（`app` / `app:check` / `studio:run` / `studio:run:check`）＋两份专用判据
+（`tests/unit/launcher.test.mjs` 9 格、`tests/unit/studioLauncher.test.mjs` 18 格）。⚠ **删的是包装，⛔ 是结论**：
+"Windows 上 `.cmd` 必须走 shell 且每个含空格参数要各自带引号"、"一条命令起产品真跑通过全链路"
+这些读数仍留在卷四十五/卷四十六里，回退代码走 git 历史。
+
+## 二、顺手把最后一处"我自己发明的手工委"去了
+
+`apply-brand.mjs` 里 webview 的来源改成**优先用 Vite 的 `dist/`** ⇒ 内置装载这条路不再需要
+`pnpm -C extension webview:sync`（那一步真正服务的只有 `vsce` 打包，因为 vsce 只收 `extension/` 目录；
+内置装载走基座官方那条 `extensions/<id>/package.json` 扫描）。本目录唯一剩下的自写脚本就是
+`apply-brand.mjs` 本身，而它只做"把产物放进官方位置 + 合并官方 `product.json` 的几颗键"。
+判据同批改：`builtinExtFiles` 现在收 `(extSrc, repoDist, fs)`，
+新增"来源优先 dist/""两处都⛔ 有 webview 要报出来"两格——并特意⛔ 用原来那颗按 `endsWith` 匹配的假 fs
+（两条候选都以 `index.html` 结尾，后缀匹配分不出来源，优先级那半句等于没判 ⇒ 换成精确集合比对）。
+
+## 三、读数
+
+| 项 | 读数 |
+|---|---|
+| 官方起窗口命令**真跑** | `scripts/code.bat --user-data-dir=D:\vv-studio\profile D:\vv-studio\demo` ⇒ 标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`；exthost 里 `_doActivateExtension local.verilog-visualizer-vscode` **1 行**、`[error]` **0 行** |
+| 装进基座 | `pnpm studio:brand` 输出"webview 取自 <仓库>\dist"，`extensions/verilog-visualizer/webview` 里 **9 颗文件**（assets/ + digitaljs.js + yosys/ + index.html） |
+| 判据 | vitest **91/91**（117−27＝两份启动器判据随脚本一起撤）；根 tsc / `pnpm -C extension typecheck` / eslint / `pnpm build` 各 0 错 |
+| ⬜ 打包那条官方命令 | `npm run gulp vscode-win32-x64-min` **本轮⛔ 跑过** ⇒ 记 UNVERIFIED，归片 5 |
+
+## 四、本轮自己造的两处新类型自伤（都当场修，形状值得记）
+
+1. **块注释里写 glob 会自杀**：我在 `apply-brand.mjs` 的块注释里写了 `` `extensions/*/package.json` ``——
+   那串里的 `*/` 直接**关掉了注释块**，文件当场语法错（`node --check` 报 Unexpected strict mode reserved word）。
+   症状很怪（报错位置在注释行），而 `npx vitest` 只回一句"invalid JS syntax"。⇒ 文档与注释里的 glob 一律写成 `<id>` 形式。
+2. **第四次栽在同一颗转义上**：用 heredoc 里的 python 字符串往文档写盘符路径，反斜杠被吃掉、
+   `\v` 变成垂直制表符（README 10 处、迁移台账 1 处、CHANGELOG 2 处，全靠按字节扫 `0x0B` 抓回）。
+   ⇒ 固化成两条：**含反斜杠的正文改用 raw 字符串或直接 `cat` 写文件**；收口必扫 `0x0B`/`0x0C`。
+
+*（卷四十七完 · R141：启动脚本两颗整颗删除，跑产品回到基座官方的 `scripts/code.bat` + 官方参数；
+ `webview:sync` 那一步从内置装载路上去掉；vitest 91/91，打包命令记 UNVERIFIED）*

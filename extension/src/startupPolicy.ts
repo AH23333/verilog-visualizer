@@ -33,7 +33,7 @@ export function isBuiltIntoThisApp(extensionFsPath: string, appRoot: string): bo
 /**
  * 三种来路各判一次：
  *  · 环境变量 `=1` ⇒ 一律开（点验用）；
- *  · 开发宿主（`pnpm app` / F5，`extensionMode === Development`）⇒ 开，这是 R138 定的"⛔ 让人去命令面板找"；
+ *  · 开发宿主（官方 flag `--extensionDevelopmentPath` / F5，`extensionMode === Development`）⇒ 开，这是 R138 定的"⛔ 让人去命令面板找"；
  *  · 编进这份产品的内置扩展 ⇒ 开，这是我们自己的二进制该有的开局；
  *  · 其余（我们被装进别人的编辑器）⇒ ⛔ 开。
  */
