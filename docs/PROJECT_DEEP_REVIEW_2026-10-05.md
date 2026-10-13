@@ -585,6 +585,43 @@ ENVRED 按定义⛔ 算通过，全量绿要在机器安静时再跑一遍。
 5. ⚠ 两处落盘在 C 盘：`node-gyp` 的 Electron headers（`%LOCALAPPDATA%\node-gyp\Cache\43.7.7\`）、
    共享存储 `c:\Users\34697\.verilog-visualizer-shared\`——都⛔ 由我们的脚本决定，按"D 盘"这条硬约束**在册待处理**（片 5）。
 
-*（卷四十五完 · R139 片 1–2：方向改成"自带 Code - OSS 分支出独立二进制"，基座真编出来并真起过窗口，
- 开局判据从 `extensionMode` 搬到"扩展在不在 appRoot 里"；vitest 72/72，画布观感仍记 UNVERIFIED）*
+## 七、追加（同一轮 R139）：片 3a 落地 + 一颗只有真机能发现的问题
+
+§六 第 1 条那一刀（片 3）现在拆成两片，**3a 已落**：
+
+| 项 | 落点 / 读数 |
+|---|---|
+| 项目根 | `projectRoot()`＝**打开的工作区文件夹**；⛔ 文件夹时退回旧家 `globalStorageUri/project_files`；多根取第一颗（在册取舍）。⚠ 这一条**反转**了 R136/R137 那句"⛔ 用 workspace 文件夹"（理由：文件树的主人要交给原生 Explorer，而 Explorer 只看得到工作区里的真文件） |
+| 工程配置 | 另起一颗 `configRoot()`，**始终**应用级——⛔ 往用户仓库里扔 `verilog-viz.config.json`（那会让他的 `git status` 当场脏） |
+| 扫描跳过 | `node_modules` 与任何点开头目录。⚠ 这条⛔ 是 Rust 版老规矩照抄：旧家目录里根本⛔ 会有这两类，是"根＝整仓代码"这个新形态带来的 |
+| 无头网 | `tests/unit/vscodeApiStub.ts`（**回 Thenable、⛔ Promise** 的假宿主，故意保留那颗 `then()` 助手能被打到的形状）＋ `vitest.config.ts` 的 alias ＋ `tsconfig.json` 的 `paths` ＋ `tests/unit/extensionHost.test.ts` **25 格**（走真 req/res 通道）＋ 台架 `bin/R139/bench_139_hostnet.py` **8 臂全部有红**；vitest **97/97**、根 tsc / extension typecheck / eslint / `pnpm build` 各 0 错 |
+| 真机（自有二进制） | `code --status` 的 Workspace Stats：`Folder (demo): 2 files / File types: v(2)`（原生那侧真看见了我们的 `.v`）；跑完 `D:\vv-studio\demo` 里仍只有我放的 2 颗文件（"⛔ 往用户仓库扔配置"在真机上成立） |
+
+**那颗只有真机能发现的缺陷**（症状 → 对照实验 → 归责）：打开一个**从没信任过**的文件夹后，exthost 里
+连 `_doActivateExtension local.verilog-visualizer-vscode` 都⛔ 出现、`[error]` **0 行**、窗口只剩一颗
+Welcome（受限模式）页。⛔ 报错、⛔ 日志——"点了没反应"那一族里最难查的形状。
+同一份产物加 `--disable-workspace-trust` 再跑 ⇒ 激活行当场回来 ⇒ 归责钉死在清单缺 `capabilities.untrustedWorkspaces`。
+补上并带 `description`（受限模式里那句话是给**用户**读的，⛔ 让用户在⛔ 知道为什么放行的地方点放行），
+再跑**不带**那颗旗标：`_doActivateExtension local.verilog-visualizer-vscode` ＋ 标题
+`Verilog Visualizer - demo - Verilog Visualizer Dev`、`[error]` 0 行。
+取舍＝**声明支持未信任工作区**，而⛔"整产品关掉 Workspace Trust"（安全 > 稳定：这份 fork 自带 js-debug 与 agent host，
+那颗边界要留着）；根据是我们⛔ 起进程、⛔ 执行工作区带来的可执行文件——WASM 打进包，工作区内容只当文本读，
+前端 `innerHTML` 只有两处且都只赋空串（现读 `Canvas.tsx:593`、`SandboxExpandModal.tsx:122`）。
+⚠ 残留：新开文件夹仍会看到宿主的信任提示——那是宿主自己的安全 UI，⛔ 我在这一层替它消；真要动它归片 5 按产品口径决定。
+
+**台架自己红过的三处**（都改在这一批，⛔ 记在注释里就当它对了）：
+① `resetMachine()` 连内存盘一起清，上一版把它留在 seed **之后** ⇒ 每个"先 seed 再 boot"的用例
+都在断言一颗被自己抹掉的文件，症状长得像产品缺陷（"找不到前端构建产物"）；现在"清场→铺盘→activate"由 `boot()` 独占。
+② 桩里 `registerWebviewPanelSerializer(_, _: any)` 让**被测文件**的参数掉成隐式 any（根 tsc TS7006）——
+台架⛔ 让产品变红，且那红⛔ 是它自己想问的事；补了 `WebviewPanelSerializer` 接口把上下文类型还回去。
+③ 顺带又踩一次自己写过的坑：用 python heredoc 往文档里写 `D:\vv-studio\...`，`\\v` 被吃成**垂直制表符**
+（与 `studioBrand` 那两格的教训同一颗字），CHANGELOG 一行了断两处；本轮起先按字节扫 `\x0b` 再收口（现读：全仓只剩那一处，已修）。
+
+**片 3b（下一刀）**：`.djs` / `.viz` 注册成 `customEditors`。⚠ 它必须与"沙盒电路正文从 webview `localStorage`
+搬进宿主文件"**同批**落（§6 那颗未预见的层、`MIGRATION_VSCODE.md` §6 的持久性读数）——`.djs` 一旦成为真文件就出现在树里，
+两套主人并存（磁盘一份 + localStorage 一份）就是让用户分不清哪份生效。
+
+*（卷四十五完 · R139 片 1–2–3a：方向改成"自带 Code - OSS 分支出独立二进制"，基座真编出来并真起过窗口，
+ 开局判据从 `extensionMode` 搬到"扩展在不在 appRoot 里"，项目根换成打开的文件夹并建起 Extension Host 的无头网；
+ 真机另抓到一颗"受限模式下宿主根本不激活我们"，已按清单声明修好；vitest 97/97，画布观感仍记 UNVERIFIED）*
 

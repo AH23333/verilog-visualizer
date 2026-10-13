@@ -18,8 +18,8 @@ Tauri 2 桌面壳已于 R138 **整条拆除**（`src-tauri/`、`tauriHost`、自
 
 ```mermaid
 flowchart LR
-  subgraph Rust["Tauri 壳 Rust"]
-    CMD["文件命令<br/>save/read/list/move/delete<br/>project_files + 导出对话框"]
+  subgraph Host["宿主 Extension Host（Node）"]
+    CMD["文件命令<br/>save/read/list/move/delete<br/>项目根＝打开的文件夹 + 导出对话框"]
   end
   subgraph Web["WebView · React 19 + TS"]
     APP["App.tsx 壳层<br/>视图编排/编译管线/状态栏"]
@@ -43,7 +43,7 @@ flowchart LR
   SBX --> SER
   CAN --> SUBV
   SBX --> SUBV
-  APP <-.->|"invoke"| CMD
+  APP <-.->|"src/lib/host/ RPC（⛔ 直连宿主 API）"| CMD
 ```
 
 ### 分层与数据流
@@ -52,7 +52,7 @@ flowchart LR
 |----|------|------|
 | 壳层 | `App.tsx` | 视图模式编排、编译管线触发、跨模式桥（复制到沙盒）、全局快捷键 |
 | 领域库 | `lib/*` | 综合（verilog.ts）、部件系统（gateSystem.ts）、序列化往返（sandboxSerialize/sandboxLoad）、展开渲染（subcircuitView）、镜像（cellMirror）、走线（wireRouting）、仿真时钟（simClock）、参数契约（deviceParams）、注释（annotationCell）、表达式引擎（exprToCircuit） |
-| 状态 | `store/*` | 发布-订阅 + `useSyncExternalStore`；文件双写（localStorage 缓存 + Tauri project_files） |
+| 状态 | `store/*` | 发布-订阅 + `useSyncExternalStore`；文件双写（localStorage 缓存 + 宿主的工程目录；工程根＝打开的那个文件夹，片 3a 起） |
 | 组件 | `components/*` | 画布、面板、对话框族（Prompt/Confirm 统一收口） |
 
 **核心数据形态**：沙盒一等公民 = joint cells 白名单 JSON（`.djs`）；编译产物 = circuit JSON
@@ -105,7 +105,8 @@ the detection layer in `src/lib/host/` (see `MIGRATION_VSCODE.md`).
   shared drill-down renderer, model-level mirroring, global wire routing, sim clock,
   constructor-time parameter contract, sticky notes, expression→circuit engine.
 - **State** `store/*`: publish/subscribe + `useSyncExternalStore`; files dual-written
-  (localStorage cache + Tauri `project_files`).
+  (localStorage cache + the host's project directory — since 片 3a that directory *is* the opened
+  workspace folder, with `globalStorageUri/project_files` kept as the fallback when no folder is open).
 
 ### Key decisions (ADR digest)
 

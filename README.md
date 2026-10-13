@@ -31,7 +31,10 @@ workbench，我们的东西住进它的原生位置（Explorer / 编辑器标签
 - ⬜ **基座已就位并跑通过一次**（仓库外 `D:\vv-studio\vscode`，Code - OSS 1.143.0）：`pnpm studio:brand` 把品牌
   合进基座 `product.json` 并把我们的扩展装成它的内置扩展；基座 `npm install` + `compile-client` + `electron`
   本轮真跑通，起的是**我们自己的二进制**（`.build/electron/Verilog Visualizer.exe`，239,129,088 字节），
-  内置扩展在里头激活并自动把画布弹出来。**还没做的是把界面换成 workbench 原生位置**（片 3/4）。
+  内置扩展在里头激活并自动把画布弹出来。**还没做的是把界面换成 workbench 原生位置**（片 3b/4）。
+- ⬜ **片 3a 已落**：项目根＝**打开的那个文件夹**（⛔ 文件夹时退回旧家），原生 Explorer 从此看得见工程文件；
+  工程配置留在应用级（⛔ 往用户仓库里扔配置文件）；并给 Extension Host 建起一面无头网
+  （`tests/unit/vscodeApiStub.ts` + `tests/unit/extensionHost.test.ts` 25 格，vitest 97/97）。
 - 前端⛔ 直连宿主 API：文件/配置/另存为/剪贴板全部从 `src/lib/host/` 进出，按运行时探测 `vscodeHost` / `browserHost`。
 
 ## 简介

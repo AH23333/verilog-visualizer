@@ -14,7 +14,7 @@
 |---|---|---|
 | 窗口/标题栏 | 我们自绘（`App.tsx` 顶栏 + 曾经自绘的窗口三颗） | 基座原生 |
 | 菜单 | `components/MenuBar.tsx` 183 行自绘下拉 | `menus.commandPalette` + 编辑器标题栏动作 + 原生菜单 |
-| 文件树 | `components/Sidebar.tsx` + 我们的 `ProjectStore` 扫 `globalStorageUri/project_files` | **原生 Explorer**：项目根改成"打开的那个文件夹"，文件/重命名/拖拽/右键全交给 workbench |
+| 文件树 | `components/Sidebar.tsx` + 我们的 `ProjectStore` 扫 `globalStorageUri/project_files` | **原生 Explorer**：项目根改成"打开的那个文件夹"（✅ 片 3a 已换轨），文件/重命名/拖拽/右键全交给 workbench（⬜ 树的主人还在我们手里，片 4 交出去） |
 | 画布 | 一整块 `WebviewPanel`（一个标签页里装整个 SPA） | **custom editor**（`.djs` / `.viz` 文档 → 编辑器标签，脏标记/保存/关闭由 VS Code 管） |
 | 层级／绑定／器件表 | 我们的 React 侧栏与弹窗 | `viewsContainers.activityBar` + `views`（`TreeDataProvider` / `WebviewView`） |
 | 日志 | `components/OutputPanel.tsx` 238 行自绘 | `Output` 通道 + `window.createOutputChannel({ log: true })` |
@@ -57,6 +57,22 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 | 共享存储落点 | `[shared storage] Creating shared storage database at 'c:\Users\34697\.verilog-visualizer-shared\...'` ⇒ 目录名走我们的 `dataFolderName`，但**家目录在 C 盘**——片 5 打包时要按"D 盘"这条硬约束处理（⚠ 在册，尚未改） |
 | 画布像素 | **UNVERIFIED**：取这一格要把窗口从最小化激活，而他此刻正在用这台电脑 ⇒ 抢焦点⛔ 算"程序要用户多做一步"。点验单见 §4b 末 |
 
+## 1c. 片 3a 的实测读数（项目根换轨 + 一颗只有真机能发现的问题）
+
+| 项 | 读数 |
+|---|---|
+| 项目根 | `projectRoot()`＝**打开的工作区文件夹**；没开文件夹退回 `globalStorageUri/project_files`（旧家的东西还在那儿）；多根取第一颗（在册取舍） |
+| 工程配置 | 单独一颗 `configRoot()`，**始终**应用级：⛔ 往用户仓库里扔 `verilog-viz.config.json`（那会让他的 `git status` 当场脏） |
+| 扫描跳过 | `node_modules` 与任何点开头目录（根＝整仓代码后，一次 refresh 会走尽上万颗目录） |
+| 真机 | 打开 `D:\vv-studio\demo`（8 位总线计数器 + 一层实例化）⇒ `code --status` 的 Workspace Stats：`Folder (demo): 2 files / File types: v(2)`；跑完那个目录里仍只有我放的 2 颗 `.v` |
+| 无头网 | `tests/unit/vscodeApiStub.ts`（回 `Thenable` 的假宿主）+ `vitest.config.ts` alias + `tsconfig.json` paths；`tests/unit/extensionHost.test.ts` **25 格**走真 req/res 通道；台架 `bin/R139/bench_139_hostnet.py` **8 臂全部有红**；vitest **97/97** |
+| ⚠ **只有真机能发现的问题** | 打开一个**从没信任过**的文件夹 ⇒ exthost 里连 `_doActivateExtension local.verilog-visualizer-vscode` 都⛔ 出现、`[error]` 0 行、窗口只剩 Welcome（受限模式）页；同一份产物加 `--disable-workspace-trust` 再跑，激活行当场回来 ⇒ 归责钉在清单缺 `capabilities.untrustedWorkspaces`。补上后**不带**那颗旗标再跑：激活 + 标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`、`[error]` 0 行 |
+
+**为什么选"声明支持未信任工作区"而⛔"整产品关掉 Workspace Trust"**（安全 > 稳定）：这份 fork 自带 js-debug 与 agent host，
+那颗安全边界要留着；而我们⛔ 起进程、⛔ 执行工作区带来的可执行文件（Yosys/DigitalJS 是打进包的 WASM，
+工作区内容只当文本读、当图渲染；前端两处 `innerHTML` 都只赋空串，webview 的 `script-src` 只有 nonce + origin）。
+⚠ 残留：新开文件夹时用户仍会看到那颗"信任工作区"提示——那是宿主自己的安全 UI，⛔ 我这一层替它消掉（要消也得在片 5 按产品口径整颗决定）。
+
 ## 2. 本目录的东西
 
 - `product.overrides.json` —— 覆盖层。每颗键都对照过基座：要么基座本来有，要么构建脚本确认读它。⛔ 整份覆盖 product.json。
@@ -78,9 +94,13 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
   产物能起一个窗口，我们的扩展作为**内置扩展**在那份产物里激活（⛔ 靠 `--extensionDevelopmentPath`）。
   ⚠ 一处真缺陷在这一片露出来并被修掉：自动弹窗口原规则只看 `extensionMode === Development`，
   而内置扩展在自家二进制里是 Production ⇒ 启动后只剩一颗 Welcome 页。判据搬到 `extension/src/startupPolicy.ts`。
-- **片 3（下一片）**：文档模型换轨 —— `.djs` / `.viz` 注册成 `customEditors`，画布从"一个装满 SPA 的 panel"
-  变成"编辑器标签里的那份文档"；脏标记、保存、关闭交给 VS Code。项目根从 `globalStorageUri`
-  改成**打开的工作区文件夹**（这一步顺带解掉 R136 那颗"工程集合与工作区无关"的取舍，也让原生 Explorer 直接可用）。
+- **片 3a（已完成，读数见 §1c）**：项目根从 `globalStorageUri/project_files` 换成**打开的工作区文件夹**
+  （配置留在应用级，两颗根分开），并给 Extension Host 建起一面无头网（假宿主 + 25 格 + 8 臂台架）。
+  这一步顺带解掉 R136 那颗"工程集合与工作区无关"的取舍，也让原生 Explorer 直接可用。
+- **片 3b（下一片）**：`.djs` / `.viz` 注册成 `customEditors`——画布从"一个装满 SPA 的 panel"
+  变成"编辑器标签里的那份文档"，脏标记、保存、关闭交给 VS Code。
+  ⚠ 这一片必须与"沙盒电路正文从 webview `localStorage` 搬进宿主文件"同批落（`MIGRATION_VSCODE.md` §3b 那颗未预见层、
+  §6 的持久性读数）：`.djs` 一旦成为真文件就出现在树里，⛔ 两套主人并存（磁盘一份 + localStorage 一份）让用户分不清哪份生效。
 - **片 4**：把 §0 表里"我们自绘"那几行逐个换成原生（文件树 → Explorer；日志 → Output；
   问题 → `DiagnosticCollection`；设置 → `contributes.configuration`；状态 → StatusBarItem），
   **换一颗删一颗**，⛔ 两套并存让人分不清哪个生效。

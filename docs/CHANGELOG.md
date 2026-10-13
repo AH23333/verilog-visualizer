@@ -71,6 +71,36 @@
 "两边都空⛔ 算内置"、三档输入穷举）；台架 `bin/R139/bench_139_startup.py` **4 臂全部有红**。
 vitest **72/72**（60→72）。
 
+### 片 3a：项目根换成"打开的那个文件夹" + Extension Host 的一面无头网
+
+| 项 | 读数 |
+|---|---|
+| `projectRoot()` | 开了文件夹就用它；⛔ 文件夹时退回旧家 `globalStorageUri/project_files`（⛔ 一升级就"我的文件全没了"）；多根取第一颗（在册取舍） |
+| `configRoot()` | 单独一颗、**始终**应用级：⛔ 往用户仓库里扔 `verilog-viz.config.json`（那会让他的 `git status` 当场脏） |
+| `ProjectStore` | 扫描跳过 `node_modules` 与任何点开头目录——⚠ 这条⛔ 是 Rust 版老规矩照抄，是"根＝整仓代码"这个新形态带来的 |
+| 真机（自有二进制 + `--user-data-dir=D:\vv-studio\profile`） | 打开 `D:\vv-studio\demo`（8 位总线计数器 + 一层实例化）⇒ `code --status`：`Folder (demo): 2 files / File types: v(2)`；跑完那目录里仍只有我放的 2 颗 `.v` |
+| 无头网 | `tests/unit/vscodeApiStub.ts`（**回 `Thenable`、⛔ Promise** 的假宿主）＋ `vitest.config.ts` alias ＋ `tsconfig.json` 的 `paths`（只配一处＝"tsc 过、跑起来找不到模块"那种红）；`tests/unit/extensionHost.test.ts` **25 格**走真 req/res 通道；台架 `bin/R139/bench_139_hostnet.py` **8 臂全部有红** |
+| 判据合计 | vitest **97/97**（72→97）；根 tsc / extension typecheck / eslint / `pnpm build` 各 0 错 |
+
+**抓到的那颗只有真机能发现的问题**（记法：症状 → 对照实验 → 归责）：打开一个**从没信任过**的文件夹后，
+exthost 日志里连 `_doActivateExtension local.verilog-visualizer-vscode` 都⛔ 出现、`[error]` 0 行、
+窗口只剩一颗 Welcome（受限模式）页——⛔ 报错、⛔ 有日志，正是"点了没反应"那一族最坏的形状。
+同一份产物加 `--disable-workspace-trust` 再跑 ⇒ 激活行当场回来 ⇒ 归责钉死在清单缺 `capabilities.untrustedWorkspaces`。
+补上（并带 `description`：受限模式里那句话是给**用户**读的，⛔ 让用户在⛔ 知道为什么放行的地方点放行），
+再跑**不带**那颗旗标：激活 + 标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`、`[error]` 0 行。
+取舍＝**声明支持未信任工作区**而⛔"整产品关掉 Workspace Trust"（安全 > 稳定；这份 fork 自带 js-debug 与 agent host，
+那颗边界要留着）：我们的东西⛔ 起进程、⛔ 执行工作区带来的可执行文件（WASM 打进包、工作区内容只当文本读；
+前端两处 `innerHTML` 都只赋空串）。⚠ 残留：新开文件夹仍会看到宿主的信任提示，那是宿主自己的安全 UI，⛔ 我在这一层替它消。
+
+顺带：`apply-brand.mjs` 那句"下一步见 §3 片 2（要先装 node 24.18.0）"讲的是**已经历过的事**，改成真的下一步（起窗口那条命令）。
+
+### 台架自己红过的两处（⛔ 写进注释就当它对了）
+
+1. `resetMachine()` 会连内存盘一起清，上一版把它留在 seed **之后** ⇒ 每个"先 seed 再 boot"的用例都在断言一颗
+   被自己抹掉的文件，症状长得像产品缺陷（"找不到前端构建产物"）。现在"清场→铺盘→activate"的顺序由 `boot()` 独占。
+2. 桩里 `registerWebviewPanelSerializer(_, _serializer: any)` 让被测文件的参数掉成隐式 any（根 tsc TS7006）——
+   **桩⛔ 让被测代码变红，且那红⛔ 是它自己想问的事**；补了 `WebviewPanelSerializer` 接口把上下文类型还回去。
+
 ## [未发布 Unreleased] — R138：一条命令起壳 + Tauri 整条拆除（2026-10-13）
 
 > 触发是他这两句：「我想要的效果是直接改成 vscode 套壳，但是当前启动方式还是原来的 tauri，

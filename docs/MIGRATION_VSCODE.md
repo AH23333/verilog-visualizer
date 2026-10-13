@@ -107,10 +107,10 @@ CSP 与改写器**从 `extension/src/html.ts` 现读**，⛔ 闸门里抄第二�
 | 3 消息总线（**宿主半段**：Extension Host handler） | ✅ R136：15 方法逐条对上 `vscodeHost`；CSP/装载过 R137 真浏览器判据 |
 | 1 脚手架（`extension/` 包 + 打包配置） | ✅ R136 建、**R138 补全**：pnpm workspace + `.vscode/{launch,tasks}.json` + `pnpm app` 启动器 + vsce 已装且真跑出过 `.vsix` |
 | 4 L1（`SecretStorage` / provider 列表） | ⛔ 本期不做（用户令：先不要搭 agent 功能） |
-| 5 路径语义迁移（`get_project_dir` → `Uri`） | 半：项目根已定 `globalStorageUri/project_files`；`partBindings` 存的是文件名还是绝对路径**还没现场量** |
+| 5 路径语义迁移（`get_project_dir` → `Uri`） | ✅ **片 3a（R139）**：项目根＝**打开的工作区文件夹**（没开文件夹才退回 `globalStorageUri/project_files`；多根取第一颗＝在册取舍）；⚠ 这把"⛔ 用 workspace 文件夹"的旧理由**已反转**——文件树的主人要交给原生 Explorer。`partBindings` 存的是文件名还是绝对路径**仍⛔ 现场量** |
 | 6 agent 子系统 | ⛔ 未开工（同上令） |
 | 7 删 `WindowControls.tsx` / 清 `isTauri` 守卫 | ✅ **R138**：`WindowControls.tsx`、`tauriHost.ts`、接口上那五颗窗口控制方法与 `hasWindowControls`、`exportUtils.isTauri`、两处 `data-tauri-drag-region` 全部拔掉（回退方案改为"走 git 历史"，§8） |
-| 8 回归 | 部分：浏览器档 + 壳的 CSP/装载档各有闸门（R138 全量 73 格，见 §7）；**扩展端到端台架（真开 EPH 驱动 webview）仍⛔ 建**，`pnpm app` 那条路本身有 `pnpm app:check` 与 `tests/unit/launcher.test.mjs` 兜住"找到 CLI / 参数带引号 / 该不该重编"，⛔ 等于"点过窗口" |
+| 8 回归 | 部分：浏览器档 + 壳的 CSP/装载档各有闸门（R138 全量 73 格，见 §7）；**R139 片 3a 起多了一面无头网**：`tests/unit/vscodeApiStub.ts`（回 `Thenable` 的假宿主）+ `tests/unit/extensionHost.test.ts` 25 格，走真 req/res 通道判"选哪颗根 / 落盘落点对不对 / webview HTML 装没装上 / 面板该不该自己弹"（8 臂台架全有红）；它证的是⛔ 我们这侧的接线，**真开 EPH 驱动 webview 那颗台架仍⛔ 建**，`pnpm app` 那条路本身有 `pnpm app:check` 与 `tests/unit/launcher.test.mjs` 兜住"找到 CLI / 参数带引号 / 该不该重编"，⛔ 等于"点过窗口" |
 
 ## 5. 点验单（真机）
 
@@ -123,7 +123,9 @@ CSP 与改写器**从 `extension/src/html.ts` 现读**，⛔ 闸门里抄第二�
 3. **能存**：导出任一 SVG/JSON/网表 ⇒ 弹**系统保存对话框**；取消提示"导出已取消"（⛔ 报错、⛔ 静默）。
 4. **能落盘**：新建 `.v` 文件/文件夹、重命名、移动、删除 ⇒ 用命令
    **「Verilog Visualizer: 打开项目文件所在文件夹（落盘核对用）」**（Ctrl+Shift+P 搜 `revealProjectDir`）
-   直接开那个目录核对，路径同时抄进剪贴板。（⛔ 让人去猜 globalStorage 的拼法——那颗命令就是为这一格加的。）
+   直接开那个目录核对，路径同时抄进剪贴板。（⛔ 让人去猜落点拼法——那颗命令就是为这一格加的。）
+   ⚠ 片 3a 起这颗**打开的就是你工作区那个文件夹**（没开文件夹时才是旧的 globalStorage 家）；
+   工程配置仍留应用级（⛔ 往用户仓库里扔 `verilog-viz.config.json`），这一格因此要**分两头看**。
 5. **⛔ 数据还在不在（§6 那颗，这一格是本轮最要紧的一格）**：画一个电路存成沙盒文件 →
    **关掉面板 → 关掉那个 VS Code 窗口 → 重新 `pnpm app` → 再看文件树** ⇒ 那颗还在吗？内容对吗？
    设置项（主题/字号/自动保存）还在吗？—— 三条各自记"在/没了"。
