@@ -11,11 +11,18 @@
 
 ```bash
 pnpm install
-pnpm dev            # Vite dev server → http://localhost:1420（浏览器预览）
-pnpm tauri dev      # 桌面窗口（需 Rust；Windows 另需 MSVC + WebView2）
-pnpm build          # tsc --noEmit && vite build —— 提交前必过
-pnpm tauri build    # 发布构建
+pnpm dev            # Vite dev server → http://localhost:1420（浏览器预览，⛔ 宿主能力）
+pnpm build          # tsc --noEmit && vite build（base:'./'）—— 提交前必过；壳与跑 dist 的闸门都读它
+pnpm -C extension check   # VS Code 壳：tsc + esbuild（产 extension/dist/extension.cjs）
+pnpm test           # vitest lib 层单测（tests/unit/**）
+# 真机跑壳：仓库根按 F5「运行 扩展开发宿主」→ Ctrl+Shift+P →「打开 Verilog 可视化窗口」
+
+pnpm tauri dev      # 历史/回退宿主：Tauri 桌面窗口（需 Rust；Windows 另需 MSVC + WebView2）
+pnpm tauri build    # 历史/回退宿主的发布构建
 ```
+
+> **宿主真值＝VS Code 扩展壳**（`extension/`），Tauri 那两行是可回退实现，⛔ 是主路径。
+> 前端⛔ 直连任一宿主：全部经 `src/lib/host/`（见下一节）。迁移台账＝`MIGRATION_VSCODE.md`。
 
 TypeScript `strict` 全开（含 noUnusedLocals/noUnusedParameters）；**0 错误是最低门槛**。
 

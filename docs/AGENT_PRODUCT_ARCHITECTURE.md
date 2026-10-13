@@ -11,7 +11,7 @@
 
 | 事实 | 实测 | 对架构的含义 |
 |---|---|---|
-| 宿主（当前实测态） | Tauri 2 桌面 + React + `Canvas.tsx`(1140) 持 `paperRef` | 电路模型内嵌 `paper.model`，**无独立 headless 模型对象** |
+| 宿主（**2026-10-13 R137 实测态**） | **VS Code 扩展壳已落地**：Extension Host（Node）+ `WebviewPanel` 装 React 前端；Tauri 2 桌面仍在仓内＝历史/可回退。画布侧不变：`Canvas.tsx`(1140) 持 `paperRef` | 电路模型内嵌 `paper.model`，**无独立 headless 模型对象**（换宿主⛔ 改这一条） |
 | 电路读写唯一出口 | `serializePaperJson(paper)` + `paper.model.getCell/getElements` | 工具无法脱离 UI 直接操作模型 → 工具必须 in-renderer |
 | 巨组件 | `SandboxCanvas.tsx` **3798 行**、`App.tsx` 1927 | 放置/编排逻辑未抽出，抽取=大重构 |
 | headless 种子（低 DOM） | `verilogCircuit.ts` 263 / `deviceParams.ts` 123 / `sandboxSerialize.ts` 103 / `sandboxDrc.ts` 75 / `canvasProbe.ts` 33 / `gateSystem.ts` 263 | 编译/参数/序列化/分析/探针已有干净雏形 |
