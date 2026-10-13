@@ -1,16 +1,17 @@
 // 统一调用层（src/lib/host/*）的单测安全网。
 // 为什么这批值得钉：宿主探测与"不支持=抛错"这两条形状一旦改坏，后果不是"报错"而是**静默换路径**——
-// ① 探测在模块加载期求值 ⇒ r12 的 [F] 三格（点击前注入 `__TAURI_INTERNALS__` 验原生保存）永远测不到
-//    Tauri 分支，绿灯是假的；② browserHost 若把"不支持"做成"返回空表"，`fileStore.refresh()` 会把
+// ① 探测在模块加载期求值 ⇒ r12 的 [F] 三格（点击前注入 `acquireVsCodeApi` 桩验原生另存为）永远测不到
+//    vscode 分支，绿灯是假的；② browserHost 若把"不支持"做成"返回空表"，`fileStore.refresh()` 会把
 //    空 `tree.files` 当"磁盘上已删除"，**抹掉 localStorage 里用户的全部文件**（本文件用一颗专门的
 //    用例钉住"必须 reject"）。两条都在无头环境里可判，⛔ 留给浏览器闸门。
+// R138：Tauri 那一档随 `src-tauri/` 一起拔掉，窗口控制五颗也离开接口（自绘标题栏没了）。
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 type Handler = (ev: any) => void;
 
 /** 造一颗最小可用的假 window：带 message 监听表与宿主标记开关 */
-function makeWindow(marks: { tauri?: boolean, vscode?: boolean } = {}) {
+function makeWindow(marks: { vscode?: boolean } = {}) {
   const listeners: Record<string, Handler[]> = {};
   const win: any = {
     addEventListener: (type: string, fn: Handler) => { (listeners[type] = listeners[type] || []).push(fn); },
@@ -20,7 +21,6 @@ function makeWindow(marks: { tauri?: boolean, vscode?: boolean } = {}) {
     __fire: (type: string, data: any) => { for (const f of (listeners[type] || [])) f({ data }); },
     __listenerCount: (type: string) => (listeners[type] || []).length,
   };
-  if (marks.tauri) win.__TAURI_INTERNALS__ = {};
   if (marks.vscode) win.acquireVsCodeApi = () => ({ postMessage: () => { }, getState: () => undefined, setState: () => { } });
   return win;
 }
@@ -31,16 +31,14 @@ beforeEach(() => { vi.resetModules(); });
 afterEach(() => { delete (globalThis as any).window; });
 
 describe('宿主探测（每次现读，⛔ 模块加载期求值）', () => {
-  it('三档标记各归一个宿主，且**同一模块实例**内随标记变化而变', async () => {
+  it('两档标记各归一个宿主，且**同一模块实例**内随标记变化而变', async () => {
     setWindow(makeWindow({}));
     const host = await import('../../src/lib/host/host');
     expect(host.hostId()).toBe('browser');
-    (globalThis as any).window.__TAURI_INTERNALS__ = {};
-    expect(host.hostId()).toBe('tauri');          // r12 [F] 靠的就是这一变
-    delete (globalThis as any).window.__TAURI_INTERNALS__;
     (globalThis as any).window.acquireVsCodeApi = () => ({ postMessage: () => { } });
-    expect(host.hostId()).toBe('vscode');
-    expect(host.isTauri()).toBe(false);
+    expect(host.hostId()).toBe('vscode');          // r12 [F] 靠的就是这一变
+    delete (globalThis as any).window.acquireVsCodeApi;
+    expect(host.hostId()).toBe('browser');         // 桩撤掉也必须能变回来（⛔ 记牢第一次的结果）
   });
 
   it('getHost() 按当前宿主换实现（缓存 keyed by id，不是"第一次算完就不管"）', async () => {
@@ -75,7 +73,6 @@ describe('browserHost：不支持必须抛，⛔ 返回空结果', () => {
       browserHost.saveProjectConfig('{}'),
       browserHost.clipboardWrite('t'),
       browserHost.clipboardRead(),
-      browserHost.windowMinimize(),
     ];
     for (const p of calls) {
       await expect(p).rejects.toThrow(/不支持/);
@@ -83,12 +80,6 @@ describe('browserHost：不支持必须抛，⛔ 返回空结果', () => {
     // 专门钉这一颗：refresh() 拿到的必须是**抛错**，不是 { files: [] }——
     // 空表会走 files.filter(...) 把 localStorage 里的文件全删掉
     await expect(browserHost.listProjectTree()).rejects.toMatchObject({ name: 'HostUnsupported' });
-  });
-
-  it('无自绘标题栏（WindowControls 因此不渲染，同迁移前）', async () => {
-    setWindow(makeWindow({}));
-    const { browserHost } = await import('../../src/lib/host/browserHost');
-    expect(browserHost.hasWindowControls).toBe(false);
   });
 
   it('导出走 <a download>：文件名与 mime 都按调用方给的走，返回 true', async () => {
@@ -175,12 +166,6 @@ describe('vscodeHost：Webview RPC 的形状', () => {
     expect(atob(sent[0].args.base64).length).toBe(40000);
     win.__fire('message', { vvh: 'res', id: sent[0].id, ok: true, data: false });  // 用户取消＝正常回 false
     expect(await p).toBe(false);
-  });
-
-  it('窗口控制这一档不存在 ⇒ 抛 HostUnsupported（WindowControls 因此不渲染）', async () => {
-    const { vscodeHost } = await load();
-    expect(vscodeHost.hasWindowControls).toBe(false);
-    await expect(vscodeHost.windowClose()).rejects.toThrow(/不支持/);
   });
 });
 

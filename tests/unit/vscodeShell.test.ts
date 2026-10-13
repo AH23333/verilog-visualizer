@@ -139,7 +139,7 @@ function memFs(seed: Record<string, string | null> = {}) {
   return api;
 }
 
-describe('项目目录后端（与 src-tauri 的 14 颗命令对齐）', () => {
+describe('项目目录后端（与当年 Rust 后端那 14 颗命令逐条同语义）', () => {
   it('绝对路径与 .. 一律拒（Rust sanitize_path 的同一条规则）', () => {
     expect(() => sanitizeRel('/etc/passwd')).toThrow(/Absolute/);
     expect(() => sanitizeRel('C:\\Windows\\x.v')).toThrow(/Absolute/);

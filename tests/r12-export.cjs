@@ -26,9 +26,13 @@ const UI = require('./_ui.cjs');
 const dragWire = (page) => UI.dragWire(page, 'out', 'in');
 const clickGate = (page, label) => UI.clickGate(page, label);
 async function boot(page) {
-  await page.goto(URL, { waitUntil: 'networkidle' });
+  // ⚠ `networkidle` 在这台 dev 服务器上永远等不满（首页拉几十个脚本 + 一条不会闲下来的
+  //   Vite HMR WebSocket）——本仓其余老闸门早就为这件事改用过 `UI.boot`（账本"老闸门共同死锚点"那一节），
+  //   r12 是最后一颗。今天依赖图一变（拆 Tauri 掉了三颗包）Vite 重新做预打包，这条死锚点就当场咬人：
+  //   `page.goto: Timeout 30000ms exceeded`，红的是夹具⛔ 是导出功能。改成"等应用真挂载"。
+  await UI.boot(page, URL);
   await page.evaluate(() => { localStorage.removeItem('verilog-viz-sandbox-files'); localStorage.removeItem('verilog-viz-sandbox-active'); });
-  await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
+  await UI.boot(page, URL, { reload: true, settle: 2000 });
   try { await page.locator('button:has-text("Skip"), button:has-text("跳过")').first().click({ timeout: 2500 }); } catch {}
   await UI.enterSandbox(page);
   if (await page.locator('button[title="新建文件"]').count()) { await UI.newSandboxFile(page); }
@@ -186,33 +190,44 @@ function netlistLooksOk(p) { const b = fs.readFileSync(p, 'utf8'); return /modul
       : bad('context menu exports faded', JSON.stringify(menuTxt));
 
     // =====================================================================
-    console.log('[F] 生产路径（Tauri）— 注入 __TAURI_INTERNALS__ 后必须走原生 save_export_file，不再 <a download>');
+    // R138：这一组原来注入 `__TAURI_INTERNALS__` 验 Rust 那条 `save_export_file`；Tauri 已整条拆除，
+    // 现在验的是**当前主宿主**那条同名通路——webview 里点导出必须走 Extension Host 的"另存为"，
+    // ⛔ 退回 `<a download>`。桩的用法与原样一致：**点击前**注入（这颗判据的本体就是"探测每次现读"）。
+    console.log('[F] 生产路径（VS Code webview）— 注入 acquireVsCodeApi 桩后必须走宿主另存为，不再 <a download>');
     await page.keyboard.press('Escape'); await sleep(200);
     await page.evaluate(() => {
       window.__capturedExport = null;
-      window.__TAURI_INTERNALS__ = {
-        invoke: async (cmd, args) => { window.__capturedExport = { cmd, args }; return 'C:/tmp/r12-fake.svg'; },
-      };
+      window.acquireVsCodeApi = () => ({
+        postMessage: (m) => {
+          window.__capturedExport = m;
+          // 立刻按 id 回一条成功应答：⛔ 让调用方挂到 20s 超时（那道超时会把这一格变成假红）
+          setTimeout(() => window.dispatchEvent(new MessageEvent('message', {
+            data: { vvh: 'res', id: m.id, ok: true, data: 'C:/tmp/r12-fake.svg' },
+          })), 0);
+        },
+        getState: () => undefined,
+        setState: () => { },
+      });
     });
-    let tauriDownloads = 0;
-    const onTauriDl = () => { tauriDownloads++; };
-    page.on('download', onTauriDl);
+    let hostDownloads = 0;
+    const onHostDl = () => { hostDownloads++; };
+    page.on('download', onHostDl);
     await page.locator('button[title="导出 SVG"]').click();
     await sleep(900);
-    page.off('download', onTauriDl);
+    page.off('download', onHostDl);
     const cap = await page.evaluate(() => window.__capturedExport);
-    (cap && cap.cmd === 'save_export_file')
-      ? ok('[F1] Tauri 路径：SVG 导出走原生 save_export_file')
-      : bad('[F1] Tauri 路径未走 save_export_file', JSON.stringify(cap));
-    if (cap && cap.args && Array.isArray(cap.args.content)) {
-      const txt = Buffer.from(cap.args.content).toString('utf8');
+    (cap && cap.vvh === 'req' && cap.method === 'saveExportFile')
+      ? ok('[F1] VS Code 路径：SVG 导出走宿主 saveExportFile（带 id 的 req 消息）')
+      : bad('[F1] VS Code 路径未走宿主另存为', JSON.stringify(cap && cap.method));
+    if (cap && cap.args && typeof cap.args.base64 === 'string') {
+      const txt = Buffer.from(cap.args.base64, 'base64').toString('utf8');
       const nm = String(cap.args.defaultName || '');
       (txt.includes('<svg') && nm.endsWith('.svg'))
-        ? ok('[F2] save_export_file 载荷 = 自包含 SVG + .svg 文件名', nm)
+        ? ok('[F2] 宿主载荷 = 自包含 SVG（base64）+ .svg 文件名', `${nm} / ${txt.length}B`)
         : bad('[F2] 载荷异常', JSON.stringify({ nm, head: txt.slice(0, 30) }));
-    } else bad('[F2] 载荷异常', 'no content[] array');
-    tauriDownloads === 0 ? ok('[F3] Tauri 路径不再产生 <a download>') : bad('[F3] 仍走浏览器下载', `n=${tauriDownloads}`);
-    await page.evaluate(() => { delete window.__TAURI_INTERNALS__; });
+    } else bad('[F2] 载荷异常', 'args.base64 不是字符串（字节没走 base64？）');
+    hostDownloads === 0 ? ok('[F3] 宿主路径不再产生 <a download>') : bad('[F3] 仍走浏览器下载', `n=${hostDownloads}`);
+    await page.evaluate(() => { delete window.acquireVsCodeApi; });
 
     dialogs.length === 0 ? ok('0 native dialogs') : bad('native dialogs', dialogs.join('; '));
     const typeErrors = errors.filter(e => /TypeError/i.test(e));

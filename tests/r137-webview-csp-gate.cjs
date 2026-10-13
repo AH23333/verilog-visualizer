@@ -2,7 +2,7 @@
 //
 // 起因：R136 壳落地时 `buildCsp` 的 `script-src` 只写了 nonce，`style-src` 只写了 cspSource。
 // 而 `index.html` 里有两颗 **CDN `<link rel=stylesheet>`**（Prism 主题），且构建后的 chunk 图是
-// `index.js --动态import()--> browserHost/vscodeHost/tauriHost.js`（宿主层按宿主挑实现）。
+// `index.js --动态import()--> browserHost/vscodeHost.js`（宿主层按宿主挑实现）。
 // 这两件事在 dev 服务器上**完全看不见**（dev 不带 CSP），只在壳里现形。
 //
 // 这颗闸门把三件事分开判，⛔ 用同一份页面既设靶子又报"零违规"：

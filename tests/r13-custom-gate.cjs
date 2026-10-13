@@ -51,13 +51,19 @@ async function wirePort(page, srcType, srcPort, tgtType, tgtPort) {
 }
 const clickGate = (page, label) => require('./_ui.cjs').clickGate(page, label);   // 旧的本地版用 ?.click() 静默空转
 async function boot(page) {
-  await page.goto(URL, { waitUntil: 'networkidle' });
+  // ⚠ 这颗原来用 `{ waitUntil: 'networkidle' }`：dev 服务器上首页要拉 8 MB 的阻塞式 classic script
+  //   （`/digitaljs.js` + `/yosys/yosys.browser.js`）外加一条不会闲下来的 HMR WebSocket ⇒
+  //   `page.goto: Timeout 30000ms exceeded` 连红三次，而同一段时间里 r17/r18/r25/r26/r34/r35/r37/r40
+  //   单跑都翻绿 ⇒ 这一颗⛔ 机器忙，是**死锚点**。本仓其余老闸门早改成"等应用真挂载"（`_ui.cjs` 的 boot 有说明），
+  //   r12/r13 是最后两颗。红的时候⛔ 看得出区别：改成现读标记就看不见了，所以这里把读数留在注释里。
+  const UI = require('./_ui.cjs');
+  await UI.boot(page, URL);
   await page.evaluate(() => {
     localStorage.removeItem('verilog-viz-sandbox-files');
     localStorage.removeItem('verilog-viz-sandbox-active');
     localStorage.removeItem('verilog-viz-sandbox-gates');
   });
-  await page.reload({ waitUntil: 'networkidle' }); await sleep(2000);
+  await UI.boot(page, URL, { reload: true, settle: 2000 });
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
   await require('./_ui.cjs').newSandboxFile(page);
 }
