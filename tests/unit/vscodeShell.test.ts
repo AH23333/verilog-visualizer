@@ -129,6 +129,7 @@ function memFs(seed: Record<string, string | null> = {}) {
       const out: Array<{ name: string; type: 'file' | 'dir' }> = [];
       for (const f of files.keys()) if (f.startsWith(prefix) && !f.slice(prefix.length).includes('/')) out.push({ name: f.slice(prefix.length), type: 'file' });
       for (const d of dirs) {
+        if (d === '@root') continue;                 // ⛔ 把根自己当一颗子目录上报（这颗漏是新的 `toEqual([])` 那格抓出来的）
         const ds = d.replace(/^@root\//, '');
         if (!ds.startsWith(prefix) || ds === k) continue;
         const rest = ds.slice(prefix.length);
@@ -168,9 +169,29 @@ describe('项目目录后端（与当年 Rust 后端那 14 颗命令逐条同语
     const tree = await new ProjectStore(fs2 as never, '@root').listTree();
     expect(tree.files.map((f) => f.name).sort()).toEqual(['old.vh', 'sub/deep.sv', 'top.v']);
     expect(tree.files.find((f) => f.name === 'top.v')?.size).toBe('module top; endmodule'.length);
-    expect(tree.folders).toContain('sub');
-    expect(tree.folders).toContain('空文件夹');
+    // ⛔ 用 toContain：`toEqual` 才会把假 fs 自己的毛病爆出来（上一格用 toContain 时，根目录被当成一颗子目录混在里面没人看见）
+    expect(tree.folders.sort()).toEqual(['sub', '空文件夹']);
     expect(tree.files.some((f) => f.name === 'notes.txt')).toBe(false);
+  });
+
+  it('两颗表各收各的：`.djs` 只进 `listSandboxTree`，⛔ 混进 Verilog 那份（片 4-C1 的分界）', async () => {
+    // 为什么这一格值得单独钉：`src/store/fileStore.ts` 的 refresh() 会把 listProjectTree 回的**每一颗**
+    // 当 Verilog 源码读进来解析模块，还带一条"磁盘上没了就从状态删"的分支。
+    // `.djs` 一旦混进那颗表＝电路 JSON 被当模块导入（模块名一片垃圾）＋沙盒那侧被牵动。
+    const fs5 = memFs({
+      'top.v': 'module top; endmodule',
+      '画布甲.djs': '{"cells":[]}',
+      '子目录/画布乙.djs': '{"cells":[]}',
+      'notes.txt': 'ignore me',
+    });
+    const store = new ProjectStore(fs5 as never, '@root');
+    expect((await store.listTree()).files.map((f) => f.name)).toEqual(['top.v']);
+    expect((await store.listSandboxTree()).files.map((f) => f.name).sort()).toEqual(['子目录/画布乙.djs', '画布甲.djs']);
+    // 跳过规则与路径形状由同一颗 walk 出来：两颗表都得⛔ 看见 node_modules / 点开头目录
+    const fs6 = memFs({ 'a.v': 'A', 'node_modules/x.djs': '{}', '.git/hooks/y.djs': '{}' });
+    const t2 = await new ProjectStore(fs6 as never, '@root').listSandboxTree();
+    expect(t2.files).toEqual([]);
+    expect(t2.folders).toEqual([]);
   });
 
   it('移动/复制文件夹带子树；配置缺失＝抛错（前端 projectConfigStore 靠这颗走默认值）', async () => {
@@ -197,8 +218,9 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
   const handled = [...host.matchAll(/case '([a-zA-Z]+)':/g)].map((m) => m[1]).sort();
 
   it('两边都真抽到了名字（⛔ 正则失配造成的"两边都空 ⇒ 相等 ⇒ 绿"）', () => {
-    expect(sent.length).toBeGreaterThanOrEqual(15);
-    expect(handled.length).toBeGreaterThanOrEqual(15);
+    // 16＝R140 片 4-C1 起（多了 `listSandboxTree`）。⛔ 把这个数改小：改小＝允许某一边漏一颗。
+    expect(sent.length).toBeGreaterThanOrEqual(16);
+    expect(handled.length).toBeGreaterThanOrEqual(16);
   });
 
   it('两张表逐字相同：前端调的每一颗宿主都认得，宿主认得的每一颗前端都在调', () => {

@@ -51,6 +51,9 @@ export interface ProjectHost {
   /* 项目目录里的文件与文件夹（name 是相对项目根的路径，可含 '/'） */
   saveProjectFile(name: string, content: string): Promise<void>;
   listProjectTree(): Promise<ProjectTree>;
+  /** 沙盒电路文件（`.djs`）那份表，⛔ 与上面那颗合并：`fileStore.refresh()` 会把 `listProjectTree`
+   *  回的每一颗都当 Verilog 源码解析，`.djs` 混进去＝电路 JSON 被当模块导入。浏览器档⛔ 支持（沙盒正文住 localStorage）。 */
+  listSandboxTree(): Promise<ProjectTree>;
   readProjectFile(name: string): Promise<string>;
   deleteProjectFile(name: string): Promise<void>;
   createProjectFolder(name: string): Promise<void>;

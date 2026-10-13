@@ -8,7 +8,9 @@
  *
  * 三条与 Rust 版一致的形状（改了任何一条，两个宿主的文件行为就会分岔）：
  *  1. `sanitizeRel` 拒绝对对路径与 `..` 段（防穿越）；
- *  2. 目录树只上报 `.v/.sv/.vh`，名字是**相对项目根、用 '/' 分隔**（沙盒 `.djs` 走 localStorage，不在这条链上）；
+ *  2. 目录树**按扩展名分两颗**：Verilog 那份只上报 `.v/.sv/.vh`（`listTree`），沙盒 `.djs` 走 `listSandboxTree`
+ *     ——合并不了：前端 `fileStore.refresh()` 会把 Verilog 那颗表的每一颗都当源码解析；
+ *     名字都是**相对项目根、用 '/' 分隔**（R140 片 4-C1 起 `.djs` 开始有了磁盘这份，沙盒那侧仍以 localStorage 为运行时主人）；
  *  3. 配置文件缺失＝抛错（前端 `projectConfigStore` 靠这颗抛错走默认值分支），⛔ 返回空串。
  */
 
@@ -26,6 +28,8 @@ export interface FsLike {
 }
 
 const VERILOG_EXT = ['v', 'sv', 'vh'];
+/** 沙盒电路文档的扩展名（片 4-C1：`.djs` 开始成为工作区里的真文件） */
+const SANDBOX_EXT = ['djs'];
 export const CONFIG_FILE = 'verilog-viz.config.json';
 
 /**
@@ -126,8 +130,12 @@ export class ProjectStore {
     }
   }
 
-  /** 与 Rust `scan_tree_recursive` 同形：files 只含 Verilog 三扩展，folders 含空文件夹 */
-  async listTree(): Promise<{ files: Array<{ name: string, size: number, modified: number }>, folders: string[] }> {
+  /**
+   * 一次遍历、按扩展名收表。⚠ 两颗列表**共用这一颗 walk**：跳过规则（`node_modules`/点开头目录）、
+   * "相对根、'/' 分隔"的名字形状、空文件夹也上报这几条，两份列表必须同源——
+   * 复制一份 walk 出去，将来只改一边就会分岔（而分岔的表现是"沙盒里看不见那颗文件"）。
+   */
+  private async collect(exts: string[]): Promise<{ files: Array<{ name: string, size: number, modified: number }>, folders: string[] }> {
     const files: Array<{ name: string, size: number, modified: number }> = [];
     const folders: string[] = [];
     const walk = async (dirRel: string) => {
@@ -142,7 +150,7 @@ export class ProjectStore {
           folders.push(rel);
           continue;
         }
-        if (!VERILOG_EXT.includes(extOf(rel))) continue;
+        if (!exts.includes(extOf(rel))) continue;
         const st = await this.fs.stat(this.abs(rel));
         if (!st) continue;
         files.push({ name: rel, size: st.size, modified: st.mtimeMs });
@@ -151,6 +159,17 @@ export class ProjectStore {
     await walk('');
     return { files, folders };
   }
+
+  /** 与 Rust `scan_tree_recursive` 同形：files 只含 Verilog 三扩展，folders 含空文件夹 */
+  async listTree() { return this.collect(VERILOG_EXT); }
+
+  /**
+   * 沙盒电路文件（`.djs`）的那份表——**与 Verilog 那份分开**上报。
+   * 分开的理由⛔ 是"分类好看"：`src/store/fileStore.ts` 的 `refresh()` 会把 `listProjectTree`
+   * 回的**每一颗**都当 Verilog 源码读进并 `parseVerilogModules`，还有一条"磁盘上没了就从状态里删"的分支
+   * ⇒ `.djs` 混进那颗表＝电路 JSON 被当 Verilog 导入（模块名一片垃圾）＋沙盒列表被那边牵动。
+   */
+  async listSandboxTree() { return this.collect(SANDBOX_EXT); }
 
   async readConfig(): Promise<string> {
     const abs = this.abs(CONFIG_FILE);

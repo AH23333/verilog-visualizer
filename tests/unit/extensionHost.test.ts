@@ -157,6 +157,23 @@ describe('项目根＝打开的那个文件夹（片 3 换轨）', () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/modules/a.v': 'module a; endmodule', 'D:/p/gitlike/b.v': 'module b; endmodule' } });
     expect(listed(await rpc(vscode.state.panels[0], 'listProjectTree')).sort()).toEqual(['gitlike/b.v', 'modules/a.v']);
   });
+
+  it('同一片文件夹里，沙盒那份表只收 `.djs`（两颗表⛔ 混，混了 Verilog 那侧会当源码解析）', async () => {
+    await boot({
+      folders: ['D:/p'],
+      seed: {
+        'D:/p/top.v': 'module top; endmodule',
+        'D:/p/画布甲.djs': '{"cells":[]}',
+        'D:/p/子目录/画布乙.djs': '{"cells":[]}',
+      },
+    });
+    const panel = vscode.state.panels[0];
+    expect(listed(await rpc(panel, 'listProjectTree'))).toEqual(['top.v']);
+    const sandbox = await rpc(panel, 'listSandboxTree');
+    expect(sandbox.ok).toBe(true);
+    expect(sandbox.data.files.map((f: any) => f.name).sort()).toEqual(['子目录/画布乙.djs', '画布甲.djs']);
+    expect(sandbox.data.folders).toEqual(['子目录']);
+  });
 });
 
 describe('RPC 走真通道的形状', () => {

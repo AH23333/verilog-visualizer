@@ -36,8 +36,11 @@ ARMS = [
     # 症状（只剩 Welcome 页、日志一行都没有）只有开窗口才看得见 ⇒ 把它拉回无头判的那一半。
     ("M8 清单撤回 untrustedWorkspaces（受限模式里宿主根本⛔ 激活我们）", PKG,
      '      "supported": true,', '      "supported": false,'),
+    ("M9 两颗表共用一颗 walk 被拆开：沙盒那颗表把 .v 也收了（Verilog 那侧会把电路 JSON 当源码解析）", PST,
+     "  async listSandboxTree() { return this.collect(SANDBOX_EXT); }",
+     "  async listSandboxTree() { return this.collect([...SANDBOX_EXT, ...VERILOG_EXT]); }"),
 ]
-TARGETS = ["tests/unit/extensionHost.test.ts", "tests/unit/startupPolicy.test.ts"]
+TARGETS = ["tests/unit/extensionHost.test.ts", "tests/unit/startupPolicy.test.ts", "tests/unit/vscodeShell.test.ts"]
 
 
 def run(target):

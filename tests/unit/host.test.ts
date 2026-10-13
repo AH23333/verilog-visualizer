@@ -60,6 +60,7 @@ describe('browserHost：不支持必须抛，⛔ 返回空结果', () => {
     const { browserHost } = await import('../../src/lib/host/browserHost');
     const calls: Array<Promise<unknown>> = [
       browserHost.listProjectTree(),
+      browserHost.listSandboxTree(),
       browserHost.readProjectFile('a.v'),
       browserHost.saveProjectFile('a.v', 'x'),
       browserHost.deleteProjectFile('a.v'),

@@ -3,7 +3,7 @@
  * （`createWebviewPanel` + `localResourceRoots` + `asWebviewUri` + `cspSource` + nonce +
  * `onDidReceiveMessage`），差别只有两处：
  *   · HTML 不自己写，而是**改写 Vite 产出的 index.html**（`./html.ts`，纯函数、有单测）；
- *   · 消息不是示例里那三颗 command，而是与 `src/lib/host/vscodeHost.ts` **一一对应的 15 个方法**
+ *   · 消息不是示例里那三颗 command，而是与 `src/lib/host/vscodeHost.ts` **一一对应的 16 个方法**
  *     （文件/配置/另存为/剪贴板），语义逐条对齐当年那颗 Rust 后端（`src-tauri/`，R138 已删，见 `./projectStore.ts`）。
  */
 import * as vscode from 'vscode';
@@ -197,6 +197,8 @@ async function dispatch(context: vscode.ExtensionContext, method: string, args: 
   switch (method) {
     case 'saveProjectFile': return store.saveFile(args.name, args.content);
     case 'listProjectTree': return store.listTree();
+    // 沙盒那份表单独走一颗：⛔ 与 Verilog 树合并（理由见 `ProjectStore.listSandboxTree`）
+    case 'listSandboxTree': return store.listSandboxTree();
     case 'readProjectFile': return store.readFile(args.name);
     case 'deleteProjectFile': return store.deleteFile(args.name);
     case 'createProjectFolder': return store.createFolder(args.name);

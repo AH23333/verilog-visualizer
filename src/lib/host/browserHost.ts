@@ -23,6 +23,9 @@ export const browserHost: ProjectHost = {
 
   saveProjectFile: () => nope('saveProjectFile'),
   listProjectTree: () => nope('listProjectTree'),
+  // 浏览器档的沙盒正文就住 localStorage（⛔ 这里另开一条"从磁盘列文件"的路）——必须 reject，
+  // ⛔ 返回空表：调用方把空表当"磁盘上已经没有这些文件了"就会删掉用户的电路。
+  listSandboxTree: () => nope('listSandboxTree'),
   readProjectFile: () => nope('readProjectFile'),
   deleteProjectFile: () => nope('deleteProjectFile'),
   createProjectFolder: () => nope('createProjectFolder'),

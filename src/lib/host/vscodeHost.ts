@@ -83,6 +83,7 @@ export const vscodeHost: ProjectHost = {
 
   saveProjectFile: (name, content) => rpc<void>('saveProjectFile', { name, content }),
   listProjectTree: () => rpc<ProjectTree>('listProjectTree'),
+  listSandboxTree: () => rpc<ProjectTree>('listSandboxTree'),
   readProjectFile: (name) => rpc<string>('readProjectFile', { name }),
   deleteProjectFile: (name) => rpc<void>('deleteProjectFile', { name }),
   createProjectFolder: (name) => rpc<void>('createProjectFolder', { name }),
