@@ -13,10 +13,11 @@
 | 📖 参考 Reference | [ARCHITECTURE.md](./ARCHITECTURE.md) 架构总览 | 开发者（双语） |
 | 📖 参考 Reference | [SANDBOX_DEV.md](./SANDBOX_DEV.md) 沙盒实现细节与探针教训 | 沙盒开发者 |
 | 📖 参考 Reference | [FEATURES_BEYOND_PLAN.md](./FEATURES_BEYOND_PLAN.md) 超越 OpenCircuits 特性对照 | 产品 |
+| 🔧 指南 How-to | [MIGRATION_VSCODE.md](./MIGRATION_VSCODE.md) VS Code 套壳迁移台账（含真机点验单） | 贡献者 |
 | 📜 解释 Explanation | [CHANGELOG.md](./CHANGELOG.md) 变更日志 | 所有人 |
 | 📜 解释 Explanation | [AGENT_ARCH_DECISION.md](./AGENT_ARCH_DECISION.md) Agent 集成架构决策（ADR） | 架构 |
 | ⚖️ 合规 Legal | [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) 第三方许可声明 | 法务/发布 |
-| 🧾 账本 Ledger | [PROJECT_DEEP_REVIEW_2026-10-05.md](./PROJECT_DEEP_REVIEW_2026-10-05.md) 审查与整改账本（卷一~卷三十+） | 开发/质检 |
+| 🧾 账本 Ledger | [PROJECT_DEEP_REVIEW_2026-10-05.md](./PROJECT_DEEP_REVIEW_2026-10-05.md) 审查与整改账本（卷一~卷四十三） | 开发/质检 |
 
 ## 归档 / Archive
 

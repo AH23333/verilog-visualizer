@@ -230,14 +230,15 @@ L0  宿主（VS Code 扩展：Extension Host + Webview + React + digitaljs 渲�
 ### 9.6 迁移路线图（执行口径，供接手代理）
 > 顺序原则：**先不动核心（digitaljs/SandboxCanvas），只换宿主胶水 + 解耦工具**；每步可独立验证、可回退。
 
-1. **脚手架**：建 `extension/` 包（`package.json` + `extension.ts` 入口 + `vscode` 依赖），`yarn/npm` 工作区接现有 React 前端；`vsce` 打包配置。
-2. **L0 后端胶水**：删 `src-tauri/`（Rust）；新建 Extension Host 模块承接文件 CRUD → `workspace.fs`、配置 → `settings`、导出 → `window.showSaveDialog`、剪贴板 → `env.clipboard`。
-3. **消息总线**：前端加 `acquireVsCodeApi()` 封装，把 5 个文件的 20 处直连调用改为 postMessage + Extension Host handler；事件 `listen`→webview 消息（实测 **0 处**，该条本期空）。✅ **前端半段已于 R136 完成**（`src/lib/host/`：探测每次现读、浏览器档 reject 而非返回空表、VS Code 档带 id 配对与超时的 JSON-RPC + base64 传字节）；⬜ 宿主半段（Extension Host handler）未做。（§9.4）
+1. **脚手架**：建 `extension/` 包（`package.json` + `extension.ts` 入口 + `vscode` 依赖），`yarn/npm` 工作区接现有 React 前端；`vsce` 打包配置。✅ **R137 已落**（pnpm workspace + esbuild + `.vscode/{launch,tasks}.json` 入库 ⇒ F5 即可；⚠ `vsce` 本机未装，`.vsix` 那条路**还没实测**）。
+2. **L0 后端胶水**：删 `src-tauri/`（Rust）；新建 Extension Host 模块承接文件 CRUD → `workspace.fs`、配置 → `settings`、导出 → `window.showSaveDialog`、剪贴板 → `env.clipboard`。✅ **R137 已落**（`extension/src/projectStore.ts` 逐条对齐 Rust 14 颗命令语义，项目根 `globalStorageUri/project_files`）；⬜ `src-tauri/` **故意留着**＝§9.7 回退方案。
+3. **消息总线**：前端加 `acquireVsCodeApi()` 封装，把 5 个文件的 20 处直连调用改为 postMessage + Extension Host handler；事件 `listen`→webview 消息（实测 **0 处**，该条本期空）。✅ **两半段齐了**：前端半段 R136（`src/lib/host/`：探测每次现读、浏览器档 reject 而非返回空表、VS Code 档带 id 配对与超时的 JSON-RPC + base64 传字节），宿主半段 R137（`extension.ts` 的 15 方法 `dispatch()`）。新能力面：**webview CSP 已过真浏览器判据**（`tests/r137-webview-csp-gate.cjs`，见 `MIGRATION_VSCODE.md` §3.5）。（§9.4）
+3b. **⚠ 迁移途中新发现的一层（本文⛔ 未预见）**：webview 里的 `localStorage` 持久性。沙盒电路文件正文（`verilog-viz-sandbox-files`）**完全不经宿主**（`sandboxStore.ts` 内 `getHost|hostFire|saveProjectFile` 计数 0），而 VS Code 官方建议 webview 用 `getState`/`setState`。⇒ 这是**数据丢失**风险而非观感缺陷；修法两岔，先取真机读数（`MIGRATION_VSCODE.md` §5A 第 5 格），⛔ 在读数之前把 45 处调用点改异步。
 4. **L1 接入**：接 `SecretStorage` +（可选）`LanguageModel API` 自定义 provider；provider 列表 `{baseUrl, apiKey, model}` 持久化到 `settings`。（§3.1）
-5. **路径迁移**：`get_project_dir`→`vscode.Uri`；**实测确认 `partBindings`/绑定值无绝对路径**，必要时首开做 Uri 重映射。（§9.2.2）
+5. **路径迁移**：`get_project_dir`→`vscode.Uri`；**实测确认 `partBindings`/绑定值无绝对路径**，必要时首开做 Uri 重映射。半 ✅ **R137**：根已定为 `globalStorageUri/project_files`（⛔ workspace 文件夹——那会让"打开哪个工程"决定文件可见性）；⬜ `partBindings` 里存的到底是文件名还是绝对路径**仍⛔ 现场量过**。（§9.2.2）
 6. **agent 子系统（与迁移并行，非阻塞）**：按 §3 / §4–§6 推进日志/评测/工具门面；工具门面落成「Webview 持 paper + Extension Host 持运行时」。（§3.3）
 7. **删除 WindowControls.tsx**、移除所有 `isTauri` 守卫分支（§9.2.1 清单）。
-8. **回归**：用现有 Playwright 闸门 + 变异台架（§3.9）验证电路编辑/编译/绑定功能在 VS Code 壳下等价；补扩展端到端测试。
+8. **回归**：用现有 Playwright 闸门 + 变异台架（§3.9）验证电路编辑/编译/绑定功能在 VS Code 壳下等价；补扩展端到端测试。⬜ **仍欠**：跑批已把"调用层改造 + `base:'./'`"在 Tauri/浏览器两档验完（`MIGRATION_VSCODE.md` §2 与卷四十二§五），新落的 `tests/r137-webview-csp-gate.cjs` 是把**壳那份 CSP 与装载面**搬到 headless 浏览器里判（11 PASS / 0 FAIL / 1 UNVERIFIED），⛔ 等于"真起过 Extension Development Host"。那颗端到端台架（自动开 F5 窗口驱动 webview）是下一期该建的。
 
 ### 9.7 Tauri 路径降级说明
 - Tauri 实现**不再作为主路径维护**，但代码（Rust `lib.rs`、未删前的 5 个文件 `invoke`）在迁移完成前仍可运行，作为**回退方案**。

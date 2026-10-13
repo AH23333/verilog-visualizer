@@ -76,6 +76,25 @@ grep -rn "@tauri-apps" src | grep -v "src/lib/host/"   # 期望：0 行
 - VS Code 那档的消息是 JSON 序列化的：二进制走 base64；一问一答按 id 配对，⛔ 拿"最后一条回复"当结果。
 - 迁移进度与拉取的官方基座见 `docs/MIGRATION_VSCODE.md`。
 
+### VS Code 壳的开发回路（`extension/`，R137 起）
+
+```bash
+pnpm build                        # 前端 → dist/（壳读文件系统里的它，⛔ 连 Vite dev server）
+pnpm -C extension check           # tsc + esbuild（extension/dist/extension.cjs）
+pnpm test                         # vitest：host 层 + 壳的 html/projectStore（tests/unit/vscodeShell.test.ts）
+node tests/r137-webview-csp-gate.cjs   # 按壳那份 CSP 在真浏览器里跑这张画布
+# 真机：仓库根按 F5 →「运行 扩展开发宿主」→ Ctrl+Shift+P →「打开 Verilog 可视化窗口」
+```
+
+- **改前端**只需 `pnpm build` + 在扩展宿主里重载面板；**只有 `extension/src/**` 改了**才要重编扩展。
+- `extension/src/html.ts` 保持**纯函数、⛔ `import 'vscode'`** —— 这样 CSP 与资产改写能在无头环境里被判据钉住。
+  要验壳的行为不必开 Extension Development Host：`r137-webview-csp-gate.cjs` 用静态服务器 + 那份 CSP 就够。
+- ⛔ 在闸门里另抄一份 CSP 字符串。两颗读者（`vscodeShell.test.ts` 与 `r137` 闸门）都**现读 `html.ts`**，
+  抄的那份红了只能证明抄本有问题，证明不了壳里那份。
+- 加一颗宿主方法＝**四处一起改**：`ProjectHost` 接口 + 三档实现 + `extension.ts` 的 `dispatch()` 分支，
+  然后 `unit/host.test.ts` 补臂、`r137` 闸门看那份 CSP 放不放行它（新指令来源会在这里现形）。
+- `pnpm -C extension package` 要 `@vscode/vsce`（本机⛔ 装，那条路**还没实测**）。
+
 ### 提交规范
 
 - 格式：`type(scope): 摘要`（feat/fix/test/docs/refactor/chore + 中文摘要可）；

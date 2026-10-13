@@ -2,13 +2,14 @@
 
 # Verilog Visualizer
 
-**Verilog 编译 + 可交互电路图 + 自由逻辑沙盒 —— 本地桌面应用**
-**Verilog compilation, interactive circuit diagrams & a free-form logic sandbox — as a local desktop app**
+**Verilog 编译 + 可交互电路图 + 自由逻辑沙盒 —— VS Code 里的本地桌面工具**
+**Verilog compilation, interactive circuit diagrams & a free-form logic sandbox — as a VS Code extension**
 
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)](#-快速开始--quick-start)
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
-[![Tauri 2](https://img.shields.io/badge/Tauri-2-blue)](https://tauri.app/)
+[![VS Code](https://img.shields.io/badge/host-VS%20Code%20extension-007acc)](./docs/MIGRATION_VSCODE.md)
 [![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
+[![Tauri 2 (历史宿主)](https://img.shields.io/badge/Tauri-2-legacy-informational)](./docs/MIGRATION_VSCODE.md)
 [![Gates](https://img.shields.io/badge/regression%20gates-70%2B-brightgreen)](./docs/DEVELOPMENT.md)
 
 中文 · [English](#introduction-english) ｜ 📚 全部文档见 [docs/README.md](./docs/README.md)
@@ -16,6 +17,11 @@
 </div>
 
 ---
+
+## 宿主 / Host（2026-10-13 改判）
+
+**主路径是 VS Code 扩展壳**（`extension/`，React 前端整体跑在 WebviewPanel 里）；Tauri 桌面壳降为**历史/可回退实现**（`src-tauri/` 仍能跑，决策与执行台账见 [docs/MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md)）。
+前端不直连任何宿主 API：文件/配置/另存为/剪贴板/窗口全部从 `src/lib/host/` 进出，按运行时探测 `tauriHost` / `vscodeHost` / `browserHost`。
 
 ## 简介
 
@@ -52,17 +58,35 @@ The two modes interoperate: one click copies a compiled circuit (constructor-tim
 ## 快速开始 / Quick Start
 
 ```bash
-# 前置 Prerequisites: Node.js ≥ 18, pnpm ≥ 8, Rust（Tauri 构建用）
+# 前置 Prerequisites: Node.js ≥ 18, pnpm ≥ 8
 pnpm install                    # 包管理是 pnpm（有 pnpm-lock.yaml；⛔ 别混用 npm/yarn 生成第二把锁）
-
-# 桌面开发（需 Rust 工具链）Desktop dev (needs Rust toolchain)
-pnpm tauri dev
-
-# 纯前端预览（无需 Rust）Browser-only preview (no Rust needed)
-pnpm dev          # → http://localhost:1420
+pnpm build                      # 前端产物 dist/ —— 壳与闸门都读它
 ```
 
-发布构建 Release build: `pnpm tauri build`。
+**① VS Code 壳（主路径，⛔ 需要 Rust 工具链）**
+
+```bash
+pnpm -C extension build         # Extension Host bundle（esbuild，外部只留 'vscode'）
+# 然后在本仓库根按 F5 →「运行 扩展开发宿主」
+#   弹出的那个 VS Code 窗口里：Ctrl+Shift+P → 「打开 Verilog 可视化窗口」
+```
+
+改前端后的回路是「`pnpm build` → 在扩展宿主里重载面板」；只有 `extension/src/**` 改了才需要重编扩展（或开 `pnpm -C extension watch`）。
+
+打包成 `.vsix` 分发：`pnpm build && pnpm -C extension webview:sync && pnpm -C extension package`
+（`package` 要 `@vscode/vsce`，本机尚未安装 ⇒ 这一条**还没实测**，见 [MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md) §5）。
+
+**② 纯浏览器预览（最快，无宿主能力）**
+
+```bash
+pnpm dev          # → http://localhost:1420（文件/配置落盘走 <a download> 回退）
+```
+
+**③ Tauri 桌面壳（历史/回退路径，需 Rust 工具链）**
+
+```bash
+pnpm tauri dev    # src-tauri/ 仍在，随时可回退；发布构建 `pnpm tauri build`
+```
 
 ## 文档 / Documentation
 
@@ -73,7 +97,8 @@ pnpm dev          # → http://localhost:1420
 | [📖 用户指南 User Guide](./docs/USER_GUIDE.md) | 两模式全部操作（双语 how-to） |
 | [🏗 架构 Architecture](./docs/ARCHITECTURE.md) | 模块图、数据流、关键决策（双语） |
 | [🧪 开发与测试 Development](./docs/DEVELOPMENT.md) | 环境、闸门体系、提交规范（双语） |
-| [📜 变更日志 CHANGELOG](./docs/CHANGELOG.md) | R37 → R123 里程碑（keep-a-changelog） |
+| [📜 变更日志 CHANGELOG](./docs/CHANGELOG.md) | R37 → R137 里程碑（keep-a-changelog） |
+| [🔌 VS Code 套壳迁移台账](./docs/MIGRATION_VSCODE.md) | 宿主真值：已落地层、CSP 实测结论、步骤射程、**真机点验单** |
 | [⚖️ 第三方许可 Third-Party Notices](./docs/THIRD_PARTY_NOTICES.md) | MPL-2.0 / BSD-2 / EPL-2.0 等义务声明 |
 | [🔧 沙盒实现细节 SANDBOX_DEV](./docs/SANDBOX_DEV.md) | 活文档：沙盒管线与探针教训 |
 | [🗂 历史归档 Archive](./docs/archive/) | 评审/交接/可行性等历史快照 |
@@ -96,7 +121,7 @@ node tests/r84-mutate.cjs --check   # 变异台架：验证闸门在功能坏掉
 
 ## 技术栈 / Tech Stack
 
-Tauri 2 · React 19 · TypeScript (strict) · Vite 7 · DigitalJS · Yosys WASM · yosys2digitaljs · JointJS(@joint/core) · elkjs · CodeMirror 6
+Tauri 2 · React 19 · TypeScript (strict) · Vite 7 · DigitalJS · Yosys WASM · yosys2digitaljs · JointJS(@joint/core) · elkjs · CodeMirror 6 · **宿主壳：VS Code Extension（WebviewPanel + esbuild），回退：Tauri 2**
 
 ## 许可 / License
 

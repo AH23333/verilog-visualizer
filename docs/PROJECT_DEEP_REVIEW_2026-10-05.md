@@ -268,3 +268,107 @@
 `r135-svg-export-gate 7/0`、`r135-part-search-gate 9/0` 全绿 ⇒ **调用层改造在 Tauri/浏览器两档无回归**。
 
 *（卷四十二完 · R136：统一调用层进仓并全量复验，套壳基座选定微软官方 sample；真机点验单在 `docs/MIGRATION_VSCODE.md` §5）*
+
+---
+
+# 卷四十三 · R137：VS Code 壳装到位 + 那份 CSP 的真浏览器判据（2026-10-13）
+
+> 触发这句话的是用户：**「当前难道还是使用 Tauri 吗，不是应该迁移到 vscode 套壳了吗，为什么 readme 还是 tauri 的启动方式」**
+> ——上一卷我只把"前端调用层"中立化了，README 里连一行 F5 都没有。口径：**壳⛔ 存在＝壳能跑**；
+> README 的启动方式⛔ 是宿主真值的复印件。
+
+## 一、落地（基座⛔ 自己写，照官方 sample 两处适配）
+
+`extension/{package.json,tsconfig.json,esbuild.js,sync-webview.js,src/html.ts,src/projectStore.ts,src/extension.ts}`
+＋ `.vscode/{launch,tasks}.json`（**入库**：`.gitignore` 原先 `.vscode/*` 把 F5 那两颗挡在外面，加了 `!` 两行）。
+`pnpm-workspace.yaml` 接 `extension` 包——顺带抓到一颗静默坑：那文件里 `allowBuilds: { esbuild: set this to true or false }`
+是**占位文本**，pnpm 因此跳过 esbuild 的 postinstall ⇒ `pnpm install` 在 `extension/` 里"成功但什么都没装"。
+
+**宿主半段 15 方法**逐条对上 `vscodeHost`，语义按 Rust `lib.rs` 抄（`deleteFile` 不存在＝静默成功、
+`saveExportFile` 取消＝`false` ⛔ error、`sanitizeRel` 拒绝对路径与 `..`）。项目根定 `globalStorageUri/project_files`
+（⛔ workspace 文件夹——那会让"打开哪个工程"决定文件可见性，而现有实现的工程集合与工作区无关）。
+
+## 二、新增判据与读数
+
+| 项 | 读数 |
+|---|---|
+| `tests/r137-webview-csp-gate.cjs`（PORT 1803，静态服务器 + **壳那份 CSP** + headless Edge） | **11 PASS / 0 FAIL / 1 UNVERIFIED** |
+| `pnpm test`（vitest，`tests/unit/vscodeShell.test.ts` 由 8 格加到 **11 格**） | **39/39** |
+| `pnpm -C extension typecheck` / 根 `tsc --noEmit` / `eslint src extension/src --quiet` | 0 错 / 0 错 / 0 error |
+| `base:'./'` 影响的四颗跑 dist 闸门（⛔ 并跑，逐颗单跑） | `qc-preview 2/0`、`qc-paused 6/0`、`qc-realuser 4/0`、`r23-verify 12/0` |
+| **全量跑批收口**（`tests/.out-runall-r137.txt`） | **`RED=0 ENVRED=0 GREEN=73 NOVERDICT=0 共 73 格`** ⇒ 本轮零红，无需归因 |
+
+## 二b、本轮另外抓到的一颗是**壳自己的**（⛔ 产品回归，是迁移代码）
+
+`extension.ts` 的 `panel.onDidDispose(...)` 原先只挂在 `openPanel` 里，而面板还有**第二条来路**：
+窗口重启时 `registerWebviewPanelSerializer` 恢复出来的那颗⛔ 走 `openPanel`。
+⇒ 下落是「重启恢复 → 关掉面板 → 再按命令」，`currentPanel` 仍指着已释放的面板，`reveal()` 打空炮，
+症状＝**点了没反应**（本仓"点开没反应"那一族的新成员，账本 VQ 节同族）。
+修法＝登记搬进两条路共用的 `wirePanel`（**一颗主人**），并加 `currentPanel === panel` 守卫
+（⛔ 旧面板的 dispose 抹掉新面板的登记）。证人两颗：`onDidDispose` 全文件只许一颗，且它⛔ 在 `wirePanel` 之前。
+
+同批补的一颗对账：**前端 `vscodeHost` 的 RPC 方法名表 ⇔ 宿主 `dispatch()` 的 `case` 分支表**，
+两张表读的是**源码文本**，双向差集都要空（客户端 15 ⇔ 宿主 15）。
+为什么值这两格：加一颗宿主能力时**只改一边**是静默失败——前端 `rpc('newMethod')` 发出去，
+宿主落进 `default:` 抛"不认识的调用"，屏幕上的样子是"这个功能按了没反应"。
+两颗各自都带一颗"⛔ 两边都空也算绿"的守卫（先断 `length >= 15` 再断相等）。
+
+
+这颗闸门有两条**设计上的**讲究（都是本账本早先那几刀的口径）：
+1. CSP 与改写器**从 `extension/src/html.ts` 现读**（esbuild 就地编 CJS 再 require），⛔ 在闸门里抄一份 CSP——
+   抄的那份红了只能证明抄本有问题，证明不了壳里那份；
+2. 三份页面分开（固定份 / 带"无 nonce 靶子"那份 / 摘掉 `script-src` origin 的变异份）。
+   第一版我把靶子和"零 violation"塞在同一颗页面上 ⇒ [7] 永远红（那颗就是设计来被拦的）。
+
+## 三、一处⛔ 我判错了（被自己的变异臂否掉）
+
+我先写的结论是"`script-src` 只有 nonce ⇒ `import()` 出来的分块带不上 nonce ⇒ 宿主层三颗分块全被拒 ⇒
+`getHost()` 每次静默失败"，还把它当**实测缺陷**写进了 `html.ts` 的文件头。变异臂的读数：
+**摘掉 origin 后，内联探针与外联 chunk 两条 `import()` 路都仍放行，violations=0，挂载正常**
+⇒ 本机 Chromium 把调用方 script 的 nonce 传给了 `import()`。
+⇒ 那一格如实记 **UNVERIFIED**；`html.ts` 里那段"实测拒绝取同源分块"的字已改成"⛔ 已测，保留 origin＝对这件事不做赌注"。
+**这就是"没读数之前别写失败原因"那一族的又一个样本**，而且这次的"读数"是我自己那颗闸门给的。
+
+**反过来，`style-src` 那颗是真漏口**：首跑实测
+`https://cdnjs.cloudflare.com/…prism-tomorrow.min.css|style-src-elem` ⇒ 代码编辑器没了配色，
+且**只在壳里发生**（dev 不带 CSP）。已补进 `style-src`，现在 [6] 绿、violations=0。
+
+其余放行面读数（一次拿全）：`WebAssembly.compile(yosys.wasm)` 成功（**16 416 382 B**，验 `'wasm-unsafe-eval'`）；
+`typeof window.digitaljs === 'object'`（bundle 里那两处 `new Function("return this")` 是死支 ⇒ ⛔ 需要 `'unsafe-eval'`）；
+CSP 下进沙盒放 Input×2+And+Lamp → 三根连线 → 拨输入 → 灯 `rgb(3, 192, 60)`。
+
+## 四、⛔ 先动代码的那一颗：webview 的 `localStorage` 持不持久
+
+这是本卷留下的唯一大开放项，**因为它要先有读数才知道怎么修**：
+`src/` 里 `localStorage` **59 行 / 真调用点 45 处 / 12 个文件**，其中**沙盒电路文件正文**
+（`verilog-viz-sandbox-files`）走的是纯 localStorage——实测 `grep -c "getHost\|hostFire\|saveProjectFile" src/store/sandboxStore.ts` ＝ **0**
+（`.v` 文件经 `host.saveProjectFile` 落盘，`.djs` 电路⛔ 不经）。
+VS Code 官方对 webview 持久化的建议是 `getState`/`setState` + serializer，⛔ 认可 localStorage；
+扩展开发宿主的 profile 还是临时目录。⇒ 两种下落两种修法，先按 `MIGRATION_VSCODE.md` §5A 第 5 格取读数
+（关面板→关窗口→重开 F5→电路还在吗），⛔ 在拿到那三个"在/没了"之前把 45 处调用点改成异步。
+
+顺带记一颗**为点验加的按钮**：命令「打开项目文件所在文件夹」＝ `revealFileInOS` + 路径抄进剪贴板。
+⛔ 让人去猜 globalStorage 的拼法才能核对落盘＝那是缺陷，⛔ 是"文档问题"。
+
+## 五、文档口径同步（用户令：同步更新文档，我要进行测试）
+
+- **README**：新增「宿主」一节；快速开始改成 **① VS Code 壳（F5）② 纯浏览器 ③ Tauri（历史/回退）**；
+  徽章与"技术栈"行把 VS Code 放前面；CHANGELOG 范围 `R37→R123` 已过期 ⇒ 改 `R37 → R137`。
+- `MIGRATION_VSCODE.md`：§0 进度、新增 §3.5（Extension Host 落地 + CSP 两条实测结论）、
+  §4 射程表把步骤 1/3 改 ✅、§5 点验单拆成 **5A 壳（7 格）／5B 旧 Tauri（6 格）**、新增 §6 持久化开放项。
+- `DEVELOPMENT.md`：新增「VS Code 壳的开发回路」（含"改前端只需 `pnpm build` + 重载面板"、
+  "加一颗宿主方法＝四处一起改"）。
+- ⛔ `launch.json` 原先那句"前置：两个终端 `pnpm dev` + `pnpm -C extension watch`"——壳读的是
+  **文件系统里的 `dist/index.html`**，连不到 Vite dev server；那句会让人以为不起 dev 就白屏。已改成一条前置。
+
+## 六、还欠着的
+
+1. `pnpm -C extension package` 要 `@vscode/vsce`（本机未装）⇒ **`.vsix` 那条路本轮⛔ 没实测**，README 里也这么写的。
+2. 扩展端到端台架（真起 Extension Development Host 判壳）没建；R137 那颗是把 CSP/装载面搬到 headless 浏览器判，
+   ⛔ 等于"点过 F5"。
+3. Prism 两颗 CDN 引用 ⇒ 落到 `public/` 才是离线正解（`connect-src`/`script-src`/`style-src` 三处才⛔ 需要收 cdnjs）。
+4. 上一卷的 T-3（`HierarchyViewer`/`ModulePanel` 用错 `parseVerilogInstances` 的返回值）、
+   #5 编译模式 FSM、#8 显示归一化仍在册。
+
+*（卷四十三完 · R137：壳进仓、README 改主路径、那份 CSP 有了真浏览器判据；一处我自己的假"实测缺陷"被变异臂当场否掉，改记 UNVERIFIED）*
+
