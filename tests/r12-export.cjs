@@ -91,9 +91,29 @@ function netlistLooksOk(p) { const b = fs.readFileSync(p, 'utf8'); return /modul
     (typeof svgStr === 'string' && svgStr.includes('viewBox'))
       ? ok('SVG has viewBox (fitted to content)')
       : bad('SVG viewBox', '深度重绘要求按模型包围盒取景');
-    (typeof svgStr === 'string' && svgStr.includes('#ffffff'))
-      ? ok('SVG white background rect present')
-      : bad('SVG white bg', '自包含导出必须是非透明的');
+    // R135：底色不再写死 #ffffff——深色主题下器件填充本就是近黑的 #232830，压白底就成了
+    //   用户报的"部件全为纯黑色矩形"。现在的契约＝**导出底色与屏幕画布底色同值**（成对判据），
+    //   ⛔ 退回"文件里有 #ffffff 就算绿"（那正是被改掉的错）。
+    const triple = (c) => {
+      const s = String(c || '').trim();
+      let m = /^rgba?\((\d+)[\s,]+(\d+)[\s,]+(\d+)(?:[\s,]+([\d.]+))?\)$/.exec(s);
+      if (m) return m[4] === '0' ? null : [Number(m[1]), Number(m[2]), Number(m[3])].join(',');
+      m = /^#([0-9a-fA-F]{3,8})$/.exec(s);
+      if (m) { let t = m[1]; if (t.length === 3 || t.length === 4) t = t.split('').slice(0, 3).map((x) => x + x).join(''); t = t.slice(0, 6); return [parseInt(t.slice(0, 2), 16), parseInt(t.slice(2, 4), 16), parseInt(t.slice(4, 6), 16)].join(','); }
+      return null;
+    };
+    const bgM = /<rect[^>]*width="100%"[^>]*fill="([^"]+)"/.exec(String(svgStr || ''));
+    const liveBg = await page.evaluate(() => {
+      let el = (window.__sandboxPaper && window.__sandboxPaper.el) || document.querySelector('.joint-paper');
+      for (; el; el = el.parentElement) {
+        const c = getComputedStyle(el).backgroundColor;
+        if (c && c !== 'transparent' && !/^rgba\(\s*0\s*,\s*0\s*,\s*0\s*,\s*0\s*\)$/.test(c)) return c;
+      }
+      return getComputedStyle(document.documentElement).getPropertyValue('--canvas-bg').trim() || null;
+    });
+    (bgM && triple(bgM[1]) && triple(liveBg) && triple(bgM[1]) === triple(liveBg))
+      ? ok('导出底色跟随屏幕画布（非透明、与主题一致）', `文件=${bgM && bgM[1]} 屏幕=${liveBg}`)
+      : bad('导出底色跟随屏幕画布', `文件=${bgM && bgM[1]}（triple=${bgM && triple(bgM[1])}）屏幕=${liveBg}（triple=${triple(liveBg)}）`);
 
     // =====================================================================
     console.log('[C] Export 综合网表 (.v) — real <a download> + QC hook');
