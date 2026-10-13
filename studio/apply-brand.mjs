@@ -16,8 +16,24 @@ import { fileURLToPath } from 'node:url';
 
 export const STUDIO_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(STUDIO_DIR, '..');
-/** 基座 checkout 的默认位置（在仓库**外**，⛔ 把 1 GB 的上游源码塞进我们的 git） */
-export const DEFAULT_FORK = path.resolve(REPO_ROOT, '..', 'vv-studio', 'vscode');
+/**
+ * 基座默认位置：**必须⛔ 含空格**（见 pathLooksBuildable 的说明）。
+ * 放在仓库同级目录之外——那份 checkout 是上游 1 GB 源码，⛔ 进我们自己的 git。
+ * 换机器时用 `--fork=<路径>` 或环境变量 `VERILOG_STUDIO_FORK` 指路。
+ */
+export const DEFAULT_FORK = 'D:/vv-studio/vscode';
+
+/**
+ * 上游的 `build/npm/preinstall.ts:143`（installHeaders）spawn 时**⛔ 给路径加引号**，
+ * 所以 checkout 只要落在带空格的路径上，cmd 就会在第一个空格处切开：
+ * 实测报 `'D:\Visual' is not recognized as an internal or external command`（npm error code 1，四分钟后才炸）。
+ * 我们仓库本身就住在 `D:\Visual Studio Code\...` 下面 ⇒ 默认值⛔ 从仓库相对位置推，
+ * 且这里**提前拒**带空格的路径：让它在三秒内说清"换个无空格位置"，⛔ 让人等一次长安装再失败。
+ */
+export function pathLooksBuildable(p) {
+  return !/\s/.test(p);
+}
+
 /** 我们扩展装进基座后的目录名＝扩展 id（VS Code 按这个认内置扩展） */
 export const BUILTIN_EXT_ID = 'verilog-visualizer';
 
@@ -84,6 +100,17 @@ function copyTree(src, dst, fsImpl = fs) {
 export function main(argv = process.argv.slice(2)) {
   const fork = argv.find((a) => a.startsWith('--fork='))?.slice(7)
     || process.env.VERILOG_STUDIO_FORK || DEFAULT_FORK;
+  if (!pathLooksBuildable(fork)) {
+    process.stderr.write([
+      `基座路径含空格，上游的 preinstall 会死在第一颗空格上（实测：'D:\Visual' is not recognized as ...）：`,
+      `  ${fork}`,
+      '换一份无空格的位置，例如：',
+      `  git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D:\\vv-studio\\vscode`,
+      `  pnpm studio:brand --fork=D:\\vv-studio\\vscode`,
+      '',
+    ].join('\n'));
+    return 4;
+  }
   const productPath = path.join(fork, 'product.json');
   if (!fs.existsSync(productPath)) {
     process.stderr.write([
