@@ -621,6 +621,28 @@ Welcome（受限模式）页。⛔ 报错、⛔ 日志——"点了没反应"那
 搬进宿主文件"**同批**落（§6 那颗未预见的层、`MIGRATION_VSCODE.md` §6 的持久性读数）——`.djs` 一旦成为真文件就出现在树里，
 两套主人并存（磁盘一份 + localStorage 一份）就是让用户分不清哪份生效。
 
+## 八、追加：那颗"最大的开放项"用**读盘**拿到了半份答案（⛔ 抢他的屏幕）
+
+R136 起挂着的那颗：webview 里的 `localStorage` 到底持不持久（沙盒电路正文全住在那儿，`sandboxStore.ts` 里
+`getHost|hostFire|saveProjectFile` 计数 **0**）。它一直挂着是因为取读数那格**在他的屏幕上**。
+这一轮换了一条只读盘的路：把 `--user-data-dir=D:\vv-studio\profile` 这份 profile 的 Chromium 存储层翻出来看。
+
+| 读的东西 | 读数 |
+|---|---|
+| `src/` 里 `localStorage` 的射程（重新数，旧口径已过期） | 59 行（含注释）／真调用点 **47** 处（⚠ 文档原来写 45）／**12** 个文件／**20** 颗键名 |
+| `<profile>/Local Storage/leveldb/000003.log`（2,040 字节，自 21:06 起未压实） | 里面**有**我们的键：`verilog-viz-files`、`verilog-viz-folders`、`verilog-viz-onboarded` |
+| 同一份存储里的 webview origin | **只有 1 颗** `vscode-webview://1jljhded…48ut`——这份 profile 起过 **5 次**（21:06/21:17/21:43/21:46/21:48）；⚠ 若 origin 每次漂，这里就该有 5 颗 ⇒ "origin 不漂"是被这颗计数判出来的，⛔ 是推测 |
+
+**能判的半份**：在"我们自己的二进制 + 固定 user-data-dir"这一档，webview 的 localStorage **写进了用户数据目录，
+且 origin 跨启动稳定** ⇒ §6 里那条最贵的重构（加 `storageRead/storageWrite` + 把状态注入 HTML，
+让 47 处同步读改异步）**⛔ 是为了"持久"而必须付的代价**。
+**判不了的半份**：用户**画的电路正文**跨重启还在吗——那格真的要画一个电路（读数档里已按动作序列写好，`MIGRATION_VSCODE.md` §5A 第 5 格），
+⚠ 并加了一条前提：**⛔ 用 F5 的开发宿主取这一格**（那是临时 profile，读数⛔ 代表产品）。
+
+**这一颗改变下一刀的动机**：`.djs` 搬成工作区里的真文件（片 3b）**⛔ 是为了防丢**，
+而是**数据该是文件**——进 git、进 Explorer、能被原生另存为带走；换机/清 profile 时 localStorage 那一份仍会没，
+那是**已知局限**，⛔ 靠注入 bootstrap 解决（写进 `studio/README.md` §3 与 `MIGRATION_VSCODE.md` §6b，两处口径一致）。
+
 *（卷四十五完 · R139 片 1–2–3a：方向改成"自带 Code - OSS 分支出独立二进制"，基座真编出来并真起过窗口，
  开局判据从 `extensionMode` 搬到"扩展在不在 appRoot 里"，项目根换成打开的文件夹并建起 Extension Host 的无头网；
  真机另抓到一颗"受限模式下宿主根本不激活我们"，已按清单声明修好；vitest 97/97，画布观感仍记 UNVERIFIED）*

@@ -94,6 +94,22 @@ exthost 日志里连 `_doActivateExtension local.verilog-visualizer-vscode` 都�
 
 顺带：`apply-brand.mjs` 那句"下一步见 §3 片 2（要先装 node 24.18.0）"讲的是**已经历过的事**，改成真的下一步（起窗口那条命令）。
 
+### 那颗挂了三轮的开放项（webview `localStorage` 持不持久）拿到半份读数——用**读盘**，⛔ 抢屏幕
+
+R136 起它一直挂着，因为取读数那一格在他的屏幕上。这一轮翻 profile 的 Chromium 存储层：
+
+| 读的东西 | 读数 |
+|---|---|
+| `src/` 的 `localStorage` 射程（重新数） | 59 行（含注释）／真调用点 **47** 处（⚠ 旧口径 45 已过时）／**12** 个文件／**20** 颗键名 |
+| `<profile>/Local Storage/leveldb/000003.log`（2,040 字节，自 21:06 未压实） | **有**我们的键：`verilog-viz-files`、`verilog-viz-folders`、`verilog-viz-onboarded` |
+| 同一份存储里的 webview origin | **只有 1 颗**（`vscode-webview://1jljhded…48ut`），而这份 profile 起过 **5 次** ⇒ origin 跨启动不漂（若漂就该有 5 颗） |
+
+⇒ 能判的那半：在"我们自己的二进制 + 固定 `--user-data-dir`"这一档，webview 的 localStorage 确实落进用户数据目录且 origin 稳定
+⇒ "给 `ProjectHost` 加 `storageRead/storageWrite` + 注入 bootstrap、把 47 处同步读改异步"这条最贵的重构**⛔ 是为了持久而必须付**。
+⇒ 判不了的那半（在册，一格点验）：**用户画的电路正文**跨重启还在吗（那个 profile 里没人画过电路，读盘只能看到空结构）。
+⚠ 取这一格**⛔ 用 F5 的开发宿主**——那是临时 profile，读数⛔ 代表产品；这条前提已写进 `MIGRATION_VSCODE.md` §5A 第 5 格。
+⇒ 片 3b 的动机因此改写：`.djs` 搬成工作区里的真文件⛔ 是为了防丢，而是**数据该是文件**（进 git、进 Explorer、能被另存为带走）。
+
 ### 台架自己红过的两处（⛔ 写进注释就当它对了）
 
 1. `resetMachine()` 会连内存盘一起清，上一版把它留在 seed **之后** ⇒ 每个"先 seed 再 boot"的用例都在断言一颗

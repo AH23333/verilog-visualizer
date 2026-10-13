@@ -99,8 +99,11 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
   这一步顺带解掉 R136 那颗"工程集合与工作区无关"的取舍，也让原生 Explorer 直接可用。
 - **片 3b（下一片）**：`.djs` / `.viz` 注册成 `customEditors`——画布从"一个装满 SPA 的 panel"
   变成"编辑器标签里的那份文档"，脏标记、保存、关闭交给 VS Code。
-  ⚠ 这一片必须与"沙盒电路正文从 webview `localStorage` 搬进宿主文件"同批落（`MIGRATION_VSCODE.md` §3b 那颗未预见层、
-  §6 的持久性读数）：`.djs` 一旦成为真文件就出现在树里，⛔ 两套主人并存（磁盘一份 + localStorage 一份）让用户分不清哪份生效。
+  ⚠ 这一片必须与"沙盒电路正文从 webview `localStorage` 搬进宿主文件"同批落：`.djs` 一旦成为真文件就出现在树里，
+  ⛔ 两套主人并存（磁盘一份 + localStorage 一份）让用户分不清哪份生效。
+  ⚠ **动机已按读数改写**（见 `MIGRATION_VSCODE.md` §6b）：webview 的 `localStorage` 在我们自己的二进制里
+  **确实跨启动稳定**（profile 的 `Local Storage/leveldb` 里读到 `verilog-viz-files` / `-folders` / `-onboarded`，
+  5 次启动只有 1 颗 origin）⇒ 这一片⛔ 是为了"防丢"，而是**数据该是文件**（进 git、进 Explorer、能被另存为带走）。
 - **片 4**：把 §0 表里"我们自绘"那几行逐个换成原生（文件树 → Explorer；日志 → Output；
   问题 → `DiagnosticCollection`；设置 → `contributes.configuration`；状态 → StatusBarItem），
   **换一颗删一颗**，⛔ 两套并存让人分不清哪个生效。

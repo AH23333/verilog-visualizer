@@ -18,8 +18,9 @@
 最终宿主是**我们自己的 Code - OSS 分支二进制**（`studio/`，片 2 已实测跑通编译并起过窗口，读数在
 [studio/README.md](../studio/README.md) §1b），`pnpm app` 那一颗**降级为开发用入口**（⛔ F5、⛔ 命令面板），
 Tauri 那条线整条删除（§8）。
-剩下的真开放项有两颗大的：① **webview 里的 `localStorage` 到底持不持久**（§6，未实测）；
-② **界面还没换成 workbench 原生位置**（片 3/4：`customEditors` + Explorer/Output/Problems/Settings 接管）。
+剩下的真开放项：① ~~webview `localStorage` 到底持不持久~~ ⇒ **R139 片 3a 已有读数**（§6b：存储层跨启动稳定、
+origin 不漂；只剩"用户画的电路正文跨重启"那一格要点验）；
+② **界面还没换成 workbench 原生位置**（片 3b/4：`customEditors` + Explorer/Output/Problems/Settings 接管）。
 
 ## 1. 耦合面实测（2026-10-13）
 
@@ -126,9 +127,11 @@ CSP 与改写器**从 `extension/src/html.ts` 现读**，⛔ 闸门里抄第二�
    直接开那个目录核对，路径同时抄进剪贴板。（⛔ 让人去猜落点拼法——那颗命令就是为这一格加的。）
    ⚠ 片 3a 起这颗**打开的就是你工作区那个文件夹**（没开文件夹时才是旧的 globalStorage 家）；
    工程配置仍留应用级（⛔ 往用户仓库里扔 `verilog-viz.config.json`），这一格因此要**分两头看**。
-5. **⛔ 数据还在不在（§6 那颗，这一格是本轮最要紧的一格）**：画一个电路存成沙盒文件 →
+5. **⛔ 数据还在不在（§6 那颗；R139 已有 §6b 的读盘半份，这一格是剩下那半份）**：画一个电路存成沙盒文件 →
    **关掉面板 → 关掉那个 VS Code 窗口 → 重新 `pnpm app` → 再看文件树** ⇒ 那颗还在吗？内容对吗？
    设置项（主题/字号/自动保存）还在吗？—— 三条各自记"在/没了"。
+   ⚠ 走这一格⛔ 用 F5 的开发宿主（那是临时 profile，读数⛔ 代表产品）；要么用我们自己的二进制
+   （`studio/README.md` §1b 那条 `code.bat`），要么显式加 `--user-data-dir`。
 6. **语法高亮**：代码页看一段 Verilog ⇒ 有 Prism 配色（R137 修的那张 CDN 样式表在真 webview 里对不对）。
 7. **离线**：断网开面板 ⇒ 除高亮配色外一切正常（Prism 走 CDN，这颗的预期就是"只丢配色"）。
 
@@ -202,12 +205,12 @@ R138 删掉 Tauri 之后，"与改前一致"这条基准⛔ 再有第二个宿�
 
 ## 6. 唯一的大开放项：webview 里的 `localStorage` 持不持久
 
-**事实（源码现读，⛔ 推测）**：`src/` 里 `localStorage` **59 行**（含注释），真调用点 **45 处**，
-分布在 12 个文件。其中**用户数据**那一族
-（`verilog-viz-sandbox-files` ＝ 沙盒电路文件正文、`-folders`、`-active`、`verilog-viz-files` 索引、
-settings/theme）**只写 localStorage，没有任何一份走宿主落盘**——
+**事实（源码现读，⛔ 推测；R139 片 3a 重新数过）**：`src/` 里 `localStorage` **59 行**（含注释），
+真调用点 **47 处**（旧口径 45 已过时），分布在 **12 个文件**，共 **20 颗键名**（`verilog-viz-sandbox-files`＝沙盒电路正文、
+`-folders`、`-active`、`verilog-viz-files` 索引、theme/字号/分栏比例/迁移标记⋯）。其中**用户数据**那一族
+**只写 localStorage，没有任何一份走宿主落盘**——
 实测 `grep -c "getHost\|hostFire\|saveProjectFile" src/store/sandboxStore.ts` ＝ **0**
-（`.v` 文件走 `host.saveProjectFile`，`.djs` 电路**不走**）。
+（`.v` 文件走 `host.saveProjectFile` 那条通道，`.djs` 电路**不走**）。
 
 **为什么这是个问题**：VS Code 官方文档对 webview 持久化的建议是 `getState`/`setState` +
 `registerWebviewPanelSerializer`，⛔ 认可 `localStorage`；而扩展开发宿主的 profile 是临时目录。
@@ -221,6 +224,33 @@ settings/theme）**只写 localStorage，没有任何一份走宿主落盘**—�
   `context.globalState`，并在建面板时把这份状态**注入 HTML**（`window.__VH_BOOTSTRAP__`），
   这样 `sandboxStore` 那批**同步读**⛔ 需要改成 async——那是本文件里最贵的一处重构，
   值得先用一格真机读数决定要不要付。
+
+### 6b. R139 片 3a 追加：这颗开放项现在有**真读数**了（不必抢他的屏幕）
+
+量法（⚠ 关键：全程读盘，⛔ 点他的窗口——他此刻在用这台电脑）：
+我们自己的二进制用 `--user-data-dir=D:\vv-studio\profile` 起过 **5 次**（21:06 / 21:17 / 21:43 / 21:46 / 21:48），
+把这颗 profile 的 Chromium 存储层翻出来看：
+
+| 读的东西 | 读数 |
+|---|---|
+| `<profile>/Local Storage/leveldb/*`（唯一的 `.log`，2,040 字节，自 21:06 起没压实过） | 里面**有**我们的键：`verilog-viz-files`、`verilog-viz-folders`、`verilog-viz-onboarded` |
+| 同一份存储里的 webview origin | **只有 1 颗**：`vscode-webview://1jljhded…48ut`（⛔ 每次启动换一颗——若换，5 次启动会留下 5 颗不同的 origin） |
+
+⇒ **结论（能判的那半）**：在"我们自己的二进制 + 固定 `--user-data-dir`"这一档，webview 的 `localStorage`
+**确实写进了用户数据目录，且 origin 跨启动稳定**。所以§6 那条最贵的重构（给 `ProjectHost` 加
+`storageRead/storageWrite` + 把状态注入 HTML）**⛔ 是为了"持久"而必须做**——同步读⛔ 需要整体改异步。
+
+⇒ **还判不了的那半（在册，一格点验）**：**用户画的电路正文**跨重启还在吗？
+这一格要真的画一个电路才能验，动作在他的屏幕上：
+`打开 Verilog Visualizer → 进沙盒 → 放 Input/And/Lamp 连一条线 → 存成 .djs 文件 → 完全退出 → 重新起 → 文件树里那颗还在吗、点开内容对吗`。
+（⚠ 只读盘看不到值：这一份存储里此刻只有空结构——那个 profile 里没人画过电路。）
+
+⇒ **片 3b 的理由因此换了一颗**：`.djs` 搬成工作区里的真文件，⛔ 再是为了"防丢"，
+而是**数据该是文件**——能被 git 管、能被 Explorer 看见、能被原生"另存为/打开"带走；
+换机、清 profile、重装这份产品时 localStorage 那一份仍会没（那是已知局限，⛔ 靠 §6 那套注入 bootstrap 解决）。
+
+⚠ 一条开发态的坑⛔ 要跟着这个结论走：F5 起的 Extension Development Host 用的是**临时 profile**，
+在那里看到的"没存住"⛔ 代表产品行为——真读数要么走我们自己的二进制，要么显式给 `--user-data-dir`。
 
 **次要项**：Prism 两颗 CDN 引用 ⇒ 长期落到 `public/`（离线打开才不会丢语法高亮）。
 
