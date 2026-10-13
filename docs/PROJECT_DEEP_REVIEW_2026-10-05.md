@@ -249,4 +249,22 @@
   在 Extension Host 侧把消息路由接上那 14 颗宿主能力（`workspace.fs` / `showSaveDialog` / `env.clipboard`）。
   ⛔ 重写 digitaljs 画布与 `SandboxCanvas`（架构文档 §9.3：那是两种宿主都不省的最贵部分）。
 
-*（卷四十二完 · R136：调用层与三档宿主已进仓，套壳基座选定官方件；跑批余量与 r81 复跑待收口）*
+## 五、跑批收口读数（72 格，`tests/.out-runall-r136.txt`）
+
+**`RED=4 ENVRED=0 GREEN=68 NOVERDICT=0 共 72 格`** —— 四颗红全部归因完，两颗是真凶、两颗是我自己造的：
+
+| 红格 | 归因 | 单跑复验 |
+|---|---|---|
+| r81 [6] | 证人指错文件（R132 hooks 化搬走 `line: err.line`） | `9 pass / 0 fail` ✓（修后） |
+| r83 [7][7b] | 同一因，且**双向坏**：只扫 App.tsx ⇒ [7] 看不见 hook 里的英文（假绿灯）、[7b] 反向误红 | `9 pass / 0 fail` ✓（修后） |
+| r95（pass=0，`locator.waitFor` 8s 超时） | **环境争用**：我在跑批未完时并跑了另两颗复验 ⇒ CPU 抢不动 | `10 pass / 0 fail` ✓ |
+| r117（pass=0，`locator.click` 30s 超时） | 同上 | `8 pass / 0 fail` ✓ |
+
+⛔ 把 `pass=0 + 交互超时` 读成产品红，也 ⛔ 把它当"反正会自己好"——唯一出路是**单独重跑**再定性。
+⛔ 更不该造它：跑批窗口内不并跑第二颗闸门（本卷第三节那句是我自己违反的，两次）。
+
+回归面读数（本轮改造最该看的几颗）：`r12-export 28/0`（Tauri 原生保存路径 + 三种导出）、
+`r37-verify`、`r26-verify`、`r82-move-def-gate`、`r84-binding-gate`、`r121-annotation-gate 17/0`、
+`r135-svg-export-gate 7/0`、`r135-part-search-gate 9/0` 全绿 ⇒ **调用层改造在 Tauri/浏览器两档无回归**。
+
+*（卷四十二完 · R136：统一调用层进仓并全量复验，套壳基座选定微软官方 sample；真机点验单在 `docs/MIGRATION_VSCODE.md` §5）*
