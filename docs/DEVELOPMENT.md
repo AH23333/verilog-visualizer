@@ -40,6 +40,25 @@ node tests/r84-mutate.cjs --check   # 只读校验台账（不实际打补丁）
    预期红绿登记在 mutate 台账里。
 6. 夹具公共层在 `tests/_ui.cjs`（boot 不等 networkidle、palette 展开、遮罩安全点击、
    reapViteByPort 端口回收）——新闸门复用，不复制粘贴。
+7. **成品类判据读产物字节，并与现态配对**：导出（SVG/JSON/网表）一律下载文件后解析文件内容，
+   再与 live paper 的读数比对（底色、文字色、器件数…）。⛔ 把导出的 SVG `innerHTML` 注回本页面量它——
+   那棵子树里 `getComputedStyle(el).fill` 读出**空串**、`getBBox()` 恒 0，会把好文件判成坏文件（R135 实测）。
+8. `page.waitForEvent('download')` 这类"先挂等再点"的 promise **必须当场 catch 一个空转**：
+   点击一失败就没人等它，20s 后以 unhandled rejection 打死整个闸门进程，读起来像产品崩了。
+
+### lib 层单测（vitest）
+
+```bash
+pnpm test                 # = vitest run，命中 tests/unit/**.test.ts
+```
+
+- 用途：锁定 `src/lib/*` 纯函数的**当前实测行为**（Verilog 解析、冲突分级、电路后处理…）。
+  UI 层重写（VS Code 套壳）时 lib 不动，这层就是迁移安全网；UI 行为仍归 Playwright 闸门。
+- `tests/unit` 已进 `tsconfig.include` ⇒ 单测文件也受 `tsc` 检查（⛔ 让它游离在外，等于没有证人）。
+- ⚠ 仓内**没有 vitest 配置**：默认 include 恰好只命中 `tests/unit/**.test.ts`；若往 `src` 下放
+  `*.test.ts`，会被 `pnpm test` 一起收走——要隔离就先加 `test.include`，别到时无处解释。
+- 期望值一律"按实测写"（R135：`parseVerilogInstances` 返回的是**外部模块名**而非实例名、
+  `normalizeIoLabels` 只在 `attrs.label.text` 已存在时同步）。凭函数名/印象写用例＝当场红。
 
 ### 提交规范
 

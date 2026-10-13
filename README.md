@@ -83,12 +83,15 @@ pnpm dev          # → http://localhost:1420
 `tests/` 内是 Playwright 驱动的验收闸门（headless Edge 对本地 Vite 服务）。
 
 ```bash
+pnpm test                         # lib 层单测（vitest，tests/unit/**：解析/冲突分级/电路后处理的实测行为）
 node tests/run-all.cjs              # 全量跑批：三态判定 pass / fail / 未验证
 node tests/r84-binding-gate.cjs     # 单跑一个闸门
 node tests/r84-mutate.cjs --check   # 变异台架：验证闸门在功能坏掉时确实会红
 ```
 
 约定：**新能力必配新闸门**，闸门先过变异检查才计入覆盖面。详见 [DEVELOPMENT.md](./docs/DEVELOPMENT.md)。
+导出面：两个模式各给 **SVG / 电路 JSON / 综合网表**（PNG 已按裁决全线砍掉）；沙盒导出的 SVG 是
+自包含图形（计算样式内联、底色跟随主题、按模型包围盒取景），编译模式走同一份构建器。
 
 ## 技术栈 / Tech Stack
 
