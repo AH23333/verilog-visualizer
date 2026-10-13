@@ -27,7 +27,6 @@ import { partSearchRegistry } from './lib/partSearch';
 import OnboardingDialog from './components/OnboardingDialog';
 import WaveformPanel from './components/WaveformPanel';
 import InputPanel from './components/InputPanel';
-import WindowControls from './components/WindowControls';
 import PromptDialog, { type PromptOptions } from './components/PromptDialog';
 import ConfirmDialog, { type ConfirmOptions } from './components/ConfirmDialog';
 import {
@@ -564,7 +563,7 @@ export default function App() {
   // 切换文件 / 卸载前，先落盘待写的编辑器内容（关掉自动保存时也保证切档不丢磁盘副本）。
   useEffect(() => () => { flushAutoSave(); }, [activeFileId, flushAutoSave]);
 
-  // 关窗前落盘（HTML beforeunload 兜底 webview 内导航；Tauri 关窗走同一路径）。
+  // 关窗前落盘（HTML beforeunload 兜底 webview 内导航；面板销毁/窗口关闭走同一路径）。
   useEffect(() => {
     const onBeforeUnload = () => flushAutoSave();
     window.addEventListener('beforeunload', onBeforeUnload);
@@ -1069,7 +1068,6 @@ export default function App() {
     <div className="w-screen h-screen flex flex-col bg-[var(--bg)]">
       {/* Top title bar — full width, always on top (VS Code style) */}
       <div
-        data-tauri-drag-region
         style={{
         display: 'flex', alignItems: 'center', gap: 10, height: 40, flexShrink: 0,
         padding: '0 0 0 4px',
@@ -1123,8 +1121,9 @@ export default function App() {
             </span>
           )}
         </div>
-        <div data-tauri-drag-region style={{ flex: 1, alignSelf: 'stretch' }} />
-        <WindowControls />
+        {/* 顶栏右侧的弹性占位（原来是 Tauri 的拖拽区＋自绘三颗；VS Code 自己带窗口按钮，
+            这颗 div 只剩"把左边那排推到最左"这一件事，⛔ 再把它当可交互控件） */}
+        <div style={{ flex: 1, alignSelf: 'stretch' }} />
       </div>
 
       {/* Body row: activity bar + sidebar + main content */}

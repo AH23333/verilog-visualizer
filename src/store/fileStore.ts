@@ -1,5 +1,6 @@
 // File metadata and management store
-// Stores imported Verilog files and folders in memory with Tauri-backed project directory persistence
+// Stores imported Verilog files and folders in memory, with host-backed project directory persistence
+// （落盘⛔ 认识具体宿主：`lib/host/` 按运行时挑 vscodeHost / browserHost）
 
 import { getHost, hostFire } from '../lib/host/host';
 import { parseVerilogModules } from '../lib/verilog';
@@ -139,7 +140,7 @@ export const fileStore = {
     files = [...files, entry];
     saveFilesToLocalStorage(files);
 
-    // Save to project directory via Tauri backend
+    // Save to project directory via the host layer（当前＝VS Code Extension Host）
     hostFire('Failed to save file to project directory:', (h) => h.saveProjectFile(name, content));
 
     notify();

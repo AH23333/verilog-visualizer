@@ -10,10 +10,6 @@ dist-ssr/
 extension/webview/
 *.vsix
 
-# Tauri / Rust
-src-tauri/target/
-src-tauri/gen/schemas/
-
 # Logs
 logs/
 *.log

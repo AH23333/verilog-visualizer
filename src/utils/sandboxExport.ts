@@ -3,7 +3,7 @@
 // 内联计算样式、去交互层、底色跟随主题、按模型包围盒取景）——⛔ 在这里再拼一套。
 // 供 SandboxCanvas 的「导出 SVG」按钮复用，并暴露给 QC 验收（window.__sandboxExport）做非空校验。
 //
-// 落盘走 exportUtils.saveExport（Tauri 原生保存对话框 / 浏览器回退 <a download>），
+// 落盘走 exportUtils.saveExport（宿主"另存为"对话框 / 浏览器回退 <a download>），
 // 与编译模式共用同一条导出通道（B4：消除双轨）。
 
 import { saveExport, buildStandaloneSvg } from '../lib/exportUtils';

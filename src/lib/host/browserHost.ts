@@ -8,7 +8,7 @@
  *
  * 唯二真的实现了的能力：
  *   · 导出＝`<a download>`（`saveExport` 的老浏览器回退路径原样搬过来）
- *   · 无自绘标题栏（`hasWindowControls:false` ⇒ WindowControls 渲染 null，同今天）
+ *   · 其余一律 reject：浏览器没有"项目目录"这个概念，⛔ 拿空结果糊弄调用方
  */
 import { HostUnsupported, type ProjectHost } from './host';
 
@@ -20,7 +20,6 @@ const nope = (method: string): Promise<never> => Promise.reject(new HostUnsuppor
 
 export const browserHost: ProjectHost = {
   id: 'browser',
-  hasWindowControls: false,
 
   saveProjectFile: () => nope('saveProjectFile'),
   listProjectTree: () => nope('listProjectTree'),
@@ -52,10 +51,4 @@ export const browserHost: ProjectHost = {
   // 剪贴板留给调用方现有的 DOM 兜底（CodeEditor 的 textarea 那一条路，行为不变）
   clipboardWrite: () => nope('clipboardWrite'),
   clipboardRead: () => nope('clipboardRead'),
-
-  windowIsMaximized: () => nope('windowIsMaximized'),
-  onWindowResize: () => nope('onWindowResize'),
-  windowMinimize: () => nope('windowMinimize'),
-  windowToggleMaximize: () => nope('windowToggleMaximize'),
-  windowClose: () => nope('windowClose'),
 };

@@ -4,7 +4,7 @@
  * `onDidReceiveMessage`），差别只有两处：
  *   · HTML 不自己写，而是**改写 Vite 产出的 index.html**（`./html.ts`，纯函数、有单测）；
  *   · 消息不是示例里那三颗 command，而是与 `src/lib/host/vscodeHost.ts` **一一对应的 15 个方法**
- *     （文件/配置/另存为/剪贴板），语义逐条对齐 `src-tauri/src/lib.rs`（见 `./projectStore.ts`）。
+ *     （文件/配置/另存为/剪贴板），语义逐条对齐当年那颗 Rust 后端（`src-tauri/`，R138 已删，见 `./projectStore.ts`）。
  */
 import * as vscode from 'vscode';
 import { rewriteWebviewHtml } from './html';
@@ -40,6 +40,11 @@ export function activate(context: vscode.ExtensionContext) {
         wirePanel(context, panel);
       },
     });
+  }
+  // 开发宿主（`pnpm app` 或 F5）里**直接把窗口弹出来**：多一步"去命令面板找那条命令"就是要消掉的东西。
+  // 正式安装的扩展⛔ 抢着开——那是别人的编辑器，一启动就弹面板是骚扰。
+  if (context.extensionMode === vscode.ExtensionMode.Development || process.env.VERILOG_VIZ_AUTOOPEN === '1') {
+    void openPanel(context);
   }
 }
 
@@ -80,7 +85,7 @@ async function findIndexHtml(context: vscode.ExtensionContext): Promise<{ uri: v
 }
 
 /**
- * 项目根：`context.globalStorageUri/project_files`，与 Tauri 的
+ * 项目根：`context.globalStorageUri/project_files`，与当年 Tauri 的
  * `app_data_dir()/project_files` 一一对应（⛔ 用 workspace 文件夹——那会让"打开哪个工程"
  * 决定文件可见性，而现有实现的工程集合是与工作区无关的单一目录）。
  */
@@ -193,7 +198,7 @@ async function dispatch(context: vscode.ExtensionContext, method: string, args: 
   }
 }
 
-/** 按后缀给对话框配过滤器（Tauri 侧同一件事是按 defaultName 后缀做的） */
+/** 按后缀给对话框配过滤器（当年 Tauri 侧同一件事是按 defaultName 后缀做的，形状照搬） */
 function filtersFor(name: string): Record<string, string[]> | undefined {
   const ext = String(name).split('.').pop()?.toLowerCase();
   if (!ext) return undefined;

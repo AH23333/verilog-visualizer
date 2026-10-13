@@ -59,7 +59,7 @@ export interface CodeEditorHandle {
 }
 
 /**
- * 剪贴板走统一调用层：Tauri 插件 / VS Code Extension Host 各按宿主实现；拿不到
+ * 剪贴板走统一调用层：VS Code Extension Host（`env.clipboard`）按宿主实现；拿不到
  * （浏览器那档直接抛 HostUnsupported）就退回 DOM textarea 选中复制。
  * 这条兜底路径与迁移前逐处重复三遍的写法等价（⛔ 在每个 keymap 里再抄一遍 DOM 咒语）。
  */
@@ -142,7 +142,7 @@ const CodeEditor = forwardRef<CodeEditorHandle, CodeEditorProps>(function CodeEd
       { key: 'Mod-s', run: () => { onSaveRef.current(); return true; }, preventDefault: true },
       { key: 'F5', run: () => { onRecompileRef.current(); return true; }, preventDefault: true },
       { key: 'Mod-f', run: (_view) => { setSearchVisible(true); setTimeout(() => searchInputRef.current?.focus(), 0); return true; }, preventDefault: true },
-      // Clipboard: use Tauri clipboard plugin via invoke as primary, fallback to DOM
+      // Clipboard: host clipboard first (VS Code Extension Host), fallback to DOM textarea copy
       { key: 'Mod-c', run: (view) => {
         const sel = view.state.selection.main;
         if (sel.empty) return false;

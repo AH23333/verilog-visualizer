@@ -10,7 +10,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 
 export default tseslint.config(
   {
-    ignores: ['dist/**', 'node_modules/**', 'src-tauri/**', 'tests/**', 'public/**', '**/*.cjs'],
+    ignores: ['dist/**', 'node_modules/**', 'tests/**', 'public/**', '**/*.cjs'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
@@ -43,7 +43,7 @@ export default tseslint.config(
     },
   },
   {
-    // vite/tauri 配置文件允许 node 全局
+    // vite 配置文件允许 node 全局
     files: ['vite.config.ts', 'tailwind.config.*', 'postcss.config.*'],
     languageOptions: { globals: { ...globals.node } },
   },

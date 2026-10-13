@@ -1,16 +1,12 @@
 // Export utilities for circuit diagrams and Verilog code
 
-import { getHost, hostId } from './host/host';
-
-// Tauri 运行时探测挪到 `lib/host/host.ts`（⛔ 让探测长回某个具体文件里，换宿主又得挨处找）。
-// 每次调用现读（不是模块加载期求值），测试可在点击前注入桩来验证走的是原生保存路径。
-export const isTauri = (): boolean => hostId() === 'tauri';
+import { getHost } from './host/host';
 
 /**
- * 统一导出落盘 —— 单一真源（消除编译模式「Tauri 原生对话框」与沙盒「<a download>」双轨）：
- *  - Tauri：`invoke('save_export_file')`，弹系统保存对话框；用户取消返回 false。
- *  - VS Code Webview：经 Extension Host 的"另存为"（`lib/host/vscodeHost.ts`）。
+ * 统一导出落盘 —— 单一真源（⛔ 再留"原生对话框"与"<a download>"两套轨）：
+ *  - VS Code Webview（主宿主）：经 Extension Host 的"另存为"，弹系统对话框；用户取消返回 false。
  *  - 浏览器（dev / 无头 QC）：回退 `<a download>`，让 r12/audit3/r26/r37 等下载类闸门仍可判。
+ * 宿主选择与探测全在 `lib/host/host.ts`（⛔ 让探测长回某个具体文件里）。
  */
 export async function saveExport(
   bytes: Uint8Array,

@@ -23,7 +23,7 @@ export interface HtmlRewriteInput {
 /**
  * CSP：三条是这张画布跑起来的必需，少一项就是"打开白屏"且浏览器外看不到原因。
  *  · `script-src` 里 nonce 与 `cspSource` **并存**。nonce 只写在 HTML 里的那几颗标签上，
- *    而宿主中立层（`src/lib/host/host.ts`）是按宿主**动态 `import()`** 挑 tauriHost/vscodeHost/browserHost 的。
+ *    而宿主中立层（`src/lib/host/host.ts`）是按宿主**动态 `import()`** 挑 vscodeHost/browserHost 的。
  *    ⚠ R137 实测（`tests/r137-webview-csp-gate.cjs` 变异臂）：本机 Chromium **把调用方 script 的 nonce
  *    传给了 `import()`**，所以摘掉 `cspSource` 后那条路仍放行 ⇒ 这颗⛔ 是"已测缺陷的修法"，
  *    而是**对"nonce 到底传不传递"这件事不做赌注**（那条传递行为规范里没写死，换内核就可能变）。

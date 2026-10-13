@@ -1,8 +1,9 @@
 /**
- * 项目目录的后端（Extension Host 侧），与 `src-tauri/src/lib.rs` 的 14 颗命令**逐条对齐**。
+ * 项目目录的后端（Extension Host 侧），与当年 Rust 后端那 14 颗命令**逐条对齐**
+ * （`src-tauri/` 已于 R138 整条删除，那套语义靠本文件的单测守住）。
  *
  * 为什么写成"只依赖一个注入的 fs 接口"：这样路径规则与目录树扫描这两件最容易出事的事
- * 能在无头单测里判（`tests/unit/projectStore.test.ts` 拿一份内存假 fs），
+ * 能在无头单测里判（`tests/unit/vscodeShell.test.ts` 的「项目目录后端」那一组拿一份内存假 fs），
  * ⛔ 只在真实 VS Code 里手点一遍——那等于把安全边界交给手感。
  *
  * 三条与 Rust 版一致的形状（改了任何一条，两个宿主的文件行为就会分岔）：

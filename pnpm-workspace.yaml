@@ -2,7 +2,11 @@ packages:
   - '.'
   - 'extension'
 
-# esbuild 要装平台二进制（postinstall）：⛔ 留着 "set this to true or false" 这种占位文本，
-# pnpm 会当成已配置而跳过构建 ⇒ 扩展侧 build 时报找不到二进制。
+# 这两颗都要写明决定：⛔ 留 "set this to true or false" 那种占位文本——pnpm 把它当"已配置"，
+# 于是要么静默跳过 postinstall（esbuild 那次的症状是"install 成功但什么都没装"），要么每次命令都报错。
 allowBuilds:
+  # vsce-sign 的 postinstall 拉的是**发布到 Marketplace 时的代码签名**辅助。
+  # 本项目只本地 `vsce package` 出 .vsix 自装自用 ⇒ 明确 false（要上架市场时再改成 true 并重签）。
+  '@vscode/vsce-sign': false
+  # esbuild 要装平台二进制，扩展与 Vite 都靠它。
   esbuild: true

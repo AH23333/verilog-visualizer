@@ -13,7 +13,7 @@
  * 3. **`saveExportFile` 等用户点对话框**，不能上短超时：这一颗给 5 分钟，其余 20 秒。
  *    用户在对话框里取消 ＝ 正常下落，Extension Host 回 `data:false`，⛔ 回 error。
  *
- * 窗口控制在这一档不存在（VS Code 自带标题栏），直接抛 `HostUnsupported`。
+ * 窗口控制⛔ 在这份接口里（R138 随 Tauri 自绘标题栏一起拔掉——VS Code 自带标题栏）。
  */
 import { HostUnsupported, type ProjectHost, type ProjectTree } from './host';
 
@@ -80,7 +80,6 @@ async function rpc<T>(method: string, args?: unknown, timeoutMs = 20000): Promis
 
 export const vscodeHost: ProjectHost = {
   id: 'vscode',
-  hasWindowControls: false,
 
   saveProjectFile: (name, content) => rpc<void>('saveProjectFile', { name, content }),
   listProjectTree: () => rpc<ProjectTree>('listProjectTree'),
@@ -102,11 +101,4 @@ export const vscodeHost: ProjectHost = {
 
   clipboardWrite: (text) => rpc<void>('clipboardWrite', { text }),
   clipboardRead: () => rpc<string>('clipboardRead'),
-
-  // ⛔ 同步 throw（类型是 Promise）：改成 reject，理由见 browserHost 的 nope()
-  windowIsMaximized: () => Promise.reject(new HostUnsupported('windowIsMaximized', 'vscode')),
-  onWindowResize: () => Promise.reject(new HostUnsupported('onWindowResize', 'vscode')),
-  windowMinimize: () => Promise.reject(new HostUnsupported('windowMinimize', 'vscode')),
-  windowToggleMaximize: () => Promise.reject(new HostUnsupported('windowToggleMaximize', 'vscode')),
-  windowClose: () => Promise.reject(new HostUnsupported('windowClose', 'vscode')),
 };

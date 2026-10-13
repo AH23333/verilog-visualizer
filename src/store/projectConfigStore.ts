@@ -1,5 +1,5 @@
 // Project configuration store
-// Reads/writes verilog-viz.config.json in the project directory via Tauri backend
+// Reads/writes verilog-viz.config.json in the project directory via the host layer
 
 import { getHost } from '../lib/host/host';
 
