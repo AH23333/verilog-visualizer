@@ -7,6 +7,57 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R138：一条命令起壳 + Tauri 整条拆除（2026-10-13）
+
+> 触发是他这两句：「我想要的效果是直接改成 vscode 套壳，但是当前启动方式还是原来的 tauri，
+> 你给的 `pnpm -C extension build` 非常麻烦，应该是直接一行代码运行的，而不是你文档里那么麻烦还要 F5」
+> ＋「当前项目要完全转向 vscode 类的 electron，要清理 tauri」。
+> 上一批我把"能跑"写成"按 F5 → 再按 Ctrl+Shift+P → 再找那条命令"＝把三步手工动作留给用户，按本项目判据是缺陷。
+
+### Added
+- **`pnpm app`**（`scripts/run-in-vscode.mjs`）：缺产物就编（`dist/` 不存在、或 `src`/`public`/`index.html`/
+  `vite.config.ts`/`package.json` 里有比它新的）→ 编 Extension Host → 找到 VS Code CLI →
+  起一个挂了本扩展的窗口。`VSCODE_BIN=<路径> pnpm app` 是指路退路；`pnpm app:check` 只报现场、⛔ 真开窗口。
+- `pnpm app:check` 这一颗存在的理由：**"找得到 CLI / 参数拼得对 / 该不该重编"本来可以无头判**，
+  没它就只能真开一个 GUI 窗口才知道（既打扰用户，也把纯逻辑判据错登记成真机项）。
+- `@vscode/vsce` 装成 `extension/` 的 devDependency ⇒ **`.vsix` 那条路由"⛔ 实测"变成跑过**：
+  `pnpm ext:package` 产出 21 个文件 / 7.03 MB 的 `.vsix`（含 15.66 MB `yosys.wasm`）。
+- `tests/unit/launcher.test.mjs` 9 格（新）：Windows 那条命令**每个含空格的参数各自带引号**、
+  非 Windows 保持参数数组原样、CLI 查找三级优先（`VSCODE_BIN` → PATH（要 `--version` 真跑得通）→ 常见安装位置）、
+  候选表按平台给、`needsBuild` 三臂（缺产物／src 更新／⛔ 白编）。
+
+### Changed
+- **宿主从三档收成两档**：`ProjectHost` 现在只有 `vscodeHost` / `browserHost`；
+  `hostId()` 的 `'tauri'`、`isTauri`、五颗窗口控制方法与 `hasWindowControls` 一并离开接口。
+- **开发宿主模式下扩展自己弹面板**（`extensionMode === Development` ⇒ `activate` 里直接 `openPanel()`），
+  所以 F5 那条路也一起变短了；配套 `activationEvents: ["onStartupFinished"]`（⛔ 它，没人调命令就不会激活）。
+- `r12-export` 的 [F] 三格改注 `acquireVsCodeApi` 桩（原来注 `__TAURI_INTERNALS__` 验 Rust 的 `save_export_file`）：
+  验的还是**同一件事**——"点击前注入桩 ⇒ 探测每次现读"这条不变量，只是宿主换成了当前主宿主；
+  [F2] 载荷判据因此从 `content[]` 数组改成 `args.base64`。
+
+### Removed（Tauri 整条）
+- `src-tauri/`（24 颗 tracked 文件：Rust 14 颗命令 / 402 行、`tauri.conf.json`、capabilities、icons）、
+  `src/lib/host/tauriHost.ts`、`src/components/WindowControls.tsx`、`public/tauri.svg`；
+  `App.tsx` 两处 `data-tauri-drag-region`；`@tauri-apps/api` + `plugin-opener` + `cli`（`pnpm install` 读数 **−4 个包**）；
+  `pnpm tauri` 脚本、`vite.config.ts` 里 `TAURI_DEV_HOST`/hmr/`watch.ignored`、eslint 的 `src-tauri/**` 忽略项。
+- ⚠ 回退方案改了口径：**⛔ 再"两条宿主并排维护"**，要找回那一版走 git（架构文档 §9.7 已改口）。
+- 盘上留着⛔ 我删的：`src-tauri/target/`（9.0 GB Rust 缓存，gitignore 内）。删之前查过
+  `src-tauri/project_files/` 是**空目录**（0 个文件 ⇒ 没人的电路住在那儿）。
+
+### Fixed
+- **启动器在 Windows 上会把命令拼断**（这颗是我自己写的，被单测当场抓住）：`code` 其实是 `code.cmd`
+  ⇒ 必须走 shell；而 Node 的 shell 模式是**把参数用空格拼成一条串**交给 `cmd.exe` 的，⛔ 替含空格那段加引号
+  ⇒ `--extensionDevelopmentPath=` 会断在 `D:\Visual Studio Code` 的第一个空格处指到 `D:\Visual`。
+  这是 StarMark #261（`Start-Process -ArgumentList` 不引含空格元素）那一族的翻版，判据里还专门
+  **先断"裸拼那种写法不等于我们的输出"**（⛔ 让两种写法都能通过 ⇒ 那颗闸门永远绿）。
+- `pnpm-workspace.yaml` 里第二颗 `allowBuilds` **占位文本**（`@vscode/vsce-sign: set this to true or false`）：
+  留着它 pnpm 会每条命令都报错。已明确写 `false` 并记理由（只本地打包⛔ 上架市场，签名用不上）——
+  同一族坑 R137 已在 esbuild 上踩过一次。
+
+### Known
+- `.vsix` 装到用户机器上那一步（`code --install-extension`）**我没执行**——那是改他的编辑器状态，等他点头。
+- 上一批的两条仍欠：扩展端到端台架（真开 EPH 驱动 webview）、webview `localStorage` 持久性读数。
+
 ## [未发布 Unreleased] — R136 → R137：VS Code 壳落地（2026-10-13）
 
 ### Added

@@ -9,18 +9,18 @@
 
 ### 0. 安装
 
-**宿主是 VS Code 扩展壳**（`pnpm tauri dev` 那条老路仍是可回退实现，见 `MIGRATION_VSCODE.md`）。
+**宿主＝VS Code 扩展壳**（Tauri 那条线已于 R138 整条删除，见 `MIGRATION_VSCODE.md` §8）。
 
 ```bash
 pnpm install
-pnpm build           # 前端产物 dist/（壳读文件系统里的它）
-# 然后在仓库根按 F5 →「运行 扩展开发宿主」
-#   弹出的那个 VS Code 窗口里：Ctrl+Shift+P →「打开 Verilog 可视化窗口」
+pnpm app             # ← 一条命令：缺产物就编、编好扩展、开一个挂了本扩展的 VS Code 窗口，画布自己弹出来
 # 或最快的一条：
 pnpm dev             # 浏览器预览 → http://localhost:1420（功能一致，导出对话框退化为浏览器下载）
 ```
 
-> 打包成 `.vsix` 装进你自己的 VS Code：`pnpm ext:package`（要 `@vscode/vsce`；**这一条本轮还没实测**）。
+> 装进你自己的 VS Code：`pnpm ext:package` 出 `.vsix`（vsce 已是 devDependency），再
+> `code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix`。
+> `pnpm app` 找不到 `code` 命令行时，会列出试过的位置并给一条 `VSCODE_BIN=<路径> pnpm app` 的退路。
 
 ### 1. 第一个电路（编译模式）
 
@@ -66,18 +66,17 @@ pnpm dev             # 浏览器预览 → http://localhost:1420（功能一致�
 
 ### 0. Install
 
-The host is a **VS Code extension shell** (`pnpm tauri dev` still works as the fallback host — see `MIGRATION_VSCODE.md`).
+The host is a **VS Code extension shell** (the Tauri line was fully removed in R138 — see `MIGRATION_VSCODE.md` §8).
 
 ```bash
 pnpm install
-pnpm build           # frontend bundle into dist/ (the shell loads it from disk)
-# then press F5 at the repo root → "运行 扩展开发宿主" (Run Extension Development Host)
-#   in the new VS Code window: Ctrl+Shift+P → "打开 Verilog 可视化窗口" (Open Verilog Visualizer)
+pnpm app             # ← one command: builds what's missing, bundles the extension, opens a VS Code window with it loaded; the canvas opens itself
 # or the fastest route:
 pnpm dev             # browser preview → http://localhost:1420 (same features; export dialogs fall back to downloads)
 ```
 
-> To install it into your own VS Code as `.vsix`: `pnpm ext:package` (needs `@vscode/vsce`; **not yet verified**).
+> To install into your own VS Code: `pnpm ext:package` builds the `.vsix` (vsce is a devDependency now), then
+> `code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix`.
 
 ### 1. Your first circuit (Compile mode)
 

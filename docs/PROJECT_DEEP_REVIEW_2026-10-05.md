@@ -372,3 +372,131 @@ VS Code 官方对 webview 持久化的建议是 `getState`/`setState` + serializ
 
 *（卷四十三完 · R137：壳进仓、README 改主路径、那份 CSP 有了真浏览器判据；一处我自己的假"实测缺陷"被变异臂当场否掉，改记 UNVERIFIED）*
 
+
+---
+
+# 卷四十四 · R138：一条命令起壳 + Tauri 整条拆除（2026-10-13）
+
+> 两句触发，逐字：**「我想要的效果是直接改成vscode套壳，但是当前启动方式还是原来的tauri，你给的pnpm -C extension build非常麻烦，
+> 应该是直接一行代码运行的，而不是你文档里那么麻烦还要F5」**＋**「当前项目要完全转向vscode类的electron，要清理tauri」**。
+> 上一卷我把"壳能跑"交付成"按 F5 → 再 Ctrl+Shift+P → 再找那条命令"＝把三步手工动作留给用户。
+> 本仓自己的判据早就写死了：任何"请重启/请改键/请手动确认外部程序"都算缺陷——**手工启动步骤同样算**。
+
+## 一、`pnpm app`（`scripts/run-in-vscode.mjs`）
+
+四步：① `dist/` 缺、或 `src`/`public`/`index.html`/`vite.config.ts`/`package.json` 里有比它新的 ⇒ 先 `pnpm build`
+（同 `ensureFreshDist` 那条纪律：读旧产物会把已修好的东西判成没修）；② 编 Extension Host；
+③ 找 CLI：`VSCODE_BIN` → PATH 上 `code`/`code-insiders`/`codium`（**要 `--version` 真跑得通才算数**）→ 各平台常见安装位置；
+④ `--extensionDevelopmentPath=<绝对 extension 目录> --new-window <仓库根>` 起窗口。
+面板**由扩展自己弹**：`activate` 里 `extensionMode === Development`（或 `VERILOG_VIZ_AUTOOPEN=1`）就直接 `openPanel()`，
+配套加 `activationEvents: ["onStartupFinished"]`——⛔ 它，开发模式下没人调命令，扩展根本不激活。
+正式安装的扩展⛔ 抢着开（那是别人的编辑器，一启动就弹面板是骚扰）。
+
+**为什么留一颗 `pnpm app:check`**：「找不找得到 CLI、参数拼得对不对、该不该重编」这三件本来**无头就能判**。
+没这颗的话它们会被错登记成"必须真机"，而真机那一遍是用户的注意力。`check()` 只报现场、⛔ 构建、⛔ 开窗口。
+
+⚠ **最险的一处是拼给 `cmd.exe` 的那条命令**：`code` 其实是 `code.cmd` ⇒ Windows 上必须 `shell: true`，
+而 Node 的 shell 模式是**把参数用空格拼成一条串**交出去的，⛔ 替含空格那段加引号 ⇒
+本仓库路径正是 `D:\Visual Studio Code\...`，`--extensionDevelopmentPath=` 会断在第一个空格处指到 `D:\Visual`。
+这是 StarMark 那边 #261（`Start-Process -ArgumentList` 不引含空格元素，安装器去建 `D:\Visual`）那一族的 JS 翻版。
+判据里除了断"每段各自带引号"，还**先断"裸拼那种写法不等于我们的输出"**——
+⛔ 那样写的话两种实现都能通过，这颗闸门就永远是绿的。
+
+## 二、Tauri 拆除清单（每一项都做了"删完⛔ 没人再引用"的现读核对）
+
+| 删掉 | 读数 |
+|---|---|
+| `src-tauri/`（24 颗 tracked：Rust `lib.rs` 402 行/14 命令、`tauri.conf.json`、capabilities、icons） | `git ls-files src-tauri` ⇒ **0** |
+| `src/lib/host/tauriHost.ts`、`ProjectHost` 上五颗窗口方法 + `hasWindowControls`、`exportUtils.isTauri` | `hostId()` 只剩 `'vscode' \| 'browser'` |
+| `src/components/WindowControls.tsx` + `App.tsx` 两处 `data-tauri-drag-region` | 顶栏那颗 div 只剩弹性占位（⛔ 再自绘标题栏） |
+| `@tauri-apps/{api,plugin-opener,cli}`、`pnpm tauri` 脚本 | `pnpm install` 读数 **−4 个包**；`grep -c tauri pnpm-lock.yaml` ⇒ **0** |
+| `vite.config.ts` 的 `TAURI_DEV_HOST`/hmr/`watch.ignored`、eslint 的 `src-tauri/**`、`public/tauri.svg` | 后两条是顺手清的尾巴——**`tauri.svg` 是打包 `.vsix` 时才发现被一起塞进了包里**（这颗只有真打一次包才看得见） |
+
+**回退口径改了**：⛔ 再"两条宿主并排维护"。要那一版就 `git revert`/`checkout` 到删除前那笔
+（本卷落笔时 HEAD 三连的最后一笔之前那份树就是完整可跑的 Tauri 版）。并排维护的代价正是这批文档反复漂、
+启动方式反复要重写、`isTauri` 守卫到处补的根源。
+
+**盘上留着⛔ 我删的**：`src-tauri/target/`（**9.0 GB** Rust 缓存，gitignore 内、⛔ tracked）。
+删之前先查了 `src-tauri/project_files/` ⇒ **0 个文件**（确认没人的电路住在那儿才动手）；
+`rm -rf` ⛔ 可逆，而删 tracked 文件能 `git checkout` 回来，所以只做了后者。
+
+## 三、`.vsix` 那条路由"⛔ 实测"变成跑过
+
+装上 `@vscode/vsce`（devDependency）后 `pnpm ext:package` 真产出
+`extension/verilog-visualizer-vscode-0.0.1.vsix`：**21 个文件 / 7.03 MB**（含 15.66 MB `yosys.wasm`、1.03 MB 主 chunk）。
+⚠ 这里踩到**第二颗 `allowBuilds` 占位文本**：pnpm 自动写进 `@vscode/vsce-sign: set this to true or false`，
+于是**每条 pnpm 命令都报错**。已明确写 `false` 并记理由（只本地打包⛔ 上架市场 ⇒ 签名辅助用不上）。
+同一族坑 R137 在 esbuild 上踩过一次（那次症状是"install 成功但什么都没装"）——**两次都是占位文本被当成决定**。
+
+`code --install-extension <vsix>` 那一步我**没在他机器上执行**：那是改他的编辑器状态，等他点头。
+
+## 四、闸门跟着改的两处（⛔ 改产品行为）
+
+- `r12-export` [F] 三格：原先注入 `__TAURI_INTERNALS__` 验 Rust 那条 `save_export_file`；
+  现在注入 `acquireVsCodeApi` 桩，验**当前主宿主**那条同名通路。
+  **不变量一字没动**——"点击前注入桩 ⇒ 探测每次现读"仍然是这颗判据的本体，只是标的换了；
+  [F2] 载荷判据随形状从 `content[]` 数组改成 `args.base64`。读数 **28 pass / 0 fail**。
+- `r13-custom-gate`／`r12-export` 的 boot 从 `{ waitUntil: 'networkidle' }` 改成 `UI.boot`（见第六节，那一节才是本卷的方法学收获）。
+
+## 五、读数
+
+**静态与单元（全绿）**
+
+| 判据 | 读数 |
+|---|---|
+| `pnpm build`（根 `tsc && vite build`） | 0 错；`dist/assets` 从 **5 颗 chunk 收成 3 颗**（`tauriHost-*.js`、`window-*.js` 随 Tauri 一起没了） |
+| `pnpm -C extension check`（tsc + esbuild） | 0 错 |
+| `eslint src extension/src --quiet` | 0 error |
+| `pnpm test`（vitest 四档） | **46/46**（`host` 11／`lib` 15／`vscodeShell` 11／`launcher` 9） |
+| `grep -rn "@tauri-apps\|__TAURI" src/ extension/ tests/` | **2 行**：一颗是 gitignore 掉的旧跑批输出，一颗是我写的"这里原来注入的是 `__TAURI_INTERNALS__`"注释 ⇒ **活代码 0** |
+| `pnpm install` | **−4 个包**；`grep -c tauri pnpm-lock.yaml` ⇒ **0** |
+
+**直接受本轮改动影响的闸门（逐颗单跑）**
+
+| 闸门 | 读数 | 备注 |
+|---|---|---|
+| `r12-export` | **28 pass / 0 fail** | [F] 三格标的已换成 VS Code 桩（[F2] 载荷 `args.base64`）；boot 已从 `networkidle` 改 `UI.boot` |
+| `r13-custom-gate` | **15 pass / 0 fail** | 同上改锚点（第六节） |
+| `r137-webview-csp-gate` | **11 pass / 0 fail / 1 UNVERIFIED** | 变异臂那颗 UNVERIFIED 是 R137 的既有结论，本轮未动 |
+| `pnpm app:check` | CLI 找到（PATH 上 `code`）；`needsBuild` 正确报"package.json 比 dist 新"；命令串每个含空格参数各自带引号 | ⛔ 开窗口 |
+| `pnpm ext:package` | 产出 `.vsix`：**21 个文件 / 7.03 MB** | 这条从"⛔ 实测"变跑过 |
+
+**全量跑批：今天⛔ 收不了口，且这条结论本身是量出来的**
+
+两次全量都跑到中途开始**成块**掉格：第一次（`tests/.out-runall-r138.txt`）到 24 格时非绿 9 颗
+（r13 r17 r18 r25 r26 r34 r35 r37 r40），第二次（`tests/.out-runall-r138b.txt`）到 28 格时非绿 11 颗
+（r20 r21 r22 r23 r24 r32 r33 r34 r35 r37 r40）——**两次掉的不是同一批**，且都停在 24～28 格附近。
+
+把所有掉出的 **16 颗逐颗单跑**（⛔ 并跑）后：
+r13 15/0、r17 10/0、r18 11/0、r20 5/0、r21 6/0、r22 4/0、r23 12/0、r24 5/0、r25 4/0、r26 12/0、
+r32 14/0、r33 8/0、r34 9/0、r35 8/0、r37 14/0、r40 7/0 ⇒ **16 颗全绿，0 fail**。
+另外把第二次成块失败的 r20～r24 **连着再跑一遍**也全绿（5/6/4/12/5，0 fail）⇒ 死因⛔ 在这几颗身上，
+是长跑到中途的机器资源窗口。
+
+所以本轮的收口口径写成两句，⛔ 混成一句：**产品面**——受影响的三颗闸门与 46 格单测全绿，
+16 颗掉出闸门逐颗复验全绿，**没发现任何一颗是真红**；**跑批面**——这台机器今天**没能一次跑完 73 格**，
+ENVRED 按定义⛔ 算通过，全量绿要在机器安静时再跑一遍。
+（名册 241 那条"⛔ 跑批未完就并跑复验"我这轮守住了：所有复验都在停批之后逐颗做。）
+
+
+## 六、方法学：怎么把"机器忙"和"锚点死了"分开
+
+第一次跑批（`tests/.out-runall-r138.txt`）在 24 格里红/未判成 9 颗，症状全是 `page.goto: Timeout 30000ms exceeded`。
+我差点把它写成"拆了依赖导致 Vite 重预打包 ⇒ 首页变慢"——**那句话在当时⛔ 有读数**。
+先打现场，三条测量把归责钉住：
+
+1. **进程侧**：`Get-CimInstance Win32_Process` 里命令行含 `vite` 的 node 进程 **0 颗** ⇒ "闸门跑完把 dev server 留下了"那条假设当场作废
+   （这条要是成立，后面所有红都得重跑）；
+2. **内存侧**：`FreePhysicalMemory` 6.3 GB / 总 16 GB，而 msedge 16 颗只占 0.83 GB、node 4 颗占 0.15 GB
+   ⇒ 压力⛔ 测试进程泄漏造成，是这台机器别的东西在用。**⛔ 为了跑批去杀不属于我的进程**（用户可能在用电脑）；
+3. **判决会不会移动**：把那 9 颗**逐颗单独重跑**（⛔ 并跑，名册 241 那条），
+   r17/r18/r25/r26/r34/r35/r37/r40 **全翻绿**（10/11/4/12/9/8/14/7 全 0 fail），
+   只有 r13 **连红三次**。⇒ 同一段时间、同一份代码、判决会动的那些＝**环境**；判决不动的那一颗＝**锚点**。
+
+于是 r13 才轮到"死锚点"这个结论，并且它有独立佐证：`{ waitUntil: 'networkidle' }` 在这台 dev 服务器上
+本来就要等 8 MB 阻塞式 classic script（`/digitaljs.js` + `/yosys/yosys.browser.js`）加一条不会闲下来的 HMR WebSocket，
+`_ui.cjs` 的 boot 早就为这件事改成"等应用真挂载"，r12/r13 是最后两颗没改的。改完 r13 **15 pass / 0 fail**。
+
+**记下来的规矩**：`pass=0 + goto 超时` 这种形状，先问"**重跑一次判决会不会变**"，⛔ 先问"是不是我改坏了"。
+两者都⛔ 靠猜——测一次就有答案，而且测法是逐颗单跑（并跑会自己造出第二轮噪声，名册 241 已经为这件事红过一次）。
+

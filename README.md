@@ -9,7 +9,6 @@
 [![License MIT](https://img.shields.io/badge/license-MIT-green)](./LICENSE)
 [![VS Code](https://img.shields.io/badge/host-VS%20Code%20extension-007acc)](./docs/MIGRATION_VSCODE.md)
 [![React 19](https://img.shields.io/badge/React-19-61dafb)](https://react.dev/)
-[![Tauri 2 (历史宿主)](https://img.shields.io/badge/Tauri-2-legacy-informational)](./docs/MIGRATION_VSCODE.md)
 [![Gates](https://img.shields.io/badge/regression%20gates-70%2B-brightgreen)](./docs/DEVELOPMENT.md)
 
 中文 · [English](#introduction-english) ｜ 📚 全部文档见 [docs/README.md](./docs/README.md)
@@ -18,10 +17,13 @@
 
 ---
 
-## 宿主 / Host（2026-10-13 改判）
+## 宿主 / Host（2026-10-13 定稿）
 
-**主路径是 VS Code 扩展壳**（`extension/`，React 前端整体跑在 WebviewPanel 里）；Tauri 桌面壳降为**历史/可回退实现**（`src-tauri/` 仍能跑，决策与执行台账见 [docs/MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md)）。
-前端不直连任何宿主 API：文件/配置/另存为/剪贴板/窗口全部从 `src/lib/host/` 进出，按运行时探测 `tauriHost` / `vscodeHost` / `browserHost`。
+**唯一宿主＝VS Code 扩展壳**（`extension/`：Extension Host 开 `WebviewPanel` 装这份 React 前端，
+VS Code 本身跑在 Electron 上）。Tauri 那条线**已于 R138 整条拆除**——`src-tauri/`、Rust 后端 14 颗命令、
+`tauriHost`、自绘标题栏 `WindowControls.tsx` 都不在仓里了；要找回那一版走 git（账本卷四十三末尾有提交号），
+决策与执行台账见 [docs/MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md)。
+前端也不直连宿主 API：文件/配置/另存为/剪贴板全部从 `src/lib/host/` 进出，按运行时探测 `vscodeHost` / `browserHost`。
 
 ## 简介
 
@@ -58,35 +60,32 @@ The two modes interoperate: one click copies a compiled circuit (constructor-tim
 ## 快速开始 / Quick Start
 
 ```bash
-# 前置 Prerequisites: Node.js ≥ 18, pnpm ≥ 8
+# 前置 Prerequisites: Node.js ≥ 18, pnpm ≥ 8, VS Code
 pnpm install                    # 包管理是 pnpm（有 pnpm-lock.yaml；⛔ 别混用 npm/yarn 生成第二把锁）
-pnpm build                      # 前端产物 dist/ —— 壳与闸门都读它
+pnpm app                        # ← 就这一条：缺产物就编，找到 VS Code 就开窗口，画布自己弹出来
 ```
 
-**① VS Code 壳（主路径，⛔ 需要 Rust 工具链）**
+`pnpm app` 干三件事（`scripts/run-in-vscode.mjs`）：① `dist/` 缺、或 `src/` 里有比它新的文件 ⇒ 先 `pnpm build`；
+② 编 Extension Host（`extension/dist/extension.cjs`）；③ 用 `--extensionDevelopmentPath` 起一个 VS Code 窗口——
+扩展在开发宿主模式下**自己把画布面板弹出来**，⛔ 要你按 F5、⛔ 要你去命令面板找命令。
+找不到 `code` 命令行时，它会列出试过的位置并给一条 `VSCODE_BIN=<路径> pnpm app` 的退路。
+只想看它打算干什么（⛔ 真开窗口）：`pnpm app:check`。
+
+**装进你自己的 VS Code（一次装好，之后从侧栏点开即可）**
 
 ```bash
-pnpm -C extension build         # Extension Host bundle（esbuild，外部只留 'vscode'）
-# 然后在本仓库根按 F5 →「运行 扩展开发宿主」
-#   弹出的那个 VS Code 窗口里：Ctrl+Shift+P → 「打开 Verilog 可视化窗口」
+pnpm ext:package                                    # 产 extension/verilog-visualizer-vscode-<版本>.vsix
+code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix
 ```
 
-改前端后的回路是「`pnpm build` → 在扩展宿主里重载面板」；只有 `extension/src/**` 改了才需要重编扩展（或开 `pnpm -C extension watch`）。
-
-打包成 `.vsix` 分发：`pnpm build && pnpm -C extension webview:sync && pnpm -C extension package`
-（`package` 要 `@vscode/vsce`，本机尚未安装 ⇒ 这一条**还没实测**，见 [MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md) §5）。
-
-**② 纯浏览器预览（最快，无宿主能力）**
+**另两条入口**
 
 ```bash
-pnpm dev          # → http://localhost:1420（文件/配置落盘走 <a download> 回退）
+pnpm dev                 # 纯浏览器预览 → http://localhost:1420（⛔ 宿主落盘，导出退化为 <a download>）
+node tests/run-all.cjs   # 全量回归闸门（headless Edge，73 格）
 ```
 
-**③ Tauri 桌面壳（历史/回退路径，需 Rust 工具链）**
-
-```bash
-pnpm tauri dev    # src-tauri/ 仍在，随时可回退；发布构建 `pnpm tauri build`
-```
+改前端后的回路是「`pnpm build` → 重载那个窗口」；只有 `extension/src/**` 改了才需要重编扩展（或 `pnpm ext:watch`）。
 
 ## 文档 / Documentation
 
@@ -97,7 +96,7 @@ pnpm tauri dev    # src-tauri/ 仍在，随时可回退；发布构建 `pnpm tau
 | [📖 用户指南 User Guide](./docs/USER_GUIDE.md) | 两模式全部操作（双语 how-to） |
 | [🏗 架构 Architecture](./docs/ARCHITECTURE.md) | 模块图、数据流、关键决策（双语） |
 | [🧪 开发与测试 Development](./docs/DEVELOPMENT.md) | 环境、闸门体系、提交规范（双语） |
-| [📜 变更日志 CHANGELOG](./docs/CHANGELOG.md) | R37 → R137 里程碑（keep-a-changelog） |
+| [📜 变更日志 CHANGELOG](./docs/CHANGELOG.md) | R37 → R138 里程碑（keep-a-changelog） |
 | [🔌 VS Code 套壳迁移台账](./docs/MIGRATION_VSCODE.md) | 宿主真值：已落地层、CSP 实测结论、步骤射程、**真机点验单** |
 | [⚖️ 第三方许可 Third-Party Notices](./docs/THIRD_PARTY_NOTICES.md) | MPL-2.0 / BSD-2 / EPL-2.0 等义务声明 |
 | [🔧 沙盒实现细节 SANDBOX_DEV](./docs/SANDBOX_DEV.md) | 活文档：沙盒管线与探针教训 |
@@ -115,13 +114,13 @@ node tests/r84-mutate.cjs --check   # 变异台架：验证闸门在功能坏掉
 ```
 
 约定：**新能力必配新闸门**，闸门先过变异检查才计入覆盖面。详见 [DEVELOPMENT.md](./docs/DEVELOPMENT.md)。
-宿主能力（文件/配置/另存为/剪贴板/窗口）只从 `src/lib/host/` 进出——UI 里 ⛔ 直连 `@tauri-apps`；VS Code 套壳迁移的执行台账见 [MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md)。
+宿主能力（文件/配置/另存为/剪贴板）只从 `src/lib/host/` 进出——UI 里 ⛔ 直连任何宿主 API；VS Code 套壳迁移的执行台账见 [MIGRATION_VSCODE.md](./docs/MIGRATION_VSCODE.md)。
 导出面：两个模式各给 **SVG / 电路 JSON / 综合网表**（PNG 已按裁决全线砍掉）；沙盒导出的 SVG 是
 自包含图形（计算样式内联、底色跟随主题、按模型包围盒取景），编译模式走同一份构建器。
 
 ## 技术栈 / Tech Stack
 
-Tauri 2 · React 19 · TypeScript (strict) · Vite 7 · DigitalJS · Yosys WASM · yosys2digitaljs · JointJS(@joint/core) · elkjs · CodeMirror 6 · **宿主壳：VS Code Extension（WebviewPanel + esbuild），回退：Tauri 2**
+VS Code 扩展壳（WebviewPanel + esbuild）· React 19 · TypeScript (strict) · Vite 7 · DigitalJS · Yosys WASM · yosys2digitaljs · JointJS(@joint/core) · elkjs · CodeMirror 6
 
 ## 许可 / License
 
@@ -129,4 +128,4 @@ Tauri 2 · React 19 · TypeScript (strict) · Vite 7 · DigitalJS · Yosys WASM 
 
 ## 致谢 / Acknowledgments
 
-[DigitalJS](https://github.com/tilk/digitaljs) · [Yosys](https://github.com/YosysHQ/yosys) · [yosys2digitaljs](https://github.com/tilk/yosys2digitaljs) · [Tauri](https://tauri.app/) · [JointJS](https://www.jointjs.com/)
+[DigitalJS](https://github.com/tilk/digitaljs) · [Yosys](https://github.com/YosysHQ/yosys) · [yosys2digitaljs](https://github.com/tilk/yosys2digitaljs) · [JointJS](https://www.jointjs.com/) · [VS Code Extension API](https://code.visualstudio.com/api)

@@ -17,7 +17,7 @@
 | 📜 解释 Explanation | [CHANGELOG.md](./CHANGELOG.md) 变更日志 | 所有人 |
 | 📜 解释 Explanation | [AGENT_ARCH_DECISION.md](./AGENT_ARCH_DECISION.md) Agent 集成架构决策（ADR） | 架构 |
 | ⚖️ 合规 Legal | [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) 第三方许可声明 | 法务/发布 |
-| 🧾 账本 Ledger | [PROJECT_DEEP_REVIEW_2026-10-05.md](./PROJECT_DEEP_REVIEW_2026-10-05.md) 审查与整改账本（卷一~卷四十三） | 开发/质检 |
+| 🧾 账本 Ledger | [PROJECT_DEEP_REVIEW_2026-10-05.md](./PROJECT_DEEP_REVIEW_2026-10-05.md) 审查与整改账本（卷一~卷四十四） | 开发/质检 |
 
 ## 归档 / Archive
 

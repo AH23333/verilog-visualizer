@@ -10,11 +10,11 @@
 ### 进程模型
 
 **宿主（主路径）＝VS Code 扩展壳**：Extension Host（Node，`extension/`）开一个 `WebviewPanel` 装 React 前端，
-文件 IO／另存为／剪贴板由 `workspace.fs` / `showSaveDialog` / `env.clipboard` 承担，
-前端与宿主之间隔一条**带 id 配对的 JSON 消息通道**。**Yosys 以 WASM、DigitalJS 以 UMD bundle 静态装载**
-（`public/`），综合与仿真全部发生在 webview 内，完全离线。
-Tauri 2 桌面壳（Rust 侧极薄：文件 IO 命令 + 原生保存对话框）**仍在仓内、作历史/可回退宿主**。
-两种宿主都不变的一件事：前端⛔ 直连宿主 API，全部走 `src/lib/host/` 那一层探测（见 `MIGRATION_VSCODE.md`）。
+文件 IO／另存为／剪贴板由 `workspace.fs` / `showSaveDialog` / `env.clipboard` 承担，前端与宿主之间隔一条**带 id 配对的 JSON 消息通道**。
+**Yosys 以 WASM、DigitalJS 以 UMD bundle 静态装载**（`public/`），综合与仿真全部发生在 webview 内，完全离线。
+Tauri 2 桌面壳已于 R138 **整条拆除**（`src-tauri/`、`tauriHost`、自绘标题栏 `WindowControls.tsx`），
+要找回走 git 历史（账本卷四十三末尾有提交号）。两种宿主都不变的一件事：
+前端⛔ 直连宿主 API，全部走 `src/lib/host/` 那一层探测（见 `MIGRATION_VSCODE.md`）。
 
 ```mermaid
 flowchart LR
@@ -93,10 +93,10 @@ The **primary host is a VS Code extension shell**: an Extension Host (Node, `ext
 `WebviewPanel` that carries the React front-end, with file IO, Save-As and clipboard served by
 `workspace.fs` / `showSaveDialog` / `env.clipboard`, and an **id-paired JSON message channel** between
 them. **Yosys runs as WASM and DigitalJS as a UMD bundle from `public/`** — synthesis and simulation
-live entirely in the webview, fully offline. The Tauri 2 shell (thin Rust side: file-IO commands +
-native save dialog) is still in-tree as the **legacy/fallback host**. What does not change across
-hosts: the front-end never touches host APIs directly — it goes through the detection layer in
-`src/lib/host/` (see `MIGRATION_VSCODE.md`).
+live entirely in the webview, fully offline. The Tauri 2 shell was **removed entirely in R138**
+(`src-tauri/`, `tauriHost`, the custom title bar `WindowControls.tsx`); recover it from git history if ever
+needed. What does not change across hosts: the front-end never touches host APIs directly — it goes through
+the detection layer in `src/lib/host/` (see `MIGRATION_VSCODE.md`).
 
 ### Layering
 

@@ -11,18 +11,18 @@
 
 ```bash
 pnpm install
+pnpm app            # ← 一条命令起壳（缺产物就编、编好 Extension Host、开一个挂了本扩展的 VS Code 窗口）
+pnpm app:check      # 只报现场（找到哪颗 CLI／dist 新不新／打算跑什么命令），⛔ 真开窗口
 pnpm dev            # Vite dev server → http://localhost:1420（浏览器预览，⛔ 宿主能力）
-pnpm build          # tsc --noEmit && vite build（base:'./'）—— 提交前必过；壳与跑 dist 的闸门都读它
+pnpm build          # tsc && vite build（base:'./'）—— 提交前必过；壳与跑 dist 的闸门都读它
 pnpm -C extension check   # VS Code 壳：tsc + esbuild（产 extension/dist/extension.cjs）
-pnpm test           # vitest lib 层单测（tests/unit/**）
-# 真机跑壳：仓库根按 F5「运行 扩展开发宿主」→ Ctrl+Shift+P →「打开 Verilog 可视化窗口」
-
-pnpm tauri dev      # 历史/回退宿主：Tauri 桌面窗口（需 Rust；Windows 另需 MSVC + WebView2）
-pnpm tauri build    # 历史/回退宿主的发布构建
+pnpm test           # vitest lib 层单测 + 壳的无头判据（tests/unit/**）
+pnpm ext:package    # 出 .vsix（vsce 已装为 devDependency；`code --install-extension <vsix>` 即装即用）
 ```
 
-> **宿主真值＝VS Code 扩展壳**（`extension/`），Tauri 那两行是可回退实现，⛔ 是主路径。
-> 前端⛔ 直连任一宿主：全部经 `src/lib/host/`（见下一节）。迁移台账＝`MIGRATION_VSCODE.md`。
+> **宿主⛔ 是 VS Code 扩展壳**（`extension/`）——Tauri 那条线已于 R138 整条删除（`src-tauri/`、
+> `tauriHost`、自绘标题栏、三个 `@tauri-apps` 包都不在仓里）。要找回那一版走 git，⛔ 走"两条宿主并排维护"。
+> 前端⛔ 直连宿主：全部经 `src/lib/host/`（见下一节）。迁移台账＝`MIGRATION_VSCODE.md`。
 
 TypeScript `strict` 全开（含 noUnusedLocals/noUnusedParameters）；**0 错误是最低门槛**。
 
@@ -69,28 +69,30 @@ pnpm test                 # = vitest run，命中 tests/unit/**.test.ts
 
 ### 宿主中立调用层（`src/lib/host/`，R136 起）
 
-前端**唯一**允许碰宿主能力（文件、配置、另存为、剪贴板、窗口）的地方是 `src/lib/host/`：
-`ProjectHost` 一份接口 + 三档实现（`tauriHost` / `vscodeHost` / `browserHost`），按运行时标记现读挑档。
+前端**唯一**允许碰宿主能力（文件、配置、另存为、剪贴板）的地方是 `src/lib/host/`：
+`ProjectHost` 一份接口 + 两档实现（`vscodeHost` / `browserHost`），按运行时标记现读挑档。
 
 ```bash
-grep -rn "@tauri-apps" src | grep -v "src/lib/host/"   # 期望：0 行
+grep -rn "@tauri-apps\|__TAURI" src/ extension/ tests/   # 期望：0 行（R138 起 Tauri 整条已删）
 ```
 
-- 新增宿主能力＝**三档一起补**（浏览器那档若"这宿主根本没有"，就 reject，⛔ 返回空结果骗过调用方），
-  并给 `tests/unit/host.test.ts` 加一颗：resolve 臂 + reject 臂 + 超时/配对臂都算证人，⛔ 只测能跑通的那条。
-- ⛔ 在 UI 代码里再写 `__TAURI_INTERNALS__` 探测或 `import('@tauri-apps/...')`：探测必须收在一处且
-  **每次调用现读**（`r12-export` 的 [F] 三格靠"点击前注入桩"验原生保存路径，加载期求值＝假绿灯）。
+- 新增宿主能力＝**两档一起补**（浏览器那档若"这宿主根本没有"，就 reject，⛔ 返回空结果骗过调用方），
+  并给 `tests/unit/host.test.ts` 加一颗：resolve 臂 + reject 臂 + 超时/配对臂都算证人，⛔ 只测能跑通的那条；
+  还要在 `extension/src/extension.ts` 的 `dispatch()` 补一颗 `case`——
+  **两张方法名表有闸门对账**（`tests/unit/vscodeShell.test.ts`），只改一边当场红。
+- ⛔ 在 UI 代码里再写运行时探测或宿主 SDK：探测必须收在一处且**每次调用现读**
+  （`r12-export` 的 [F] 三格靠"点击前注入 `acquireVsCodeApi` 桩"验导出走宿主另存为，加载期求值＝假绿灯）。
 - VS Code 那档的消息是 JSON 序列化的：二进制走 base64；一问一答按 id 配对，⛔ 拿"最后一条回复"当结果。
 - 迁移进度与拉取的官方基座见 `docs/MIGRATION_VSCODE.md`。
 
 ### VS Code 壳的开发回路（`extension/`，R137 起）
 
 ```bash
-pnpm build                        # 前端 → dist/（壳读文件系统里的它，⛔ 连 Vite dev server）
-pnpm -C extension check           # tsc + esbuild（extension/dist/extension.cjs）
-pnpm test                         # vitest：host 层 + 壳的 html/projectStore（tests/unit/vscodeShell.test.ts）
+pnpm app                        # ← 日常就这一条（编缺的 + 起挂载本扩展的 VS Code 窗口 + 面板自己弹）
+pnpm build                      # 只改前端时：编完在扩展宿主窗口里重载面板即可
+pnpm -C extension check         # tsc + esbuild（extension/dist/extension.cjs）
+pnpm test                       # vitest：host 层 + 壳的 html/projectStore/启动器（tests/unit/**）
 node tests/r137-webview-csp-gate.cjs   # 按壳那份 CSP 在真浏览器里跑这张画布
-# 真机：仓库根按 F5 →「运行 扩展开发宿主」→ Ctrl+Shift+P →「打开 Verilog 可视化窗口」
 ```
 
 - **改前端**只需 `pnpm build` + 在扩展宿主里重载面板；**只有 `extension/src/**` 改了**才要重编扩展。
@@ -100,7 +102,11 @@ node tests/r137-webview-csp-gate.cjs   # 按壳那份 CSP 在真浏览器里跑�
   抄的那份红了只能证明抄本有问题，证明不了壳里那份。
 - 加一颗宿主方法＝**四处一起改**：`ProjectHost` 接口 + 三档实现 + `extension.ts` 的 `dispatch()` 分支，
   然后 `unit/host.test.ts` 补臂、`r137` 闸门看那份 CSP 放不放行它（新指令来源会在这里现形）。
-- `pnpm -C extension package` 要 `@vscode/vsce`（本机⛔ 装，那条路**还没实测**）。
+- `pnpm ext:package` 用 `@vscode/vsce`（R138 已装成 `extension/` 的 devDependency，**这条路本轮真跑过**：
+  产出 `extension/verilog-visualizer-vscode-0.0.1.vsix`，21 个文件 / 7.03 MB）。
+  ⚠ 装它的时候 pnpm 会问 `@vscode/vsce-sign` 的 postinstall 许不许跑——本项目只本地打包⛔ 上架市场，
+  所以在 `pnpm-workspace.yaml` 里**明确写成 false**（⛔ 留 `set this to true or false` 那种占位文本：
+  pnpm 会当成已配置，于是要么静默跳过、要么每条命令都报错，esbuild 那颗已经踩过一次）。
 
 ### 提交规范
 
