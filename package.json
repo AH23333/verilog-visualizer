@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "app": "pnpm build && pnpm -C extension build && D:\\vv-studio\\vscode\\scripts\\code.bat \"--extensionDevelopmentPath=%CD%\\extension\" \"--user-data-dir=D:\\vv-studio\\profile\"",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint src",

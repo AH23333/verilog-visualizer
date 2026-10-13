@@ -11,10 +11,8 @@
 
 ```bash
 pnpm install
-# 跑起来＝用基座的官方启动脚本（R141 起本仓⛔ 自写启动脚本）：
-#   cd D:\vv-studio\vscode && scripts\code.bat --user-data-dir=D:\vv-studio\profile [<工程文件夹>]
-# 调本扩展＝官方 flag：scripts\code.bat --extensionDevelopmentPath="<本仓库根>\extension" --user-data-dir=...
-# 改基座源码＝官方 watch：cd D:\vv-studio\vscode && npm run watch-client
+pnpm app            # ← 日常就这一条：pnpm build + 编扩展 + 基座官方 code.bat（官方 flag --extensionDevelopmentPath 直载仓库里的扩展）
+                    #   它是一条 npm script（npm 官方组合机制），⛔ 自写 .mjs 包装；基座那次性的 npm ci/electron/compile 由 code.bat 的 preLaunch 自理
 pnpm dev            # Vite dev server → http://localhost:1420（浏览器预览，⛔ 宿主能力）
 pnpm build          # tsc && vite build（base:'./'）—— 提交前必过；壳与跑 dist 的闸门都读它
 pnpm -C extension check   # VS Code 壳：tsc + esbuild（产 extension/dist/extension.cjs）

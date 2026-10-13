@@ -25,6 +25,27 @@
   ⇒ 内置装载这条路⛔ 再要我自己发明的 `pnpm -C extension webview:sync`（那一步真正服务的只有 `vsce` 打包，
   因为 vsce 只收 `extension/` 目录；内置装载走基座官方那条 `extensions/<id>/package.json` 扫描）。
 
+### 追加（同日）：他说"太多了"⇒ 收成**一条** `pnpm app`（npm script，⛔ 自写 `.mjs`）
+
+逐字：**「改成我只需要敲一条的」**。上一条回答里我把"一次性 4 条 / 日常 2 条 / 交付 0 条"三种计数混着写，
+看着像官方路线要敲一串——那是我表述错，也是形状错。收成一条 npm script（npm 自己的组合机制，
+⛔ 我们又写一颗 `.mjs` 去包装），内容全是官方命令：
+
+```
+pnpm build && pnpm -C extension build && <基座>\scripts\code.bat "--extensionDevelopmentPath=%CD%\extension" "--user-data-dir=<与基座同级的 profile>"
+```
+
+⚠ 两处实测细节：① 每个含空格的参数**各自**带引号（我们仓库路径本身就有空格，`%CD%\extension` 不加引号会在第一个空格处断）；
+② **基座那次性的一大堆不用人敲**——官方 `code.bat` 进门先跑 `build/lib/preLaunch.ts`：
+缺 `node_modules` 就 `npm ci`、缺 Electron 就 `npm run electron`、缺 `out/` 就 `npm run compile`，还会拉基座要的内置扩展。
+所以从" clone 完基座"到"窗口开出来"，人要敲的就是 `pnpm install`（本仓一次）+ `pnpm app`。
+
+真跑读数（`pnpm app` 整条）：`tsc && vite build` → esbuild → 基座 preLaunch（下载 js-debug 等三颗内置扩展）→ 起窗口，
+标题 `[Extension Development Host] Verilog Visualizer - demo - Verilog Visualizer Dev`，
+exthost `_doActivateExtension local.verilog-visualizer-vscode` 1 行、`[error]` **0 行**；
+`--extensionDevelopmentPath` 直载仓库里那份扩展 ⇒ 日常⛔ 再跑 `pnpm studio:brand`（那颗只服务"内置装载"那条验证路）。
+文档同批改：README 快速开始、`GETTING_STARTED` 中英两处、`DEVELOPMENT` 脚本表、`studio/README.md` §5。
+
 ### 现在的口径（README 与三份开发文档同步改完）
 | 要做的事 | 官方命令 |
 |---|---|

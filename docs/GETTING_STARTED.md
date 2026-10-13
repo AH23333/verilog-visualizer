@@ -1,81 +1,35 @@
 ### 0. Install
 
 The product form is **our own fork of the VS Code sources, shipped as a standalone binary** (the Cursor /
-Windsurf pattern, decided by the user on 2026-10-13). Running it uses **the framework's own commands only**
-(our hand-written launcher wrappers were deleted in R141); the Tauri line was fully removed in R138
-(`MIGRATION_VSCODE.md` §8).
+Windsurf pattern, decided by the user on 2026-10-13). Day to day it is **one command** (the Tauri line was
+fully removed in R138 — `MIGRATION_VSCODE.md` §8):
 
 ```bash
-# 1) once: clone and build the base (path MUST NOT contain spaces; needs node 24.18.0 + Spectre-mitigated C++ libs)
+pnpm install         # once for this repo
+pnpm app             # ← one command: build web + build extension + launch OUR OWN binary via the base's official script
+```
+
+`pnpm app` is an **npm script** (npm's own official composition mechanism — ⛔ a hand-written `.mjs` wrapper),
+and every command inside it is official: `pnpm build` → `pnpm -C extension build` →
+`<base>\scripts\code.bat --extensionDevelopmentPath=<repo>\extension --user-data-dir=<profile next to the base>`.
+The one-time heavy lifting is also official: `code.bat` runs `build/lib/preLaunch.ts`, which does `npm ci`,
+`npm run electron` and `npm run compile` when those are missing (first run takes tens of minutes). The only
+prerequisite is the checkout itself:
+
+```bash
 git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D:\vv-studio\vscode
-cd D:\vv-studio\vscode && npm install && npm run compile-client && npm run electron
-
-# 2) after changing the webview/extension: build and install into the base's official built-in extension folder
-cd <repo root> && pnpm install && pnpm build && pnpm -C extension build && pnpm studio:brand
-
-# 3) launch our own binary with the official script and official flags
-cd D:\vv-studio\vscode
-scripts\code.bat --user-data-dir=D:\vv-studio\profile D:\my\project
+# ⚠ the path MUST NOT contain spaces; needs node 24.18.0 + a C++ toolchain with Spectre libraries (studio/README.md §4)
 ```
 
-`--user-data-dir` keeps this binary in its own profile (⛔ touching your daily VS Code settings); the positional
-argument is the project folder to open. Measured prerequisites: [`studio/README.md`](../studio/README.md) §4.
-Base somewhere else: `VERILOG_STUDIO_FORK=<path> pnpm studio:brand`.
+To open a specific project, append it as a positional argument to that `code.bat` line, or use `File → Open Folder`.
 
-**Dev loop and gates**
+**Other entry points**
 
 ```bash
-pnpm dev              # browser preview → http://localhost:1420 (same features; export dialogs fall back to downloads)
-scripts\code.bat --extensionDevelopmentPath="<repo root>\extension" --user-data-dir=D:\vv-studio\profile
-                      # ↑ official flag: load this extension into any VS Code / our own binary (or use the committed F5 config)
-node tests/run-all.cjs   # full regression gates
+pnpm dev                 # browser preview → http://localhost:1420 (same features; export dialogs fall back to downloads)
+node tests/run-all.cjs   # full regression gates (headless Edge)
+pnpm ext:package         # optional .vsix for your own VS Code: code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix
 ```
-
-> You can also install it into your own VS Code: `pnpm ext:package` builds the `.vsix`, then
-> `code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix`.
-
-# 入门指南 / Getting Started
-
-> 30 分钟从安装到第一个可复用部件。
-> From install to your first reusable part in ~30 minutes.
-
----
-
-## 中文
-
-### 0. 安装
-
-**产品形态＝自带 VS Code 源码分支、出独立二进制**（Cursor / Windsurf 同族，用户 2026-10-13 裁定）。
-跑起来只用**官方框架自己的命令**（本仓⛔ 自写启动脚本，R141 起那两颗包装已删）；
-Tauri 那条线已于 R138 整条删除，见 `MIGRATION_VSCODE.md` §8。
-
-```bash
-# ① 一次性：拉基座、编出来（⚠ 路径⛔ 含空格；需 node 24.18.0 + 含 Spectre 缓解库的 C++ 工具链）
-git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D:\vv-studio\vscode
-cd D:\vv-studio\vscode && npm install && npm run compile-client && npm run electron
-
-# ② 改完前端/扩展后：编产物 + 放进基座的官方内置扩展位置
-cd <本仓库根> && pnpm install && pnpm build && pnpm -C extension build && pnpm studio:brand
-
-# ③ 起我们自己的二进制（官方启动脚本 + 官方参数）
-cd D:\vv-studio\vscode
-scripts\code.bat --user-data-dir=D:\vv-studio\profile D:\我的工程目录
-```
-
-`--user-data-dir` 让它用**独立**的用户数据目录（⛔ 污染你日常 VS Code 的配置），位置参数就是要打开的工程文件夹。
-逐条实测前置与踩坑记录见 [`studio/README.md`](../studio/README.md) §4。基座⛔ 在默认位置：`VERILOG_STUDIO_FORK=<路径> pnpm studio:brand`。
-
-**开发回路与闸门**
-
-```bash
-pnpm dev              # 浏览器预览 → http://localhost:1420（功能一致，导出对话框退化为浏览器下载）
-scripts\code.bat --extensionDevelopmentPath="<本仓库根>\extension" --user-data-dir=D:\vv-studio\profile
-                      # ↑ 官方 flag：把本扩展挂到任意一份 VS Code / 我们自己的二进制上调试（或按入库的 F5 配置）
-node tests/run-all.cjs   # 全量回归闸门
-```
-
-> 也可以装进你自己的 VS Code：`pnpm ext:package` 出 `.vsix`（vsce 已是 devDependency），再
-> `code --install-extension extension\verilog-visualizer-vscode-0.0.1.vsix`。
 
 ### 1. 第一个电路（编译模式）
 

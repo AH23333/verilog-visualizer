@@ -807,3 +807,26 @@ R138 我写了 `scripts/run-in-vscode.mjs`（`pnpm app`），R140 又写了 `scr
 
 *（卷四十七完 · R141：启动脚本两颗整颗删除，跑产品回到基座官方的 `scripts/code.bat` + 官方参数；
  `webview:sync` 那一步从内置装载路上去掉；vitest 91/91，打包命令记 UNVERIFIED）*
+
+## 五、同日追加：他一句"太多了"，把官方命令收成**一条 npm script**
+
+逐字：**「改成我只需要敲一条的」**。我上一条把三种计数（一次性 4 条 / 日常 2 条 / 交付 0 条）混成一段写，
+读起来像"官方路线要敲一串"——表述错，形状也错：既然他要不敲第二下，那就该有一条入口，
+而**入口可以不是自写脚本**：npm 官方就提供 `package.json` 的 scripts 组合机制。
+于是 `pnpm app` ＝ `pnpm build && pnpm -C extension build && <基座>\scripts\code.bat "--extensionDevelopmentPath=%CD%\extension" "--user-data-dir=<与基座同级的 profile>"`。
+
+两条实测细节值得记（都是老坑换了一副脸再来）：
+
+1. **含空格的参数要各自带引号**：`%CD%\extension` 展出来就是 `D:\Visual Studio Code\...\extension`。
+   R138 我为这事写过一整颗 `buildSpawn` 加 9 格判据；这次一行引号就够——**先去框架机制里找，⛔ 先写代码**。
+2. **基座那次性的 heavyweight 根本⛔ 需要人敲**：官方 `code.bat` 第一步就是
+   `node build/lib/preLaunch.ts`（缺 `node_modules` ⇒ `npm ci`；缺 Electron ⇒ `npm run electron`；
+   缺 `out/` ⇒ `npm run compile`；再拉基座要的内置扩展）。我前面把它当成"用户要跑的四条命令"写进 README，
+   是⛔ 读源码的后果——文档里那 4 条其实只有 `git clone` 一条是真的。
+
+读数：`pnpm app` 整条真跑 ⇒ 标题 `[Extension Development Host] Verilog Visualizer - demo - Verilog Visualizer Dev`、
+exthost 激活行 1、`[error]` 0 行；`--extensionDevelopmentPath` 直载仓库那份扩展 ⇒ 日常⛔ 再 `pnpm studio:brand`。
+文档四处同批改（README 快速开始、GETTING_STARTED 中英、DEVELOPMENT 脚本表、studio/README §5）。
+
+*（卷四十七补完 · R141：删自写启动器之后并没有退回"一堆手工命令"，而是用官方 npm script 收成一条；
+ 教训是"官方机制里已有组合与预装的入口，先读它们，⛔ 先自己写、也⛔ 先把它们摊给用户"）*

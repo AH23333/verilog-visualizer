@@ -78,55 +78,35 @@ The two modes interoperate: one click copies a compiled circuit (constructor-tim
 
 ## 快速开始 / Quick Start
 
-跑起来**只用官方框架自己的命令**——本仓⛔ 提供自写的启动脚本（原来那两颗 `pnpm app` / `pnpm studio:run` 已于 R141 删除）。
-基座是 Code - OSS，所以"启动脚本"就是它自带的 `scripts/code.bat` / `./scripts/code.sh`。
+**一条命令**：
 
 ```bash
-# ① 一次性：拉基座并编出来（⚠ 路径⛔ 含空格；另需 node 24.18.0 与含 Spectre 缓解库的 C++ 工具链）
-git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D:\vv-studio\vscode
-cd D:\vv-studio\vscode
-npm install                      # 1590 颗包、几分钟到几十分钟
-npm run compile-client           # 官方脚本：编 out/
-npm run electron                 # 官方脚本：拉 Electron 运行时到 .build/electron/
-
-# ② 每次改完前端或扩展后：编产物，并把它放进基座的"官方内置扩展位置"
-cd <本仓库根目录>
-pnpm build                       # tsc && vite build ⇒ dist/
-pnpm -C extension build          # esbuild ⇒ extension/dist/extension.cjs
-pnpm studio:brand                # 唯一一处本仓自写脚本：合并 <fork>/product.json + 拷进 <fork>/extensions/
-
-# ③ 起我们自己的二进制：官方启动脚本 + 官方参数
-cd D:\vv-studio\vscode
-scripts\code.bat --user-data-dir=D:\vv-studio\profile D:\我的工程目录
+pnpm install         # 只有本仓库这一次（pnpm 是包管理器，⛔ 混用 npm/yarn 会生成第二把锁）
+pnpm app             # ← 编前端 + 编扩展 + 用基座官方脚本起我们自己的二进制，画布自己弹出来
 ```
 
-`--user-data-dir` 与位置参数都是 VS Code 的**官方 CLI 参数**：前者让这颗二进制用自己**独立**的用户数据目录
-（⛔ 污染你日常 VS Code 的配置），后者就是要打开的工程文件夹——原生 Explorer 与画布都从它取文件。
-改了基座源码时用它自带的 watch：`npm run watch-client`。
-指路退路（基座⛔ 在默认位置时）：`VERILOG_STUDIO_FORK=<路径> pnpm studio:brand`。
+`pnpm app` 就是一条 npm script（npm 官方的组合机制，⛔ 我们自写的 `.mjs` 包装），内容全是官方命令：
 
-**打包成安装包**（官方 gulp 目标；任务名按平台/架构在 `build/gulpfile.vscode.ts:610` 生成，聚合任务在 :626）：
-
-```bash
-cd D:\vv-studio\vscode && npm run gulp vscode-win32-x64-min
+```
+pnpm build && pnpm -C extension build && <基座>\scripts\code.bat "--extensionDevelopmentPath=%CD%\extension" "--user-data-dir=<与基座同级的 profile>"
 ```
 
-> ⚠ 这条打包命令**本轮⛔ 跑过**（记 UNVERIFIED，归片 5）；上面 ①②③ 每一步都在 2026-10-13 真跑过，
-> 读数与踩坑记录在 [studio/README.md](./studio/README.md) §1b/§1d/§4。
+- `<基座>` 默认 `D:\vv-studio\vscode`（⚠ 路径⛔ 含空格；换位置就改 `package.json` 里这一行）。
+  拉它只要一次：`git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D:\vv-studio\vscode`
+- **基座那"一次性的一大堆"不用你敲**：官方 `code.bat` 自己会跑 `build/lib/preLaunch.ts`
+  ⇒ 缺 `node_modules` 就 `npm ci`、缺 Electron 就 `npm run electron`、缺 `out/` 就 `npm run compile`，
+  还会把基座需要的内置扩展拉下来（首次几十分钟，之后直接就开）。
+- 要打开某个工程：那条命令后面补一个位置参数即可（`scripts\code.bat … "…profile" D:\我的工程目录`），
+  或者起来之后 `File → Open Folder`。跑起来只用官方命令这件事没变，变的只是把它们串成一条 npm script。
 
-**开发回路与闸门（同样全是官方入口）**
+**别的入口**
 
 ```bash
 pnpm dev                 # 纯浏览器预览 → http://localhost:1420（⛔ 宿主落盘，导出退化为 <a download>）
-# 把本扩展挂到任意一份 VS Code（或我们自己的二进制）上调试＝官方 flag：
-scripts\code.bat --extensionDevelopmentPath="<本仓库根>\extension" --user-data-dir=D:\vv-studio\profile
-# 或者用仓库里入库的 .vscode/launch.json 按 F5
-node tests/run-all.cjs   # 全量回归闸门（headless Edge，73 格）
+pnpm -C extension check  # tsc + esbuild（改 extension/src/** 后先看它）
+node tests/run-all.cjs   # 全量回归闸门（headless Edge）
+# 打包安装物＝官方 gulp 目标：cd <基座> && npm run gulp vscode-win32-x64-min（⚠ 本轮⛔ 跑过＝UNVERIFIED，归片 5）
 ```
-
-改前端后的回路是「`pnpm build` → 在窗口里重载」；只有 `extension/src/**` 改了才需要 `pnpm -C extension build`
-（或 `pnpm ext:watch`）；要把改动带进我们自己的二进制，再跑一次 `pnpm studio:brand` 就行。
-
 
 ## 文档 / Documentation
 

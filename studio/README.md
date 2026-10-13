@@ -212,6 +212,9 @@ git clone --depth 1 --filter=blob:none https://github.com/microsoft/vscode.git D
 - `src/lib/host/` 统一调用层：⛔ 白做——片 3/4 之后所有宿主调用都走 `vscodeHost` 那条 RPC，接口⛔ 改。
 - `extension/src/{html,projectStore}.ts` 与那 16 方法消息路由：继续用，只是**宿主从"用户的 VS Code"变成"我们这份二进制"**，
   内置扩展读得到基座的 `resources/`，CSP/装载逻辑一字⛔ 改（判据 `r137-webview-csp-gate` 也继续有效）。
-- 启动脚本（R138 `pnpm app`、R140 `pnpm studio:run`）**R141 整颗删除**：跑起来只用官方命令
+- 启动脚本：R138 的 `scripts/run-in-vscode.mjs` 与 R140 的 `scripts/run-studio.mjs` **R141 整颗删除**
+  （他令「不要使用你自己编写的命令脚本，尽可能使用官方框架的运行命令」）。现在 `pnpm app` 是一条 **npm script**：
+  里面全是官方命令（`pnpm build` / `pnpm -C extension build` / 基座 `scripts\code.bat` + 官方 flag），
+  组合用的是 npm 自己的机制，⛔ 我们又写一颗 `.mjs` 去"聪明地"包装
   （`scripts/code.bat --user-data-dir=D:\vv-studio\profile [<工程文件夹>]` 起的就是我们自己的二进制）。
   准绳是他这一句：**「不要使用你自己编写的命令脚本，尽可能使用官方框架的运行命令」**。
