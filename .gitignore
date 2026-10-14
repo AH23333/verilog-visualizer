@@ -57,3 +57,7 @@ FEASIBILITY_REPORT.md
 
 # 调试探针残渣（卷二十八质检：曾被 4cf94a1 误入库）
 .tmp-nested.txt
+
+# VS Code 扩展构建产物（R134 骨架）
+vscode-ext/node_modules/
+vscode-ext/out/
