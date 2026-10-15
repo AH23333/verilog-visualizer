@@ -853,3 +853,33 @@ e6e33d3（我的 docs 提交）把账本从 **833 行（卷一~四十二完整�
 4. lib 单测安全网：tests/unit/lib.test.ts 13 格全绿（已由代理 R135 收口入库）
 
 *（卷四十三完 · 恢复后本会话停止 git 写操作）*
+
+---
+
+# 卷四十五 · R136 验收清单核对：五项 UX 缺口逐项状态 + grammar 补齐（2026-10-12）
+
+> 用户五项缺口清单（VS Code 形态）逐项对照在途代理与本人的最新产出。**实测方式**：contributes/grammars 源文件直读 + JSON 解析验证 + vitest 120/120。
+
+| # | 缺口 | 状态 | 证据 |
+|---|------|------|------|
+| 1 | 右键菜单功能过少 | ✅ 已达丰富态 | `view/item/context` **22 项**：编译并查看/打开画布/打开模块项/重命名/复制/绑定部件（6 个视图面全覆盖）/部件角色切换/删除——contextValue 全配齐（codeFile/module/moduleFile/hierarchyItem/sandboxFile/sandboxDir/sandboxParts/sandboxHierarchy） |
+| 2 | 顶部新建/刷新按钮 | ✅ 已实现（折叠=原生） | `view/title`：codeFiles→新建 Verilog 文件；sandboxFiles→新建电路文件/新建文件夹（navigation@1/@2）；refreshTrees 挂全部 6 视图（@8）。**"折叠文件夹"**：VS Code workbench 对 tree 视图自动提供 Collapse All 按钮（聚焦视图即出现），无需 contribute |
+| 3 | 侧边栏空白处右键 | ⚠ 平台限制 | VS Code 原生 TreeView 的空白右键是 workbench 内置菜单（扩展无法自定义）——**等价物已就位**：标题栏按钮组（上格）+ `explorer/context` 右键（资源管理器里对 .v/.djs 右键同样可新建/编译/绑定） |
+| 4 | Verilog 高亮不完备 | ✅ 已补齐 | 双 grammar（verilog/systemverilog）+ languages 声明；**官方关键字全集核对**：`end*` 家族/原语门/存储类型/修饰符/方向/强度均在册——实测仅缺 5 颗 specify 域小关键字（ifnone/pulsestyle_ondetect/pulsestyle_onevent/showcancelled/noshowcancelled）**本轮已补进 keywords**（JSON 有效复验） |
+| 5 | 绑定入口单一 | ✅ 已多入口 | bindParts 六面右键（codeFiles/sandboxFiles/modules/moduleFile/hierarchy/sandboxParts）+ `explorer/context`（.djs 右键绑定）+ 模块树绑定描述回显 |
+
+## 附加确认
+- **双容器布局**：代码编译（codeFiles/modules/hierarchy）/ 沙盒编辑（sandboxFiles/sandboxParts/sandboxHierarchy）两容器各三视图，图标已配。
+- **customEditors**：`verilogViz.doc` 接管 `*.djs` 双击（priority: default）——点沙盒文件直接开画布而非文本。
+- **vitest 120/120**（在途代理 R142+ 新增测试并入：trees/customEditors/dispatch 等——本批 menus/grammar 变更零破坏）。
+- **extension build**（esbuild）通过。
+
+## 本卷改动
+- `extension/grammars/verilog.tmLanguage.json`：keywords 补 5 颗 specify 域小关键字。
+- （其余五项为在途代理已交付的验收确认，本卷不重复记改动。）
+
+## 未闭（移交）
+- A3/S3 Rust→已随 Tauri 拆除**整体消失**（R138 拆掉 src-tauri，导出走 VS Code 原生 showSaveDialog——**卷一 A3/S3 两条随宿主更替自然消亡** ✓ 账本闭环）。
+- ESLint 648 warnings 渐进治理（下批）。
+
+*（卷四十五完 · 五项缺口四项已实现、一项平台限制如实说明）*

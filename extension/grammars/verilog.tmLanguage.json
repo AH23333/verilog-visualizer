@@ -1,0 +1,125 @@
+{
+  "name": "Verilog",
+  "scopeName": "source.verilog",
+  "patterns": [
+    { "include": "#comments" },
+    { "include": "#strings" },
+    { "include": "#numbers" },
+    { "include": "#directives" },
+    { "include": "#system-tasks" },
+    { "include": "#module-def" },
+    { "include": "#storage-types" },
+    { "include": "#storage-modifiers" },
+    { "include": "#keywords" },
+    { "include": "#gates" },
+    { "include": "#instantiation" },
+    { "include": "#operators" }
+  ],
+  "repository": {
+    "comments": {
+      "patterns": [
+        { "name": "comment.line.double-slash.verilog", "match": "//.*$" },
+        { "name": "comment.block.verilog", "begin": "/\\*", "end": "\\*/" }
+      ]
+    },
+    "strings": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.verilog",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "name": "constant.character.escape.verilog", "match": "\\\\." }
+          ]
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "comment": "带位宽字面量：8'hFF、4'b1010、16'sd-3……",
+          "name": "constant.numeric.sized.verilog",
+          "match": "\\b\\d+\\s*'[sS]?[bBoOdDhH][0-9a-fA-FxXzZ?_]+"
+        },
+        {
+          "comment": "无位宽字面量：'b0、'hxx……",
+          "name": "constant.numeric.sized.verilog",
+          "match": "\\b'[sS]?[bBoOdDhH][0-9a-fA-FxXzZ?_]+"
+        },
+        {
+          "name": "constant.numeric.verilog",
+          "match": "\\b\\d[\\d_]*(\\.\\d+)?([eE][+-]?\\d+)?\\b"
+        }
+      ]
+    },
+    "directives": {
+      "name": "support.function.directive.verilog",
+      "match": "`[a-zA-Z_][\\w$]*"
+    },
+    "system-tasks": {
+      "name": "support.function.system.verilog",
+      "match": "\\$[a-zA-Z_][\\w$]*"
+    },
+    "module-def": {
+      "comment": "module 定义：给模块名单独上色（entity.name.function）",
+      "match": "\\b(module|macromodule)\\s+([A-Za-z_][\\w$]*)",
+      "captures": {
+        "1": { "name": "keyword.control.verilog" },
+        "2": { "name": "entity.name.function.verilog" }
+      }
+    },
+    "storage-types": {
+      "comment": "线网/变量类型与参数声明",
+      "name": "storage.type.verilog",
+      "match": "\\b(wire|wand|wor|tri|triand|trior|tri0|tri1|trireg|uwire|reg|logic|bit|byte|int|longint|shortint|integer|real|realtime|shortreal|string|time|event|void|genvar|enum|struct|union|typedef|packed|tagged|parameter|localparam|specparam|defparam)\\b"
+    },
+    "storage-modifiers": {
+      "comment": "端口方向与属性修饰",
+      "name": "storage.modifier.verilog",
+      "match": "\\b(input|output|inout|signed|unsigned|var|const|static|automatic|supply0|supply1|strong0|strong1|pull0|pull1|weak0|weak1|highz0|highz1|small|medium|large|scalared|vectored)\\b"
+    },
+    "keywords": {
+      "comment": "结构与过程控制流",
+      "patterns": [
+        {
+          "name": "keyword.control.verilog",
+          "match": "\\b(module|macromodule|endmodule|assign|alias|force|release|deassign|always|always_comb|always_ff|always_latch|initial|final|begin|end|if|else|case|casex|casez|endcase|default|for|foreach|while|repeat|forever|do|break|continue|return|wait|fork|join|join_any|join_none|disable|generate|endgenerate|ifnone|pulsestyle_ondetect|pulsestyle_onevent|showcancelled|noshowcancelled|posedge|negedge|edge|function|endfunction|task|endtask|primitive|endprimitive|table|endtable|specify|endspecify|program|endprogram|interface|endinterface|modport|package|endpackage|import|export|cell|config|endconfig|design|instance|liblist|library|use)\\b"
+        }
+      ]
+    },
+    "gates": {
+      "comment": "门级原语与开关（例化处照常着色）",
+      "name": "keyword.control.gate.verilog",
+      "match": "\\b(and|nand|or|nor|xor|xnor|not|buf|bufif0|bufif1|notif0|notif1|nmos|pmos|cmos|rnmos|rpmos|rcmos|tran|tranif0|tranif1|rtran|rtranif0|rtranif1|pullup|pulldown)\\b"
+    },
+    "instantiation": {
+      "comment": "模块例化行头：`类型 实例名 (# 或 ()——例化类型/实例名分色",
+      "patterns": [
+        {
+          "match": "^\\s*([A-Za-z_][\\w$]*)\\s*(#)",
+          "captures": {
+            "1": { "name": "entity.name.type.verilog" },
+            "2": { "name": "keyword.operator.verilog" }
+          }
+        },
+        {
+          "match": "^\\s*([A-Za-z_][\\w$]*)\\s+([A-Za-z_][\\w$]*)\\s*(#|\\()",
+          "captures": {
+            "1": { "name": "entity.name.type.verilog" },
+            "2": { "name": "variable.other.verilog" },
+            "3": { "name": "punctuation.definition.parameters.verilog" }
+          }
+        }
+      ]
+    },
+    "operators": {
+      "comment": "运算符（长的在前，⛔ 让 <= 抢先吃掉 <<<）",
+      "patterns": [
+        {
+          "name": "keyword.operator.verilog",
+          "match": "===|!==|==\\?|!=\\?|<<<=|>>>=|<<<|>>>|<<<?=|>>>=?|<=|>=|==|!=|&&|\\|\\||<<|>>|\\+\\+|--|->>|->|[-+*/%!~&|^=<>?:@#]"
+        }
+      ]
+    }
+  }
+}
