@@ -23,6 +23,7 @@ import {
   collectInstanceHits, completeFromHits, normalizeBindingsDisk, META_FILE
 } from './sandboxFiles';
 import { openBindingPanel } from './bindingPanel';
+import { loadProjectApiOverride } from './apiSurface';
 import { parseVerilogInstances } from './verilogParseLite';
 import { ProjectStore, type FsLike } from './projectStore';
 import { VvFilesWebviewProvider } from './filesWebview';
@@ -262,6 +263,13 @@ export function activate(context: vscode.ExtensionContext) {
     watcher.onDidDelete(() => { refreshAllTrees(); if (glob.includes('verilogviz')) broadcastBindingsChanged(); });
     context.subscriptions.push(watcher);
   }
+  // 协议⑤：工程层 .vv/api.json 契约覆盖（只收窄/只关开关；固有属性越权＝整份拒）。
+  void loadProjectApiOverride(context).then((rejects) => {
+    if (rejects.length) {
+      void vscode.window.showWarningMessage("API 工程覆盖被拒绝：" + rejects.join("；") + "（已沿用默认账）");
+    }
+  }).catch(() => { /* 读不到工程覆盖＝默认账，常态 */ });
+
   // M7 归一清扫（一次性、幂等）：盘上 `x.djs.djs` 裁尾 + 各层绑定表值归一写回（前缀键随迁）。
   // 后台跑不拦 activate；零改动不打扰（有改动才广播+轻报）——第二遍起必然静默。
   void normalizeBindingsDisk(context).then((r) => {

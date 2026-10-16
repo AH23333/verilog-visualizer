@@ -431,6 +431,51 @@ describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
     expect(canSurface('ghost.tool', 'ui')).toBe(false);
   });
 
+
+
+  const needPanel = async () => { for (let i = 0; i < 24 && !vscode.state.panels.length; i++) await new Promise((r) => setTimeout(r, 0)); expect(vscode.state.panels.length > 0).toBe(true); };
+  it('协议⑤工程覆盖臂①：.vv/api.json 端点裁光＝API_SURFACE_DENIED；未知工具忽略；未动工具照常', async () => {
+    const projApi = JSON.stringify({
+      surfacesGlobal: { rpc: true },
+      tools: {
+        'host.copyToSandbox': { surfaces: ['ui'] },
+        'host.nope': { surfaces: [], perm: 'read' },               // 未知工具：忽略该条不采纳
+      },
+    });
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/.vv/api.json': projApi } });
+    await needPanel();
+    const cut = await rpc(vscode.state.panels[0], 'copyToSandbox', { files: [{ name: 'a', content: '{}' }] });
+    expect(cut.ok).toBe(false);
+    expect(String(cut.error)).toContain('API_SURFACE_DENIED');     // 报"端点关了"而非"查无此人"（文案各归各位）
+    const okCfg = await rpc(vscode.state.panels[0], 'getConfig', {});
+    expect(okCfg.ok).toBe(true);                                    // 没被动过的工具照常用
+  });
+
+  it('协议⑤工程覆盖臂②：固有属性（perm/ref/sideEffects）越权＝整份拒并 warn，默认账一颗不动', async () => {
+    await boot({ folders: ['D:/w'], seed: {
+      'D:/w/.vv/api.json': JSON.stringify({ tools: { 'host.getConfig': { perm: 'file-write' } } }),
+    } });
+    await needPanel();
+    expect(vscode.state.warnMessages.some((m: string) => m.includes('固有属性'))).toBe(true);
+    const okCfg2 = await rpc(vscode.state.panels[0], 'getConfig', {});
+    expect(okCfg2.ok).toBe(true);
+    // 越权文件里的其他合法条目也随整份拒绝作废（不做半采纳——两张皮比全拒更难查）
+    const other = await rpc(vscode.state.panels[0], 'copyToSandbox', { files: [{ name: 'a', content: '{}' }] });
+    expect(other.ok).toBe(true);                                    // copyToSandbox 未被越权文件合法裁剪 ⇒ 默认面保留
+  });
+
+  it('协议⑤工程覆盖臂③：合法关门 surfacesGlobal.rpc=false＝整条 RPC 面 DENIED；且只能关不能开', async () => {
+    await boot({ folders: ['D:/m'], seed: {
+      'D:/m/.vv/api.json': JSON.stringify({ surfacesGlobal: { rpc: false, mcp: true } }),
+    } });
+    await needPanel();
+    const closed = await rpc(vscode.state.panels[0], 'getConfig', {});
+    expect(closed.ok).toBe(false);
+    expect(String(closed.error)).toContain('API_SURFACE_DENIED');
+    const { canSurface } = await import('../../extension/src/apiSurface');
+    expect(canSurface('host.getConfig', 'mcp')).toBe(false);        // 文件里想开 mcp＝无效（只关不开）
+  });
+
   it('jumpToSource：打开文件并滚到那一行（画布双击器件 → 源码）', async () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'line0\nline1\nmodule top; endmodule' } });
     const res = await rpc(vscode.state.panels[0], 'jumpToSource', { file: 'top.v', line: 2 });
