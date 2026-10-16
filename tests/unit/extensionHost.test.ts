@@ -390,16 +390,24 @@ describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
     expect(has('D:/p/a/b_c.djs')).toBe(true);
   });
 
-  it('importLegacyData：旧 localStorage 档按名落工作区（无扩展名补 .v，重名 (n)，⛔ 逃逸）', async () => {
+  it('importLegacyData：requiresApproval 审批桥（拒＝NOT_APPROVED 不落盘；允许才执行）+ 旧档按名落工作区（无扩展名补 .v，重名 (n)，⛔ 逃逸）', async () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule' } });
-    const res = await rpc(vscode.state.panels[0], 'importLegacyData', {
+    const legacy = {
       items: [
         { name: 'top.v', content: 'module top_v2; endmodule' },   // 重名 → (2)
         { name: 'counter', content: 'module counter; endmodule' }, // 无扩展名 → 补 .v
         { name: '沙盒/计数器.djs', content: '{"cells":[]}' },        // 带目录
         { name: '../逃逸.v', content: 'x' },                       // ⛔ 逃逸消毒
       ],
-    });
+    };
+    // 负臂（协议④审批桥）：用户没点「允许」（桩默认 modalChoice=undefined＝关闭弹窗）⇒ 拒，⛔ 一颗不落
+    const denied = await rpc(vscode.state.panels[0], 'importLegacyData', legacy);
+    expect(denied.ok).toBe(false);
+    expect(String(denied.error)).toContain('API_NOT_APPROVED');
+    expect(has('D:/p/counter.v')).toBe(false);
+    // 正臂：允许后照常搬运
+    vscode.state.modalChoice = '允许';
+    const res = await rpc(vscode.state.panels[0], 'importLegacyData', legacy);
     expect(res.ok).toBe(true);
     const [top2, counter, sb, esc] = res.data;
     expect(top2).toBe('top (2).v');
@@ -407,6 +415,20 @@ describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
     expect(sb).toBe('沙盒/计数器.djs');
     expect(has('D:/p/沙盒/计数器.djs')).toBe(true);
     expect(esc).not.toMatch(/\.\./);
+  });
+
+  it('协议④端点闸：幽灵 method=NOT_REGISTERED；apiSurface 反查与 surfaces 判定与账一致', async () => {
+    await boot();
+    const ghost = await rpc(vscode.state.panels[0], 'notOnAnyLedger', {});
+    expect(ghost.ok).toBe(false);
+    expect(String(ghost.error)).toContain('API_NOT_REGISTERED');           // 未上账的方法连 switch 都进不去
+    const { canSurface, toolIdForRpc } = await import('../../extension/src/apiSurface');
+    expect(toolIdForRpc('getConfig')).toBe('host.getConfig');
+    expect(toolIdForRpc('compileAndShow')).toBeUndefined();                 // ui-only 工具不吃 rpc 反查
+    expect(canSurface('host.getConfig', 'rpc')).toBe(true);
+    expect(canSurface('host.getConfig', 'mcp')).toBe(false);                // 账上未开 mcp（阶段二接线前）＝硬拒
+    expect(canSurface('compile.compileAndShow', 'ui')).toBe(true);
+    expect(canSurface('ghost.tool', 'ui')).toBe(false);
   });
 
   it('jumpToSource：打开文件并滚到那一行（画布双击器件 → 源码）', async () => {
@@ -422,7 +444,7 @@ describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
     await boot({ folders: ['D:/p'] });
     const res = await rpc(vscode.state.panels[0], 'saveProjectFile', { name: 'x.v', content: 'x' });
     expect(res.ok).toBe(false);
-    expect(res.error).toMatch(/不认识的调用/);
+    expect(res.error).toMatch(/API_NOT_REGISTERED|不认识的调用/);   // 协议④后由契约闸先拦（更前更早拒），语义不变：⛔ 挂着等超时
   });
 
   it('另存为：取消＝false（⛔ 报错），确认＝按 base64 解出的字节写到用户选的那个位置', async () => {

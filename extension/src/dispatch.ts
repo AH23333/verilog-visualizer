@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 import type { FsLike } from './projectStore';
 import { getAllBindings, setDocBindings, ensureDirsMeta, setBindingInDir } from './sandboxFiles';
+import { loadApiContract, toolIdForRpc, canSurface } from './apiSurface';
 
 /** Problems 面板接管：webview 编译后经 publishProblems 落到这里。
  *  ⚠ **惰性创建**：extensionHost.test 的 vscode 桩没有 createDiagnosticCollection/
@@ -103,6 +104,18 @@ function sanitizeRelName(raw: unknown, fallback: string): string {
 }
 
 export async function dispatch(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
+  // 协议 §9.4 执行钩子（阶段二第二刀）：RPC 面入口先过契约闸——
+  // ① 未登记方法（绕过对账锁的运行时残寇）＝拒；② surfaces 全局开关/端点未开＝拒（API_SURFACE_DENIED）；
+  // ③ requiresApproval 的工具＝暂停弹宿主确认（verdict 入拒绝文案；审批记录通道随审计刀落地）。
+  const toolId = toolIdForRpc(method);
+  if (!toolId) throw new Error(`[API_NOT_REGISTERED] ${method} 未在 API 契约登记（加方法必先上账）`);
+  if (!canSurface(toolId, 'rpc')) throw new Error(`[API_SURFACE_DENIED] ${method}：端点未对 rpc 开放（工具账 ${toolId}）`);
+  const tool = loadApiContract().tools[toolId];
+  if (tool.requiresApproval) {
+    const pick = await vscode.window.showWarningMessage(
+      `API 工具「${toolId}」要求确认后执行（${method}）。${tool.description ?? ''}`, { modal: true } as any, '允许');
+    if (pick !== '允许') throw new Error(`[API_NOT_APPROVED] ${method}：用户未批准（verdict=denied）`);
+  }
   switch (method) {
     // Settings UI（contributes.configuration）→ 画布：一次拉全量。字体跟随原生 editor.fontSize。
     case 'getConfig': {
