@@ -100,6 +100,62 @@ CSP 与改写器**从 `extension/src/html.ts` 现读**，⛔ 闸门里抄第二�
 进沙盒放 Input×2+And+Lamp→三根连线→拨输入→灯 `rgb(3, 192, 60)`、**首屏＋全流程零 violation 零 CSP 拒绝信息**、
 无 nonce 的内联脚本被拦（＝CSP 真在生效，⛔ 只是"没测到"）。
 
+## 3.6 目录级显式绑定配置（用户裁决：「绑定关系必须看得见、可以手改」）
+
+部件绑定从**隐式行为**升格为**盘上文件**，仿 `.vscode/settings.json` 的分层语义：
+
+```
+项目根/                       .verilogviz.json   ← circuits（显式取消部件名单）+ 根级绑定
+└─ lib/                     .verilogviz.json   ← 「lib 目录里 .djs 视角」的绑定（近层覆盖根层）
+   └─ alu/                   .verilogviz.json   ← …逐级如此
+```
+
+- **写**：`bindParts` 右键绑定 / 画布「部件绑定」对话框落盘的 `setDocBindings`——都写**文档所在目录**那层的表（值相对本层目录：同目录裸名 `counter.djs`、跨目录 `../shared/x.djs`）。
+- **读**：`getAllBindings(doc)` 按目录链（文档目录→…→根）远→近逐级合并；不带 doc＝根表（兼容旧 RPC 调用）。链上每一层的值都以**那一层目录**为基准解析回根相对。
+- **有部件就有表**：目录里存在 `.djs`（打开 `customEditors` / 复制到沙盒 / 导入旧档时）⇒ 自动 ensure 该目录的 `.verilogviz.json`（只建缺的，⛔ 覆盖手编内容）。
+- **手改即生效**：`**/.verilogviz.json` 的 FileSystemWatcher → 广播 `{vvh:'push',op:'bindingsChanged'}` 到所有活画布 → 重读链、重挂部件源。
+- **入口**：命令面板/树右键/资源管理器右键的 **「打开绑定配置…」**（`verilogViz.openBindingConfig`）：ensure 后原生编辑器直开该层文件。
+- **配套迁移**：重命名部件 ⇒ 各层指向旧路径的绑定与 circuits 同步改指；删除部件 ⇒ 指向它的绑定同删（⛔ 悬空项继续解不到文件而无声）。
+- **归一红线**（`normalizePartName`）：`foo.djs.djs`→`foo.djs`；无扩展→补 `.djs`；**`.v`/`.gate` 原样保留**——强加 `.djs` 尾会把 `.v` 闭包部件写成 `adder.v.djs`＝`resolvePartRef` 永久解不到＝「绑了但画布没反应」的机制本身（`test_files/.verilogviz.json` 的 `fsm_controller.djs.djs` 为实证）。
+
+闸门：`tests/unit/extensionHost.test.ts` 的「R137 目录级显式绑定」专块 7 格（目录写层/链合并/round-trip/归一/直开不改用户表/重命名迁移/删除清绑）+ 六视图 watcher 格的 `bindingsChanged` 广播接线与 `.v` 那颗⛔ 混线。
+
+### 3.6b R144 权威分层：记录＝权威，自动＝显形（裁决补记）
+
+取证发现「空表一切正常」并非单一兜底，是三套表外机制并存（.djs 画布自动同名／.v 编译**不消费表**＋二级清单只列 .djs 的死配置链／copyToSandbox 撞名后暗指旧定义）。用户裁决落地为三层：
+
+| 层 | 行为 | 可见面 |
+|---|---|---|
+| **录入**（表里有 `counter: x.djs`） | 画布与编译都照表办；**解不到＝红字报错**（文件缺失/不含模块），⛔ 悄悄回落同名扫描 | 画布正常展开或 Problems/toast 红字 |
+| **未录入但有同名** | 自动同名兜底（与旧项目一致的行为）| bindParts 一级列表逐项标「自动同名 → …（未录入·可固化）」；一键 **「固化自动绑定」**（materializeBindings）写进目录表＝从兜底变权威 |
+| **两边都没有** | 画布不展开/编译缺定义 | 「⚠ 无来源」提示 |
+
+- `.v` 编译侧同权：`closureOf` 读文档目录链，`.v/.sv` 值＝权威覆盖（`.djs` 值＝画布部件面对闭包无害跳过）；手编 `.verilogviz.json` 保存＝即时生效**两面同权**（画布走 `bindingsChanged`，编译走 save 钩子重算重推）。
+- 复制到沙盒＝"用户创建动作"的特例：子部件撞名当场固化（原裸名→新名进目标目录表）；未撞名⛔ 乱写；主电路改名⛔ 进表。
+- 台架同步立正：`Uri.joinPath`/fs key 折 `..`（贴真宿主）、`fs.copy` 不删源、`showQuickPick` 队列必须验成员——**旧用例的假 fixture 因此现形并已改成真实文件**（收紧判据，⛔ 放宽）。
+
+闸门：`R144 质检轮` 专块 9 格（编译权威与报错×2、固化×1、右键新建落目录×1、复制文件夹×1、导入×1、端到端绑定全链×1、撞名双钉×1〔正：子部件写表；反：主电路/未撞名⛔ 进表〕、手编 json 编译即重推×1）。
+
+### 3.6c R145 多层电路表达与「空白根右键」
+
+**多层电路（用户点破的模型缺口）**：裸键绑定是"整表一张纸"——`ctrl` 与 `top` 各自例化同名 `adder`、想要不同实现时无法表达。落地为**前缀键**（手编专属；bindParts/固化 UI 仍只写裸键＝表达力在文件、常用面在 UI）：
+
+```jsonc
+{ "bindings": {
+    "adder": "adder_v1.djs",              // 裸键：全表通用
+    "sub/ctrl.djs::adder": "alt/v2.djs"   // 前缀键：只约束 sub/ctrl.djs 这层里的 adder 实例
+} }
+```
+
+- 解析优先：**前缀（当前宿主层）> 裸键（录入）> 自动同名 > 无**。`.djs` 递归展开逐层携带宿主名（`resolveDefCells`/`findPartCycle` 同链）；顶层上下文＝活动文档（`setActiveCtxDoc`）；`.v` 编译闭包按当前展开文件匹配前缀。
+- 链合并将层表前缀（相对本层书写）折回根相对输出（`bindingsForFile`）；**宿主改名 ⇒ 其前缀键随迁（renameFile），宿主删除 ⇒ 随清（deleteFile）**。
+
+**跨目录部件断链修复（同轮揪出的"录了没生效"另一通路）**：`customEditors._siblings` 旧口径只装"同级+根"`.djs`——绑定值指 `alt/impl.djs` 时画布候选集⛔ 含该文件，记录永远撞不上。现全工作区 `.djs` 全量给到，层级优先归打分管（scope score 语义⛔ 变，零回归），数组序按"同级→根→其他"稳定垫底。
+
+**空白处右键（平台实证后换等价落法）**：官方口径（2025-02：常规 TreeView 仅 TreeItem 支持自定义右键，空白区⛔）复核在册。改挂**常驻虚拟动作节点**：`codeFiles`/`sandboxFiles` 树首行「⋯ 文件操作 / 沙盒操作（右键：新建 / 导入 / 刷新）」（`contextValue='vvRoot'`，六连菜单=新建电路/新建 .v/新建文件夹/导入文件…/打开绑定配置/刷新；点击＝直发主动作）。旧 UI `onRootContextMenu` 能力面由此全数可达；viewsWelcome 与标题钮继续垫空态。
+
+闸门：`R145 多层电路绑定表达` 专块 3 格（编译前缀只管那层／链前缀折根相对／宿主改名迁移+删除清）+ `lib.test` resolvePartRef 前缀命中 1 格（零回归同格验尽）；`settingsStore.applyFontSize` 加无 DOM 守卫（纯逻辑单测 import 链即炸——懒约定同族老坑根除）；codeFiles 树格升级"根节点+列表"双断言。
+
 ## 4. 迁移步骤台账（对 §9.6 的射程兑现）
 
 | §9.6 步骤 | 状态 |

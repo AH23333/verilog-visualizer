@@ -883,3 +883,301 @@ e6e33d3（我的 docs 提交）把账本从 **833 行（卷一~四十二完整�
 - ESLint 648 warnings 渐进治理（下批）。
 
 *（卷四十五完 · 五项缺口四项已实现、一项平台限制如实说明）*
+
+---
+
+# 卷四十八 · R137-B 目录级显式绑定：`.verilogviz.json` 上盘、分层合并、手改即生效（2026-10-15）
+
+> 用户三轮验收的残余不满聚焦一颗：**绑定仍是隐式的**——看不见文件、不能手改、"改了没反应"。裁决落地："绑定关系必须像 `.vscode/settings.json` 一样：目录里有部件，目录里就有它的 `.verilogviz.json`。"
+
+## 一、设计兑现（四刀）
+
+| 刀 | 内容 | 落点 |
+|---|---|---|
+| 1 | **目录链读写**：`readMetaAt/writeMeta(dirRel)` + `dirChain`（文档目录→…→根）+ `bindingsForFile` 远→近合并、各层值按本层目录相对解析（`resolveLayerValue` 折 `../`）；`setBinding(docUri?)` 写文档所在目录表；`setDocBindings` 同层整表替换；`ensureDirMeta/ensureDirsMeta`（目录有 .djs 缺表⇒建模板，**⛔ 覆盖手编内容**）；`openBindingConfig`（ensure+原生编辑器直开+指路 toast） | `extension/src/sandboxFiles.ts` |
+| 2 | **RPC 升级语义、方法名不变**：`getAllBindings` 带 `args.doc` 走链（不带＝根表，兼容旧调用与测试对账表）；新增 `broadcastBindingsChanged`→ sinks 推 `{vvh:'push',op:'bindingsChanged'}`；`setDocBindings` 落盘后广播；`copyToSandbox/importLegacyData` 落盘批次 `ensureDirsMeta` | `extension/src/dispatch.ts` |
+| 3 | **宿主接线**：`bindParts` 二级 QuickPick 选完即写目录表 + 刷新两树 + 广播 + 「打开绑定配置」动作钮；`**/.verilogviz.json` 第三颗 watcher（改⇒广播、删⇒刷树）；`renameFile` **各层绑定+circuits 同步迁移**、`deleteFile` **悬空绑定逐层清除**（改名/删除命令调用侧统一 broadcast+refresh）；`openBindingConfig` 命令注册 | `extension/src/extension.ts` |
+| 4 | **webview 消费面**：`host.getAllBindings(doc?)` 签名贯通（browserHost 空档零参兼容）；DocApp init 按文档链取绑定 + `bindingsChanged` 推送**重读链重挂部件源**（siblingsRef 镜像）；`customEditors._siblings` 装载时 ensure 文档目录表；contributes：`openBindingConfig` 命令 + `view/item/context` 五面 + `explorer/context` 两面（`.djs`/`.v|.sv`） | `src/lib/host/*`、`src/doc/DocApp.tsx`、`extension/package.json` |
+
+**normalizePartName 红线**（一颗函数拆两半的教训）：`.djs` 双后缀剥成单尾（`test_files/.verilogviz.json` 的 `fsm_controller.djs.djs` 实证），但**已有 `.v`/`.gate` 扩展的原样保留**——第一版无脑强加 `.djs` 把 `.v` 闭包部件写成 `adder.v.djs`＝`resolvePartRef` 永久解不到＝用户体感"绑了没反应"的**机制本身**；新用例专门钉死这条。
+
+## 二、闸门（+7 格，先红后绿的完整链）
+
+`tests/unit/extensionHost.test.ts` 专块「R137 目录级显式绑定」7 格：目录写层（⛔ 污染根表）/链合并近层胜/`setDocBindings` 值相对化 round-trip/归一四态/直开⛔ 覆盖+缺表先建/**重命名各层迁移**/**删除清绑**；watcher 格升为"三颗 watcher+`bindingsChanged` 广播接线+`.v` 那颗⛔ 混线"。四颗旧红的收口全部**改信号不动实现语义**：命令清单加 `openBindingConfig`、queue 喂真实列表形状（根相对带扩展名全路径）：
+- 用例 1 我喂裸名 `'full.djs'`（真实二级选项是 `lib/full.djs` 根相对全路径）⇒ 值落成 `../full.djs`——**实现是对的，我的 fixture 错**；
+- 用例 2/3 忘扒 rpc 返回包（`.data`）——helper 返回整颗 res 不是 data；
+- 用例 4 抓到**两个真 bug**：桩 `joinPath(uri,'..')` 不折叠 ⇒ `newFull` 带 `../` 脏形（实现层 `resolveLayerValue` 折死双保险）；`circuits` 迁移错去文档层表查找（它是**根表语义**，与 `getCircuitsSet` 同层）。
+
+`tests/unit/vscodeApiStub.ts` 两颗纯签名拓宽（`showTextDocument(_, _o?)`、`showInformationMessage(m, ...items)`），返回行为一字未动——真实 vscode 类型本就接受这些实参。
+
+## 三、验证读数（全部本轮实测）
+
+| 判据 | 读数 |
+|---|---|
+| 根 `tsc --noEmit`（paths 把 `vscode` 指测试桩的那张配置） | **0 错** |
+| `vite build`（双入口 canvas.html/doc.html 链过 DocApp/host 改动） | **✓ built in 3.88s** |
+| `extension` 自有 `tsc -p ./` + `esbuild.js`（真构建判卷人） | **0 错 / 0 错** |
+| `vitest run tests/unit` **全量** | **127/127**（原 120 格 + 净增 7，无一颗旧格被放宽） |
+
+期间自我纠正一颗流程错：首跑 vitest 挂 `--reporter=basic`（v5 已移除）⇒ 进程启动即亡、日志 0 字节——**ENV 自伤不是产品**，去参重跑即好。
+
+## 四、未闭/移交
+1. **真机点验**（用户）：树右键「打开绑定配置…」直开 `.verilogviz.json`→手改绑定值→保存→活画布部件源即换——本机无 GUI 壳实测条件，留验收。
+2. **手编值无扩展且实际文件是 `.v`** 时的解析层猜扩展——当前 bindParts 写的值恒带真扩展不受影响，纯手编体验项，不抢做。
+3. 并行代理在场：本卷改动**全部留在工作区⛔ 提交⛔ push**（卷四十三收口纪律维持），由代理/用户自行收编入库。
+
+*（卷四十八完 · 绑定系统的"看得见、改得动、改完就生效"三件事闭环，127 格全绿）*
+
+---
+
+# 卷四十九 · R144 质检轮：「记录即权威 + 自动兜底显形」+ 右键全家桶 + 台架三处假绿根除（2026-10-15）
+
+> 用户质检意见四条：①配置文件没内容却能正常编译/查看绑定＝不合理；②编译侧边栏缺「新建文件夹」钮；③两模式右键功能过少＋空白处右键仍缺；④深度自检——要的不是"能运行"，是**全流程无差错**。
+
+## 一、先取证：「空文件一切正常」底下是三套表外机制
+
+| # | 机制 | 定性 |
+|---|------|------|
+| 1 | .djs 画布：表空时 resolvePartRef 自动同名兜底渲染 | 旧项目行为，但 UI 把"自动"与"录入"混显＝显示撒谎 |
+| 2 | .v 编译：闭包全工作区同名扫描，**根本不消费绑定表**；bindParts 二级清单又只列 .djs ⇒ 录进表的值永远被 override 判定跳过（只认 .v/.sv） | **死配置**——用户观察 100% 成立的机制根因 |
+| 3 | copyToSandbox (n) 改名时旧实现靠"自动补录"写全局表（R136 后写表面没启用）⇒ 撞名子部件的实例回头命中**旧定义**（sandbox-copy-name-binding-pitfall 在册坑复活） | 静默错位 |
+
+**用户裁决（question 工具）**：「记录即权威 + 自动兜底显形」——录了名＝照表办事（解不到报错⛔ 回落）；没录＝自动兜底但界面上标明"自动·未录入"，一键固化。
+
+## 二、实施（七刀）
+
+1. **compilePanel.ts**：closureOf 读绑定链，.v/.sv 值＝权威覆盖；文件缺失/不含模块 ⇒ job.bindingErrors＋红字 toast（相邻同签名去重防 save 刷屏）；未录入仍走同名扫描。
+2. **extension.ts bindParts**：一级 QuickPick 逐项标「已录入 → x」「自动同名 → y（未录入·可固化）」「⚠ 无来源」；**二级清单按模式分家**（.v⇒listTree 的 .v/.sv/.vh，.djs⇒listSandboxTree）——断链修复；成功 toast 带「打开绑定配置」动作。
+3. **materializeBindings（新命令）**：自动命中且未录入的当场写进目录表；已录入⛔ 覆写。挂两模式文件/模块面右键＋部件面。
+4. **copyToSandbox 撞名即固化**：本批第一颗（主电路）外的子部件改名 ⇒ 原裸名→新名写目标目录表；主电路改名⛔ 进表（死条目）。
+5. **右键全家桶**（照旧 UI 盘点：App.tsx 文件/文件夹/空白根＋SandboxCanvas 画布三族）：新命令 duplicateFolder（含 .djs 才建表）、importFiles（多选→(n) 让位→ensureDirsMeta）；sandboxDir 补 新建电路/新建 .v/新建子文件夹/导入/复制文件夹；两模式文件＋部件面补 vscode.open（用文本编辑器打开）；**编译侧标题栏补「新建文件夹」钮**（用户点名）＋两侧导入钮；**四视图 viewsWelcome** 空态引导（新建/导入/示例可点链）——空白处右键＝VS Code 平台⛔ 扩展自定义（卷四十五在册），替代面做到顶。
+6. **手编 json 编译侧同权**：recompileOnSave 认 .verilogviz.json（画布 bindingsChanged 即时、编译侧⛔ 要重按 F5 的两面终结）。
+7. **rename 的 circuits 迁移改回根表**（层错位修正，接上卷四十八第④条遗留）。
+
+## 三、台架深自检（三处"假绿温床"连根拔）
+
+台架查案的收获比功能本身大——**三处桩在撒谎，旧用例全靠它们才绿**：
+
+| 桩缺陷 | 真相 | 收紧后爆出的问题 |
+|---|---|---|
+| Uri.joinPath＝纯串接⛔ 折 .. （原注释明写"射程声明"） | 真宿主会折；台架不折＝**教产品代码写错用法** | duplicateFolder/importFiles/new 族靠 joinPath(uri, '..') 取父目录，桩下键名畸形（红×3）→ 修桩＋ **key 层同步折叠**（磁盘等价：a/../b≡b） |
+| fs.copy **删源**（rename 的形状混进了 copy） | 真 copy 不删源 ⇒ duplicateFile 在桩里会静默毁原文件 | 桩修"复制不删源"＋用例钉（⛔ 删源回归） |
+| showQuickPick 队列⛔ 验成员（列表外也能"选中"） | 真宿主只能点列表里的项 | 揪出两处**假 fixture**：bindParts .v 用例二级选 'parts/adder.v'（SEED 里根本没有这文件）、.djs 用例选不存在的 counter.djs——**断链 bug #2 全靠它才从没爆红**；openExamples 无 label 伪造对象同现形。全部换真实成员——**收紧判据不是放宽** |
+| （附）缺 showOpenDialog/openDialogResult；showInformationMessage 单参签名与真宿主漂移 | — | 补齐（...items 兼容拓宽，行为不变） |
+
+用例同步收口：SEED 部件名必须真实存在；manifest 命令清单＋3；copyToSandbox 双钉（子部件撞名写表/主电路撞名不进表＋未撞名⛔ 乱写）。
+
+## 四、验证读数（全部本轮实测）
+
+| 判据 | 读数 |
+|---|---|
+| 根 tsc / vite build / extension check（tsc+esbuild） | 0 / ✓3.7s / 0 / 0 |
+| vitest 全量 | **137/137**（128→137：R144 专块 9 格＝编译权威×2、固化×1、目录右键×1、复制文件夹×1、导入×1、端到端绑定全链×1、固化双钉×1、手编 json 编译同权×1；零旧格放宽） |
+| eslint --quiet | 0 错 |
+
+## 五、未闭
+1. **真机点验**（用户）：bindParts 一级来源描述肉眼对一眼；固化后表内容当场可见；手编 .v 表保存→编译面板自动重推；`.djs` 部件右键「用文本编辑器打开」看到 JSON 源。
+2. .v materialize 的 resolver＝闭包同名（scope/root 近似）——全库深同名不固化（保守正确，文档口径 §3.6）。
+3. 并行代理在场：本轮全部改动**⛔ 提交⛔ push**（卷四十三收口纪律），工作区交用户/代理收编。
+
+*（卷四十九完 · 用户四条质检意见逐条闭环＋台架三处撒谎根除，137/137 全绿）*
+
+---
+
+# 卷五十 · R145：多层电路绑定前缀键 + `_siblings` 跨目录断链 + 空白根右键换等价落法（2026-10-16）
+
+> 用户两点：①侧边栏空白处右键仍然无内容；②「继续分析 json 文件，做出裁决——当前 json 似乎只针对一个文件的电路内部件绑定，**没考虑多层级的电路情况**」。
+
+## 一、②多层级模型裁决（用户点破的缺口，取证后成立）
+
+现有 `{celltype: 部件文件}` 是"整表一张纸"：`ctrl` 层与 `top` 层各例化同名 `adder` 却想要不同实现 ⇒ **无法表达**。裁决 = **前缀键**（JSON 侧新增表达通道，UI 面不动）：
+
+- 键两形态：`adder`（裸，全局兜底）与 `sub/ctrl.djs::adder`（前缀＝宿主文档根相对名，只约束那**一层**的 adder 实例）。
+- 解析优先：前缀（当前宿主层）> 裸键（录入）> 自动同名 > 无——`resolvePartRef(name, scope, ctxDoc)` 第三参；`resolveDefCells`/`findPartCycle` 递归逐层携带宿主名（`partCellsRaw` 返回 `{cells, host}`）；顶层上下文＝活动文档（`setActiveCtxDoc`，SandboxCanvas 换档 effect 同点喂）。
+- `.v` 编译闭包同规则（按当前展开文件 `f.name` 试 `${f.name}::inst` 再试裸）——两层世界一视同仁。
+- 链合并输出把**层表里按本层目录书写的前缀**折回根相对（`bindingsForFile`）；`renameFile` 宿主改名 ⇒ 前缀键随迁；`deleteFile` 宿主删除 ⇒ 随清。
+- **前缀键＝手编专属**（bindParts/materialize 只写裸键）——表达力在文件里，常用面留在 UI；与 `.verilogviz.json` 的"可见可手改"哲学同轴。
+
+## 二、取证连环揪出的两颗真雷
+
+| # | 雷 | 修复 |
+|---|---|---|
+| 1 | `customEditors._siblings` 只装"同级+根"的 `.djs`——绑定值 `alt/impl.djs` 这类越层路径**在画布候选集里根本没那颗文件** ⇒ "录了没生效"的结构性断链（与 R144 的死配置链不同层，这轮才现形）| 全工作区 `.djs` 全量（数组序同级→根→其他稳垫底，打分语义⛔ 变；lib/r121 等旧行为零回归）|
+| 2 | `settingsStore` 顶层 `applyFontSize` 摸 `document`——gateSystem→sandboxStore→settingsStore import 链让**纯逻辑单测在 node 环境直接炸**（extensionHost 之外新增 lib 侧前缀用例时现形）| 无 DOM 守卫（懒约定的存储层同款；老坑在册未穷尽的一族）|
+
+## 三、①空白处右键：平台实证复核 + 等价物换形
+
+官方渠道复核（vscode-discussions 2025-02，扩展作者请愿答复）：**常规 TreeView 的 context menu 只支持挂在 TreeItem 上，空白区无扩展贡献入口**（webview view 的 webview/context 是另一条重路线，⛔ 六树整体翻筑）。据此放弃"给空白区硬挂菜单"的执念，换**常驻虚拟动作节点**：codeFiles/sandboxFiles 首行「⋯ 文件操作（右键：新建 / 导入 / 刷新）」（contextValue＝vvRoot；六连菜单=新建电路/新建 .v/新建文件夹/导入…/打开绑定配置/refresh；点击＝直发主动作新建档）——旧 UI onRootContextMenu 的**能力面**（不是鼠标坐标学）全数可达。viewsWelcome 空态/标题钮继续垫底。真机验收点：树首行可见、右键六项齐、点击建文件落根。
+
+## 四、验证读数（全部本轮实测）
+
+| 判据 | 读数 |
+|---|---|
+| 根 tsc / vite build / extension check | 0 / ✓（11.4s，webview+host 两侧改动过链）/ 0 / 0 |
+| vitest 全量 | **141/141**（137→141：R145 专块 3 格——编译前缀只管那层（ctrl.v::adder 赢、顶层裸扫描⛔ 顶包）/链前缀折根相对/宿主改名迁移+删除随清；lib.test resolvePartRef 前缀格 1（含"无 ctx＝旧世界"零回归断言））|
+| eslint --quiet | 0 错 |
+| codeFiles 树形状格 | 升级"rootAction 首节点 + contextValue=vvRoot + 其余文件列表"三段断言 |
+
+自我纠一处台架操作错：给 R144 块尾部追加 R145 时 newString/oldString 锚点失配导致 describe 提前闭合、`.v 绑定全链`格掉到顶层（esbuild Unexpected "}"现形）——按行号读实况后一步归位并给 R145 域自带 compile helper；教训登记：**跨 describe 追加必须锚"块内最后一格尾+块尾"两段并全文重读，⛔ 拿中间某格当锚还期待别处括号自动平衡**。
+
+## 五、未闭
+1. 真机点验：vvRoot 首行右键六连菜单肉眼过；前缀键手编保存后嵌套画布分层显形（bindingsChanged 重灌吃新键形）。
+2. 前缀键 UI 化（bindParts 写 `${doc}::` 精控入口）——刻意暂缓，等用户手编流程跑顺再评。
+3. `_siblings` 全量化后深目录大仓的记忆体积/装载耗时——量级（工作区 .djs 计数）无实测数据前不做预防性优化。
+4. 并行代理在场：本轮改动照旧⛔ 提交⛔ push，工作区交用户/代理收编。
+
+*（卷五十完 · 多层电路的表达缺口按裁决补平，取证顺带拔掉两颗跨目录断链/顶层 DOM 的雷，空白右键换成可验收的等价形，141/141 全绿）*
+
+---
+
+# 卷五十一 · R146/R147：绑定完整性（不齐＝可见+一键写全+可严格拦截）与「真·空白右键」webview 通道（2026-10-16）
+
+> 用户两点：①虚拟"文件操作"节点方案被否（"不符合预期"）——空白处右键要的是**真的右键就有菜单**；②绑定配置依旧不完善——**没配完所有子部件依旧可编译**，且沙盒模式也要这套功能。
+
+## 一、①撤掉丑方案 + 走平台正规的 webview/context 通道
+
+根Action 虚拟节点整族拆除（树节点、menus、类型）。查证（官方讨论区 2025-02 请愿答复在册）：常规 TreeView 空白区**没有任何**扩展自定义右键入口；平台给的正道是 **WebviewView + webview/context**——webview 里空白＝我们自己的 DOM：行元素带 `data-vscode-context` JSON（键注入 when 上下文、值同时作为命令实参），右键落行=>项菜单、落空白=>只剩不带行级键的"根菜单"。**旧 UI 三级右键（空白/文件夹/文件）在此形态下原样复活。**
+
+- 新视图 `verilogViz.projectFilesCode` / `verilogViz.projectFilesSandbox`（两容器各一，标题「文件（右键可用）」，type webview），与 six 原生树**并存**⛔ 替换（零回归策略，验收满意后原生树可关）。
+- `extension/src/filesWebview.ts`：ProjectStore 同款根扫描 + 拍平行列表（目录行/文件行/circuits 圈标签）；行点击 postMessage→宿主 executeCommand（**复用既有命令族不复制业务**）；行右键/webview/context 菜单 4 档：空白根菜单（新建/新建夹/导入/绑定配置/刷新）、文件行（打开/编译、改名/副本/删除、绑定四件套）、目录行（在此新建/副本文件夹/删除/导入）。CSP nonce 内联脚本。
+- `menus.explorer/context` 另补 `!resourceScheme` 空白族（资源管理器空白右键＝Native 新建/文件夹 + 我们的导入/刷新）——两入口都真。
+- 台架：stub 补 `registerWebviewViewProvider`（缺之 activate 即炸——注册类 API 补桩纪律再犯一次登记）；WebviewView/WebviewViewProvider 类型形状；`menuUri` 宽容第三形状（webview/context 实参 {vvPath}）。
+- 调试两课：render 里 `rel.slice(dir.length+1)` 在 dir 空时吃首字母（top.djs→op.djs，测试 html 肉眼抓的）；根前缀折叠改 posix path + 大小写不敏感比较（盘符两处宿主形状不一）。
+
+## 二、②绑定完整性：「没配完依旧能编译」终结
+
+在 R144"记录即权威+自动兜底显形"骨架上补全**完整度**维度（三面同权）：
+
+1. **可见**：画布 doc 模式顶部提示条（`data-sb-bind-audit`，紧挨 cycleWarn 条）——列"靠同名兜底、未录入配置"的实例数与前 4 个名字＋「写全配置」按钮；数据源＝gateSystem autoHits（partCellsRaw 在**打分兜底命中**处记账、录入命中处销账——画布实解真相，⛔ 宿主再模拟一层口径）。
+2. **一键写全（三层落点）**：
+   - 画布按钮→`op:completeBindings`→customEditors completeFromHits→目录层表→回执 `bindingsWritten`→webview `clearAutoHits`（⛔ remount 重载——会吞未保存编辑；写前实解＝写后记录，视觉零变化故无需重画，下次装载自然重新审计）。
+   - 右键命令 `verilogViz.completeBindings`（不打开画布也可用）：`collectInstanceHits` 宿主 BFS（.djs 逐层读 cells 复刻 scope 打分含 circuits role；.v 闭包+scanDefs；环/预算护栏 300）。
+   - 右键核查 `verilogViz.auditBindings`：warning 点名未录数与样本，动作钮「写全配置/打开绑定配置」直达。
+   - **裸/前缀规则**（completeFromHits）：同 celltype 跨层命中**不同**文件 ⇒ 全部前缀键（裸键是整表级语义会越权顶别层）；唯一宿主+唯一文件才裸；ctx≠本文档层的单条也强制前缀。**已录入（裸/前缀）⛔ 覆写**。UI 侧仍只产裸值（bindParts/materialize），前缀键归写全/手编——"完整但可读"的平衡。
+3. **可拦截**：新设置 `verilogViz.bindings.policy`＝auto（默认，兜底+提示）| **strict**（未录入⇒编译红字拒绝、画布不吃兜底）：closureOf 在 strict 下把未录同名命中判错（⛔ 兜底继续糊弄），gateSystem.setBindingPolicy 同语义（resolvePartRef 打分链 strict 短路）；配置经 `getConfig.bindings.policy` 注入 DocApp/CanvasApp（configChanged 刷新）。默认 auto＝尊重既有工程（空表项目瞬间全红这颗雷 R144 选型时已排过），用户要"必须配全才编译"切 setting 即得。**沙盒模式同样吃这三面**（提示条/写全/策略）。
+
+## 三、闸门与读数
+
+| 判据 | 读数 |
+|---|---|
+| 根 tsc / vite build / extension check / eslint | 0 / ✓6.5s / 0 / 0 |
+| vitest 全量 | **147/147**（+6：R146/R147 专块＝audit 点名+写全落表面、全层 BFS、裸/前缀冲突规则、strict 编译门、webview 视图装载+两档菜单在册、画布按钮回执⛔ remount；升级 2 旧格＝manifest 命令表+views 四列含 webview 与 provider 装载断言；codeFiles 格含"⛔ 回潮"钉）|
+
+## 四、未闭
+1. 真机点验：webview 文件视图**空白处右键**弹出根菜单（这是本轮判决性体验，台架只能证"数据通道全对"）；画布提示条出现/写全即隐；strict 切换即拦。
+2. 验收满意后原生 codeFiles/sandboxFiles 树去留（两全其美并排 vs 下线原生）——用户拍板。
+3. 并行代理在场：改动全部留工作区⛔ 提交⛔ push。
+
+*（卷五十一完 · "空白右键"从解释平台限制升级为走通平台正规通道，"配置不齐也能跑"升级为"可见-可写全-可拦截"三面闭环，147/147 全绿）*
+
+---
+
+# 卷五十二 · R147-R150：被否两次的"新区方案"到原位 webview 迁移——空白右键的功能形态终定（2026-10-16）
+
+> 用户三连否决的记录（每一票都改了设计）：①"专门的『文件（右键可用）』区域是我叫做的预期吗？"——否**并排新区**；②此前否**虚拟动作节点**；③最早否**"平台限制"的解释**。终形态＝用户原话的方向：**原来那颗「文件」视图本身，空白处右键就能用**。
+
+## 一、终形态（原位替换，⛔ 新范式⛔ 新区⛔ 假节点）
+
+两张「文件」视图（codeFiles/sandboxFiles）**id 与位置不变、type 换 webview**（WebviewView + webview/context）——重构前那本来就是 webview 自绘的 React 树，右键空白出菜单是它的原生形态；本次＝功能对等回归。行＝目录分组折叠（state 记忆）+ 文件行（大小/圈标注）；点击走既有命令族（executeCommand 转接）。原生侧 createTreeView 从六颗减为四颗（modules/hierarchy/parts/sandboxHierarchy）；「层次（沙盒）」视图整颗删除（R149 用户裁定：子电路信息看画布即可，树是冗余层——trees.ts SandboxHierarchyTree 整类拆除、菜单/欢迎语/RPC 同步收）。
+
+菜单账本：webview/context 三档×两视图（空白根菜单 5 条：新建电路/新建 .v/新建文件夹/导入/绑定配置/刷新；文件行 9 条：打开/编译、改名/副本/删除、部件角色、绑定四件套；目录行 6 条）＝37 条；view/item/context 迁走 9 条原生家拆净（"⛔ 双轨残留"钉子）；两轨合计 ≥50（口径从 20 收紧，搬家不是裁剪）。manifest 六视图格、createTreeView 格、codeFiles 形状格、R146 格全部按新形状**改写判据**（⛔ 放宽）。
+
+## 二、"绑定配置必须配完"的三面收口（R147-R150 合并观）
+
+| 面 | 现状 |
+|---|---|
+| 实时可见 | gateSystem.getBindingAudit(rootCells)：不靠展开记账、对**当前画布逐层递归 cells**（环/深度护栏；strict 被拦的也点名），未录入即亮画布提示条——"开文档没编译就显示空账"那一族根除 |
+| 一键写全 | 提示条「写全配置」（审计真相→宿主表）＋右键命令「写全绑定配置/检查绑定完整性」两轨（⛔ 打开画布可用，collectInstanceHits 盘上 BFS）；裸/前缀规则防跨层越权；customEditors 消息通道 + .verilogviz.json watcher 双保险回灌 |
+| 可拦截 | bindings.policy=strict：.v 编译红字拒收、.djs 画布未录部件按 ⛔ 兜底解析＝空壳⟲渲染＋提示条——不配完就"用不了"的体感两面一致；默认 auto 留兜底＋引导（老项目不瞬间全红） |
+| 沙盒模式 | 提示条与写全在 doc 画布（沙盒编辑＝同一张 .djs 视图）原生可用；「部件角色/绑定四件套」全迁 webview 行菜单 |
+
+## 三、台架与流程自查（本轮自我纠登记）
+
+- **参数名连环错**：edit 工具 snake_case/camelCase 混用触发 invalid_type 两次——按 schema 原文重发，不猜别名。
+- **误删相邻行**：给"主电路改名"格加内容时 oldString 多带一行导致删除孤儿——恢复后教训：锚必须带足前后上下文成对出现，追加类改动用"锚内重发全文"⛔ "锚行截断"。
+- **探针 console.log 混进用例**：临时调试输出判卷前清掉（测试文件⛔ 留噪音）。
+- **stub 双注册防错**：createTreeView 与 registerWebviewViewProvider 同 id 双注册＝"两轨残留"断言直接判红（本轮加钉）。
+- getBindingAudit 的 covered 判定与展开判定**同口径**（裸键或该层前缀键任一在册）——两处口径不同＝"条说没配全、画布明明按记录走"的新谎言，代码注释钉死。
+
+## 四、验证读数（全部本轮实测）
+
+| 判据 | 读数 |
+|---|---|
+| 根 tsc / vite build / extension check / eslint --quiet | 0 / ✓11.1s / 0 / 0 |
+| vitest 全量 | **147/147**（六视图格改写为"4 原生+2 原位 webview+⛔ 新区回潮"；菜单口径 50；KINDS 双轨钉；codeFiles 形状格含 webviewId 根菜单/文件行钉；R146 格换新 id）|
+
+## 五、未闭（真机点验＝这轮的判决项）
+1. 「文件」视图**空白处右键**＝原生观感的根菜单（新建/导入/刷新…）；文件夹/文件行右键＝项菜单；这是三轮否决后的终验收点。
+2. 提示条：strict 下空壳显示+条点名；「写全配置」点击后表内容即时可读、条即隐。
+3. webview 文件视图的折叠记忆在视图隐藏/重开后仍在（getState 通道真机复核）。
+4. 并行代理在场：本轮改动照旧留工作区⛔ 提交⛔ push。
+
+*（卷五十二完 · 两次被否换来的终形态：原位替换、菜单总数不缩、绑定三面闭环，147/147 全绿）*
+
+---
+
+# 卷五十三 · R150 续：webview 模板串里的 TypeScript as 断掉了左键（右键好使≠通路全好）（2026-10-16）
+
+> 用户一句话点破：「你做好了右键，却无法左键点击了」——右键＝VS Code 平台层机制（不依赖注入脚本），左键＝全靠注入脚本活着。**模板串里 e.target as HTMLElement 一行 TS 语法＝整段浏览器脚本 SyntaxError 罢工**：折叠/点击/选中全灭，列表照常显示——tsc/esbuild 都看不见字符串内部，四道编译闸集体失明。
+
+- 修复：脚本改纯 JS；顺带清掉死行（.row[dir] 查询/无意义 toString）与 dir 行 nm 防御（改 dir 行整行点击=折叠）；沙盒左键路由从 builtin vscode.openWith 改自家 verilogViz.openDoc（少一处平台形状依赖）。
+- 新闸两张（R150 补）：**纯 JS 编译闸**——抽出视图内联脚本喂 new vm.Script（语法不过＝浏览器罢工，与运行时同判据）；**左键端到端**——向 view 的消息通道打 open 报文，code 路 assert showTextDocument 流水账、sandbox 路 assert openWith(doc 编辑器) 流水账（盘符大小写两处宿主不一，断言判低形）。
+- 流程账：本轮又踩 PowerShell 内嵌引号炸一次（探针脚本转义死）——按在册纪律一次炸即落差盘 .cjs；edit 参数名 snake/camel 混错两次——invalid_type 即按 schema 原文重发不猜别名。
+- 读数：149/147→**149/149** 全绿，验证链/ESLint 0；「右键能用」与「左键能用」从此在同一张闸门名单里。
+
+*（卷五十三完 · 一条 as 的学费：webview 注入物＝浏览器地盘，编译闸照不到，必须专闸）*
+
+> **R150b 续案（同日 15:10 收口——用户一句"仍未修复，且文件夹的展开显示有问题"）**：上一格修完 `as` 后真机照旧断，因为还有一颗**同族更毒**的雷——HTML 大模板串的**注释里写了反引号**（`` `as` `` 这种写法），esbuild 把外层模板从中间撕成两截：撕剩的 bundle 只有半句脚本（折叠逻辑与左键绑定整段蒸发），而 tsc ✓ esbuild ✓（它自己"合法地"截断）vm 闸 ✗ 恰好截断片段自洽能编译＝**三重失明假绿**（上一卷刚立的 vm 格被同一个字符串形态骗过）。同时坐实：bundle grep `ancestorsOf` 假阴性差点把我引向"用户没重载"的甩锅——**判卷判产物、不判记忆**的 bundle 闸（r150-bundle-gate：构建后核脚本完整性骨件+窗口右缘）从此在册。
+> 修复：模板内反引号清零＋注释自我警告；vm 格升级**内容完整性断言**（acquireVsCodeApi/applyFold/postMessage 必须同框，语法自洽但缺骨＝红）；切片 off-by-one（`</script>` 尖括多吞）当场由新格逮住——**新闸当天就立了功**。文件夹显示顺手校正：双箭头图标（▾+⏷）拆剩单一 ▾随折叠旋转、目录/文件按层级真缩进（padding 深×14px）、折叠隐藏逻辑重写（file 与 dir 行同走祖链）。左键若再断流：宿主侧改为**大声报错**（⛔ 可选链静默吞）。
+> 终读数：149/149、四重终验全绿（tsc/build/check/ESLint）+ bundle 闸 OK。
+
+---
+
+# 卷五十四 · CONFIG_PROTOCOL v0.1→v0.2：拆平行体系之雷、立 agent 地基（纯设计文档，动码为零）（2026-10-16）
+
+> 用户令：协议关系 LangGraph agent 大量增长的地基，慎重评审、按评审方案修订 docs/CONFIG_PROTOCOL.md。
+
+- **评审定性**：v0.1 骨架正确（schemaVersion/原子写/密钥隔离/诊断指针全是该反哺现状的好东西），但绑定与编译两章是「给另一个项目做的提案」——project.json 里再造带 scope 键层的对象式 bindings，与刚落定的目录级 .verilogviz.json 链（裸/前缀键、policy auto|strict、固化审计、多轮裁决 + 149 格闸门钉死的唯一真源）正面双轨；nextpnr/bitstream/pcf/openocd 全链当前管线（yosys→write_json→网表画布）无消费方；user/workspace.json 与 VS Code 原生双 settings 三轨；旧映射表还停在 localStorage 时代（partBindings/fileStore 行已过时一代）。
+- **v0.2 落笔**：三配置域定界（A=contributes.configuration 标量、B=.vv/ 结构化共识、C=目录级 .verilogviz.json 权威链），域间冲突 CONFIG_DOMAIN_CONFLICT＝诊断不是行为；绑定章整节改写「现状协议化」（链合并/前缀语法/normalizePartName 进 schema pattern、审计三轨/撞名固化/迁移随迁入册）；编译分「现状对位表（零新账）+ 二期最小档案」；agent 升一等七小节：engine 缺位即未激活、graph 注册表（task 引用校验）、providers+secretRef 命名规范与缺值引导、tools 清单（权限枚举 fs-read/fs-write/spawn/net + sideEffects + requiresApproval + uiCommand 锚回命令面板）与 agent.profiles 授权两本账分立、checkpointer（sqlite/TTL/onGraphChanged）、audit JSONL+traceId+storeArgs 脱敏+⛔ 写 git commit、运行预算与 runtime 一次性覆盖分离、configHash 快照入审计首行。
+- **新增纪律条款**：schemaVersion 演化铁律（major 必带迁移器、读到更高版本＝硬红）、写权限矩阵 + .lock + expectedSchemaVersion、.vv/.gitignore 契约（graphs 提交、checkpoints/audit/env 不提交）、迁移器重入检测且迁移前先 commit；「协议描述现实⛔ 发明现实」——每字段先答「现在谁消费」，无消费方进二期清单（废除单：workspace/user.json、project.bindings、meta 时间戳、telemetry/performance 全家、external:/integrity 挪二期）。
+- 后续实现顺序（§14）：vv-bind.schema + jsonValidation 挂载（纯描述零行为改动）→ bindingErrors 归一诊断码 → 写矩阵 → 分域合并策略 → LangGraph 立项随 engine 裁决。
+
+*（卷五十四完 · 协议从「绿野设计」对表回现实：绑定红线拆除、agent 地基立起、现状/前瞻分档记账）*
+
+---
+
+# 卷五十五 · CONFIG_PROTOCOL v0.3.0：按「迁移→统一 API 层→agent（宿主或自建，未定）」路线重分层（2026-10-16）
+
+> 用户给出真实开发路线并点破：流程中涉及**多种不同层级的配置文件**，不是所有配置都塞一个 json——要求再次斟酌协议。
+
+- **v0.2 的病（对表新信息后现形，且是自查式打脸）**：①只按“空间”分了三域，没按“时间”分——把第三期才定形的 agent 字段（providers 明细、checkpointer TTL、预算数值、graph 全格式）写成第一期入库样，与自定「协议描述现实⛔ 发明现实」铁律和 §12.2 废除单**自相矛盾**；②路线的承重墙「第二阶段·统一 API 层」整整缺席；③engine 未定（vscode 或自建两条路配置形状差异巨大），v0.2 字段形状偏 langgraph 自建世界——宿主路线里模型/密钥/prompt 全归 VS Code 治理，我们连引用都不该建。
+- **v0.3 落笔**：四域（+域 D＝宿主原生扩展机制 mcp.json/.github prompt 文件——**只对齐不收纳**，防与宿主真值漂移）；§3 文件×阶段表（`.vv/` 骨架只物化当前阶段文件，超前出现报 `CONFIG_STAGE_SKIPPED`）；新增 **§9 API 层枢纽章**——dispatch RPC 与 contributes 命令面定性为「三面收敛的雏形与漂移风险」而非既有架构供人抄：`.vv/api.json` 工具注册表（`<domain>.<verb>` 词表封闭、perm/sideEffects/requiresApproval/ioSchema 四问必答、`apiVersion` 与 `schemaVersion` 两轴独立演化、授权三闸=全局开关∧工具 surfaces∧profile 收窄、审计通道与 configHash 快照**与引擎无关**自阶段二生根）；**§10 agent 两分支中立**——分支 A（VS Code：密钥/模型全宿主治理，工具=api.json 的 mcp 真子集做 MCP server，注册在域 D 的 mcp.json）、分支 B（自建：providers/checkpointer/graph 细节全落「占位说明、立项定稿」档，登记 §13.3 挂起清单）；§15 实施路线（schema 挂载→诊断归一→**api.json 三面同源**→审计→分岔），§16 变更摘要。
+  
+- 结构自检：284 行/32 标题/交叉引用零悬空；13.3 跳号与 §10.2 遗留词（adapters）两处手改收口（本轮 edit 参数 snake/camel 又混错一次，按在册纪律原 schema 重发）。
+  
+- 三轮协议的共同教训（入长期纪律）：**凡“将来可能需要”的字段，先登记到挂起清单（§13.3），⛔ 直接写进 schema/示例**——v0.1 平行绑定、v0.2 提前 agent、都是同一种病的不同皮肤。
+
+*（卷五十五完 · 协议从“空间三分”进化到“三域+时间轴”，API 层立宪，engine 分岔留白不押注）*
+
+---
+
+# 卷五十六 · 代理交接与 M5–M7 收尾：绑定清理战役全线合拢 + 协议 v0.3.1（2026-10-17）
+
+> 用户令：前序代理中断，凭 docs/current.txt + docs/mem.txt 接手，并质检其工作。
+
+## 一、交接代理质量判定（实测背书，非采信文档）
+- **诚实可靠**：M1（closureOf 去同名兜底）/M2（djsToVerilog：.djs 部件入编译、不支持器件硬错）/M3（binding.html 独立面板三入口）/M4（放置即写绑定，沙盒 merge store、doc onBind 落表）/Phase C（SandboxCanvas 3913→3377，三组件 verbatim 抽取锚点全存）逐项核过文件落地。**mem 自述的读数全部复现**：根+extension tsc 0、vitest 161/161 基线真、r12/r68/r84/r122 四组五十二格 GREEN。
+- **M5 状态修正**：mem.txt 截断快照标「未动工」，实况**已完成**（dispatch L190-199 泛化为「每子部件逐条显式绑定，主电路不进表」+ M5 专格 + test 1050 反转断言）——压缩时机早于收尾，属账实差不是谎报。
+- **current.txt 的 M6/M7 悬而未决处，质检判定为真缺口**（非误报）：①`bindingsChanged` 重读链只刷 bindMapRef/部件源，⛔ 同步伪 activeFile.partBindings → gateSystem `activePartBindings` 单例吃 init 旧表（显式 -1 优先与审计 covered 双失真）；②盘名 `x.djs.djs` 残留与表值脏形无清扫通道（读侧折叠≠盘上干净）。
+
+## 二、本轮补完
+- **M6（两处接线）**：DocApp `bindingsChanged` handler 补 `setDoc initialBindings`（单行补齐 init 已有语义的对账）；SandboxCanvas 拆**独立绑定 useEffect**（`[doc?.initialBindings]` → 只刷 partBindings ⛔ setResetNonce——换绑不重置画布、换内容才重置的语义分离）。链上三轨（init/手编/写全面板回执）自此同源。
+- **M7（normalizeBindingsDisk，activate fire-and-forget、幂等双格钉死）**：盘名 `x.djs.djs` 裁尾（冲突自动 (n) ⛔ 覆盖）+ 所有层 `.verilogviz.json` 值按「normalize+本层重相对化」归一写回 + `宿主::实例` 前缀键随裁尾迁移；有改动才广播+轻报，第二遍零输出。新格 2 颗（裁尾+前缀随迁、幂等静默）。
+- **自查两雷**：M7 首稿把孤儿尾巴留在上个函数区（tsc 现形，即删）；前缀键大小写查找漏 `.toLowerCase()`（复核现文逮回）。**闸 4 组 + vitest 162 + tsc×2 + build + bundle 闸 + lint 全绿收口**。
+- **协议 v0.3.1 补丁**（含交接代理已录的 §9.4 审批语义/审计落点两处——本次对账发现我的冗余段与之相左，删除让正本独存）：perm 词表与 sideEffects 合一（勘误旧 read/write/fs-write 混粒度）、`API_SURFACE_DENIED` 判点唯一化、§13.3 登记分支 B 立项必答清单（state reducer/interruptBefore/After/handoff 防环/条件边参数化 stale=快照对比/engine 拆 mode×transport）。
+
+## 三、遗留（如实，⛔ 冒充完成）
+- **pre-existing 红闸四组**（交接代理正确挂账，非其引入）：r13/r60/r123 用旧 root-app boot（应迁 gates.html——URL+enterSandbox 改法 medium）；r90-[1] 命中 gateSystem 手写 `dirOfCtx`/`dirOf`（应归 vpath 单一主人。**本轮自查发现同类手抄在扩散**：customEditors/compilePanel/sandboxFiles 内联 dirOf ≈5 处，列下一步专项：vpath.parentDir 统一收编 + 四闸迁移修）。
+- 工作区照旧不提交（M1–M7 累积改动体积已成山，建议用户尽快自提一版防并行覆写）。
+
+*（卷五十六完 · M1–M7 全线合拢：绑定从「放置/复制/手编/清理」全周期都有显式账，交接方与接刀方读数互验通过）*
