@@ -29,28 +29,22 @@ export interface HtmlRewriteInput {
  *    而是**对"nonce 到底传不传递"这件事不做赌注**（那条传递行为规范里没写死，换内核就可能变）。
  *    放行面收在 `cspSource` 这一颗 origin = `localResourceRoots` 里我们自己的 dist。
  *  · `script-src 'wasm-unsafe-eval'` ⇒ yosys-wasm 要实例化 .wasm（实测 16.4 MB 那颗编译通过）；
- *  · `style-src` 要**同时**收 `cspSource`、`'unsafe-inline'` 和 cdnjs：
- *    前两条是 joint/digitaljs 运行时注 `<style>` ＋ React inline style，
- *    第三条是 `index.html` 里 Prism 主题那张 CDN 样式表——R137 第一版漏了它，
- *    实测当场报 `…prism-tomorrow.min.css|style-src-elem`（＝代码编辑器没了配色，且只在壳里发生）。
+ *  · `style-src` 收 `cspSource` + `'unsafe-inline'`：joint/digitaljs 运行时注 `<style>` ＋ React inline style。
+ *    （旧版还有一颗 cdnjs 口子给 Prism CDN——片 5 代码编辑器归原生后 Prism 整个退役，口子一并关掉。）
  *  · `worker-src`/`connect-src` 收 cspSource + `blob:` ⇒ emscripten 胶水按 `base` 解析后
  *    fetch wasm、并可能起 blob worker。
  * ⛔ 为了省事把 `script-src` 写成 `'unsafe-inline'`（那等于把 CSP 关掉）。
- * `https://cdnjs.cloudflare.com` 是给 index.html 里那两颗 Prism 引用留的口——
- * ⛔ 长期方案是把 Prism 落到 public/（离线打开才不会丢语法高亮），已记进迁移台账。
  */
 export function buildCsp(cspSource: string, nonce: string): string {
   return [
     "default-src 'none'",
     `img-src ${cspSource} data: https:`,
     `font-src ${cspSource} data:`,
-    // Prism 的**样式表**也走 style-src：漏了它，`<link rel=stylesheet href=cdnjs…>` 被拒，
-    // 代码编辑器只剩默认字色（R137 实测：violation `…prism-tomorrow.min.css|style-src-elem`）。
-    `style-src ${cspSource} 'unsafe-inline' https://cdnjs.cloudflare.com`,
-    `script-src 'nonce-${nonce}' 'wasm-unsafe-eval' ${cspSource} https://cdnjs.cloudflare.com`,
+    `style-src ${cspSource} 'unsafe-inline'`,
+    `script-src 'nonce-${nonce}' 'wasm-unsafe-eval' ${cspSource}`,
     `worker-src ${cspSource} blob:`,
     `child-src blob:`,
-    `connect-src ${cspSource} data: blob: https://cdnjs.cloudflare.com`,
+    `connect-src ${cspSource} data: blob:`,
   ].join('; ');
 }
 

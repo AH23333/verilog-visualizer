@@ -1,0 +1,250 @@
+// dispatch：webview → 宿主能力的唯一路由。
+// 片5（全面原生）起只剩 6 颗：文件 CRUD/配置文件/剪贴板那 12 颗随旧 React UI 一起退役——
+// 文件管理归原生 Explorer，配置归 contributes.configuration，画布要的文件内容由宿主**推**（compile/doc init）。
+// Panel（verilogVisualizer）与 custom editor（verilogViz.doc）两条装载线共用这一份。
+import * as vscode from 'vscode';
+import type { FsLike } from './projectStore';
+import { getAllBindings, setDocBindings, ensureDirsMeta, setBindingInDir } from './sandboxFiles';
+
+/** Problems 面板接管：webview 编译后经 publishProblems 落到这里。
+ *  ⚠ **惰性创建**：extensionHost.test 的 vscode 桩没有 createDiagnosticCollection/
+ *  createOutputChannel，模块加载期求值会当场炸（host.ts 文件头"形状 1"同族教训）——
+ *  必须等 activate 期（桩已就位）后首次使用时才建。 */
+let diagnostics: vscode.DiagnosticCollection | undefined;
+let output: vscode.OutputChannel | undefined;
+function diag(): vscode.DiagnosticCollection { return (diagnostics ??= vscode.languages.createDiagnosticCollection('Verilog Viz')); }
+function out(): vscode.OutputChannel { return (output ??= vscode.window.createOutputChannel('Verilog Visualizer')); }
+
+/** `workspace.fs` 的各方法回的是 `Thenable`（不是 Promise）⇒ 必须 await 一次再回，
+ *  ⛔ 用 `as any`/`as unknown as Promise` 把类型糊过去（那会让 ProjectStore 里的 try/catch 收不到 rejection） */
+const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> =>
+  new Promise<T>((res, rej) => t.then(res, (e) => rej(e)));
+
+/**
+ * 工程配置的家：⚠ **一直**是 `globalStorageUri/project_files`，跟着工作区走的是源文件（见 `projectRoot`）。
+ * 分成两颗是有理由的：把 `project_config.json` 扔进用户打开的那个文件夹＝在他的仓库里造一颗
+ * 没人要求的文件。片 5 起配置整体换成 `contributes.configuration`，这颗目录只剩旧档迁移（片B）还读。
+ */
+export function configRoot(context: vscode.ExtensionContext): vscode.Uri {
+  return vscode.Uri.joinPath(context.globalStorageUri, 'project_files');
+}
+
+/**
+ * 项目根＝**打开的那个文件夹**（R139 片 3 换轨）。
+ * 没打开任何文件夹时退回旧家（`globalStorageUri/project_files`）。
+ * 多根工作区只认第一颗（在册取舍）；扫描跳过 `node_modules` 与点开头目录（`ProjectStore.SKIP_DIRS`）。
+ */
+export function projectRoot(context: vscode.ExtensionContext): vscode.Uri {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  return folder ? folder.uri : configRoot(context);
+}
+
+/** `workspace.fs` → 我们的 `FsLike`（字符串路径以 `@root` 打头，落回 Uri） */
+export function vscodeFs(rootUri: vscode.Uri): FsLike {
+  const toUri = (abs: string) => {
+    const rel = abs.startsWith('@root') ? abs.slice('@root'.length).replace(/^\/+/, '') : abs;
+    return rel ? vscode.Uri.joinPath(rootUri, ...rel.split('/')) : rootUri;
+  };
+  // Thenable → Promise 的转换统一用文件顶那把 `then`（⛔ 在这里再写一份）
+  return {
+    readFile: (p) => then(vscode.workspace.fs.readFile(toUri(p))),
+    writeFile: async (p, d) => { await then(vscode.workspace.fs.writeFile(toUri(p), d)); },
+    createDir: async (p) => { await then(vscode.workspace.fs.createDirectory(toUri(p))); },
+    remove: async (p, recursive) => { await then(vscode.workspace.fs.delete(toUri(p), { recursive, useTrash: false })); },
+    rename: async (from, to) => { await then(vscode.workspace.fs.rename(toUri(from), toUri(to), { overwrite: false })); },
+    copy: async (from, to) => { await then(vscode.workspace.fs.copy(toUri(from), toUri(to), { overwrite: true })); },
+    stat: async (p) => {
+      try {
+        const s = await vscode.workspace.fs.stat(toUri(p));
+        return { type: s.type === vscode.FileType.Directory ? 'dir' : 'file', size: s.size, mtimeMs: s.mtime };
+      } catch { return null; }
+    },
+    readDir: async (p) => {
+      try {
+        const entries = await vscode.workspace.fs.readDirectory(toUri(p));
+        return entries.map(([name, type]) => ({ name, type: type === vscode.FileType.Directory ? 'dir' as const : 'file' as const }));
+      } catch { return []; }
+    },
+  };
+}
+
+/** 按后缀给对话框配过滤器（当年 Tauri 侧同一件事是按 defaultName 后缀做的，形状照搬） */
+function filtersFor(name: string): Record<string, string[]> | undefined {
+  const ext = String(name).split('.').pop()?.toLowerCase();
+  if (!ext) return undefined;
+  const map: Record<string, string> = { svg: 'SVG 图片', json: 'JSON', v: 'Verilog', djs: 'Verilog 电路文档' };
+  return { [map[ext] || ext.toUpperCase()]: [ext] };
+}
+
+/* ============ 活 webview 登记（配置变化要全量广播） ============ */
+const sinks = new Set<vscode.Webview>();
+export function registerWebviewSink(webview: vscode.Webview): void { sinks.add(webview); }
+export function unregisterWebviewSink(webview: vscode.Webview): void { sinks.delete(webview); }
+/** 设置改了 → 所有活画布各自 patch 自己的 settingsStore（CanvasApp/DocApp 认得这条） */
+export function broadcastConfigChanged(): void {
+  for (const w of sinks) void w.postMessage({ vvh: 'push', op: 'configChanged' });
+}
+/** `.verilogviz.json` 变了（手编/watcher 或 setBinding 写盘）→ 活画布重读绑定（R137 手改即生效）。 */
+export function broadcastBindingsChanged(): void {
+  for (const w of sinks) void w.postMessage({ vvh: 'push', op: 'bindingsChanged' });
+}
+
+/* ============ 六颗能力 ============ */
+
+/** 相对名消毒（⛔ `..`/绝对路径逃逸/Windows 非法字符），返回 '/' 分隔的干净相对名 */
+function sanitizeRelName(raw: unknown, fallback: string): string {
+  const segs = String(raw ?? fallback)
+    .replace(/\\/g, '/')
+    .replace(/^\/+/, '')
+    .split('/')
+    .filter((s) => s && s !== '.' && s !== '..')
+    .map((s) => s.replace(/[*?"<>|:]/g, '_'));
+  return segs.join('/') || fallback;
+}
+
+export async function dispatch(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
+  switch (method) {
+    // Settings UI（contributes.configuration）→ 画布：一次拉全量。字体跟随原生 editor.fontSize。
+    case 'getConfig': {
+      const cfg = vscode.workspace.getConfiguration('verilogViz');
+      return {
+        compile: {
+          topModule: cfg.get<string>('compile.topModule') || undefined,
+          yosysOptions: cfg.get<string>('compile.yosysOptions') || undefined,
+          noFlatten: cfg.get<boolean>('compile.noFlatten') ?? false,
+          noOpt: cfg.get<boolean>('compile.noOpt') ?? false,
+          autoRecompile: cfg.get<boolean>('compile.autoRecompile') ?? true,
+        },
+        sandbox: {
+          gridSize: cfg.get<number>('sandbox.gridSize') ?? 16,
+          showGrid: cfg.get<boolean>('sandbox.showGrid') ?? true,
+          snapToGrid: cfg.get<boolean>('sandbox.snapToGrid') ?? true,
+          wireStyle: cfg.get<'metro' | 'orthogonal' | 'straight'>('sandbox.wireStyle') ?? 'metro',
+          defaultBits: cfg.get<number>('sandbox.defaultBits') ?? 1,
+          autoStartSim: cfg.get<boolean>('sandbox.autoStartSim') ?? true,
+          simSpeedMs: cfg.get<number>('sandbox.simSpeedMs') ?? 10,
+          foldConstants: cfg.get<boolean>('sandbox.foldConstants') ?? true,
+        },
+        bindings: {
+          policy: cfg.get<string>('bindings.policy') === 'strict' ? 'strict' as const : 'auto' as const,
+        },
+        editorFontSize: vscode.workspace.getConfiguration('editor').get<number>('fontSize'),
+      };
+    }
+
+    case 'saveExportFile': {
+      // 与 Rust 那颗同语义：取消＝返回 false（⛔ 报错，前端把 false 显示成"导出已取消"）
+      const target = await vscode.window.showSaveDialog({
+        defaultUri: vscode.Uri.joinPath(projectRoot(context), args.defaultName),
+        filters: filtersFor(args.defaultName),
+      });
+      if (!target) return false;
+      const bytes = Uint8Array.from(Buffer.from(String(args.base64 || ''), 'base64'));
+      await vscode.workspace.fs.writeFile(target, bytes);
+      return true;
+    }
+
+    // Problems/Output 的 workbench 接管（片 4）
+    case 'publishProblems': {
+      diag().clear();
+      const root = projectRoot(context);
+      for (const p of (args.items || []) as Array<{ fileName: string; line: number | null; message: string; severity: 'error' | 'warning' }>) {
+        try {
+          const uri = vscode.Uri.joinPath(root, String(p.fileName));
+          const line = Math.max(0, (p.line ?? 1) - 1);
+          const d = new vscode.Diagnostic(
+            new vscode.Range(line, 0, line, 999),
+            String(p.message),
+            p.severity === 'error' ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning,
+          );
+          d.source = 'Verilog Viz';
+          diag().set(uri, [...(diag().get(uri) || []), d]);
+        } catch { /* 单条失败不影响其余 */ }
+      }
+      return null;
+    }
+    case 'appendOutput': {
+      out().append(String(args.text ?? ''));
+      return null;
+    }
+
+    // 画布 → 沙盒：主电路 + 子部件一批落成工作区 `.djs`（B2：`folder/name` 组织，
+    // 子级部件递归入库、按 celltype 名绑定——语义照抄旧 handleCopyToSandbox）。
+    case 'copyToSandbox': {
+      const root = projectRoot(context);
+      const written: string[] = [];
+      const taken = new Set<string>();
+      for (const f of (args.files || []) as Array<{ name: string; content: string }>) {
+        const safe = sanitizeRelName(f.name, 'circuit');
+        // 重名自动 (n)（语义照抄 fileStore.getUniqueName）：对盘上现状 + 本批已占用的名字。
+        // ⚠ 落盘名是 `<name>.djs`，冲突检查必须对**同一个**名字做（对裸名 stat 永远查不到）。
+        let name = safe;
+        for (let i = 2; taken.has(name) || await then(vscode.workspace.fs.stat(vscode.Uri.joinPath(root, ...`${name}.djs`.split('/')))).then(() => true, () => false); i++) {
+          name = `${safe} (${i})`;
+        }
+        taken.add(name);
+        const finalSegs = `${name}.djs`.split('/');
+        await then(vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(root, ...finalSegs.slice(0, -1))));
+        await then(vscode.workspace.fs.writeFile(vscode.Uri.joinPath(root, ...finalSegs), new TextEncoder().encode(String(f.content ?? ''))));
+        written.push(name + '.djs');
+        // M5「复制即显式绑定」：递归复制部件树时，**每个子部件**都把「裸 celltype → 本批落盘
+        // 部件相对路径」写进目标目录表（撞名的用改名后路径）。层级/例化关系照旧解析，但⛔ 再
+        // 依赖同文件夹同名兜底——日后同名漂移也不换实现（记录即权威）。
+        // ⚠ 只处理子部件（非本批第一颗）：主电路改名与实例 celltype 无关，录进表＝死条目。
+        if (written.length > 1) {
+          const base = safe.includes('/') ? safe.slice(safe.lastIndexOf('/') + 1) : safe;
+          const bare = base.replace(/\.djs$/i, '');
+          const dirRel = finalSegs.length > 1 ? finalSegs.slice(0, -1).join('/') : '';
+          await setBindingInDir(context, dirRel, bare, finalSegs.join('/'));   // 根相对全路径进表（值由函数按目录层相对化）
+        }
+      }
+      // R137「入目录就有表」：落盘目录里出现了部件 .djs 且缺配置 → 建空模板（可见、可手编）。
+      await ensureDirsMeta(context, written);
+      return written;                                   // 沙盒树经 watcher 自刷（extension.ts 的 .djs watcher）
+    }
+
+    // 旧版 localStorage 档一次性迁成工作区真文件（B1）：.v/.djs 都归工作区。
+    // 名字逐颗消毒（⛔ `..`/绝对路径逃逸），重名自动 (n)；返回全部落盘名。
+    case 'importLegacyData': {
+      const root = projectRoot(context);
+      const written: string[] = [];
+      const taken = new Set<string>();
+      for (const it of (args.items || []) as Array<{ name: string; content: string }>) {
+        const withExt = /\.[A-Za-z0-9]+$/.test(sanitizeRelName(it.name, 'legacy')) ? sanitizeRelName(it.name, 'legacy') : sanitizeRelName(it.name, 'legacy') + '.v';
+        let name = withExt;
+        for (let i = 2; taken.has(name.toLowerCase()) || await then(vscode.workspace.fs.stat(vscode.Uri.joinPath(root, ...name.split('/')))).then(() => true, () => false); i++) {
+          const dot = withExt.lastIndexOf('.');
+          name = dot > 0 ? `${withExt.slice(0, dot)} (${i})${withExt.slice(dot)}` : `${withExt} (${i})`;
+        }
+        taken.add(name.toLowerCase());
+        await then(vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(root, ...name.split('/').slice(0, -1))));
+        await then(vscode.workspace.fs.writeFile(vscode.Uri.joinPath(root, ...name.split('/')), new TextEncoder().encode(String(it.content ?? ''))));
+        written.push(name);
+      }
+      // 迁移落盘的 .djs 同样触发「目录有部件就有表」（.v 不触发，ensureDirsMeta 内部按 .djs 过滤）
+      await ensureDirsMeta(context, written);
+      return written;
+    }
+
+    // 绑定关系（R137 目录级）：带 doc → 该文档目录链合并（仿 .vscode 层级设置）；
+    // 不带 → 项目根表（兼容旧调用）。单条 setBinding 不走 RPC——树右键在 Extension Host 内直调。
+    case 'getAllBindings': return getAllBindings(context, typeof args.doc === 'string' && args.doc ? String(args.doc) : undefined);
+    case 'setDocBindings':
+      await setDocBindings(context, String(args.docName || ''), (args.bindings || {}) as Record<string, string>);
+      broadcastBindingsChanged();
+      return null;
+
+    // 画布双击器件 → 跳回源码行（旧 UI 的"点画布找代码"反向通道）
+    case 'jumpToSource': {
+      const uri = vscode.Uri.joinPath(projectRoot(context), String(args.file || ''));
+      const doc = await vscode.workspace.openTextDocument(uri);
+      const editor = await vscode.window.showTextDocument(doc);
+      const line = Math.max(0, Number(args.line ?? 0));
+      editor.revealRange(new vscode.Range(line, 0, line, 0), vscode.TextEditorRevealType.InCenter);
+      editor.selection = new vscode.Selection(line, 0, line, 0);
+      return null;
+    }
+
+    default: throw new Error(`Extension Host 不认识的调用：${method}`);
+  }
+}

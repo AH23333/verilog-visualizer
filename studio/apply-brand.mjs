@@ -56,15 +56,20 @@ export function mergeProduct(base, overrides) {
 }
 
 /**
- * 内置扩展要落哪几颗文件：`package.json` + `extension.cjs` + `webview/**`。
+ * 内置扩展要落哪几颗文件：`package.json` + `extension.cjs` + `media/icon.svg` + `grammars/verilog.tmLanguage.json` + `webview/**`。
  * 抽成纯函数是为了能判"⛔ 把 dist 之外的东西（src/、node_modules/、.vsix）一起塞进去"。
  *
+ * ⚠ media/** 是片 4 起的**必需品**：manifest 的 `viewsContainers.activitybar` 引用 `./media/icon.svg`，
+ *   漏了它＝内置扩展的活动栏图标装不上（三棵树可能整组看不见——用户看到的还是"套壳里一颗网页"）。
+ * ⚠ grammars/** 是高亮起效的**必需品**：manifest 的 `contributes.grammars` 引用 `./grammars/*.tmLanguage.json`，
+ *   漏了它＝语言声明在、语法文件缺 ⇒ .v 永远不上色（真机"高亮不完备"的那一半真相——上一版就漏了这颗）。
  * ⚠ webview 的来源**优先用 Vite 的产物 `dist/`**：那条路只有官方工具（`pnpm build`）参与，
  * ⛔ 要再跑一次"复制进 extension/webview/"（那一步是给 `vsce` 打包 `.vsix` 用的——
  * vsce 只收 `extension/` 目录，所以它才需要那份副本；内置装载这条路由基座自己扫 `extensions/<id>/package.json`，⛔ 我们的目录）。
  */
 export function builtinExtFiles(extSrcDir, repoDistDir, fsImpl = fs) {
-  const need = ['package.json', path.join('dist', 'extension.cjs')];
+  const need = ['package.json', path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'),
+    path.join('grammars', 'verilog.tmLanguage.json')];
   const missing = need.filter((f) => !fsImpl.existsSync(path.join(extSrcDir, f)));
   let webviewSrc = null;
   if (repoDistDir && fsImpl.existsSync(path.join(repoDistDir, 'index.html'))) webviewSrc = repoDistDir;
@@ -154,6 +159,8 @@ export function main(argv = process.argv.slice(2)) {
   fs.mkdirSync(path.join(dst, 'dist'), { recursive: true });
   fs.copyFileSync(path.join(extSrc, 'package.json'), path.join(dst, 'package.json'));
   fs.copyFileSync(path.join(extSrc, 'dist', 'extension.cjs'), path.join(dst, 'dist', 'extension.cjs'));
+  copyTree(path.join(extSrc, 'media'), path.join(dst, 'media'));         // 活动栏图标（manifest viewsContainers 引用）
+  copyTree(path.join(extSrc, 'grammars'), path.join(dst, 'grammars'));   // TextMate 语法（manifest contributes.grammars 引用；漏了＝高亮永不生效）
   copyTree(info.webviewSrc, path.join(dst, 'webview'));
   // 内置扩展⛔ 有 devDependencies，也⛔ 走 vsce：基座的 gulp 会把 extensions/** 直接打进产物
   process.stdout.write(`内置扩展已装到 ${dst}（webview 取自 ${info.webviewSrc}）\n`);

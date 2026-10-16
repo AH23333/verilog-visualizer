@@ -24,18 +24,809 @@
     }
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "verilogVizCode",
+          "title": "代码编译",
+          "icon": "./media/code.svg"
+        },
+        {
+          "id": "verilogVizSandbox",
+          "title": "沙盒编辑",
+          "icon": "./media/sandbox.svg"
+        }
+      ]
+    },
+    "views": {
+      "verilogVizCode": [
+        {
+          "id": "verilogViz.codeFiles",
+          "name": "文件",
+          "type": "webview",
+          "icon": "$(files)"
+        },
+        {
+          "id": "verilogViz.modules",
+          "name": "模块 Modules"
+        },
+        {
+          "id": "verilogViz.hierarchy",
+          "name": "层次结构 Hierarchy"
+        }
+      ],
+      "verilogVizSandbox": [
+        {
+          "id": "verilogViz.sandboxFiles",
+          "name": "文件",
+          "type": "webview",
+          "icon": "$(files)"
+        },
+        {
+          "id": "verilogViz.sandboxParts",
+          "name": "部件 Parts"
+        },
+        {
+          "id": "verilogViz.sandboxHierarchy",
+          "name": "层次结构 Hierarchy"
+        }
+      ]
+    },
+    "customEditors": [
+      {
+        "viewType": "verilogViz.doc",
+        "displayName": "电路画布",
+        "selector": [
+          {
+            "filenamePattern": "*.djs"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "languages": [
+      {
+        "id": "verilog",
+        "extensions": [
+          ".v",
+          ".vh"
+        ],
+        "aliases": [
+          "Verilog",
+          "verilog"
+        ]
+      },
+      {
+        "id": "systemverilog",
+        "extensions": [
+          ".sv",
+          ".svh"
+        ],
+        "aliases": [
+          "SystemVerilog",
+          "systemverilog"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "verilog",
+        "scopeName": "source.verilog",
+        "path": "./grammars/verilog.tmLanguage.json"
+      },
+      {
+        "language": "systemverilog",
+        "scopeName": "source.systemverilog",
+        "path": "./grammars/systemverilog.tmLanguage.json"
+      }
+    ],
     "commands": [
       {
-        "command": "verilogVisualizer.open",
-        "title": "打开 Verilog 可视化窗口",
+        "command": "verilogViz.compileAndShow",
+        "title": "编译并查看电路",
+        "category": "Verilog Visualizer",
+        "icon": "./media/compile.svg"
+      },
+      {
+        "command": "verilogViz.sim.togglePause",
+        "title": "暂停/继续仿真",
+        "category": "Verilog Visualizer",
+        "icon": "./media/pause.svg"
+      },
+      {
+        "command": "verilogViz.sim.stepOnce",
+        "title": "单步仿真",
+        "category": "Verilog Visualizer",
+        "icon": "./media/step.svg"
+      },
+      {
+        "command": "verilogViz.exportSvg",
+        "title": "导出电路为 SVG",
+        "category": "Verilog Visualizer",
+        "icon": "./media/export.svg"
+      },
+      {
+        "command": "verilogViz.newVerilogFile",
+        "title": "新建 Verilog 文件",
+        "category": "Verilog Visualizer",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "verilogViz.newSandboxFile",
+        "title": "新建沙盒电路",
+        "category": "Verilog Visualizer",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "verilogViz.newSandboxFolder",
+        "title": "新建文件夹",
+        "category": "Verilog Visualizer",
+        "icon": "$(new-folder)"
+      },
+      {
+        "command": "verilogViz.openExamples",
+        "title": "打开示例电路",
         "category": "Verilog Visualizer"
+      },
+      {
+        "command": "verilogVisualizer.refreshTrees",
+        "title": "刷新",
+        "category": "Verilog Visualizer",
+        "icon": "$(refresh)"
       },
       {
         "command": "verilogVisualizer.revealProjectDir",
         "title": "打开项目文件所在文件夹（落盘核对用）",
         "category": "Verilog Visualizer"
+      },
+      {
+        "command": "verilogViz.openDoc",
+        "title": "打开电路画布",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.renameFile",
+        "title": "重命名",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.deleteFile",
+        "title": "删除",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.duplicateFile",
+        "title": "创建副本",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.togglePartRole",
+        "title": "切换部件角色",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.bindParts",
+        "title": "部件绑定",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.openModuleAt",
+        "title": "打开模块定义",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.openModuleItem",
+        "title": "打开定义",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.openFile",
+        "title": "打开定义文件",
+        "category": "Verilog Viz"
+      },
+      {
+        "command": "verilogViz.openBindingConfig",
+        "title": "打开部件绑定配置…",
+        "icon": "$(json)"
+      },
+      {
+        "command": "verilogViz.materializeBindings",
+        "title": "固化自动绑定到配置文件",
+        "icon": "$(lock)"
+      },
+      {
+        "command": "verilogViz.duplicateFolder",
+        "title": "复制文件夹",
+        "icon": "$(files)"
+      },
+      {
+        "command": "verilogViz.importFiles",
+        "title": "导入文件…",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "verilogViz.auditBindings",
+        "title": "检查绑定完整性…",
+        "icon": "$(search)"
+      },
+      {
+        "command": "verilogViz.completeBindings",
+        "title": "写全绑定配置",
+        "icon": "$(checklist)"
       }
-    ]
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "verilogViz.compileAndShow",
+          "when": "view == verilogViz.modules && viewItem == moduleFile",
+          "group": "verilog@1"
+        },
+        {
+          "command": "verilogViz.compileAndShow",
+          "when": "view == verilogViz.modules && viewItem == module",
+          "group": "verilog@1"
+        },
+        {
+          "command": "verilogViz.openModuleItem",
+          "when": "view == verilogViz.modules && viewItem == module",
+          "group": "verilog@2"
+        },
+        {
+          "command": "verilogViz.openModuleItem",
+          "when": "view == verilogViz.hierarchy && viewItem == hierarchyItem",
+          "group": "verilog@1"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "view == verilogViz.modules && viewItem == module",
+          "group": "verilog@5"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "view == verilogViz.modules && viewItem == moduleFile",
+          "group": "verilog@5"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "view == verilogViz.hierarchy && viewItem == hierarchyItem",
+          "group": "verilog@2"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "view == verilogViz.sandboxParts && viewItem == sandboxFile",
+          "group": "verilog@1"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "view == verilogViz.sandboxHierarchy && viewItem == sandboxHierarchyItem",
+          "group": "verilog@1"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "view == verilogViz.sandboxParts && viewItem == sandboxFile",
+          "group": "navigation@5"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "view == verilogViz.modules && viewItem == moduleFile",
+          "group": "verilog@5"
+        },
+        {
+          "command": "vscode.open",
+          "when": "view == verilogViz.sandboxParts && viewItem == sandboxFile",
+          "group": "navigation@6"
+        },
+        {
+          "command": "verilogViz.materializeBindings",
+          "when": "view == verilogViz.modules && viewItem == moduleFile",
+          "group": "5_binding@3"
+        },
+        {
+          "command": "verilogViz.materializeBindings",
+          "when": "view == verilogViz.sandboxParts && viewItem == sandboxFile",
+          "group": "5_binding@3"
+        },
+        {
+          "command": "verilogViz.auditBindings",
+          "when": "view == verilogViz.sandboxParts && viewItem == sandboxFile",
+          "group": "5_binding@4"
+        },
+        {
+          "command": "verilogViz.completeBindings",
+          "when": "view == verilogViz.sandboxParts && viewItem == sandboxFile",
+          "group": "5_binding@5"
+        },
+        {
+          "command": "verilogViz.auditBindings",
+          "when": "view == verilogViz.modules && viewItem == moduleFile",
+          "group": "5_binding@4"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "verilogViz.compileAndShow",
+          "when": "resourceExtname =~ /\\.(v|sv)$/",
+          "group": "navigation@1"
+        },
+        {
+          "command": "verilogViz.sim.togglePause",
+          "when": "activeWebviewPanelId == 'verilogVisualizer' || activeCustomEditorId == 'verilogViz.doc'",
+          "group": "navigation@9"
+        },
+        {
+          "command": "verilogViz.sim.stepOnce",
+          "when": "activeWebviewPanelId == 'verilogVisualizer' || activeCustomEditorId == 'verilogViz.doc'",
+          "group": "navigation@9"
+        },
+        {
+          "command": "verilogViz.exportSvg",
+          "when": "activeWebviewPanelId == 'verilogVisualizer' || activeCustomEditorId == 'verilogViz.doc'",
+          "group": "navigation@9"
+        }
+      ],
+      "explorer/context": [
+        {
+          "command": "verilogViz.compileAndShow",
+          "when": "resourceExtname =~ /\\.(v|sv)$/",
+          "group": "verilogViz@1"
+        },
+        {
+          "command": "verilogViz.openDoc",
+          "when": "resourceExtname == .djs",
+          "group": "verilogViz@1"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "resourceExtname == .djs",
+          "group": "verilogViz@2"
+        },
+        {
+          "command": "verilogViz.newVerilogFile",
+          "group": "verilogViz@2"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "resourceExtname == .djs",
+          "group": "verilogViz@3"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "resourceExtname =~ /\\.(v|sv)$/",
+          "group": "verilogViz@3"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "explorerResourceIsFolder",
+          "group": "verilogViz@4"
+        },
+        {
+          "command": "verilogViz.duplicateFolder",
+          "when": "explorerResourceIsFolder",
+          "group": "verilogViz@5"
+        },
+        {
+          "command": "verilogViz.newSandboxFile",
+          "when": "filesExplorerFocus && !resourceScheme && !explorerResourceIsFolder && !resourceExtname",
+          "group": "1vv@1"
+        },
+        {
+          "command": "verilogViz.newVerilogFile",
+          "when": "filesExplorerFocus && !resourceScheme && !explorerResourceIsFolder && !resourceExtname",
+          "group": "1vv@2"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "filesExplorerFocus && !resourceScheme && !explorerResourceIsFolder && !resourceExtname",
+          "group": "1vv@3"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "filesExplorerFocus && !resourceScheme && !explorerResourceIsFolder && !resourceExtname",
+          "group": "9vv@1"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "verilogViz.newVerilogFile",
+          "when": "view == verilogViz.codeFiles",
+          "group": "navigation@1"
+        },
+        {
+          "command": "verilogViz.newSandboxFile",
+          "when": "view == verilogViz.sandboxFiles",
+          "group": "navigation@1"
+        },
+        {
+          "command": "verilogViz.newSandboxFolder",
+          "when": "view == verilogViz.sandboxFiles",
+          "group": "navigation@2"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "view == verilogViz.codeFiles",
+          "group": "navigation@8"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "view == verilogViz.modules",
+          "group": "navigation@8"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "view == verilogViz.hierarchy",
+          "group": "navigation@8"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "view == verilogViz.sandboxFiles",
+          "group": "navigation@8"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "view == verilogViz.sandboxParts",
+          "group": "navigation@8"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "view == verilogViz.sandboxHierarchy",
+          "group": "navigation@8"
+        },
+        {
+          "command": "verilogViz.newSandboxFolder",
+          "when": "view == verilogViz.codeFiles",
+          "group": "navigation@2"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "view == verilogViz.codeFiles",
+          "group": "navigation@3"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "view == verilogViz.sandboxFiles",
+          "group": "navigation@3"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "verilogViz.openModuleAt",
+          "when": "false"
+        },
+        {
+          "command": "verilogViz.openModuleItem",
+          "when": "false"
+        },
+        {
+          "command": "verilogViz.openFile",
+          "when": "false"
+        },
+        {
+          "command": "verilogViz.openDoc",
+          "when": "false"
+        },
+        {
+          "command": "verilogViz.renameFile",
+          "when": "false"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "false"
+        },
+        {
+          "command": "verilogViz.duplicateFile",
+          "when": "false"
+        },
+        {
+          "command": "verilogViz.togglePartRole",
+          "when": "false"
+        }
+      ],
+      "webview/context": [
+        {
+          "command": "verilogViz.newVerilogFile",
+          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
+          "group": "1_new@1"
+        },
+        {
+          "command": "verilogViz.newSandboxFolder",
+          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
+          "group": "1_new@2"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
+          "group": "1_new@3"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
+          "group": "5_binding@1"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
+          "group": "9_refresh@1"
+        },
+        {
+          "command": "verilogViz.compileAndShow",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
+          "group": "open@1"
+        },
+        {
+          "command": "verilogViz.renameFile",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "verilogViz.duplicateFile",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
+          "group": "5_binding@1"
+        },
+        {
+          "command": "verilogViz.auditBindings",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
+          "group": "5_binding@2"
+        },
+        {
+          "command": "verilogViz.completeBindings",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
+          "group": "5_binding@3"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
+          "group": "5_binding@4"
+        },
+        {
+          "command": "verilogViz.newVerilogFile",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
+          "group": "1_new@1"
+        },
+        {
+          "command": "verilogViz.newSandboxFolder",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
+          "group": "1_new@2"
+        },
+        {
+          "command": "verilogViz.duplicateFolder",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
+          "group": "1_new@3"
+        },
+        {
+          "command": "verilogViz.newSandboxFile",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
+          "group": "1_new@1"
+        },
+        {
+          "command": "verilogViz.newSandboxFolder",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
+          "group": "1_new@2"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
+          "group": "1_new@3"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
+          "group": "5_binding@1"
+        },
+        {
+          "command": "verilogVisualizer.refreshTrees",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
+          "group": "9_refresh@1"
+        },
+        {
+          "command": "verilogViz.openDoc",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "open@1"
+        },
+        {
+          "command": "verilogViz.renameFile",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "verilogViz.duplicateFile",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "verilogViz.togglePartRole",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "3_role@1"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "5_binding@1"
+        },
+        {
+          "command": "verilogViz.auditBindings",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "5_binding@2"
+        },
+        {
+          "command": "verilogViz.completeBindings",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "5_binding@3"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
+          "group": "5_binding@4"
+        },
+        {
+          "command": "verilogViz.newSandboxFile",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
+          "group": "1_new@1"
+        },
+        {
+          "command": "verilogViz.newSandboxFolder",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
+          "group": "1_new@2"
+        },
+        {
+          "command": "verilogViz.duplicateFolder",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
+          "group": "1_new@3"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "verilogViz.compileAndShow",
+        "key": "ctrl+f5",
+        "when": "resourceExtname =~ /\\.(v|sv)$/"
+      },
+      {
+        "command": "verilogViz.sim.stepOnce",
+        "key": "f7",
+        "when": "activeWebviewPanelId == 'verilogVisualizer' || activeCustomEditorId == 'verilogViz.doc'"
+      }
+    ],
+    "configuration": {
+      "title": "Verilog Visualizer",
+      "properties": {
+        "verilogViz.compile.topModule": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "编译的顶层模块名。留空则用入口文件里定义的第一个模块。"
+        },
+        "verilogViz.compile.yosysOptions": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "附加给 yosys 的选项（空格分隔）。"
+        },
+        "verilogViz.compile.noFlatten": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "⛔ 展平层次（保留模块边界）。"
+        },
+        "verilogViz.compile.noOpt": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "⛔ 优化（保留原始门结构）。"
+        },
+        "verilogViz.compile.autoRecompile": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "保存 `.v` 文件时自动重新编译并刷新画布（画布面板开着时）。"
+        },
+        "verilogViz.sandbox.gridSize": {
+          "type": "number",
+          "default": 16,
+          "minimum": 4,
+          "maximum": 64,
+          "markdownDescription": "沙盒画布网格间距（px）。"
+        },
+        "verilogViz.sandbox.showGrid": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "沙盒画布显示网格。"
+        },
+        "verilogViz.sandbox.snapToGrid": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "拖动部件时吸附到网格。"
+        },
+        "verilogViz.sandbox.wireStyle": {
+          "type": "string",
+          "enum": [
+            "metro",
+            "orthogonal",
+            "straight"
+          ],
+          "default": "metro",
+          "markdownDescription": "连线走线方式。"
+        },
+        "verilogViz.sandbox.defaultBits": {
+          "type": "number",
+          "default": 1,
+          "enum": [
+            1,
+            2,
+            4,
+            8,
+            16
+          ],
+          "markdownDescription": "新建 IO 部件的默认位宽。"
+        },
+        "verilogViz.sandbox.autoStartSim": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "打开沙盒时自动运行仿真。"
+        },
+        "verilogViz.sandbox.simSpeedMs": {
+          "type": "number",
+          "default": 10,
+          "minimum": 5,
+          "maximum": 200,
+          "markdownDescription": "仿真步进间隔（ms）。"
+        },
+        "verilogViz.sandbox.foldConstants": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "只读视图把「运算器 + Constant 喂入」折叠成圆圈。"
+        },
+        "verilogViz.bindings.policy": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "strict"
+          ],
+          "default": "auto",
+          "markdownDescription": "部件绑定完整度策略：**auto**＝未录入的实例靠同名兜底解析，并可见提示\"一键写全\"；**strict**＝必须录全——没录入配置的子部件实例⛔ 同名兜底（编译报错、画布不展开，右键「写全绑定配置」一键补齐后恢复）。",
+          "enumItemLabels": [
+            "自动兜底（提示写全）",
+            "严格（必须配全）"
+          ]
+        }
+      }
+    },
+    "viewsWelcome": {
+      "verilogViz.codeFiles": "工作区还没有 `.v/.sv` 文件。\n[新建 Verilog 文件](command:verilogViz.newVerilogFile)\n[导入文件…](command:verilogViz.importFiles)\n也可以在资源管理器里放一个 `.v`，回来直接 `Ctrl+F5` 编译。",
+      "verilogViz.sandboxFiles": "还没有电路文档（`.djs`）。\n[新建电路](command:verilogViz.newSandboxFile)\n[新建文件夹](command:verilogViz.newSandboxFolder)\n[导入文件…](command:verilogViz.importFiles)\n[打开示例电路](command:verilogViz.openExamples)",
+      "verilogViz.hierarchy": "打开一个 `.v / .sv` 文件后，这里按**例化关系**展开模块层次。",
+      "verilogViz.sandboxHierarchy": "打开一个 `.djs` 电路文档后，这里列出它的子电路实例（右键直达部件绑定）。"
+    }
   },
   "scripts": {
     "build": "node esbuild.js",
