@@ -1206,3 +1206,32 @@ e6e33d3（我的 docs 提交）把账本从 **833 行（卷一~四十二完整�
 - 本轮自查两错入册：node -e 内嵌 `${PORT}` 被 PowerShell 吞（一次失败即落差盘 .cjs，在册纪律第 N 次验证）；spawnSync 首参必须为 string（把整命令 split 传 array 即 ERR_INVALID_ARG_TYPE，工具脚本一次写对复用四批）。
 
 *（卷五十七 · 战役落袋为安：五批四十七文件级账目清晰可回滚，红闸归零，push 与否待令）*
+
+---
+
+# 卷五十八 · 协议落地六步：契约层从纸面走进产物（勤提交原则生效，本地 14 连，push 待令）（2026-10-17）
+
+> 用户改则：小步完成即提交，不必等令；push 仍挂起。本轮全部按此执行。
+
+## 提交账（承卷五十七的 6 颗，新增 8 颗，共 14 ahead）
+
+| 步 | 提交 | 一句话 |
+|---|------|--------|
+| 协议① | 6387afb | vv-bind schema 挂 jsonValidation——绑定文件自此编辑器实时挑形状；锁格反吃 schema 正则双向对账 |
+| 协议②(回环) | 479c18b | `_extra` 字段透传：手编 $schema/meta/私货在任何写通道往返后原样在（键序契约顺手钉） |
+| 协议③ | b04dda1 | vv-api.defaults 工具账 + apiSurface 读侧 + 三面一致性对账锁（首稿埋的 PLACEHOLDER 被新锁当场咬出——锁当日立功） |
+| 协议④ | 3e9134a | dispatch RPC 入口先过账：未登记=API_NOT_REGISTERED、关端点=SURFACE_DENIED、requiresApproval=宿主 modal 审批桥（importLegacyData 正/负双臂） |
+| 协议⑤ | 3ac4c2d | .vv/api.json 工程覆盖合流：只收窄（交集/只关不开/审批只加严/取 min），固有属性越权整份拒不作半采纳 |
+| 协议⑥ | b64690e | initProject：.vv/project.json+规则表幂等骨架（maxDepth 唯一出处=8、$schema 头在前、已有文件一字不碰） |
+| 协议⑦ | b0478ae | bindingErrors 文案簇归一 §8 错误码（码名前缀进消息，人读原文零删改＝断言零碎） |
+
+## 台架两笔新账（诚实记）
+- **格内多 boot 踩模块级 currentPanel 旧尸**：resetModules 只在 beforeEach，一格三 boot 时第二次 reveal 死尸面板——协议⑤拆成三个单 boot 臂格（台架边界入册：新格「一 boot 一格」）。
+- **PowerShell 内嵌 node -e 带引号/反引号/$ 三连炸**（本轮第 3、4、5 次）：全部按在册纪律转落差盘 .cjs；`\n` 在模板串里被展开成真实换行把测试文件咬穿一次（esbuild Unterminated string 现形，fix_line 缝合）——落盘脚本内也⛔ 嵌套模板串造字面量。
+
+## 协议 §14 现况
+- ①schema②诊断归一③骨架④契约⑤工程覆盖⑥执行钩子：全数落地（顺序按风险重排为 ①→②回环→③→④→⑤→⑥→②码名，每步自带判据）。
+- 待立项（非今日账）：§9.5 完整审计通道（JSONL+configHash+redact）、§9.4 闸3 profile 授权（api.grants.json，接 MCP/CLI 端点时才有真消费者）、分支 A/B 选型（§10）、webview 旧设置面退役（R150 路标 ③）。
+- 验证读数（终态）：unit **171/171** · 根+ext tsc 0 · vite build ✓ · esbuild+bundle 闸 OK · lint 0 · 浏览器绿集在册 8 组（本日步⑤⑥未触 webview/编译面，r84/r122 在步④后跑绿过，步⑤⑥仅 extension/ts 面＋两新格，全量含它们）。
+
+*（卷五十八完 · 协议不再是文档——schema 挂上、账立起来、闸跑起来、工程收进来，十四连提交笔笔带判据）*
