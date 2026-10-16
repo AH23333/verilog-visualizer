@@ -960,8 +960,7 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ other: 'parts/other.djs' });
   });
 
-  it('协议落地①vv-bind schema：jsonValidation 挂载 + schema 与实现形状互相印证（⛔ 说书两张皮）', () => {
-    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
+  it('协议落地①vv-bind schema：jsonValidation 挂载 + schema 与实现形状互相印证（⛔ 说书两张皮）', () => {    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
     const jv = manifest.contributes.jsonValidation || [];
     const hit = jv.find((x: any) => x.fileMatch === '**/.verilogviz.json');
     expect(hit?.url).toBe('./schemas/vv-bind.schema.json');
@@ -982,6 +981,39 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     for (const k of ['circuits', 'bindings', 'schemaVersion', 'kind', '$schema', 'meta']) expect(topRe.test(k)).toBe(true);
     expect(topRe.test('migrations') || topRe.test('defaults')).toBe(false);
   });
+
+  it('协议落地②字段回环保留：手编 $schema/meta/私货在固化·改名·M7 任一写回后⛔ 被吞', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({
+        $schema: './schemas/vv-bind.schema.json', schemaVersion: '0.3.1', meta: { owner: 'lin' },
+        circuits: [], bindings: { counter: 'lib/counter.djs' },
+      }),
+      'D:/p/lib/top.djs': '{"cells":[{"type":"Subcircuit","celltype":"mux"}]}',
+      'D:/p/lib/counter.djs': '{"cells":[]}', 'D:/p/lib/mux.djs': '{"cells":[]}',
+    } });
+    // 通道一：写全/固化（bindParts/completeBindings 落**文档所在目录层**表——R137 定案）
+    await vscode.commands.executeCommand('verilogViz.completeBindings', vscode.Uri.file('D:/p/lib/top.djs'));
+    const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
+    expect(meta.$schema).toBe('./schemas/vv-bind.schema.json');      // 根表头⛔ 被动过＝完好
+    expect(meta.schemaVersion).toBe('0.3.1');
+    expect(meta.meta).toEqual({ owner: 'lin' });
+    const libMeta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/lib/.verilogviz.json').path.toLowerCase())!));
+    expect(libMeta.bindings.mux).toBe('mux.djs');                    // 写全成行，落 lib 层表（值相对本层）
+    expect(libMeta.circuits).toEqual([]);                            // ensure 新表带缺省，正事之外⛔ 臆造
+    // 通道二：M7 清扫（表含脏值 ⇒ 写回，头部仍在且键序 $schema 在前）
+    fs_noop();
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ $schema: 'x', meta: { keep: 1 }, circuits: [], bindings: { counter: 'parts/counter.djs.djs' } }),
+      'D:/p/parts/counter.djs': '{"cells":[]}',
+    } });
+    await new Promise((r) => setTimeout(r, 20));
+    const raw = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!);
+    const m2 = JSON.parse(raw);
+    expect(m2).toEqual({ $schema: 'x', meta: { keep: 1 }, circuits: [], bindings: { counter: 'parts/counter.djs' } });
+    expect(raw.indexOf('$schema')).toBeLessThan(raw.indexOf('circuits'));   // 序列化惯例：头在前
+  });
+
+  function fs_noop() { /* 前通道与后通道共用桩内存盘，无需额外准备 */ }
 });
 
 describe('R144 质检轮：记录即权威 + 自动兜底显形 + 右键/新建补缺', () => {

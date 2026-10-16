@@ -20,7 +20,15 @@ const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): 
  * （「取消部件」往里加，「设为部件」从里删）。⛔ 用 parts 正向名单：空名单＝全不是部件＝
  * 沙盒画布右键无一件可放（真机踩过）。
  */
-interface VvMeta { circuits: string[]; bindings: Record<string, string> }
+interface VvMeta {
+  circuits: string[];
+  bindings: Record<string, string>;
+  /** 协议头与用户私货（$schema/schemaVersion/kind/meta/…）透传袋——读进写回⛔ 吞
+   *（「手编内容绝不覆盖」承诺的下半句：不只值不覆，**别层的字段也不能被抹**）。 */
+  _extra?: Record<string, unknown>;
+}
+
+const HEAD_KEYS = ['$schema', 'schemaVersion', 'kind', 'meta'];
 
 /** 目录级 `.verilogviz.json` 的uri（dirRel=''＝项目根）。裁决（R137 用户）：
  *  **目录里 json 表示该目录部件的绑定关系**（仿 .vscode/settings.json），
@@ -35,9 +43,12 @@ async function readMetaAt(context: vscode.ExtensionContext, dirRel: string): Pro
   try {
     const raw = await then(vscode.workspace.fs.readFile(metaUri(context, dirRel)));
     const meta = JSON.parse(new TextDecoder().decode(raw));
+    const extra: Record<string, unknown> = {};
+    for (const k of Object.keys(meta || {})) if (k !== 'circuits' && k !== 'bindings') extra[k] = (meta || {})[k];
     return {
       circuits: Array.isArray(meta?.circuits) ? meta.circuits.map(String) : [],
       bindings: meta?.bindings && typeof meta.bindings === 'object' ? meta.bindings : {},
+      _extra: Object.keys(extra).length ? extra : undefined,
     };
   } catch { return null; }
 }
@@ -48,8 +59,14 @@ async function readMeta(context: vscode.ExtensionContext): Promise<VvMeta> {
 
 async function writeMeta(context: vscode.ExtensionContext, meta: VvMeta, dirRel = ''): Promise<void> {
   const uri = metaUri(context, dirRel);
+  const ex = meta._extra || {};
+  const out: Record<string, unknown> = {};
+  for (const k of HEAD_KEYS) if (ex[k] !== undefined) out[k] = ex[k];          // 协议头按惯例顺序置前
+  out.circuits = meta.circuits || [];
+  out.bindings = meta.bindings || {};
+  for (const k of Object.keys(ex)) if (!HEAD_KEYS.includes(k)) out[k] = ex[k]; // 其余私货殿后保序
   await then(vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(uri, '..')));
-  await then(vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(JSON.stringify(meta, null, 2) + '\n')));
+  await then(vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(JSON.stringify(out, null, 2) + '\n')));
 }
 
 /**
@@ -590,7 +607,7 @@ export async function normalizeBindingsDisk(context: vscode.ExtensionContext): P
       if (newKey !== k) { delete m.bindings[k]; m.bindings[newKey] = newVal as string; touched = true; }
       else if (newVal !== raw) { m.bindings[k] = newVal as string; touched = true; }
     }
-    if (touched) { await writeMeta(context, { circuits: m.circuits || [], bindings: m.bindings }, dir); tables.push(dir || '/'); }
+    if (touched) { await writeMeta(context, { circuits: m.circuits || [], bindings: m.bindings, _extra: m._extra }, dir); tables.push(dir || '/'); }
   }
   return { files, tables };
 }
