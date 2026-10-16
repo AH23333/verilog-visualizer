@@ -81,18 +81,18 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
       // R145 多层精控：`宿主文档::实例名` 前缀键只约束那一层；无命中回落裸键。⛔ 无同名兜底。
       const ov = ovs[`${item.name}::${inst}`] ?? ovs[`${item.ownerRel}::${inst}`] ?? ovs[inst];
       if (!ov) {
-        bindingErrors.push(`模块「${inst}」（在 ${item.name}）未录入绑定配置：右键「写全配置」或用绑定面板录制`);
+        bindingErrors.push(`[BINDING_MISSING] 模块「${inst}」（在 ${item.name}）未录入绑定配置：右键「写全配置」或用绑定面板录制`);
         continue;
       }
       if (/\.(v|sv)$/i.test(ov)) {
         const def = vscode.Uri.joinPath(root, ...ov.split('/'));
         try {
           if (!parseVerilogModules(await readText(def)).includes(inst)) {
-            bindingErrors.push(`模块「${inst}」按记录取「${ov}」，但该文件里没有它（recorded → ${ov}）`);
+            bindingErrors.push(`[BINDING_UNRESOLVED_RECORD] 模块「${inst}」按记录取「${ov}」，但该文件里没有它（recorded → ${ov}）`);
             continue;
           }
         } catch {
-          bindingErrors.push(`模块「${inst}」按记录取「${ov}」，但文件不存在（recorded → ${ov}）`);
+          bindingErrors.push(`[BINDING_UNRESOLVED_RECORD] 模块「${inst}」按记录取「${ov}」，但文件不存在（recorded → ${ov}）`);
           continue;
         }
         const key = def.fsPath.toLowerCase();
@@ -108,13 +108,13 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
         try {
           cells = (JSON.parse(await readText(vscode.Uri.joinPath(root, ...ov.split('/')))) || {}).cells;
         } catch {
-          bindingErrors.push(`模块「${inst}」按记录取部件「${ov}」，但文件不存在或不是合法电路 json（recorded → ${ov}）`);
+          bindingErrors.push(`[UNRESOLVED_REF] 模块「${inst}」按记录取部件「${ov}」，但文件不存在或不是合法电路 json（recorded → ${ov}）`);
           continue;
         }
         const conv = djsToVerilog(cells as never, inst);        if (conv.errors.length) { bindingErrors.push(...conv.errors.map((e) => `（${ov}）${e}`)); continue; }
         queue.push({ name: genName, content: conv.verilog, ownerRel: ov });
       } else {
-        bindingErrors.push(`模块「${inst}」绑定为「${ov}」：不支持的绑定目标（只认 .v/.sv 定义或 .djs/.gate 部件）`);
+        bindingErrors.push(`[SCHEMA_INVALID] 模块「${inst}」绑定为「${ov}」：不支持的绑定目标（只认 .v/.sv 定义或 .djs/.gate 部件）`);
       }
     }
   }
