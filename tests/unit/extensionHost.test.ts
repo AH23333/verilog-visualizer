@@ -959,6 +959,29 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     await vscode.commands.executeCommand('verilogViz.deleteFile', vscode.Uri.file('D:/p/parts/counter.djs'));
     expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ other: 'parts/other.djs' });
   });
+
+  it('协议落地①vv-bind schema：jsonValidation 挂载 + schema 与实现形状互相印证（⛔ 说书两张皮）', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
+    const jv = manifest.contributes.jsonValidation || [];
+    const hit = jv.find((x: any) => x.fileMatch === '**/.verilogviz.json');
+    expect(hit?.url).toBe('./schemas/vv-bind.schema.json');
+    const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/schemas/vv-bind.schema.json'), 'utf8'));
+    expect(String(schema.$schema)).toContain('2020-12');
+    const keyRe = new RegExp(schema.properties.bindings.propertyNames.pattern);
+    const valRe = new RegExp(schema.properties.bindings.additionalProperties.pattern);
+    // 键两形态（实现同款）：裸键、宿主::实例 前缀键；非法拒
+    expect(keyRe.test('counter')).toBe(true);
+    expect(keyRe.test('sub/ctrl.djs::adder')).toBe(true);
+    expect(keyRe.test('a:b::c::d')).toBe(false);
+    // 值：带真扩展名的相对路径（../ 越层可、无扩展/错扩展拒——normalizePartName 的读侧镜像）
+    expect(valRe.test('../shared/x.djs')).toBe(true);
+    expect(valRe.test('impl/alu.v')).toBe(true);
+    expect(valRe.test('noext')).toBe(false);
+    // 顶层白名单 = writeMeta 现形 ({circuits,bindings}) + 协议可选头 的并集；野字段拒
+    const topRe = new RegExp(schema.propertyNames.pattern);
+    for (const k of ['circuits', 'bindings', 'schemaVersion', 'kind', '$schema', 'meta']) expect(topRe.test(k)).toBe(true);
+    expect(topRe.test('migrations') || topRe.test('defaults')).toBe(false);
+  });
 });
 
 describe('R144 质检轮：记录即权威 + 自动兜底显形 + 右键/新建补缺', () => {

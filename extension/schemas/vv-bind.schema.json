@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog-visualizer.local/schemas/vv-bind.schema.json",
+  "title": "Verilog Visualizer 目录级绑定配置（域 C · .verilogviz.json）",
+  "description": "CONFIG_PROTOCOL v0.3.1 §5 的现状 schema：目录链合并（文档目录→…→根，近层胜）、绑定值相对本层目录。解析优先：前缀键（宿主::实例）> 裸键（录入）> 自动同名兜底。手编内容 ensure ⛔ 覆盖。",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "可选（现网文件均未带，向后兼容）；读到更高 major 硬红是解析器职责，⛔ 半懂。"
+    },
+    "kind": { "const": "bind" },
+    "$schema": { "type": "string", "description": "编辑提示用；官方校验走扩展 contributes.jsonValidation。" },
+    "meta": {
+      "type": "object",
+      "properties": { "description": { "type": "string" } },
+      "additionalProperties": true
+    },
+    "circuits": {
+      "type": "array",
+      "items": { "type": "string" },
+      "uniqueItems": true,
+      "description": "显式取消部件名单（项目根表语义，根相对路径）；默认=目录内 .djs 皆部件。"
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[^:]+\\.(djs|gate|v|sv|vh)$",
+        "description": "指向部件文件的相对路径（相对本表所在目录，可 ../ 越层；含真扩展名——normalizePartName 写入侧纪律的读侧镜像）。"
+      },
+      "propertyNames": {
+        "pattern": "^[^:]+(::[^:]+)?$",
+        "description": "裸键=表级通用绑定（UI 绑定/固化只产这种）；前缀键 `<宿主文档>::<实例名>`=只约束该宿主层的例化（多层精控，手编专属）。"
+      }
+    }
+  },
+  "propertyNames": {
+    "pattern": "^(schemaVersion|kind|\\$schema|meta|circuits|bindings)$",
+    "description": "未知顶层字段=形状漂移信号（编辑器波浪线报错）；新增字段必须走协议版本（§12.3 演化铁律）。"
+  }
+}

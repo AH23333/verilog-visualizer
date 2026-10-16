@@ -826,7 +826,13 @@
       "verilogViz.sandboxFiles": "还没有电路文档（`.djs`）。\n[新建电路](command:verilogViz.newSandboxFile)\n[新建文件夹](command:verilogViz.newSandboxFolder)\n[导入文件…](command:verilogViz.importFiles)\n[打开示例电路](command:verilogViz.openExamples)",
       "verilogViz.hierarchy": "打开一个 `.v / .sv` 文件后，这里按**例化关系**展开模块层次。",
       "verilogViz.sandboxHierarchy": "打开一个 `.djs` 电路文档后，这里列出它的子电路实例（右键直达部件绑定）。"
-    }
+    },
+    "jsonValidation": [
+      {
+        "fileMatch": "**/.verilogviz.json",
+        "url": "./schemas/vv-bind.schema.json"
+      }
+    ]
   },
   "scripts": {
     "build": "node esbuild.js",
