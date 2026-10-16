@@ -246,6 +246,33 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
     expect(handled).toEqual(sent);
   });
 
+  it('API 契约对账锁（阶段二第一刀）：vv-api.defaults 的 rpc 投影＝dispatch 表、ui 投影全在命令面板、schema 形状自检', () => {
+    const api = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/api/vv-api.defaults.json'), 'utf8'));
+    const tools: Array<{ id: string; t: any }> = Object.entries(api.tools).map(([id, t]) => ({ id, t: t as any }));
+    expect(tools.length).toBeGreaterThanOrEqual(10);
+    // ① 工具 id 词表（域.动词 闭集形状）
+    const idRe = /^(circuit|project|bindings|compile|host)\.[a-z][A-Za-z]*$/;
+    for (const { id } of tools) expect(`[${id}] ` + idRe.test(id)).toBeTruthy();
+    // ② rpc surfaces 投影 == dispatch case 表（双向：漏登/幽灵都红）
+    const rpcRefs = tools.filter(({ t }) => t.surfaces.includes('rpc')).map(({ t }) => t.ref).sort();
+    expect(rpcRefs).toEqual(handled);
+    // ③ ui 投影逐颗存在于 contributes.commands
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
+    const cmdIds = new Set((manifest.contributes.commands || []).map((c: any) => c.command));
+    for (const { id, t } of tools.filter(({ t }) => t.surfaces.includes('ui')))
+      expect(`${id}→${t.ref} 在 commands: ` + cmdIds.has(t.ref)).toBeTruthy();
+    // ④ 字段词表与 schema 同源（改枚举必先改 schema——词表漂移＝契约说谎）
+    const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/schemas/vv-api.schema.json'), 'utf8'));
+    const permEnum: string[] = schema.properties.tools.additionalProperties.properties.perm.enum;
+    const seEnum: string[] = schema.properties.tools.additionalProperties.properties.sideEffects.enum;
+    for (const { id, t } of tools) {
+      expect(`${id}.perm:${t.perm} 在词表 ` + permEnum.includes(t.perm)).toBeTruthy();
+      expect(`${id}.sideEffects:${t.sideEffects} 在词表 ` + seEnum.includes(t.sideEffects)).toBeTruthy();
+      expect(t.surfaces.length).toBeGreaterThan(0);                    // 全空 surfaces＝没人可达的死登记（要么开一端要么删账）
+      expect(`[${id}] surfaces 不许有重复项 ` + (new Set(t.surfaces).size === t.surfaces.length)).toBeTruthy();
+    }
+  });
+
   it('面板释放登记只有**一处**，且在两条装载路共用的 wirePanel 里', () => {
     // 面板有两个来路：`openPanel`（开局自动/compileAndShow 复用）与 serializer（窗口重启恢复）。
     // 只挂在 openPanel 上时：恢复出面板 → 关掉 → `currentPanel` 仍指着已释放的那颗

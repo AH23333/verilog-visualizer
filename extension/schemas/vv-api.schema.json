@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog-visualizer.local/schemas/vv-api.schema.json",
+  "title": "Verilog Visualizer 统一 API 层·工具契约（CONFIG_PROTOCOL §9）",
+  "description": "阶段二第一刀：内置默认注册表（产品随包分发）+ 工程 `.vv/api.json` 覆盖 surfaces 开关。工具=端点共享的能力账；UI 命令面板/RPC/MCP/CLI 是它的投影。",
+  "type": "object",
+  "required": ["apiVersion", "tools"],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "apiVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "sources": { "enum": ["builtin", "project"] },
+    "tools": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^(circuit|project|bindings|compile|host)\\.[a-z][A-Za-z]*$" },
+      "additionalProperties": {
+        "type": "object",
+        "required": ["perm", "sideEffects", "surfaces", "ref"],
+        "properties": {
+          "perm": { "enum": ["read", "file-write", "config-write", "process", "net"], "description": "单一词表（§9.2 v0.3.1 勘误定版）" },
+          "sideEffects": { "enum": ["none", "file-write", "config-write", "process"] },
+          "requiresApproval": { "type": "boolean", "description": "固有属性=下限：profile ⛔ 放宽（§9.4）" },
+          "surfaces": { "type": "array", "items": { "enum": ["ui", "rpc", "mcp", "cli"] }, "uniqueItems": true, "description": "本工具开放的端点全集；空数组=内部封存（RPC 内部通道等前端过渡期登记）" },
+          "ref": { "type": "string", "minLength": 1, "description": "实现锚：rpc method 名或 workbench command id" },
+          "timeoutMs": { "type": "integer", "minimum": 1 },
+          "maxConcurrent": { "type": "integer", "minimum": 1 },
+          "idempotent": { "type": "boolean" },
+          "since": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" }
+        },
+        "propertyNames": { "pattern": "^(perm|sideEffects|requiresApproval|surfaces|ref|timeoutMs|maxConcurrent|idempotent|since|description)$" },
+        "additionalProperties": false
+      }
+    },
+    "surfacesGlobal": {
+      "type": "object",
+      "properties": { "ui": { "type": "boolean" }, "rpc": { "type": "boolean" }, "mcp": { "type": "boolean" }, "cli": { "type": "boolean" } },
+      "description": "闸 1：端点总开关（默认全 true；工程 .vv/api.json 覆盖处）"
+    }
+  },
+  "additionalProperties": false
+}

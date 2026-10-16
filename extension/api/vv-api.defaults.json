@@ -1,0 +1,20 @@
+{
+  "schemaVersion": "0.3.1",
+  "apiVersion": "0.1.0",
+  "sources": "builtin",
+  "surfacesGlobal": { "ui": true, "rpc": true, "mcp": false, "cli": false },
+  "tools": {
+    "host.appendOutput":        { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "appendOutput", "idempotent": true, "since": "0.1.0", "description": "webview→输出面板日志行（无副作用的转述）" },
+    "host.copyToSandbox":      { "perm": "file-write", "sideEffects": "file-write",   "surfaces": ["rpc"], "ref": "copyToSandbox", "requiresApproval": false, "since": "0.1.0", "description": "编译图→沙盒 .djs 落盘（子部件逐条显式绑定，M5）" },
+    "host.getAllBindings":     { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "getAllBindings", "idempotent": true, "since": "0.1.0" },
+    "host.getConfig":          { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "getConfig", "idempotent": true, "since": "0.1.0" },
+    "host.importLegacyData":   { "perm": "file-write", "sideEffects": "file-write",   "surfaces": ["rpc"], "ref": "importLegacyData", "requiresApproval": true, "since": "0.1.0", "description": "localStorage 旧档一次性搬运（幂等由文件不覆盖保证）" },
+    "host.jumpToSource":       { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "jumpToSource", "idempotent": true, "since": "0.1.0" },
+    "host.publishProblems":    { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "publishProblems", "idempotent": true, "since": "0.1.0" },
+    "host.saveExportFile":     { "perm": "file-write", "sideEffects": "file-write",   "surfaces": ["rpc"], "ref": "saveExportFile", "since": "0.1.0", "description": "用户已选目标路径才抵达＝审批隐含在原生保存弹窗" },
+    "host.setDocBindings":     { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["rpc"], "ref": "setDocBindings", "since": "0.1.0", "description": "绑定链写+撞名/改名随迁；watcher 广播回灌＝同权即时生效" },
+    "compile.auditBindings":   { "perm": "read",       "sideEffects": "none",         "surfaces": ["ui"], "ref": "verilogViz.auditBindings", "idempotent": true, "since": "0.1.0" },
+    "compile.completeBindings":{ "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "verilogViz.completeBindings", "since": "0.1.0" },
+    "compile.compileAndShow":  { "perm": "process",    "sideEffects": "process",      "surfaces": ["ui"],  "ref": "verilogViz.compileAndShow", "idempotent": false, "since": "0.1.0" }
+  }
+}
