@@ -80,7 +80,7 @@ describe('开局面板：判据真的接在 activate 上（⛔ 只是"纯函数�
       'verilogViz.auditBindings', 'verilogViz.bindParts', 'verilogViz.compileAndShow',
       'verilogViz.completeBindings', 'verilogViz.deleteFile',
       'verilogViz.duplicateFile', 'verilogViz.duplicateFolder', 'verilogViz.exportSvg',
-      'verilogViz.importFiles', 'verilogViz.materializeBindings',
+      'verilogViz.importFiles', 'verilogViz.initProject', 'verilogViz.materializeBindings',
       'verilogViz.newSandboxFile',
       'verilogViz.newSandboxFolder', 'verilogViz.newVerilogFile',
       'verilogViz.openBindingConfig',
@@ -474,6 +474,32 @@ describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
     expect(String(closed.error)).toContain('API_SURFACE_DENIED');
     const { canSurface } = await import('../../extension/src/apiSurface');
     expect(canSurface('host.getConfig', 'mcp')).toBe(false);        // 文件里想开 mcp＝无效（只关不开）
+  });
+
+  it('协议⑥initProject：首跑建 .vv/project.json + .gitignore 规则表；maxDepth=8 与实现对齐；二跑零新建', async () => {
+    await boot({ folders: ['D:/p'], seed: {} });
+    await vscode.commands.executeCommand('verilogViz.initProject');
+    const raw = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.vv/project.json').path.toLowerCase())!);
+    const pj = JSON.parse(raw);
+    expect(pj.kind).toBe('project');
+    expect(pj.schemaVersion).toBe('0.3.1');
+    expect(pj.bindings.defaults.resolution.maxDepth).toBe(8);           // 唯一默认值出处 ↔ collectInstanceHits 常量
+    expect(pj.paths.cacheDir).toBe('.vv/cache');
+    expect(raw.indexOf('"schemaVersion"')).toBeLessThan(raw.indexOf('"paths"'));   // 头在前（写序契约）
+    const gi = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.vv/.gitignore').path.toLowerCase())!);
+    for (const line of ['env.json', 'runtime.json', 'cache/', 'agent/', 'audit/']) expect(gi).toContain(line);
+    const msgs1 = vscode.state.infoMessages.length;
+    await vscode.commands.executeCommand('verilogViz.initProject');    // 二跑：一颗不覆零新建
+    expect(vscode.state.infoMessages.length).toBe(msgs1 + 1);
+    expect(vscode.state.infoMessages[vscode.state.infoMessages.length - 1]).toContain('无需初始化');
+    expect(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.vv/project.json').path.toLowerCase())!)).toBe(raw);
+  });
+
+  it('协议⑥幂等护手编：已有自定义 project.json 时 initProject ⛔ 一字不碰', async () => {
+    const mine = JSON.stringify({ schemaVersion: '0.3.1', kind: 'project', meta: { name: 'my-board' }, paths: { outDir: 'out', cacheDir: 'tmp' }, bindings: { defaults: { resolution: { searchOrder: ['sameFolder', 'root', 'global'], maxDepth: 6, allowSelfReference: false } } } }, null, 2) + '\n';
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/.vv/project.json': mine } });
+    await vscode.commands.executeCommand('verilogViz.initProject');
+    expect(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.vv/project.json').path.toLowerCase())!)).toBe(mine);
   });
 
   it('jumpToSource：打开文件并滚到那一行（画布双击器件 → 源码）', async () => {

@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog-visualizer.local/schemas/vv-project.schema.json",
+  "title": "Verilog Visualizer 工程共识配置（域 B · .vv/project.json）",
+  "description": "阶段一尾/阶段二的最小面：路径约定 + 解析默认（maxDepth 唯一出处）。绑定记录⛔ 在此（唯一真源＝目录级 .verilogviz.json，§5）；agent 分支字段⛔ 提前出现（§13.3 挂起清单管理）。",
+  "type": "object",
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "kind": { "const": "project" },
+    "$schema": { "type": "string" },
+    "meta": {
+      "type": "object",
+      "properties": { "name": { "type": "string" }, "description": { "type": "string" } },
+      "propertyNames": { "pattern": "^(name|description)$" }
+    },
+    "paths": {
+      "type": "object",
+      "properties": {
+        "outDir": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*\\.\\.).[^:]+$" },
+        "cacheDir": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*\\.\\.).[^:]+$" },
+        "agentDir": { "type": "string", "pattern": "^(?!/)(?!.*\\\\)(?!.*\\.\\.).[^:]+$" }
+      },
+      "required": ["outDir", "cacheDir"],
+      "propertyNames": { "pattern": "^(outDir|cacheDir|agentDir)$" },
+      "description": "全部相对工程根；⛔ 绝对路径/盘符/.. 逃逸（写入方义务）。agentDir 缺省 .vv/agent。"
+    },
+    "bindings": {
+      "type": "object",
+      "properties": {
+        "defaults": {
+          "type": "object",
+          "properties": {
+            "resolution": {
+              "type": "object",
+              "properties": {
+                "searchOrder": { "const": ["sameFolder", "root", "global"] },
+                "maxDepth": { "type": "integer", "minimum": 1, "maximum": 32 },
+                "allowSelfReference": { "type": "boolean" }
+              },
+              "required": ["maxDepth"]
+            }
+          }
+        }
+      },
+      "description": "解析默认（maxDepth 唯一出处，实现常量对齐）；具体绑定记录在目录级 .verilogviz.json ⛔ 重复于此。",
+      "propertyNames": { "pattern": "^defaults$" }
+    }
+  },
+  "required": ["schemaVersion", "kind"],
+  "propertyNames": { "pattern": "^(schemaVersion|kind|\\$schema|meta|paths|bindings)$" }
+}

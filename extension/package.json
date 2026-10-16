@@ -253,6 +253,11 @@
         "command": "verilogViz.completeBindings",
         "title": "写全绑定配置",
         "icon": "$(checklist)"
+      },
+      {
+        "command": "verilogViz.initProject",
+        "title": "初始化工程配置（.vv/）",
+        "icon": "$(root-folder)"
       }
     ],
     "menus": {
@@ -424,6 +429,11 @@
           "command": "verilogVisualizer.refreshTrees",
           "when": "filesExplorerFocus && !resourceScheme && !explorerResourceIsFolder && !resourceExtname",
           "group": "9vv@1"
+        },
+        {
+          "command": "verilogViz.initProject",
+          "when": "filesExplorerFocus && !resourceScheme && !explorerResourceIsFolder && !resourceExtname",
+          "group": "5vv@1"
         }
       ],
       "view/title": [
@@ -835,6 +845,10 @@
       {
         "fileMatch": "**/.vv/api.json",
         "url": "./schemas/vv-api.schema.json"
+      },
+      {
+        "fileMatch": "**/.vv/project.json",
+        "url": "./schemas/vv-project.schema.json"
       }
     ]
   },

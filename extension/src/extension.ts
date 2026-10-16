@@ -24,6 +24,7 @@ import {
 } from './sandboxFiles';
 import { openBindingPanel } from './bindingPanel';
 import { loadProjectApiOverride } from './apiSurface';
+import { initProject } from './vvProject';
 import { parseVerilogInstances } from './verilogParseLite';
 import { ProjectStore, type FsLike } from './projectStore';
 import { VvFilesWebviewProvider } from './filesWebview';
@@ -212,6 +213,15 @@ export function activate(context: vscode.ExtensionContext) {
       void vscode.window.showInformationMessage(written.length
         ? `已写全 ${written.length} 条绑定进「${docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '项目根'}」的 ${META_FILE}。`
         : `无需写全：${docRel} 的实例解析记录已是完整状态。`);
+    }),
+
+    // 协议步⑥：.vv/ 工程骨架初始化（幂等——已有文件一颗不覆，只补缺）
+    vscode.commands.registerCommand('verilogViz.initProject', async (arg: any) => {
+      const r = await initProject(context);
+      void vscode.window.showInformationMessage(r.created.length
+        ? `已初始化 .vv/：${r.created.map((p) => p.split('/').pop()).join(' + ')}${r.kept.length ? `（${r.kept.length} 个已存在，保持原样）` : ''}`
+        : '工程配置就绪，无需初始化（.vv/project.json 与规则表都在位）。');
+      void arg;
     }),
 
     // R144 右键补全家（照旧 UI 清单）：复制文件夹 / 导入文件（目录右键定位落点，标题钮＝项目根）
