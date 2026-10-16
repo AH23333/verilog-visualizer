@@ -28,6 +28,7 @@
 // 定义，所有绑定实例随之生效（编译模式 moduleBindings 语义）。
 
 import { sandboxStore, baseName, dirOf, type SandboxFile } from '../store/sandboxStore';
+import { parentDir } from './vpath';
 import { cellsToCircuitJson, circuitJsonToCells } from './subcircuitView';
 import { serializeGraphCells } from './sandboxSerialize';
 import { normalizeIoLabels } from './verilog';
@@ -82,7 +83,7 @@ export function getBindingAudit(rootCells?: any[]): Array<{ ctx: string; name: s
   const files = partFileSource ? partFileSource() : sandboxStore.list();
   const base = (f: SandboxFile) => baseName(f.name).replace(/\.(djs|gate|json)$/i, '');
   const dirOfF = (f: SandboxFile) => dirOf(f);
-  const dirOfCtx = (ctx: string) => (ctx.includes('/') ? ctx.slice(0, ctx.lastIndexOf('/')) : '');
+  const dirOfCtx = (ctx: string) => parentDir(ctx);   // 单一主人：vpath.parentDir（r90 纪律，⛔ 手写切目录）
   const scoreHit = (scope: string, name: string): SandboxFile | null => {
     const cands = files.filter((f) => base(f) === name);
     if (!cands.length) return null;
