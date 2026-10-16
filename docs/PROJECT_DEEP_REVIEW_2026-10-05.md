@@ -1181,3 +1181,28 @@ e6e33d3（我的 docs 提交）把账本从 **833 行（卷一~四十二完整�
 - 工作区照旧不提交（M1–M7 累积改动体积已成山，建议用户尽快自提一版防并行覆写）。
 
 *（卷五十六完 · M1–M7 全线合拢：绑定从「放置/复制/手编/清理」全周期都有显式账，交接方与接刀方读数互验通过）*
+
+---
+
+# 卷五十七 · 落袋：绑定战役五批提交 + 预存在红闸清零（r90 违例归位，三兄弟一组 URL 救活）（2026-10-17）
+
+## 一、五批提交账（本地 agent 分支，5 ahead of origin/agent，未 push 待令）
+
+| 批 | 提交 | 内容 | 提交前自证 |
+|---|------|------|-----------|
+| 1 | d6943f5 docs(绑定战役) | 账本卷四十六~五十六 + CONFIG_PROTOCOL v0.3.1 + MIGRATION | —（纯文档）|
+| 2 | 95df75d feat(webview) | doc/canvas/gates/binding 四入口 + 旧 React 面拆除（-7705 行）+ gateSystem R145/146 + M4/M6 双通道 + SandboxCanvas 913→3377 + vite 配置 | vite build ✓ |
+| 3 | 06cfc13 feat(扩展) | sandboxFiles 全链 / compilePanel 权威+strict+M2 闭包 / filesWebview / bindingPanel / djsVerilog / M3-M7 命令面 / grammar-media 收尾 | ext tsc + esbuild ✓（bundle 闸同-build 过）|
+| 4 | 886e03f test(闸门) | unit 162 全账（R137/144/145/146/M5/M7 专块）+ stub 贴真宿主 + 绿集四组重指 + r150-bundle-gate + djsVerilog.test | vitest 162/162 ✓ |
+| 5 | 97dfc6b test(闸门·红闸清零) | r13/r60/r123 boot URL 迁 gates.html；gateSystem dirOfCtx → vpath.parentDir | 五连绿+三兄弟 3/3（28 格）+ unit/tsc/lint ✓ |
+
+## 二、预存在红闸结案
+- **r13/r60/r123（28 格）**：根因只有一处——boot URL 还指 root-app（`/`），R150 换轨后该入口不存在。迁 `gates.html` 后**零断言改动直接全绿**——交接代理"非我引入、挂账待裁"的定性正确，但低估了修复成本（一行）。
+- **r90-[1]**：唯一违例是我在 R150 写 getBindingAudit 时手抄的 dirOfCtx（甲型拼法）；改引 vpath.parentDir 主人后 3/3，且 [3] 反向臂（共现 20，⛔ 删消费者变绿）同时过——**闸的设计救了自己**：它同时防"手写漂移"和"为绿而删"。
+- blocked 区自此清零；浏览器闸在册八组全绿（r13 15 / r60 7 / r68 8 / r84 7 / r90 3 / r122 9 / r123 6 / r12 28 格）。
+
+## 三、交接与质检补记（流程账）
+- 交接代理读数全复现（诚实），唯一账实差=M5 标记滞后（实际完成）；本轮按 mem/current 断点接完 M6 双通道、M7 清扫、协议 v0.3.1 三补丁，并把它的 §9.4 与我后补的重复段对账去重（正本独存）。
+- 本轮自查两错入册：node -e 内嵌 `${PORT}` 被 PowerShell 吞（一次失败即落差盘 .cjs，在册纪律第 N 次验证）；spawnSync 首参必须为 string（把整命令 split 传 array 即 ERR_INVALID_ARG_TYPE，工具脚本一次写对复用四批）。
+
+*（卷五十七 · 战役落袋为安：五批四十七文件级账目清晰可回滚，红闸归零，push 与否待令）*
