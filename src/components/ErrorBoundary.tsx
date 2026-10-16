@@ -91,7 +91,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
             style={{
               padding: '8px 20px',
               background: 'var(--accent)',
-              color: '#fff',
+              color: 'var(--vscode-button-foreground, #fff)',
               border: 'none',
               borderRadius: 'var(--radius-md)',
               fontSize: 'var(--fs-md)',

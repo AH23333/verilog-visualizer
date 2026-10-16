@@ -1,10 +1,11 @@
 // Global settings store
-// Manages font size, default view mode, sandbox options, and other UI preferences
+// Manages font size, default view mode, sandbox options, and other UI preferences.
+//
+// 片 5（配置归 contributes.configuration）后这里**不再持久化**：初值一律内置默认，
+// 真源在宿主（VS Code settings）。宿主推送的配置经 `applyHostConfig` 落进来，
+// 画布/工具条照旧读 getter + subscribe 刷新。
 
-const FONT_SIZE_KEY = 'verilog-viz-font-size';
-const DEFAULT_VIEW_KEY = 'verilog-viz-default-view';
-const SANDBOX_KEY = 'verilog-viz-sandbox-settings';
-const AUTOSAVE_KEY = 'verilog-viz-autosave-settings';
+import type { HostConfig } from '../lib/host/host';
 
 export type ViewMode = 'circuit' | 'code' | 'split' | 'sandbox';
 
@@ -51,49 +52,10 @@ const DEFAULT_SANDBOX: SandboxSettings = {
   foldConstants: true,
 };
 
-function getSavedFontSize(): number {
-  try {
-    const saved = localStorage.getItem(FONT_SIZE_KEY);
-    if (saved) {
-      const n = parseInt(saved, 10);
-      if (n >= 8 && n <= 36) return n;
-    }
-  } catch {}
-  return 16;
-}
-
-function getSavedDefaultView(): ViewMode {
-  try {
-    const saved = localStorage.getItem(DEFAULT_VIEW_KEY);
-    if (saved === 'code' || saved === 'circuit') return saved;
-  } catch {}
-  return 'circuit';
-}
-
-function getSavedSandbox(): SandboxSettings {
-  try {
-    const raw = localStorage.getItem(SANDBOX_KEY);
-    if (raw) return { ...DEFAULT_SANDBOX, ...JSON.parse(raw) };
-  } catch {}
-  return { ...DEFAULT_SANDBOX };
-}
-
-function getSavedAutosave(): AutosaveSettings {
-  try {
-    const raw = localStorage.getItem(AUTOSAVE_KEY);
-    if (raw) {
-      const p = JSON.parse(raw);
-      const intervalMs = Math.min(60000, Math.max(500, Number(p.intervalMs) || DEFAULT_AUTOSAVE.intervalMs));
-      return { enabled: p.enabled !== false, intervalMs };
-    }
-  } catch {}
-  return { ...DEFAULT_AUTOSAVE };
-}
-
-let fontSize: number = getSavedFontSize();
-let defaultViewMode: ViewMode = getSavedDefaultView();
-let sandbox: SandboxSettings = getSavedSandbox();
-let autosave: AutosaveSettings = getSavedAutosave();
+let fontSize: number = 16;
+let defaultViewMode: ViewMode = 'circuit';
+let sandbox: SandboxSettings = { ...DEFAULT_SANDBOX };
+let autosave: AutosaveSettings = { ...DEFAULT_AUTOSAVE };
 let listeners: Array<() => void> = [];
 
 function notify() {
@@ -102,6 +64,10 @@ function notify() {
 
 // Apply font size to document root
 function applyFontSize(size: number) {
+  // R145：无头环境（vitest node 环境跑 gateSystem 纯逻辑单测——依赖链
+  // gateSystem→sandboxStore→settingsStore 会撞这行）⛔ 摸 DOM。样式应用归样式 owner（浏览器/壳），
+  // 存储层在无 DOM 处静默跳过＝本来就该有的形状。
+  if (typeof document === 'undefined') return;
   document.documentElement.style.fontSize = `${size}px`;
   document.documentElement.style.setProperty('--editor-font-size', `${size}px`);
 }
@@ -115,7 +81,6 @@ export const settingsStore = {
 
   setFontSize(size: number): void {
     fontSize = Math.min(36, Math.max(8, size));
-    localStorage.setItem(FONT_SIZE_KEY, String(fontSize));
     applyFontSize(fontSize);
     notify();
   },
@@ -138,7 +103,6 @@ export const settingsStore = {
 
   setDefaultViewMode(mode: ViewMode): void {
     defaultViewMode = mode;
-    localStorage.setItem(DEFAULT_VIEW_KEY, mode);
     notify();
   },
 
@@ -149,13 +113,11 @@ export const settingsStore = {
 
   setSandboxSettings(patch: Partial<SandboxSettings>): void {
     sandbox = { ...sandbox, ...patch };
-    try { localStorage.setItem(SANDBOX_KEY, JSON.stringify(sandbox)); } catch {}
     notify();
   },
 
   resetSandboxSettings(): void {
     sandbox = { ...DEFAULT_SANDBOX };
-    try { localStorage.setItem(SANDBOX_KEY, JSON.stringify(sandbox)); } catch {}
     notify();
   },
 
@@ -168,13 +130,24 @@ export const settingsStore = {
     const next = { ...autosave, ...patch };
     next.intervalMs = Math.min(60000, Math.max(500, Number(next.intervalMs) || DEFAULT_AUTOSAVE.intervalMs));
     autosave = next;
-    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autosave)); } catch {}
     notify();
   },
 
   resetAutosaveSettings(): void {
     autosave = { ...DEFAULT_AUTOSAVE };
-    try { localStorage.setItem(AUTOSAVE_KEY, JSON.stringify(autosave)); } catch {}
+    notify();
+  },
+
+  /**
+   * 宿主配置落店（片 5：配置真源在 contributes.configuration）：
+   * patch 沙盒设置、字号跟随 editor.fontSize。宿主每次 configChanged 都会重推全量。
+   */
+  applyHostConfig(cfg: HostConfig): void {
+    if (cfg?.sandbox) sandbox = { ...DEFAULT_SANDBOX, ...cfg.sandbox };
+    if (typeof cfg?.editorFontSize === 'number' && cfg.editorFontSize > 0) {
+      fontSize = Math.min(36, Math.max(8, Math.round(cfg.editorFontSize)));
+      applyFontSize(fontSize);
+    }
     notify();
   },
 

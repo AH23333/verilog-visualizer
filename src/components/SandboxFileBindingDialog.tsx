@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
+import { baseName, dirOf, type SandboxFile } from '../store/sandboxStore';
 
 /**
  * 沙盒「绑定...」文件级对话框（R100）—— 样式与编译模式 BindingDialog **完全一致**
@@ -24,6 +25,12 @@ interface Props {
   celltypes: { name: string; count: number }[];
   /** 可选部件文件 */
   parts: FileBindingPart[];
+  /**
+   * 额外部件源（doc 模式：gateSystem.getPartFileSource()，即宿主 siblings + 会话内
+   * sandboxStore part 的合成源）。打开时与 `parts` 合并（按 id 去重、本源在前），
+   * 普通沙盒模式不传 —— 候选仍只来自 `parts`，行为不变。
+   */
+  partSource?: () => SandboxFile[];
   /** 当前解析（自动打分）结果：绑定名 → 部件文件 id */
   autoMap: Record<string, string>;
   /** 已保存的显式绑定 */
@@ -33,8 +40,21 @@ interface Props {
 }
 
 export default function SandboxFileBindingDialog({
-  fileName, isPart, celltypes, parts, autoMap, initial, onConfirm, onCancel,
+  fileName, isPart, celltypes, parts, partSource, autoMap, initial, onConfirm, onCancel,
 }: Props) {
+  // 候选部件 = partSource（doc 模式宿主源，排前）+ parts（普通沙盒模式唯一来源），
+  // 按 id 去重。文件名显示与 refreshGates 同一规则：去扩展名 + 所在文件夹。
+  const allParts: FileBindingPart[] = (() => {
+    const out: FileBindingPart[] = (partSource?.() ?? []).map((f) => ({
+      id: f.id,
+      name: baseName(f.name).replace(/\.(djs|gate|json)$/i, ''),
+      folder: dirOf(f),
+    }));
+    for (const p of parts) {
+      if (!out.some((x) => x.id === p.id)) out.push(p);
+    }
+    return out;
+  })();
   const [bindings, setBindings] = useState<Record<string, string>>(() => {
     const ini: Record<string, string> = { ...(initial || {}) };
     for (const ct of celltypes) {
@@ -138,8 +158,8 @@ export default function SandboxFileBindingDialog({
               </div>
               {celltypes.map((ct) => {
                 const boundFileId = bindings[ct.name];
-                const boundPart = boundFileId ? parts.find((p) => p.id === boundFileId) : undefined;
-                const autoName = parts.find((p) => p.id === autoMap[ct.name])?.name;
+                const boundPart = boundFileId ? allParts.find((p) => p.id === boundFileId) : undefined;
+                const autoName = allParts.find((p) => p.id === autoMap[ct.name])?.name;
                 return (
                   <div
                     key={ct.name}
@@ -151,8 +171,8 @@ export default function SandboxFileBindingDialog({
                       padding: '6px 8px',
                       marginBottom: 4,
                       borderRadius: 4,
-                      background: boundPart ? 'rgba(0, 200, 0, 0.05)' : 'rgba(255, 150, 0, 0.08)',
-                      border: boundPart ? '1px solid rgba(0, 200, 0, 0.15)' : '1px solid rgba(255, 150, 0, 0.2)',
+                      background: boundPart ? 'color-mix(in srgb, var(--success) 5%, transparent)' : 'color-mix(in srgb, var(--warning) 8%, transparent)',
+                      border: boundPart ? '1px solid color-mix(in srgb, var(--success) 15%, transparent)' : '1px solid color-mix(in srgb, var(--warning) 20%, transparent)',
                     }}
                   >
                     <code style={{
@@ -182,7 +202,7 @@ export default function SandboxFileBindingDialog({
                       <option value="">
                         {autoName ? `自动：${autoName}` : '-- 选择部件文件 --'}
                       </option>
-                      {parts.map((p) => (
+                      {allParts.map((p) => (
                         <option key={p.id} value={p.id}>
                           {p.name}{p.folder ? `（${p.folder}/）` : ''}
                         </option>
@@ -230,7 +250,7 @@ export default function SandboxFileBindingDialog({
               border: 'none',
               borderRadius: 'var(--radius-md)',
               background: 'var(--accent)',
-              color: '#fff',
+              color: 'var(--vscode-button-foreground, #fff)',
               cursor: 'pointer',
               fontSize: 'var(--fs-md)',
               fontWeight: 600,

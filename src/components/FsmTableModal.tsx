@@ -143,7 +143,7 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
       <div onClick={(e) => e.stopPropagation()}
         style={{ width: 560, maxHeight: '82vh', display: 'flex', flexDirection: 'column',
           background: 'var(--surface, #fff)', border: '1px solid var(--border, #ccc)',
-          borderRadius: 'var(--radius-md, 8px)', boxShadow: '0 12px 40px rgba(0,0,0,.35)',
+          borderRadius: 'var(--radius-md, 8px)', boxShadow: '0 12px 40px var(--vscode-widget-shadow, rgba(0,0,0,.35))',
           color: 'var(--text, #222)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
           borderBottom: '1px solid var(--border-subtle, #ddd)', fontSize: 'var(--fs-sm, 12px)', fontWeight: 700 }}>
@@ -214,7 +214,7 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
               borderRadius: 'var(--radius-sm, 4px)', background: 'transparent', color: 'var(--text, #333)' }}>取消</button>
           <button data-fsm-apply="" onClick={apply}
             style={{ padding: '3px 14px', cursor: 'pointer', border: 'none', borderRadius: 'var(--radius-sm, 4px)',
-              background: 'var(--accent, #2563eb)', color: '#fff', fontWeight: 600 }}>应用（重建器件）</button>
+              background: 'var(--accent, #2563eb)', color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600 }}>应用（重建器件）</button>
         </div>
       </div>
     </div>

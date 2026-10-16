@@ -72,7 +72,7 @@ export default function IOPanel({ host, open, onClose, inputsTitle = 'Inputs', o
               width: 15, height: 15, marginLeft: 2, borderRadius: 2, cursor: 'pointer',
               fontSize: '0.5625rem', fontWeight: 700, lineHeight: 1,
               background: b === '1' ? 'var(--accent)' : 'var(--surface)',
-              color: b === '1' ? '#fff' : 'var(--text-muted)',
+              color: b === '1' ? 'var(--vscode-button-foreground, #fff)' : 'var(--text-muted)',
               border: '1px solid var(--border)',
             }}
           >{b === '1' ? '1' : '0'}</span>

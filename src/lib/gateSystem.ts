@@ -34,7 +34,20 @@ import { normalizeIoLabels } from './verilog';
 import { io_ui } from 'yosys2digitaljs/core';
 
 /** 绑定名 → 定义文件。scope = 实例所在画布文件的文件夹（优先作用域）。 */
-export interface PartRef { file: SandboxFile; legacy: boolean; }
+export interface PartRef { file: SandboxFile; legacy: boolean; origin?: 'binding' | 'auto'; }
+
+// ── .djs 文档编辑器（doc.html 入口）的部件源（片 5）──────────────────
+// 文档编辑器没有沙盒文件系统：部件解析源是**工作区里的同级 .djs 文档**
+// （宿主 init/revert 推送的 siblings）。DocApp 把它们映射成伪 SandboxFile
+// （role:'part'，打分规则照旧）挂进来；resolvePartRef 优先走这份源，
+// 没挂（普通沙盒模式）才回落 sandboxStore.list()。
+let partFileSource: (() => SandboxFile[]) | null = null;
+export function setPartFileSource(src: (() => SandboxFile[]) | null | undefined): void {
+  partFileSource = typeof src === 'function' ? src : null;
+}
+export function getPartFileSource(): (() => SandboxFile[]) | null {
+  return partFileSource;
+}
 
 // R100 文件级部件绑定（对齐编译模式 file.moduleBindings）：活动文件声明的
 // 「绑定名 → 部件文件 id」映射，解析时**优先于**文件夹作用域打分。
@@ -46,20 +59,97 @@ export function setActivePartBindings(b: Record<string, string> | undefined | nu
 export function getActivePartBindings(): Record<string, string> {
   return { ...activePartBindings };
 }
+// R145 多层精控：当前活动文档的名（根相对，如 'main.djs'）。顶层展开时 resolvePartRef
+// 的 ctx 默认落它——表里 'main.djs::adder' 就只管 main 这张画布的 adder 实例。
+let activeCtxDoc = '';
+export function setActiveCtxDoc(name: string | undefined | null): void {
+  activeCtxDoc = String(name || '');
+}
+
+// R146 绑定完整性：记录"⛔ 表里没有、靠同名打分兜底解析"的实例（{宿主,实例名,命中文件}）——
+// 画布据此亮「N 个实例未录入绑定」提示条并一键写全（completeBindings）。录入命中（裸/前缀）⛔ 记。
+const autoHits = new Map<string, { ctx: string; name: string; file: string }>();
+export function getAutoHitList(): Array<{ ctx: string; name: string; file: string }> {
+  return [...autoHits.values()];
+}
+export function clearAutoHits(): void { autoHits.clear(); }
+
+/* R150 实时多层审计：画布"当前电路"里**未录入绑定配置**的子部件实例（逐层递归 cells）。
+   ⛔ 依赖"展开过才有账"；strict 下被拦（resolvePartRef 返 null）的也点名——另走一次打分兜底拿真相。 */
+export function getBindingAudit(rootCells?: any[]): Array<{ ctx: string; name: string; file: string }> {
+  const out: Array<{ ctx: string; name: string; file: string }> = [];
+  if (!Array.isArray(rootCells)) return out;
+  const files = partFileSource ? partFileSource() : sandboxStore.list();
+  const base = (f: SandboxFile) => baseName(f.name).replace(/\.(djs|gate|json)$/i, '');
+  const dirOfF = (f: SandboxFile) => dirOf(f);
+  const dirOfCtx = (ctx: string) => (ctx.includes('/') ? ctx.slice(0, ctx.lastIndexOf('/')) : '');
+  const scoreHit = (scope: string, name: string): SandboxFile | null => {
+    const cands = files.filter((f) => base(f) === name);
+    if (!cands.length) return null;
+    const score = (f: SandboxFile) => {
+      const d = dirOfF(f);
+      const inScope = !!scope && d === scope; const atRoot = d === '';
+      if (f.kind === 'gate') return inScope ? 3 : atRoot ? 5 : 8;
+      if (f.role === 'part') return inScope ? 0 : atRoot ? 2 : 6;
+      return inScope ? 1 : atRoot ? 4 : 9;
+    };
+    return cands.sort((a, b) => score(a) - score(b))[0] || null;
+  };
+  const cellsOf = (f: SandboxFile): any[] => {
+    try {
+      if (f.kind === 'gate' && f.circuitJson) return circuitJsonToCells(JSON.parse(f.circuitJson)).cells ?? [];
+      const g = JSON.parse(f.graphJson || '{}');
+      return Array.isArray(g?.cells) ? g.cells : [];
+    } catch { return []; }
+  };
+  const ctxStack = new Set<string>();
+  const walk = (cells: any[], ctx: string, depth: number): void => {
+    if (depth <= 0 || ctxStack.has(ctx)) return;
+    ctxStack.add(ctx);
+    const scope = dirOfCtx(ctx);
+    for (const c of cells) {
+      if (c?.type !== 'Subcircuit' || !c.celltype) continue;
+      const name = String(c.celltype);
+      const ref = resolvePartRef(name, scope, ctx);
+      const hit = ref ? ref.file : scoreHit(scope, name);            // strict 被拦也拿真相
+      if (!hit) continue;
+      // 录入判定＝裸键或该层前缀键任一在册（与展开判定同口径：表说了算才算配了）
+      const covered = activePartBindings[name] !== undefined || activePartBindings[`${ctx}::${name}`] !== undefined
+        || (ctx === activeCtxDoc && activePartBindings[`${activeCtxDoc}::${name}`] !== undefined);
+      if (!covered) out.push({ ctx, name, file: hit.name });
+      walk(cellsOf(hit), hit.name, depth - 1);
+    }
+    ctxStack.delete(ctx);
+  };
+  walk(rootCells, activeCtxDoc, 8);
+  return out;
+}
+
+// R146 严格模式（verilogViz.bindings.policy=strict，随 getConfig settings 注入）：
+// 未录入实例⛔ 吃同名兜底——与编译侧 closureOf 的 strict 分支同一语义，两面都拦才叫"必须配完"。
+let bindingPolicy: 'auto' | 'strict' = 'auto';
+export function setBindingPolicy(p: 'auto' | 'strict' | undefined | null): void {
+  bindingPolicy = p === 'strict' ? 'strict' : 'auto';
+}
 
 /**
  * 按绑定名 + 作用域查找部件定义文件。
- * 顺序（打分升序）：**活动文件显式绑定（R100，score -1）** → scope 内 role:'part'
- * → scope 内任意 .djs → 根 role:'part' → scope 内 .gate → 根 .djs → 根 .gate → 全库兜底。
+ * 顺序（打分升序）：**前缀命中（R145 多层精控：`宿主文件::实例名` 的录入）→
+ * 活动文件显式绑定（R100，score -1，裸键）→ scope 内 role:'part' → scope 内任意 .djs →
+ * 根 role:'part' → scope 内 .gate → 根 .djs → 根 .gate → 全库兜底。**
+ * ctxDoc＝当前展开的宿主定义文件（根相对名，如 'sub/ctrl.djs'）；表里
+ * 'sub/ctrl.djs::adder' 只约束 ctrl 这层里的 adder 实例，⛔ 波及其他层同名实例——
+ * 多层电路里"两个不同部件各自例化 adder 却要绑不同实现"的表达通道（裸键保持原全局语义）。
  */
-export function resolvePartRef(name: string, scope = ''): PartRef | null {
+export function resolvePartRef(name: string, scope = '', ctxDoc = ''): PartRef | null {
   if (!name) return null;
-  const files = sandboxStore.list();
+  const files = partFileSource ? partFileSource() : sandboxStore.list();
+  const ctx = ctxDoc || activeCtxDoc;
   // 显式绑定最高优先：绑定的文件还活着就直接采用（哪怕同名文件在别处）
-  const boundId = activePartBindings[name];
+  const boundId = (ctx && activePartBindings[`${ctx}::${name}`]) || activePartBindings[name];
   if (boundId) {
     const bf = files.find((f) => f.id === boundId);
-    if (bf) return { file: bf, legacy: bf.kind === 'gate' };
+    if (bf) return { file: bf, legacy: bf.kind === 'gate', origin: 'binding' as const };
   }
   const byBase = (f: SandboxFile) => baseName(f.name).replace(/\.(djs|gate|json)$/i, '') === name;
   const score = (f: SandboxFile): number => {
@@ -72,21 +162,28 @@ export function resolvePartRef(name: string, scope = ''): PartRef | null {
   };
   const cands = files.filter(byBase).sort((a, b) => score(a) - score(b));
   if (!cands.length) return null;
+  // R146 strict：未录入（裸/前缀都⛔ 命中）的实例不吃同名兜底——与编译侧同语义。
+  if (bindingPolicy === 'strict') return null;
   const f = cands[0];
-  return { file: f, legacy: f.kind === 'gate' };
+  return { file: f, legacy: f.kind === 'gate', origin: 'auto' as const };
 }
 
-/** 定义文件里，一个绑定名对应的 cells（未物化嵌套）。 */
-function partCellsRaw(name: string, scope: string): { cells: any[] } | null {
-  const ref = resolvePartRef(name, scope);
+/** 定义文件里，一个绑定名对应的 cells（未物化嵌套）+ 这份定义**宿主文件的名**（R145 前缀键上下文）。
+ *  R146：非录入命中（打分兜底）记入 autoHits——画布提示条与「一键写全」的数据源（真相＝画布实解）。 */
+function partCellsRaw(name: string, scope: string, ctxDoc = ''): { cells: any[]; host: string } | null {
+  const ref = resolvePartRef(name, scope, ctxDoc);
   if (!ref) return null;
+  const host = ref.file.name;
+  const key = `${ctxDoc || activeCtxDoc}|${name}`;
+  if (ref.origin === 'auto') autoHits.set(key, { ctx: ctxDoc || activeCtxDoc, name, file: host });
+  else autoHits.delete(key);
   if (ref.legacy && ref.file.circuitJson) {
     // 旧 kind:'gate'：编译格式 → cells（可编辑表示）
-    try { return circuitJsonToCells(JSON.parse(ref.file.circuitJson)); } catch { return null; }
+    try { return { cells: circuitJsonToCells(JSON.parse(ref.file.circuitJson)).cells ?? [], host }; } catch { return null; }
   }
   try {
     const g = JSON.parse(ref.file.graphJson || '{}');
-    return Array.isArray(g?.cells) ? { cells: g.cells } : null;
+    return Array.isArray(g?.cells) ? { cells: g.cells, host } : null;
   } catch { return null; }
 }
 
@@ -113,10 +210,10 @@ export function findPartCycle(startName: string, scope = '', maxNodes = 200): st
   const stack: string[] = [];
   const onStack = new Set<string>();
   let budget = maxNodes;
-  const dfs = (name: string): string[] | null => {
+  const dfs = (name: string, ctx: string): string[] | null => {
     if (onStack.has(name)) return [...stack.slice(stack.indexOf(name)), name];
     if ((budget--) <= 0) return null;
-    const raw = partCellsRaw(name, scope);
+    const raw = partCellsRaw(name, scope, ctx);
     if (!raw) return null;
     const refs: string[] = [];
     for (const c of raw.cells) {
@@ -124,13 +221,13 @@ export function findPartCycle(startName: string, scope = '', maxNodes = 200): st
     }
     stack.push(name); onStack.add(name);
     for (const ref of refs) {
-      const hit = dfs(ref);
+      const hit = dfs(ref, raw.host);          // R145：往里一层，前缀键上下文跟着换宿主
       if (hit) { stack.pop(); onStack.delete(name); return hit; }
     }
     stack.pop(); onStack.delete(name);
     return null;
   };
-  return dfs(startName);
+  return dfs(startName, '');
 }
 
 /**
@@ -141,9 +238,9 @@ export function findPartCycle(startName: string, scope = '', maxNodes = 200): st
  * 这是「可编辑部件」模型能复用展开渲染管线的前提：cellsToCircuitJson 依赖
  * subcircuitGraph 生成层级 subcircuits，而绑定式存档刻意不内联子图。
  */
-export function resolveDefCells(name: string, scope = '', seen = new Set<string>()): { cells: any[] } | null {
+export function resolveDefCells(name: string, scope = '', seen = new Set<string>(), ctxDoc = ''): { cells: any[] } | null {
   if (seen.has(name)) return null;
-  const raw = partCellsRaw(name, scope);
+  const raw = partCellsRaw(name, scope, ctxDoc);
   if (!raw || !raw.cells.length) return null;
   // 递归链按「祖先路径」传递，不按全局共享：一个模块被同层多个实例引用
   // （4 个 full_adder、3 个 adder）是常态，共享 seen 会让第 2..N 个实例
@@ -153,7 +250,8 @@ export function resolveDefCells(name: string, scope = '', seen = new Set<string>
   const out: any[] = [];
   for (const c of raw.cells) {
     if (c?.type === 'Subcircuit' && !c.subcircuitGraph?.cells?.length && c.celltype) {
-      const nested = resolveDefCells(String(c.celltype), scope, chain);
+      // R145：往里一层，宿主上下文＝本层定义文件的名（前缀键 `host::celltype` 在它之下生效）
+      const nested = resolveDefCells(String(c.celltype), scope, chain, raw.host);
       if (nested?.cells?.length) out.push({ ...c, subcircuitGraph: { cells: nested.cells } });
       else out.push(c);
     } else out.push(c);
@@ -445,6 +543,32 @@ export async function collectToFolder(circuitJson: any, folder: string): Promise
     n++;
   }
   return n;
+}
+
+/**
+ * B2（片 5：沙盒真源=工作区文件）：`collectToFolder` 的**文件清单**版——
+ * 不写 sandboxStore，产出 `folder/<名>` 相对路径（**⛔ 不带 .djs 后缀**，宿主
+ * copyToSandbox 统一落成 `.djs`，双后缀会让部件解析按名匹配错位）+ 内容。
+ * 子模块递归布局同上（elk 坐标固化）。
+ */
+export async function collectToFiles(circuitJson: any, folder: string): Promise<Array<{ name: string; content: string }>> {
+  const pool = new Map<string, any>();
+  const index = (mod: any, seen = new Set<object>()) => {
+    if (!mod || seen.has(mod)) return;
+    seen.add(mod);
+    for (const [name, sub] of Object.entries<any>(mod.subcircuits || {})) {
+      if (sub?.devices) { if (!pool.has(name)) pool.set(name, sub); index(sub, seen); }
+    }
+  };
+  index(circuitJson);
+  const out: Array<{ name: string; content: string }> = [];
+  for (const [name, sub] of pool) {
+    out.push({
+      name: (folder ? folder + '/' : '') + name,
+      content: JSON.stringify(await layoutModuleCells(sub, pool, name)),
+    });
+  }
+  return out;
 }
 
 // ============ 「保存为自定义门」（画布 → 可编辑部件文件）============

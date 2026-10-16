@@ -102,7 +102,7 @@ export function MemoryViewModal({ cell, onClose }: Props) {
       onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div data-memory-view style={{ background: 'var(--surface, #fff)', borderRadius: 8,
         width: 420, maxHeight: '80vh', display: 'flex', flexDirection: 'column',
-        boxShadow: '0 12px 40px rgba(0,0,0,.35)' }}>
+        boxShadow: '0 12px 40px var(--vscode-widget-shadow, rgba(0,0,0,.35))' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           padding: '8px 12px', borderBottom: '1px solid var(--border-subtle, #ddd)' }}>
           <span style={{ fontSize: 'var(--fs-sm, 13px)', fontWeight: 600 }}>

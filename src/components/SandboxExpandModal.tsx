@@ -123,7 +123,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
       const mount = document.createElement('div');
       mount.style.position = 'absolute';
       mount.style.inset = '0';
-      mount.style.background = theme === 'dark' ? '#151a1f' : '#ffffff';
+      mount.style.background = 'var(--canvas-bg)';
       host.appendChild(mount);
       mountEl = mount;
       try {
@@ -282,7 +282,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
                 <button onClick={() => setStack(stack.slice(0, i + 1))}
                   title="返回该层"
                   style={{ background: i === stack.length - 1 ? 'var(--accent)' : 'transparent',
-                    color: i === stack.length - 1 ? '#fff' : 'var(--text)',
+                    color: i === stack.length - 1 ? 'var(--vscode-button-foreground, #fff)' : 'var(--text)',
                     border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer',
                     fontSize: 'var(--fs-xs)', padding: '1px 6px' }}>
                   {crumbLabel(s)}

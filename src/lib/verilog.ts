@@ -78,7 +78,10 @@ export async function initYosys(): Promise<YosysModule> {
     }
     const mod = await window.Yosys({
       noInitialRun: true,
-      locateFile: (path: string) => '/yosys/' + path,
+      // ⚠ **相对路径**，让 `<base>`（webviewAssets 里指到 webview 根）来解析——
+      // 写成绝对 `/yosys/…` 会绕过 base 落到 webview origin 根＝资源协议 404
+      //（症状 `Aborted(both async and sync fetching of the wasm failed)`，真机实测）。
+      locateFile: (p: string) => 'yosys/' + p,
     });
     if (!mod.FS) {
       throw new Error('Yosys FS not available');

@@ -5,6 +5,9 @@ import { applyWireStyle } from '../lib/wireRouting';
 import { setSimInterval } from '../lib/simClock';
 import { flipCell, applyMirror } from '../lib/cellMirror';
 import { RebindDialog } from './RebindDialog';
+import BusWidthDialog from './BusWidthDialog';
+import SandboxSidebar from './SandboxSidebar';
+import SandboxToolbar from './SandboxToolbar';
 import { buildInnerGraph } from '../lib/subcircuit';
 import { circuitJsonToCells } from '../lib/subcircuitView';
 import { loadCells } from '../lib/sandboxLoad';
@@ -13,13 +16,10 @@ import { sandboxStore, customGateStore, baseName, dirOfName, dirOf, type Sandbox
 import {
   saveGateFromCellsToFolder, ensureDefsFromCells, stripBoundInlineJson, migrateLegacy,
   resolveDefCells, savePartFile, renamePartDef, rebindLiveGraph, resolvePartRef,
-  setActivePartBindings, findPartCycle,
+  setActivePartBindings, setActiveCtxDoc, findPartCycle, getPartFileSource, getBindingAudit,
 } from '../lib/gateSystem';
 import SandboxFileBindingDialog from './SandboxFileBindingDialog';
-import SandboxFileTree, { type RenameTarget, type CreateTarget } from './SandboxFileTree';
-import { ChevronRight, PanelLeftClose, Plus, Undo2, Play, Pause, StepForward, AudioWaveform, RotateCcw,
-  FileText, FolderPlus, RefreshCw, Redo2, RotateCw, Save, Download, FileCode, Link2, Settings, Cpu,
-  SlidersHorizontal, FunctionSquare } from 'lucide-react';
+import { type RenameTarget, type CreateTarget } from './SandboxFileTree';
 import { settingsStore, type SandboxSettings } from '../store/settingsStore';
 import { exportSvg, exportSvgString } from '../utils/sandboxExport';
 import { generateVerilog } from '../utils/sandboxVerilog';
@@ -43,10 +43,10 @@ import {
 // 卷三十一：器件目录/引擎辅助域切换为 sandboxCatalog 单一来源（R122 抽出后未接线的双份副本正式合并，
 // 34 个共享符号经逐字节对拍零漂移后删除本地拷贝——见 docs/PROJECT_DEEP_REVIEW 卷三十一）。
 import {
-  V_SB_NAME, SANDBOX_PANEL_TITLE, IO_TYPES, PORT_TYPES,
+  V_SB_NAME, IO_TYPES, PORT_TYPES,
   ARITH_TYPES, MUX_TYPES, SPARSE_MUX_TYPES, sparseSelBits, COMPARE_TYPES, SHIFT_TYPES,
   EXTEND_TYPES, REDUCE_TYPES, NATIVE_SIZE_TYPES, arithBits, collectPortDots,
-  nearestPortDot, memPortRows, CN_NAME, bitsSuffix, PALETTE, SANDBOX_EXAMPLES, type PaletteItem,
+  nearestPortDot, memPortRows, CN_NAME, PALETTE, SANDBOX_EXAMPLES, type PaletteItem,
   resetIoOutput, restoreMemoryData, flushStaleQueue, seedGateOutputs, serializePaper,
 } from '../lib/sandboxCatalog';
 import { type DrcIssue, runCanvasDrc, validateConnectionEnds } from '../lib/sandboxDrc';
@@ -64,6 +64,34 @@ interface Props {
   onToggleSidebar?: () => void;
   /** 退出沙盒、回到 IDE（电路 / 代码）视图 */
   onExitSandbox?: () => void;
+  /**
+   * .djs 文档编辑器模式（doc.html 入口，片 5）。传了即启用：
+   *  · 活动文件用伪 SandboxFile（id 恒 'doc'）承载，画布装载自 initialJson；
+   *  · commit（及 Ctrl+S）不再写 sandboxStore，改走 onCommit(全量序列化串)，
+   *    DocApp 300ms debounce 后发 `{vvh:'doc',op:'edit'}` 给宿主落盘；
+   *  · 宿主 revert（重新推送 initialJson）→ 画布按新内容重载；
+   *  · 文件管理面整体摘除（文件树/新建/导入/文件夹右键/文件组按钮），
+   *    部件库与仿真控制照常；部件解析源是 gateSystem 的 partFileSource（siblings）。
+   */
+  doc?: {
+    name: string; initialJson: string; onCommit(json: string): void;
+    /**
+     * doc 模式「部件绑定」确认后逐条回调「celltype → 部件文件名」。DocApp 暂存会话
+     * Map（makePartSource 优先排头）并经 host.setDocBindings 落盘持久化（.verilogviz.json）。
+     */
+    onBind?(celltype: string, partName: string): void;
+    /**
+     * 落盘绑定关系（B3）：宿主 init 后从 .verilogviz.json 读回的初值——伪 activeFile
+     * 的 partBindings 初始值，「部件绑定」对话框重开时回显的就是它。
+     */
+    initialBindings?: Record<string, string>;
+    /**
+     * R146 绑定完整性：doc 模式顶部提示条「把全部自动同名解析录入配置」按钮回调——
+     * 交出的 hits 是**画布实解真相**（gateSystem autoHits：宿主名/实例名/命中文件根相对），
+     * DocApp 转成宿主消息写进该文档目录层的 .verilogviz.json。
+     */
+    onFixBindings?(hits: Array<{ ctx: string; name: string; file: string }>): void;
+  };
 }
 
 /**
@@ -74,7 +102,7 @@ interface Props {
 // loadCells 已抽至 src/lib/sandboxLoad.ts（R35）：文件装载 / 示例插入 /
 // 粘贴复制电路三个消费方共用一条实现，并支持 id 重映射与位置偏移。
 
-function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarCollapsed = false, onToggleSidebar, onExitSandbox }: Props) {
+function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarCollapsed = false, onToggleSidebar, onExitSandbox, doc }: Props) {
   const circuitRef = useRef<any>(null);
   const paperRef = useRef<any>(null);
   const selectionRef = useRef<Set<string>>(new Set());
@@ -92,6 +120,38 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   const pendingResetJsonRef = useRef<string | null>(null);
   const runningRef = useRef(true);
   const [, forceUpdate] = useState(0);
+  // ── .djs 文档编辑器模式（doc 存在即启用）──
+  // 活动文件 = 伪 SandboxFile（id 恒 'doc'）：画布重建 effect、scope、绑定解析全部
+  // 照常吃 activeFile，只把「落盘」一处换成 doc.onCommit。宿主 revert 重推 initialJson
+  // 时 bump resetNonce 让画布按新内容重载（编辑→300ms debounce→edit 推送在 DocApp）。
+  const docRef = useRef(doc);
+  docRef.current = doc;
+  const docMode = !!doc;
+  const firstDocLoadRef = useRef(true);
+  useEffect(() => {
+    if (!doc) { firstDocLoadRef.current = true; return; }
+    setActiveFile({
+      id: 'doc', name: doc.name, graphJson: doc.initialJson, updatedAt: 0,
+      partBindings: doc.initialBindings ? { ...doc.initialBindings } : undefined,
+    });
+    if (firstDocLoadRef.current) { firstDocLoadRef.current = false; return; }
+    // revert（宿主重推磁盘内容 + 新 siblings）：画布按新内容重载，部件库同步重列
+    // （init effect 依赖是稳定回调不会自己重跑；DocApp 已先挂好新 partFileSource）
+    setResetNonce((n) => n + 1);
+    refreshGates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [doc?.name, doc?.initialJson]);
+  // M6 绑定通道（doc 模式）：initialBindings 变（init 载入/bindingsChanged 重读/写全回执）
+  // 只刷伪 activeFile.partBindings——喂 setActivePartBindings 的 effect（deps 含 partBindings）随之更新。
+  // ⛔ 走上面内容通道：那会 setResetNonce 把没动过的画布重置掉（吞选择/缩放）。
+  useEffect(() => {
+    if (!doc) return;
+    setActiveFile((prev: any) => (prev?.id === 'doc'
+      ? { ...prev, partBindings: doc.initialBindings ? { ...doc.initialBindings } : prev.partBindings }
+      : prev));
+  }, [doc?.initialBindings]);
+  // 文档模式的左栏恒为「部件」：文件树/文件管理面整体摘除（本组件里仅此一处分流）
+  const panel = docMode ? 'modules' : leftPanel;
   const [gates, setGates] = useState<CustomGate[]>([]);
   // gates 的镜像 ref：菜单回调读它，避免 gates 进 useCallback 依赖。
   // 为什么不能直接依赖 gates：customGateStore.list() 每次返回新数组，refreshGates()
@@ -113,9 +173,12 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
   scopeRef.current = scope;
   // R100 文件级绑定：活动文件的 partBindings 喂给 gateSystem（解析最高优先），
   // 切换文件即刷新 —— 与编译模式 moduleBindings 随文件走同语义。
+  // R145：活动文档名同步进 gateSystem——表里 `main.djs::adder` 这类前缀键（多层电路精控，
+  // 手编专属）在顶层展开时按它命中；往里一层由递归逐层换宿主上下文。
   useEffect(() => {
     setActivePartBindings(activeFile?.partBindings);
-  }, [activeFile?.id, activeFile?.partBindings]);
+    setActiveCtxDoc(activeFile?.name);
+  }, [activeFile?.id, activeFile?.partBindings, activeFile?.name]);
   // R100 文件级「绑定...」对话框（侧栏文件右键，与编译模式一致）
   const [fileBindingId, setFileBindingId] = useState<string | null>(null);
   const [savingGate, setSavingGate] = useState(false);
@@ -193,14 +256,51 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
    */
   const refreshGates = useCallback(() => {
     const strip = (n: string) => n.replace(/\.(djs|gate|json)$/i, '');
-    const files = sandboxStore.list().filter((f) => f.role === 'part' && /\.(djs|gate|json)$/i.test(f.name));
+    // 文档模式：部件真源是宿主推送的 siblings（gateSystem.partFileSource），本地旧档不掺和
+    const files = (docRef.current
+      ? (getPartFileSource()?.() ?? [])
+      : sandboxStore.list()
+    ).filter((f) => f.role === 'part' && /\.(djs|gate|json)$/i.test(f.name));
     const parts: CustomGate[] = files.map((f) => ({ id: f.id, name: strip(baseName(f.name)), folder: dirOf(f) }));
     const seen = new Set(parts.map((p) => p.name));
     let legacy: CustomGate[] = [];
-    try { legacy = customGateStore.list().filter((g) => !seen.has(g.name)); } catch { /* 旧档读不动就算了 */ }
+    if (!docRef.current) {
+      try { legacy = customGateStore.list().filter((g) => !seen.has(g.name)); } catch { /* 旧档读不动就算了 */ }
+    }
     setGates([...parts, ...legacy]);
   }, []);
   const showToast = useCallback((msg: string) => setToast(msg), []);
+  /**
+   * M4 用部件即自动写配置：把「绑定名（celltype）→ 部件文件」记进**当前电路**的显式绑定。
+   * 放置自定义部件成功后调用——本次解析结果当场显式化，日后同名部件漂移也不会换实现
+   * （resolvePartRef 显式绑定最高优先）。沙盒模式写 `file.partBindings`（localStorage），
+   * 文档模式写伪 activeFile.partBindings 并经 doc.onBind 落到 `.verilogviz.json`。
+   * 已录同一文件则跳过，避免无意义 churn；`setActiveFile` 只改 partBindings（同 id），
+   * 画布装载 effect 依赖 id 不重跑，绑定喂给 gateSystem 的 effect 会即时刷新解析。
+   */
+  const recordPartBinding = useCallback((name: string, fileId: string) => {
+    if (!name || !fileId) return;
+    if (docRef.current) {
+      const src = getPartFileSource()?.() ?? [];
+      const partName = src.find((f) => f.id === fileId)?.name || fileId;
+      setActiveFile((prev) => {
+        if (!prev) return prev;
+        if (prev.partBindings?.[name] === fileId) return prev;
+        return { ...prev, partBindings: { ...(prev.partBindings || {}), [name]: fileId } };
+      });
+      try { docRef.current.onBind?.(name, partName); } catch { /* best effort */ }
+      return;
+    }
+    const cur = activeFileRef.current;
+    if (!cur || cur.kind === 'gate') return;
+    const fresh = sandboxStore.get(cur.id) ?? cur;
+    if (fresh.partBindings?.[name] === fileId) return;
+    const merged = { ...(fresh.partBindings || {}), [name]: fileId };
+    sandboxStore.setPartBindings(cur.id, merged);
+    if (activeFileRef.current?.id === cur.id) {
+      setActiveFile((prev) => (prev && prev.id === cur.id ? { ...prev, partBindings: merged } : prev));
+    }
+  }, []);
 
   // ---- 文件管理（与 IDE 文件系统对齐）：多选 / 剪贴板 / 重命名 / 新建 / 文件夹 ----
   const [folders, setFolders] = useState<string[]>([]);
@@ -670,7 +770,10 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         forceUpdate(n => n + 1);
         // R37b：每次变更即刻落盘（此前只进撤销栈，画布内容要等切文件/切面板/
         // 卸载才持久化 —— reload 直接丢掉未切换过的内容，r34[8] 回归根因）。
-        if (activeFileRef.current && activeFileRef.current.kind !== 'gate') {
+        // 文档模式落盘改走 doc.onCommit（DocApp debounce 后发给宿主）。
+        if (docRef.current) {
+          try { docRef.current.onCommit(stripBoundInlineJson(snap, scopeRef.current)); } catch { /* best effort */ }
+        } else if (activeFileRef.current && activeFileRef.current.kind !== 'gate') {
           try { sandboxStore.save(activeFileRef.current.id, stripBoundInlineJson(snap, scopeRef.current)); } catch { /* best effort */ }
         }
       }
@@ -1357,6 +1460,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       insertCellsAt]);
 
   useEffect(() => {
+    // 文档模式：没有沙盒文件系统——不做旧档迁移、不读文件列表（部件走 partFileSource）
+    if (docRef.current) { refreshGates(); return; }
     // R37 迁移：旧 GATES_KEY 门存档 + 存量文件内嵌 subcircuitGraph →
     // 门定义文件（kind:'gate'）+ 绑定剥离。一次性、幂等。
     try {
@@ -1379,11 +1484,11 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     const root = wrapperRef.current;
     if (!root) return;
     const gridColor = theme === 'dark' ? '#2b3140' : '#c9d2e0';
-    root.style.backgroundColor = theme === 'dark' ? 'var(--surface)' : '#ffffff';
+    root.style.backgroundColor = 'var(--canvas-bg)';
     root.querySelectorAll('[data-sandbox-grid]').forEach((el) => {
       const d = el as HTMLElement;
       d.style.display = settings.showGrid ? 'block' : 'none';
-      d.style.backgroundColor = theme === 'dark' ? 'var(--surface)' : '#ffffff';
+      d.style.backgroundColor = 'var(--canvas-bg)';
       d.style.backgroundImage =
         `linear-gradient(to right, ${gridColor} 1px, transparent 1px), ` +
         `linear-gradient(to bottom, ${gridColor} 1px, transparent 1px)`;
@@ -1441,7 +1546,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
     gridLayer.style.zIndex = '0';
     gridLayer.style.pointerEvents = 'none';
     gridLayer.style.display = settings.showGrid ? 'block' : 'none';
-    gridLayer.style.backgroundColor = theme === 'dark' ? 'var(--surface)' : '#ffffff';
+    gridLayer.style.backgroundColor = 'var(--canvas-bg)';
     gridLayer.style.backgroundImage =
       `linear-gradient(to right, ${gridColor} 1px, transparent 1px), ` +
       `linear-gradient(to bottom, ${gridColor} 1px, transparent 1px)`;
@@ -1824,7 +1929,7 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       marquee.style.zIndex = '3';
       marquee.style.pointerEvents = 'none';
       marquee.style.border = '1px dashed var(--accent)';
-      marquee.style.background = 'rgba(99,102,241,0.10)';
+      marquee.style.background = 'color-mix(in srgb, var(--accent) 10%, transparent)';
       marquee.style.borderRadius = '2px';
       root.appendChild(marquee);
       let moved = false;
@@ -2279,6 +2384,13 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
 
   const handleSave = () => {
     if (!activeFile || !paperRef.current) return;
+    if (docRef.current) {
+      // 文档模式：Ctrl+S = 立即把当前画布全量串交给宿主（与 commit 同一条出口）
+      const snap = JSON.stringify(serializePaper(paperRef.current));
+      try { docRef.current.onCommit(stripBoundInlineJson(snap, scopeRef.current)); } catch { /* ignore */ }
+      forceUpdate((n) => n + 1);
+      return;
+    }
     const snap = JSON.stringify(serializePaper(paperRef.current));
     if (activeFile.kind === 'gate') {
       // 旧 .gate（迁移前遗留）：保存时同步为同文件夹的可编辑部件，实例随之生效
@@ -2471,11 +2583,13 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       } catch {}
       setSelectionRef.current([sub.id]);
       commitRef.current();
+      // M4：用部件即自动写绑定配置（本次解析当场显式化）
+      recordPartBinding(gate.name, gate.id);
     } catch (e) {
       console.warn('[自定义门] 放置失败:', e);
       showToast(`自定义门「${gate.name}」放置失败：${String((e as any)?.message || e).slice(0, 80)}`);
     }
-  }, [snapVal, showToast]);
+  }, [snapVal, showToast, recordPartBinding]);
 
   const placeCustomGate = useCallback((gate: CustomGate) => {
     placeCustomGateAt(gate, viewportCenter());
@@ -2950,9 +3064,9 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
 
   /** 侧栏容器右键分发：按当前面板弹各自的菜单（行级菜单会 stopPropagation 优先） */
   const handlePanelCtx = (e: React.MouseEvent) => {
-    if (leftPanel === 'files') handleRootCtx(e);
-    else if (leftPanel === 'modules') handleModulesCtx(e);
-    else if (leftPanel === 'hierarchy') handleHierarchyCtx(e);
+    if (panel === 'files') handleRootCtx(e);
+    else if (panel === 'modules') handleModulesCtx(e);
+    else if (panel === 'hierarchy') handleHierarchyCtx(e);
   };
 
   const canUndo = historyRef.current.idx > 0;
@@ -3037,299 +3151,52 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
           font-weight: 600;
         }
       `}</style>
-      {sidebarCollapsed ? (
-        <div style={{
-          width: 36, borderRight: '1px solid var(--border)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0,
-          background: 'var(--sidebar-bg)', paddingTop: 8,
-        }}>
-          <button onClick={onToggleSidebar} title={`展开${SANDBOX_PANEL_TITLE[leftPanel] || '侧栏'}`}
-            style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)',
-              cursor: 'pointer', padding: 4, lineHeight: 1, display: 'inline-flex' }}>
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      ) : (
-      <div data-sandbox-sidebar style={{
-        width: sidebarW, borderRight: '1px solid var(--border)',
-        display: 'flex', flexDirection: 'column', flexShrink: 0,
-        // zIndex:2 —— 把整个侧栏（含右缘 3px 拖拽手柄）抬到画布 wrapper 之上，
-        // 否则外露的手柄条被后渲染的绝对定位画布盖住，拖不动；侧栏内部
-        // 局部层级仍由内容容器 zIndex:1 > 手柄 决定，按钮点击不受影响。
-        background: 'var(--sidebar-bg)', position: 'relative', zIndex: 2,
-      }}>
-        {/* 右缘拖拽手柄（问题 1）：悬停变色，拖动调宽 180–500px。
-            下方两个内容容器带 position:relative + zIndex:1 —— 盖在手柄之上，
-            按钮点击不被拦截；手柄只在未被内容盖住的右缘空隙接收事件。 */}
-        <div
-          onMouseDown={onSidebarWDragStart}
-          title="拖动调整宽度"
-          style={{ position: 'absolute', top: 0, right: -3, width: 6, height: '100%',
-            cursor: 'col-resize' }}
-          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; }}
-          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
-        />
-        {/* 面板标题栏：与编译模式 Sidebar 头部同一套（padding/边框/字重/字距/图标） */}
-        <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          position: 'relative', zIndex: 1 }}>
-          <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            {SANDBOX_PANEL_TITLE[leftPanel] || '文件'}
-          </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            {onExitSandbox && (
-              <button onClick={onExitSandbox} data-sandbox-exit title="退出沙盒，返回电路 / 代码视图"
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-                  cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
-                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
-                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}>
-                <Undo2 size={14} />
-              </button>
-            )}
-            {/* R101：标题栏按钮组**照抄编译模式 Sidebar**——导入文件 / 新建文件 /
-                新建文件夹 / 刷新 / 收起侧栏（同一套 padding、hover 与 lucide 图标）。
-                ⚠ `button[title="新建文件"]` 是 `tests/_ui.cjs#newSandboxFile` 的夹具锚点：
-                它点完就期望文件已建好，所以这颗**不走弹窗**（弹窗版在右键菜单里）。 */}
-            <button onClick={() => importInputRef.current?.click()} title="导入文件"
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-                cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}>
-              <Plus size={14} />
-            </button>
-            {/* R102：新建文件改为**弹窗命名**（与编译模式一致）——早前是点了直接自动命名，
-                用户点的是"新建"却没机会起名。⚠ 测试夹具 `_ui.cjs#newSandboxFile` 已同步
-                改成"点按钮 → 填弹窗 → 确认"，两边必须一起改。 */}
-            <button onClick={async () => {
-              const v = await askFs({ title: '新建文件', label: '文件名', defaultValue: 'new_circuit', confirmLabel: '创建', validate: V_SB_NAME });
-              if (v) handleNew(v);
-            }} title="新建文件"
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-                cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}>
-              <FileText size={14} />
-            </button>
-            <button onClick={async () => {
-              const v = await askFs({ title: '新建文件夹', label: '文件夹名称', defaultValue: 'my_folder', confirmLabel: '创建', validate: V_SB_NAME });
-              if (v) handleCreateCommit({ kind: 'folder', folder: '' }, v);
-            }} title="新建文件夹"
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-                cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}>
-              <FolderPlus size={14} />
-            </button>
-            <button onClick={() => { refreshFolders(); syncAfterFsOp(); showToast('已刷新文件列表'); }} title="刷新"
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-                cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}>
-              <RefreshCw size={13} />
-            </button>
-            <button onClick={onToggleSidebar} title="收起侧栏"
-              style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
-                cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}>
-              <PanelLeftClose size={14} />
-            </button>
-          </div>
-        </div>
-
-        {/* 整个文件面板都响应「右键空白」：标题栏/滚动留白/树容器外的任意位置
-            都能新建 / 导入 / 粘贴（行元素会 stopPropagation，优先弹自己的菜单）。
-            仅文件面板挂载；部件 / 层次结构面板不弹文件菜单。 */}
-        <div
-          onContextMenu={handlePanelCtx}
-          style={{ overflowY: 'auto', flex: 1, position: 'relative', zIndex: 1 }}>
-          {leftPanel === 'files' && (
-            <>
-              <SandboxFileTree
-                files={files}
-                folders={folders}
-                activeId={activeFile?.id ?? null}
-                selectedIds={fileSelIds}
-                onOpen={handleFileOpen}
-                onSelectToggle={(id) => handleFileSelectToggle(id)}
-                onFileContextMenu={handleFileCtx}
-                onFolderContextMenu={handleFolderCtx}
-                onRootContextMenu={handleRootCtx}
-                onMoveFiles={handleMoveFiles}
-                onMoveFolder={(path, newPath) => {
-                  sandboxStore.moveFolder(path, newPath);
-                  if (activeFile?.id) setActiveFile(sandboxStore.get(activeFile.id));
-                  syncAfterFsOp();
-                  showToast(`已移动文件夹 ${path} → ${newPath}`);
-                }}
-                onRenameCommit={(t, name) => t.kind === 'file'
-                  ? handleFileRenameCommit(t, name)
-                  : handleFolderRenameCommit(t, name)}
-              />
-              <input ref={importInputRef} type="file" accept=".djs,.json" multiple
-                style={{ display: 'none' }}
-                onChange={(e) => { handleImportDjsFiles(e.target.files); e.target.value = ''; }} />
-            </>
-          )}
-
-          {leftPanel === 'hierarchy' && (
-            <div style={{ padding: 8 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-                  当前电路（{hierarchyTree.groups.reduce((n, g) => n + g.list.length, 0)} 器件 / {hierarchyTree.links} 连线）
-                </span>
-                <button onClick={() => forceUpdate(n => n + 1)} title="刷新层次结构"
-                  style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 3,
-                    color: 'var(--text-muted)', cursor: 'pointer', fontSize: 'var(--fs-xs)', padding: '0 4px' }}>⟳</button>
-              </div>
-              {hierarchyTree.groups.length === 0 && (
-                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>画布为空</div>
-              )}
-              {hierarchyTree.groups.map(grp => (
-                <div key={grp.type} style={{ marginBottom: 5 }}>
-                  <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginBottom: 2 }}>
-                    {grp.label} <span style={{ opacity: .7 }}>×{grp.list.length}</span>
-                  </div>
-                  {grp.list.map((c: any) => {
-                    const isSub = c.get('type') === 'Subcircuit';
-                    const open = expandedSubs.has(String(c.id));
-                    const inner = isSub && open ? (c.get('graph')?.getCells?.() || []).filter((x: any) => !(typeof x.isLink === 'function' && x.isLink())) : [];
-                    return (
-                      <div key={c.id}>
-                        <div onClick={() => focusCell(String(c.id))}
-                          title={`定位「${c.get('label') || c.get('celltype') || grp.label}」`}
-                          style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px', borderRadius: 3,
-                            cursor: 'pointer', fontSize: 'var(--fs-xs)', color: 'var(--text)' }}>
-                          {isSub ? (
-                            <span onClick={(e) => { e.stopPropagation(); setExpandedSubs(prev => {
-                              const n = new Set(prev);
-                              n.has(String(c.id)) ? n.delete(String(c.id)) : n.add(String(c.id));
-                              return n;
-                            }); }} style={{ color: 'var(--text-muted)' }}>{open ? '▾' : '▸'}</span>
-                          ) : <span style={{ width: 8 }} />}
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {c.get('label') || c.get('celltype') || grp.label}
-                          </span>
-                          <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.5625rem' }}>
-                            {bitsSuffix(c)}
-                          </span>
-                        </div>
-                        {isSub && open && (
-                          <div style={{ marginLeft: 14, borderLeft: '1px solid var(--border-subtle)', paddingLeft: 6 }}>
-                            {inner.length === 0 && (
-                              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>（空）</div>
-                            )}
-                            {inner.map((x: any) => (
-                              <div key={x.id} style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
-                                overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {CN_NAME[x.get('type')] || x.get('type')}
-                              </div>
-                            ))}
-                            <div onClick={() => setInnerCell(c)} title="查看内部电路"
-                              style={{ fontSize: 'var(--fs-xs)', color: 'var(--accent)', cursor: 'pointer' }}>
-                              查看内部电路…
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
-
-          {leftPanel === 'modules' && (<div style={{ padding: 8 }}>
-          {PALETTE.map(group => {
-            const open = openGroups.has(group.group);
-            return (
-            <div key={group.group} style={{ marginBottom: 4 }}>
-              <div
-                onClick={() => toggleGroup(group.group)}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  fontSize: 'var(--fs-xs)', color: open ? 'var(--text)' : 'var(--text-muted)',
-                  marginBottom: open ? 4 : 2, fontWeight: 600, cursor: 'pointer',
-                  padding: '2px 4px', borderRadius: 3, background: open ? 'var(--surface-hover)' : 'transparent' }}
-                title={open ? '收起分组' : '展开分组'}
-              >
-                <span>{group.group}</span>
-                <span style={{ fontSize: '0.625rem', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▸</span>
-              </div>
-              {open && group.items.map(it => (
-                <button key={it.label || it.type} onClick={() => doAddCell(it)} data-gate={it.type}
-                  title={`放置${it.label || CN_NAME[it.type] || it.type}（${it.type}）`}
-                  style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
-                    gap: 4, padding: '3px 6px', marginBottom: 1, fontSize: 'var(--fs-xs)', background: 'transparent',
-                    border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
-                  <span>{it.label || CN_NAME[it.type] || it.type}</span>
-                  <span style={{ color: 'var(--text-muted)', fontSize: '0.5625rem' }}>{it.type}</span>
-                </button>
-              ))}
-            </div>
-            );
-          })}
-
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>部件（可编辑电路）</div>
-          {gates.map(g => (
-            <div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              marginBottom: 1, fontSize: 'var(--fs-xs)' }}>
-              <button onClick={() => placeCustomGate(g)} title={`放置部件“${g.name}”（点击也可在文件面板打开编辑）`}
-                style={{ flex: 1, textAlign: 'left', padding: '3px 6px', background: 'transparent',
-                  border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
-                {g.name}
-                {g.folder ? <span style={{ color: 'var(--text-muted)', marginLeft: 4, fontSize: '0.5625rem' }}>{g.folder}/</span> : null}
-              </button>
-              <span onClick={(e) => { e.stopPropagation(); handleDeleteGate(g); }} title="删除部件"
-                style={{ cursor: 'pointer', marginLeft: 4,
-                  color: deleteGateId === g.id ? 'var(--error, #ef4444)' : 'var(--text-muted)',
-                  fontWeight: deleteGateId === g.id ? 700 : 400 }}>
-                {deleteGateId === g.id ? '?' : '×'}
-              </span>
-            </div>
-          ))}
-          {gates.length === 0 && (
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>把当前电路保存为部件后可复用；「复制到沙盒」的子部件也在此列出，均可打开编辑</div>
-          )}
-          </div>)}
-
-          {/* DRC 与操作提示属于「电路」信息，归到层次结构面板 */}
-          {leftPanel === 'hierarchy' && (<div style={{ padding: 8 }}>
-          {drc.length > 0 && (
-            <div style={{ marginTop: 8, border: '1px solid #ef4444', borderRadius: 4, padding: 6 }}>
-              <div style={{ fontSize: 'var(--fs-xs)', color: '#ef4444', fontWeight: 700, marginBottom: 3 }}>
-                ⚠ {drc.length} 处非法连接
-              </div>
-              {drc.slice(0, 4).map((iss, i) => (
-                <div key={i} onClick={() => { setSelectionRef.current([iss.linkId]); focusCell(iss.linkId); }}
-                  title="点击定位该连线"
-                  style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', cursor: 'pointer',
-                    lineHeight: 1.35, marginBottom: 2 }}>
-                  · {iss.msg}
-                </div>
-              ))}
-              {drc.length > 4 && (
-                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>…还有 {drc.length - 4} 处</div>
-              )}
-            </div>
-          )}
-
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>操作提示</div>
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
-            · 拖端口连线：靠近端口自动吸附，不必精准对准<br/>
-            · 位宽不同的两端相连会自动插入转换器<br/>
-            · 分线器 / 合线器放下即选位宽方案（1/2/4/8 位互转）<br/>
-            · 空白拖拽 = 框选<br/>
-            · 右键部件 = 菜单（含位宽 / 旋转）<br/>
-            · Shift/Ctrl 点击 = 多选<br/>
-            · 双击自定义门 = 查看内部<br/>
-            · Ctrl+Z/Y 撤销重做，Ctrl+R 旋转<br/>
-            · 方向键微移，Ctrl+0 复位视图
-          </div>
-          </div>)}
-        </div>
-
-      </div>
-      )}
+      <SandboxSidebar
+        sidebarCollapsed={sidebarCollapsed}
+        onToggleSidebar={onToggleSidebar}
+        panel={panel}
+        sidebarW={sidebarW}
+        onSidebarWDragStart={onSidebarWDragStart}
+        docMode={docMode}
+        onExitSandbox={onExitSandbox}
+        importInputRef={importInputRef}
+        askFs={askFs}
+        handleNew={handleNew}
+        handleCreateCommit={handleCreateCommit}
+        refreshFolders={refreshFolders}
+        syncAfterFsOp={syncAfterFsOp}
+        showToast={showToast}
+        handlePanelCtx={handlePanelCtx}
+        files={files}
+        folders={folders}
+        activeFile={activeFile}
+        fileSelIds={fileSelIds}
+        handleFileOpen={handleFileOpen}
+        handleFileSelectToggle={handleFileSelectToggle}
+        handleFileCtx={handleFileCtx}
+        handleFolderCtx={handleFolderCtx}
+        handleRootCtx={handleRootCtx}
+        handleMoveFiles={handleMoveFiles}
+        setActiveFile={setActiveFile}
+        handleFileRenameCommit={handleFileRenameCommit}
+        handleFolderRenameCommit={handleFolderRenameCommit}
+        handleImportDjsFiles={handleImportDjsFiles}
+        hierarchyTree={hierarchyTree}
+        forceUpdate={forceUpdate}
+        expandedSubs={expandedSubs}
+        setExpandedSubs={setExpandedSubs}
+        focusCell={focusCell}
+        setInnerCell={setInnerCell}
+        openGroups={openGroups}
+        toggleGroup={toggleGroup}
+        doAddCell={doAddCell}
+        gates={gates}
+        placeCustomGate={placeCustomGate}
+        handleDeleteGate={handleDeleteGate}
+        deleteGateId={deleteGateId}
+        drc={drc}
+        setSelectionRef={setSelectionRef}
+      />
 
       {/* R101：画布区＝『上方一排按钮栏』+『画布』两行。按钮栏**独占一行**而不是浮在
           画布上——浮层会挡住画布左上角的框选起点（r17 实测：框选只选中 1 颗，期望 ≥6；
@@ -3337,119 +3204,37 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
           title 与 data-* 锚点全部保留（gate 靠它们定位）。 */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
         {activeFile && (
-          <div data-sandbox-topbar style={{
-            display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', flexShrink: 0,
-            padding: '6px 8px', background: 'var(--surface)',
-            borderBottom: '1px solid var(--border)',
-          }}>
-            {(() => {
-              const sm: React.CSSProperties = {
-                display: 'inline-flex', alignItems: 'center', gap: 4, pointerEvents: 'auto',
-                padding: '4px 8px', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)',
-                background: 'var(--surface)', color: 'var(--text)',
-                fontSize: 'var(--fs-xs)', cursor: 'pointer', lineHeight: 1,
-              };
-              const dis: React.CSSProperties = { ...sm, opacity: 0.45, cursor: 'not-allowed' };
-              return (<>
-          <div data-sandbox-debug-bar style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '4px 10px', background: 'var(--surface)',
-            border: '1px solid var(--border)', borderRadius: 'var(--radius-md)',
-          }}>
-            <button
-              onClick={handlePlayPause}
-              title="运行 / 暂停仿真"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '4px 10px', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 600,
-                background: running ? 'var(--surface-hover)' : 'var(--success)',
-                color: running ? 'var(--text-secondary)' : '#fff',
-              }}
-            >{running ? <><Pause size={13} /> 暂停</> : <><Play size={13} /> 运行</>}</button>
-            <button
-              onClick={handleStep}
-              title="单步执行"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '4px 10px', border: '1px solid var(--accent)',
-                borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                background: 'var(--accent)', color: '#fff',
-                fontSize: 'var(--fs-xs)', fontWeight: 600,
-              }}
-            ><StepForward size={13} /> 单步</button>
-            <button
-              onClick={handleReset}
-              title="复位仿真"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '4px 9px', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', cursor: 'pointer',
-                background: 'transparent', color: 'var(--text)',
-              }}
-            ><RotateCcw size={13} /></button>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)' }}>
-              速度
-              {/* 5–200ms 量纲与编译模式一致（右滑更快）；滑条 min/max 是 r44[14]/r62 的锚点 */}
-              <input
-                type="range" min={5} max={200} step={5}
-                value={205 - settings.simSpeedMs}
-                onChange={(e) => settingsStore.setSandboxSettings({ simSpeedMs: 205 - Number(e.target.value) })}
-                style={{ width: 90, accentColor: 'var(--accent)', cursor: 'pointer' }}
-              />
-              <span style={{ minWidth: 46, color: 'var(--text)' }}>{settings.simSpeedMs} ms</span>
-            </label>
-            <button
-              onClick={() => setWaveOpen(w => !w)}
-              title="波形监视器：实时查看连线电平时序"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                padding: '4px 10px', border: '1px solid var(--border)',
-                borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--fs-sm)', fontWeight: 600,
-                background: waveOpen ? 'var(--accent)' : 'transparent',
-                color: waveOpen ? '#fff' : 'var(--text)',
-              }}
-            ><AudioWaveform size={13} /> 波形</button>
-          </div>
-                <button onClick={undo} disabled={!canUndo} title="撤销 (Ctrl+Z)" style={canUndo ? sm : dis}><Undo2 size={13} /></button>
-                <button onClick={redo} disabled={!canRedo} title="重做 (Ctrl+Shift+Z)" style={canRedo ? sm : dis}><Redo2 size={13} /></button>
-                <button onClick={() => rotateSelection(90)} disabled={!selCount} title="旋转 90° (Ctrl+R)" style={selCount ? sm : dis}><RotateCw size={13} /></button>
-                <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-                <button onClick={handleSave} disabled={!activeFile} title="保存当前沙盒文件 (Ctrl+S)" style={activeFile ? sm : dis}><Save size={13} />保存</button>
-                {savingGate ? (
-                  <>
-                    <input autoFocus value={gateName} onChange={(e) => setGateName(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleSaveGate(); if (e.key === 'Escape') { setSavingGate(false); setGateName(''); setGateError(null); } }}
-                      placeholder="自定义门名称"
-                      style={{ width: 110, padding: '3px 6px', fontSize: 'var(--fs-xs)', background: 'var(--surface)',
-                        color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 3 }} />
-                    <button onClick={handleSaveGate} title="确认保存为自定义门" style={sm}>确定</button>
-                    <button onClick={() => { setSavingGate(false); setGateName(''); setGateError(null); }} title="取消" style={sm}>×</button>
-                  </>
-                ) : (
-                  <button onClick={() => setSavingGate(true)} disabled={!activeFile} title="将当前电路保存为自定义门" style={activeFile ? sm : dis}><Cpu size={13} />自定义门</button>
-                )}
-                <button onClick={() => setExprGenOpen(true)} disabled={!activeFile} title="输入布尔表达式自动生成电路图（a & b | !c）" style={activeFile ? sm : dis}><FunctionSquare size={13} />表达式生成</button>
-                <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-                <button onClick={handleExportSvg} disabled={!activeFile} title="导出 SVG" style={activeFile ? sm : dis}><Download size={13} />SVG</button>
-                <button onClick={handleExportNetlist} disabled={!activeFile} title="导出综合网表（.v）：门/触发器/常量转结构化网表代码" style={activeFile ? sm : dis}><FileCode size={13} />综合网表</button>
-                <button onClick={() => activeFile && handleExportDjs(activeFile)} disabled={!activeFile} title="导出 JSON（.djs）：含引用的部件定义" style={activeFile ? sm : dis}><Download size={13} />JSON</button>
-                <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-                <button onClick={() => activeFile && setFileBindingId(activeFile.id)} data-sandbox-bindings disabled={!activeFile || activeFile.kind === 'gate'}
-                  title="部件绑定：给当前文件里的子电路实例选择部件定义文件" style={activeFile && activeFile.kind !== 'gate' ? sm : dis}><Link2 size={13} />部件绑定</button>
-                {onOpenSettings && (
-                  <button onClick={onOpenSettings} data-sandbox-settings title="打开设置面板" style={sm}><Settings size={13} />设置</button>
-                )}
-                <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
-                {/* 输入 / 输出统计与交互：与编译模式的「输入」面板同一颗组件（输出段只读） */}
-                <button onClick={() => setIoOpen((v) => !v)} data-sandbox-io
-                  title="输入 / 输出面板：列出画布上全部输入（可点击切换）与输出（只读）"
-                  style={ioOpen ? { ...sm, borderColor: 'var(--accent)', color: 'var(--accent)' } : sm}>
-                  <SlidersHorizontal size={13} />输入 / 输出
-                </button>
-              </>);
-            })()}
-          </div>
+          <SandboxToolbar
+            activeFile={activeFile}
+            running={running}
+            handlePlayPause={handlePlayPause}
+            handleStep={handleStep}
+            handleReset={handleReset}
+            settings={settings}
+            waveOpen={waveOpen}
+            setWaveOpen={setWaveOpen}
+            undo={undo}
+            canUndo={canUndo}
+            redo={redo}
+            canRedo={canRedo}
+            selCount={selCount}
+            rotateSelection={rotateSelection}
+            handleSave={handleSave}
+            savingGate={savingGate}
+            gateName={gateName}
+            setGateName={setGateName}
+            handleSaveGate={handleSaveGate}
+            setSavingGate={setSavingGate}
+            setGateError={setGateError}
+            setExprGenOpen={setExprGenOpen}
+            handleExportSvg={handleExportSvg}
+            handleExportNetlist={handleExportNetlist}
+            handleExportDjs={handleExportDjs}
+            setFileBindingId={setFileBindingId}
+            onOpenSettings={onOpenSettings}
+            setIoOpen={setIoOpen}
+            ioOpen={ioOpen}
+          />
         )}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           <div ref={wrapperRef} data-sandbox-wrapper style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' }} />
@@ -3487,7 +3272,8 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
                   left: r.left - wr.left + 2, top: r.top - wr.top + 2,
                   width: Math.max(90, r.width - 4), height: Math.max(44, r.height - 4),
                   zIndex: 26, resize: 'none', boxSizing: 'border-box',
-                  background: 'rgba(20,26,34,0.94)', color: '#e4e4ec',
+                  background: 'color-mix(in srgb, var(--vscode-editor-background) 94%, transparent)',
+                  color: 'var(--vscode-editor-foreground, var(--text))',
                   border: '1.5px solid var(--accent)', borderRadius: 6, outline: 'none',
                   padding: `${Math.max(2, nm.pad - 2)}px ${nm.pad}px`,
                   fontFamily: "'Consolas', 'JetBrains Mono', monospace",
@@ -3513,15 +3299,33 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
         )}
         {cycleWarn && (
           <div data-sb-cycle-warn style={{ position: 'absolute', top: 8, left: '50%', transform: 'translateX(-50%)',
-            background: 'rgba(217,119,6,0.95)', color: '#fff', padding: '6px 12px', borderRadius: 6,
-            fontSize: 'var(--fs-xs)', zIndex: 29, maxWidth: '84%', boxShadow: '0 6px 18px rgba(0,0,0,.28)' }}>
+            background: 'var(--vscode-editorWarning-background, rgba(217,119,6,0.95))',
+            color: 'var(--vscode-editorWarning-foreground, var(--text))', padding: '6px 12px', borderRadius: 6,
+            fontSize: 'var(--fs-xs)', zIndex: 29, maxWidth: '84%', boxShadow: '0 6px 18px var(--vscode-widget-shadow, rgba(0,0,0,.28))' }}>
             部件循环依赖：{cycleWarn.join(' → ')} —— 回边层已按空壳⟲渲染，请进部件定义删除嵌套实例
           </div>
         )}
+        {/* R146/R150 绑定完整性提示条（doc 模式）：⚠ 未录入绑定配置的子部件实例（不管解析过没解析过，
+            实时按当前电路+绑定表审计）——「写全配置」交真相给宿主落 .verilogviz.json，写全后条自动消失。 */}
+        {doc?.onFixBindings && (() => {
+          const hits = getBindingAudit((paperRef.current?.model.getCells() ?? []).map((c: any) => ({ type: c.get('type'), celltype: c.get('celltype') }))).map((h) => ({ ctx: h.ctx, name: h.name, file: h.file }));
+          if (!hits.length) return null;
+          return (
+            <div data-sb-bind-audit style={{ position: 'absolute', top: cycleWarn ? 44 : 8, left: '50%', transform: 'translateX(-50%)',
+              background: 'var(--vscode-editorInfo-background, rgba(14,99,156,0.92))',
+              color: 'var(--vscode-editorInfo-foreground, #fff)', padding: '6px 12px', borderRadius: 6,
+              fontSize: 'var(--fs-xs)', zIndex: 29, maxWidth: '84%', display: 'flex', gap: 10, alignItems: 'center',
+              boxShadow: '0 6px 18px var(--vscode-widget-shadow, rgba(0,0,0,.28))' }}>
+              <span>⚠ {hits.length} 个子部件实例靠<b>同名兜底</b>解析、未录入绑定配置：{hits.slice(0, 4).map((h) => h.name).join('、')}{hits.length > 4 ? ` …（共 ${hits.length}）` : ''}</span>
+              <button onClick={() => doc.onFixBindings!(hits)} style={{ cursor: 'pointer', border: '1px solid currentColor', borderRadius: 4, background: 'transparent', color: 'inherit', padding: '2px 8px', fontSize: 'inherit' }}>写全配置</button>
+            </div>
+          );
+        })()}
         {toast && (
           <div data-sandbox-toast style={{ position: 'absolute', left: '50%', bottom: 24, transform: 'translateX(-50%)',
-            background: 'rgba(239,68,68,0.95)', color: '#fff', padding: '7px 14px', borderRadius: 6,
-            fontSize: 'var(--fs-xs)', zIndex: 30, maxWidth: '80%', boxShadow: '0 6px 18px rgba(0,0,0,.28)' }}>
+            background: 'var(--vscode-errorForeground, rgba(239,68,68,0.95))',
+            color: 'var(--vscode-button-foreground, #fff)', padding: '7px 14px', borderRadius: 6,
+            fontSize: 'var(--fs-xs)', zIndex: 30, maxWidth: '80%', boxShadow: '0 6px 18px var(--vscode-widget-shadow, rgba(0,0,0,.28))' }}>
             {toast}
           </div>
         )}
@@ -3673,7 +3477,11 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
           />
         )}
         {fileBindingId && (() => {
-          const fb = sandboxStore.get(fileBindingId);
+          // doc 模式：活动文件是伪 SandboxFile（id='doc'，不在 sandboxStore）——
+          // 直接用 activeFileRef.current 当 fb（confirm 后带 partBindings，重开对话框有初值）。
+          const fb = docMode
+            ? activeFileRef.current
+            : sandboxStore.get(fileBindingId);
           if (!fb || fb.kind === 'gate') return null;
           // 扫文件 graphJson：Subcircuit 实例按 celltype 名聚合（含出现次数）
           const counts = new Map<string, number>();
@@ -3700,14 +3508,29 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
               isPart={fb.role === 'part'}
               celltypes={celltypes}
               parts={partsAll}
+              partSource={docMode ? () => (getPartFileSource()?.() ?? []) : undefined}
               autoMap={autoMap}
               initial={fb.partBindings || {}}
               onConfirm={(bindings) => {
-                sandboxStore.setPartBindings(fb.id, bindings);
-                if (activeFileRef.current?.id === fb.id) setActivePartBindings(bindings);
-                syncAfterFsOp();
+                if (docMode) {
+                  // 文档模式：伪文件不在 sandboxStore——绑定写回伪 activeFile.partBindings，
+                  // 既有 effect（activeFile 变更 → gateSystem.setActivePartBindings）让它
+                  // 本会话立即生效；再逐条经 doc.onBind 把「celltype→部件文件名」交给
+                  // DocApp 暂存（会话 Map，合成 partSource 时优先排头；落盘持久化留宿主侧后续）。
+                  setActiveFile((prev) => (prev && prev.id === fb.id ? { ...prev, partBindings: bindings } : prev));
+                  const src = getPartFileSource()?.() ?? [];
+                  for (const [ct, fid] of Object.entries(bindings)) {
+                    const f = src.find((x) => x.id === fid) ?? sandboxStore.get(fid);
+                    if (f) docRef.current?.onBind?.(ct, f.name);
+                  }
+                  showToast(`已保存「${baseName(fb.name)}」的绑定（文档模式：本会话内生效）。`);
+                } else {
+                  sandboxStore.setPartBindings(fb.id, bindings);
+                  if (activeFileRef.current?.id === fb.id) setActivePartBindings(bindings);
+                  syncAfterFsOp();
+                  showToast(`已保存「${baseName(fb.name)}」的绑定，重新打开文件后生效。`);
+                }
                 setFileBindingId(null);
-                showToast(`已保存「${baseName(fb.name)}」的绑定，重新打开文件后生效。`);
               }}
               onCancel={() => setFileBindingId(null)}
             />
@@ -3718,78 +3541,6 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
       {menu && (
         <ContextMenu x={menu.x} y={menu.y} title={menu.title} items={menu.items} onClose={() => setMenu(null)} />
       )}
-      </div>
-    </div>
-  );
-}
-
-/**
- * 总线转换器「位宽方案」对话框：一条 N 位总线 ↔ 若干组（每组 1/2/4/8 位）。
- * 分线器 = 总线 → 多组（8 位拆成 8×1、4×2、2×4 都在这里选）；
- * 合线器 = 多组 → 总线。这是 1/2/4/8 位分线之间互转的入口。
- */
-function BusWidthDialog({ mode, total, groupWidth, onTotal, onGroupWidth, onApply, onClose }: {
-  mode: string; total: number; groupWidth: number;
-  onTotal: (n: number) => void; onGroupWidth: (n: number) => void;
-  onApply: () => void; onClose: () => void;
-}) {
-  // 同 BindingDialog：`inset:0` 的遮罩必须给 Esc 一条出路（自动化测试也靠它，不然点不到遮罩外的任何行）
-  // 依赖表写 `[]` + ref，理由见 BindingDialog 里那段注释。
-  const closeBusRef = useRef(onClose);
-  closeBusRef.current = onClose;
-  useEffect(() => {
-    const k = (e: KeyboardEvent) => { if (e.key === 'Escape') closeBusRef.current(); };
-    document.addEventListener('keydown', k);
-    return () => document.removeEventListener('keydown', k);
-  }, []);
-  const TOTALS = [1, 2, 4, 8, 16, 32];
-  const widths = [1, 2, 4, 8].filter(w => total % w === 0);
-  const n = Math.floor(total / Math.max(1, groupWidth));
-  const btn = (active: boolean): React.CSSProperties => ({
-    padding: '5px 10px', fontSize: 'var(--fs-sm)', cursor: 'pointer', borderRadius: 4,
-    background: active ? 'var(--accent)' : 'var(--surface)',
-    color: active ? '#fff' : 'var(--text)',
-    border: '1px solid var(--border-subtle)',
-  });
-  return (
-    <div data-bus-width-dialog onMouseDown={(e) => e.stopPropagation()}
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.35)', zIndex: 2200,
-        display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
-        padding: 18, minWidth: 340, boxShadow: '0 12px 32px rgba(0,0,0,.32)' }}>
-        <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>
-          {mode}位宽方案
-        </div>
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          {mode === '分线器' ? '一条总线拆成若干组（每组可取 1/2/4/8 位）' : '若干组合成一条总线'}
-        </div>
-
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>总线位宽</div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-          {TOTALS.map(t => (
-            <button key={t} onClick={() => { onTotal(t); if (t % groupWidth !== 0) onGroupWidth(1); }} style={btn(t === total)}>{t} 位</button>
-          ))}
-        </div>
-
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>每组位宽</div>
-        <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
-          {widths.map(w => (
-            <button key={w} onClick={() => onGroupWidth(w)} style={btn(w === groupWidth)}>{w} 位 ×{Math.floor(total / w)}</button>
-          ))}
-        </div>
-
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginBottom: 14,
-          background: 'var(--surface-hover)', borderRadius: 6, padding: '6px 10px' }}>
-          结果：{n} 组 × {groupWidth} 位 = {n * groupWidth} 位
-          <span style={{ opacity: .8 }}>（端口 {mode === '分线器' ? `out0…out${n - 1} / in` : `in0…in${n - 1} / out`}）</span>
-        </div>
-
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={onClose} style={{ padding: '6px 14px', fontSize: 'var(--fs-sm)', cursor: 'pointer',
-            background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 4 }}>取消</button>
-          <button onClick={onApply} style={{ padding: '6px 14px', fontSize: 'var(--fs-sm)', cursor: 'pointer',
-            background: 'var(--accent)', color: '#fff', border: 'none', borderRadius: 4 }}>应用</button>
-        </div>
       </div>
     </div>
   );

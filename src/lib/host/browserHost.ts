@@ -2,12 +2,13 @@
  * 浏览器宿主（`pnpm dev` 与无头闸门跑在这里）。
  *
  * ⚠ 这一档的形状全部是"**抛 HostUnsupported**"，⛔ 改成"返回空结果"：
- *   `fileStore.refresh()` 拿到空 `tree.files` 会把 localStorage 里的文件当"磁盘上已删除"
- *   全部过滤掉（浏览器里磁盘永远为空 ⇒ 用户文件被抹光）。今天 invoke 在浏览器里必抛，
- *   catch 住之后走重试/保留本地清单那一条路——本档只是把这层"必抛"搬到明面上。
+ *   调用方 `.catch(console.warn)` 靠 rejection 区分"宿主没有"与"宿主说没有"，
+ *   返回空结果会把失败伪装成成功（当年 fileStore 拿空表删光用户文件那族教训）。
  *
  * 唯二真的实现了的能力：
- *   · 导出＝`<a download>`（`saveExport` 的老浏览器回退路径原样搬过来）
+ *   · 导出＝`<a download>`（saveExport 的老浏览器回退路径原样搬过来）
+ *   · Problems/Output＝no-op（浏览器无 workbench UI 可挂，resolve 掉让调用方无感）
+ *   · getConfig＝默认值（浏览器没有 Settings UI，回默认让画布能起）
  *   · 其余一律 reject：浏览器没有"项目目录"这个概念，⛔ 拿空结果糊弄调用方
  */
 import { HostUnsupported, type ProjectHost } from './host';
@@ -21,22 +22,14 @@ const nope = (method: string): Promise<never> => Promise.reject(new HostUnsuppor
 export const browserHost: ProjectHost = {
   id: 'browser',
 
-  saveProjectFile: () => nope('saveProjectFile'),
-  listProjectTree: () => nope('listProjectTree'),
-  // 浏览器档的沙盒正文就住 localStorage（⛔ 这里另开一条"从磁盘列文件"的路）——必须 reject，
-  // ⛔ 返回空表：调用方把空表当"磁盘上已经没有这些文件了"就会删掉用户的电路。
-  listSandboxTree: () => nope('listSandboxTree'),
-  readProjectFile: () => nope('readProjectFile'),
-  deleteProjectFile: () => nope('deleteProjectFile'),
-  createProjectFolder: () => nope('createProjectFolder'),
-  deleteProjectFolder: () => nope('deleteProjectFolder'),
-  moveProjectFile: () => nope('moveProjectFile'),
-  moveProjectFolder: () => nope('moveProjectFolder'),
-  copyProjectFile: () => nope('copyProjectFile'),
-  copyProjectFolder: () => nope('copyProjectFolder'),
-
-  readProjectConfig: () => nope('readProjectConfig'),
-  saveProjectConfig: () => nope('saveProjectConfig'),
+  getConfig: async () => ({
+    compile: { noFlatten: false, noOpt: false, autoRecompile: true },
+    sandbox: {
+      gridSize: 16, showGrid: true, snapToGrid: true, wireStyle: 'metro',
+      defaultBits: 1, autoStartSim: true, simSpeedMs: 10, foldConstants: true,
+    },
+    editorFontSize: 16,
+  }),
 
   saveExportFile: async (bytes, defaultName, mime) => {
     const blob = new Blob([bytes], { type: mime });
@@ -51,7 +44,13 @@ export const browserHost: ProjectHost = {
     return true;
   },
 
-  // 剪贴板留给调用方现有的 DOM 兜底（CodeEditor 的 textarea 那一条路，行为不变）
-  clipboardWrite: () => nope('clipboardWrite'),
-  clipboardRead: () => nope('clipboardRead'),
+  /* browser 档无 workbench UI 可挂——no-op（调用方 hostFire 吞掉，无副作用） */
+  publishProblems: async () => {},
+  appendOutput: async () => {},
+
+  copyToSandbox: () => nope('copyToSandbox'),
+  importLegacyData: () => nope('importLegacyData'),
+  getAllBindings: () => nope('getAllBindings'),
+  setDocBindings: () => nope('setDocBindings'),
+  jumpToSource: () => nope('jumpToSource'),
 };

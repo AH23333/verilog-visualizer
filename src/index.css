@@ -23,59 +23,65 @@ html, body, #root {
 }
 
 /* ============================================================
-   Dark Theme — Premium neutral palette with subtle blue undertones
+   Theme tokens —— 全量重映射到 webview 原生 --vscode-* 变量
+   （用户裁决 2026-10-14：弃旧观感，统一 workbench 风格）。
+   VS Code 壳随主题自动注入 --vscode-*（webview 无需自管亮暗两套），
+   亮暗两套令牌表合并为同一套映射；data-theme 钩子保留（useVscodeTheme
+   仍会设置、部分选择器仍引用它），但值与 :root 完全一致。
+   每颗 var() 都带旧调色板兜底值：浏览器直开（非 webview）时不至于黑块。
    ============================================================ */
 :root,
-[data-theme="dark"] {
+[data-theme="dark"],
+[data-theme="light"] {
   /* Core surfaces */
-  --bg: #09090b;
-  --bg-elevated: #111115;
-  --bg-overlay: #16161b;
-  --surface: #1a1a21;
-  --surface-hover: #22222b;
+  --bg: var(--vscode-editor-background, #09090b);
+  --bg-elevated: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #111115));
+  --bg-overlay: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #16161b));
+  --surface: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #1a1a21));
+  --surface-hover: var(--vscode-list-hoverBackground, var(--vscode-editorWidget-background, #22222b));
   /* Borders */
-  --border: #2a2a35;
-  --border-subtle: #1e1e28;
-  --border-glow: rgba(99, 102, 241, 0.15);
+  --border: var(--vscode-widget-border, var(--vscode-panel-border, #2a2a35));
+  --border-subtle: var(--vscode-widget-border, var(--vscode-panel-border, #1e1e28));
+  --border-glow: color-mix(in srgb, var(--accent) 15%, transparent);
   /* Text */
-  --text: #e4e4ec;
-  --text-secondary: #8b8b9a;
-  --text-muted: #5c5c6e;
-  /* Accent — indigo/blue */
-  --accent: #6366f1;
-  --accent-hover: #818cf8;
-  --accent-muted: rgba(99, 102, 241, 0.12);
-  --accent-glow: rgba(99, 102, 241, 0.25);
+  --text: var(--vscode-foreground, #e4e4ec);
+  --text-secondary: var(--vscode-descriptionForeground, #8b8b9a);
+  --text-muted: var(--vscode-disabledForeground, #5c5c6e);
+  /* Accent — VS Code 焦点/按钮色 */
+  --accent: var(--vscode-focusBorder, #6366f1);
+  --accent-hover: var(--vscode-button-hoverBackground, var(--vscode-focusBorder, #818cf8));
+  --accent-muted: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-glow: color-mix(in srgb, var(--accent) 25%, transparent);
   /* Semantic */
-  --danger: #f43f5e;
-  --danger-hover: #fb7185;
-  --danger-muted: rgba(244, 63, 94, 0.12);
-  --success: #22c55e;
-  --success-muted: rgba(34, 197, 94, 0.12);
-  --warning: #f59e0b;
-  --warning-muted: rgba(245, 158, 11, 0.12);
-  --info: #6366f1;
-  --info-muted: rgba(99, 102, 241, 0.12);
+  --danger: var(--vscode-errorForeground, #f43f5e);
+  --danger-hover: color-mix(in srgb, var(--danger) 75%, #fff);
+  --danger-muted: color-mix(in srgb, var(--danger) 12%, transparent);
+  --success: var(--vscode-testing-iconPassed, #3fb950);
+  --success-muted: color-mix(in srgb, var(--success) 12%, transparent);
+  --warning: var(--vscode-editorWarning-foreground, #f59e0b);
+  --warning-muted: color-mix(in srgb, var(--warning) 12%, transparent);
+  --info: var(--vscode-editorInfo-foreground, var(--vscode-focusBorder, #6366f1));
+  --info-muted: color-mix(in srgb, var(--info) 12%, transparent);
 
   /* Component surfaces */
-  --sidebar-bg: #09090b;
-  --panel-bg: #111115;
-  --toolbar-bg: #09090b;
-  --canvas-bg: #0d0d13;
-  --input-bg: #0d0d13;
-  --input-border: #2a2a35;
-  --input-focus: #6366f1;
-  --menu-bg: #14141a;
-  --menu-hover: #1e1e28;
-  --dropdown-bg: #14141a;
-  --statusbar-bg: #09090b;
-  --scrollbar-thumb: #2a2a35;
+  --sidebar-bg: var(--vscode-sideBar-background, #09090b);
+  --panel-bg: var(--vscode-editorWidget-background, var(--vscode-sideBar-background, #111115));
+  --toolbar-bg: var(--vscode-editorWidget-background, var(--vscode-editor-background, #09090b));
+  --canvas-bg: var(--vscode-editor-background, #0d0d13);
+  --input-bg: var(--vscode-input-background, #0d0d13);
+  --input-border: var(--vscode-input-border, var(--vscode-widget-border, var(--vscode-panel-border, #2a2a35)));
+  --input-focus: var(--vscode-focusBorder, #6366f1);
+  --menu-bg: var(--vscode-menu-background, var(--vscode-editorWidget-background, #14141a));
+  --menu-hover: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground, #1e1e28));
+  --dropdown-bg: var(--vscode-dropdown-background, var(--vscode-input-background, #14141a));
+  --statusbar-bg: var(--vscode-statusBar-background, var(--vscode-editor-background, #09090b));
+  --scrollbar-thumb: var(--vscode-scrollbarSlider-background, #2a2a35);
   --scrollbar-track: transparent;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.5);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.6);
+  /* Shadows — 统一吃壳的 widget-shadow */
+  --shadow-sm: 0 1px 2px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.4));
+  --shadow-md: 0 4px 16px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.5));
+  --shadow-lg: 0 8px 32px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.6));
   --shadow-glow: 0 0 20px var(--accent-glow);
 
   /* Radii */
@@ -109,63 +115,17 @@ html, body, #root {
 }
 
 /* ============================================================
-   Light Theme
-   ============================================================ */
-[data-theme="light"] {
-  --bg: #fafafa;
-  --bg-elevated: #ffffff;
-  --bg-overlay: #ffffff;
-  --surface: #f4f4f5;
-  --surface-hover: #eaeaec;
-  --border: #e4e4e7;
-  --border-subtle: #eaeaec;
-  --border-glow: rgba(99, 102, 241, 0.12);
-  --text: #18181b;
-  --text-secondary: #71717a;
-  --text-muted: #a1a1aa;
-  --accent: #4f46e5;
-  --accent-hover: #6366f1;
-  --accent-muted: rgba(99, 102, 241, 0.08);
-  --accent-glow: rgba(99, 102, 241, 0.2);
-  --danger: #e11d48;
-  --danger-hover: #f43f5e;
-  --danger-muted: rgba(225, 29, 72, 0.08);
-  --success: #16a34a;
-  --success-muted: rgba(22, 163, 74, 0.08);
-  --warning: #d97706;
-  --warning-muted: rgba(217, 119, 6, 0.08);
-  --info: #4f46e5;
-  --info-muted: rgba(99, 102, 241, 0.08);
-
-  --sidebar-bg: #fafafa;
-  --panel-bg: #ffffff;
-  --toolbar-bg: #ffffff;
-  --canvas-bg: #fafafa;
-  --input-bg: #f4f4f5;
-  --input-border: #e4e4e7;
-  --input-focus: #4f46e5;
-  --menu-bg: #ffffff;
-  --menu-hover: #f4f4f5;
-  --dropdown-bg: #ffffff;
-  --statusbar-bg: #fafafa;
-  --scrollbar-thumb: #d4d4d8;
-  --scrollbar-track: transparent;
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
-  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.12);
-  --shadow-glow: 0 0 20px var(--accent-glow);
-}
-
-/* ============================================================
-   Base
+   Base —— body/#root 背景直接对齐壳的编辑器背景（⛔ 白边）
    ============================================================ */
 body {
-  background: var(--bg);
-  color: var(--text);
+  background: var(--vscode-editor-background, var(--bg));
+  color: var(--vscode-foreground, var(--text));
   font-size: 1rem;
   line-height: 1.5;
   letter-spacing: 0.01em;
+}
+#root {
+  background: var(--vscode-editor-background, var(--canvas-bg));
 }
 
 /* ============================================================
@@ -303,16 +263,13 @@ input:focus, select:focus, textarea:focus {
 }
 
 /* ============================================================
-   Glassmorphism utility
+   Glassmorphism utility —— 跟随壳主题的 elevated 底 + 模糊
    ============================================================ */
 .glass {
-  background: rgba(17, 17, 21, 0.8);
+  background: color-mix(in srgb, var(--bg-elevated) 80%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border);
-}
-[data-theme="light"] .glass {
-  background: rgba(255, 255, 255, 0.8);
 }
 
 /* ============================================================

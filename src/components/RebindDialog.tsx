@@ -77,8 +77,8 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
                 style={{
                   display: 'flex', alignItems: 'center', gap: 12, padding: '6px 8px',
                   marginBottom: 4, borderRadius: 4, cursor: 'pointer',
-                  background: isCur ? 'rgba(0, 200, 0, 0.05)' : 'rgba(255, 150, 0, 0.08)',
-                  border: isCur ? '1px solid rgba(0, 200, 0, 0.15)' : '1px solid rgba(255, 150, 0, 0.2)',
+                  background: isCur ? 'color-mix(in srgb, var(--success) 5%, transparent)' : 'color-mix(in srgb, var(--warning) 8%, transparent)',
+                  border: isCur ? '1px solid color-mix(in srgb, var(--success) 15%, transparent)' : '1px solid color-mix(in srgb, var(--warning) 20%, transparent)',
                 }}
                 title={isCur ? `当前绑定：${p.name}` : `绑定到 ${p.name}`}>
                 <code style={{
@@ -133,7 +133,7 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
             onClick={onClose}
             style={{
               padding: '6px 18px', border: 'none', borderRadius: 'var(--radius-md)',
-              background: 'var(--accent)', color: '#fff', cursor: 'pointer',
+              background: 'var(--accent)', color: 'var(--vscode-button-foreground, #fff)', cursor: 'pointer',
               fontSize: 'var(--fs-md)', fontWeight: 600,
             }}>
             确定

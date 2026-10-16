@@ -106,7 +106,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
               取消
             </button>
             <button onClick={submit} disabled={!ok || !gateNameOk} data-expr-go
-              style={{ padding: '0 14px', height: 28, borderRadius: 'var(--radius-md)', border: 'none', background: ok && gateNameOk ? 'var(--accent)' : 'var(--surface-hover)', color: ok && gateNameOk ? '#fff' : 'var(--text-muted)', cursor: ok && gateNameOk ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-md)', fontWeight: 600 }}>
+              style={{ padding: '0 14px', height: 28, borderRadius: 'var(--radius-md)', border: 'none', background: ok && gateNameOk ? 'var(--accent)' : 'var(--surface-hover)', color: ok && gateNameOk ? 'var(--vscode-button-foreground, #fff)' : 'var(--text-muted)', cursor: ok && gateNameOk ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-md)', fontWeight: 600 }}>
               {gateMode ? '存为部件并放置' : '生成到画布'}
             </button>
           </div>
