@@ -22,7 +22,7 @@ const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1682;
-try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1682)); } catch { } const URL = `http://localhost:${PORT}/`;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1682)); } catch { } const URL = `http://localhost:${PORT}/gates.html`;
 const UI = require('./_ui.cjs');
 const sleep = UI.sleep;
 const J = (o) => JSON.stringify(o);

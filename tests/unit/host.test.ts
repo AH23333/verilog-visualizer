@@ -1,10 +1,10 @@
 // 统一调用层（src/lib/host/*）的单测安全网。
 // 为什么这批值得钉：宿主探测与"不支持=抛错"这两条形状一旦改坏，后果不是"报错"而是**静默换路径**——
 // ① 探测在模块加载期求值 ⇒ r12 的 [F] 三格（点击前注入 `acquireVsCodeApi` 桩验原生另存为）永远测不到
-//    vscode 分支，绿灯是假的；② browserHost 若把"不支持"做成"返回空表"，`fileStore.refresh()` 会把
-//    空 `tree.files` 当"磁盘上已删除"，**抹掉 localStorage 里用户的全部文件**（本文件用一颗专门的
-//    用例钉住"必须 reject"）。两条都在无头环境里可判，⛔ 留给浏览器闸门。
-// R138：Tauri 那一档随 `src-tauri/` 一起拔掉，窗口控制五颗也离开接口（自绘标题栏没了）。
+//    vscode 分支，绿灯是假的；② browserHost 若把"不支持"做成"返回空结果"，调用方的
+//    `.catch(console.warn)` 会把失败当成功吞掉。两条都在无头环境里可判，⛔ 留给浏览器闸门。
+// 片 5（全面原生）：接口 18 颗收到 6 颗——文件 CRUD/配置/剪贴板那批随旧 React UI 退役，
+// 现在的面＝getConfig / saveExportFile / publishProblems / appendOutput / copyToSandbox / jumpToSource。
 // @vitest-environment node
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
@@ -55,42 +55,43 @@ describe('宿主探测（每次现读，⛔ 模块加载期求值）', () => {
 });
 
 describe('browserHost：不支持必须抛，⛔ 返回空结果', () => {
-  it('文件类与配置类方法全部 reject（HostUnsupported）', async () => {
+  it('能力类方法全部 reject（HostUnsupported）', async () => {
     setWindow(makeWindow({}));
     const { browserHost } = await import('../../src/lib/host/browserHost');
     const calls: Array<Promise<unknown>> = [
-      browserHost.listProjectTree(),
-      browserHost.listSandboxTree(),
-      browserHost.readProjectFile('a.v'),
-      browserHost.saveProjectFile('a.v', 'x'),
-      browserHost.deleteProjectFile('a.v'),
-      browserHost.createProjectFolder('f'),
-      browserHost.deleteProjectFolder('f'),
-      browserHost.moveProjectFile('a', 'b'),
-      browserHost.moveProjectFolder('a', 'b'),
-      browserHost.copyProjectFile('a', 'b'),
-      browserHost.copyProjectFolder('a', 'b'),
-      browserHost.readProjectConfig(),
-      browserHost.saveProjectConfig('{}'),
-      browserHost.clipboardWrite('t'),
-      browserHost.clipboardRead(),
+      browserHost.copyToSandbox([{ name: 'a.djs', content: '{}' }]),
+      browserHost.importLegacyData([{ name: 'a.v', content: 'x' }]),
+      browserHost.getAllBindings(),
+      browserHost.setDocBindings('a.djs', {}),
+      browserHost.jumpToSource('a.v', 3),
     ];
     for (const p of calls) {
       await expect(p).rejects.toThrow(/不支持/);
+      await expect(p).rejects.toMatchObject({ name: 'HostUnsupported' });
     }
-    // 专门钉这一颗：refresh() 拿到的必须是**抛错**，不是 { files: [] }——
-    // 空表会走 files.filter(...) 把 localStorage 里的文件全删掉
-    await expect(browserHost.listProjectTree()).rejects.toMatchObject({ name: 'HostUnsupported' });
+  });
+
+  it('Problems/Output 是 no-op（浏览器无 workbench 可挂，resolve 掉让调用方无感）', async () => {
+    setWindow(makeWindow({}));
+    const { browserHost } = await import('../../src/lib/host/browserHost');
+    await expect(browserHost.publishProblems([{ fileName: 'a.v', line: null, message: 'x', severity: 'error' }])).resolves.toBeUndefined();
+    await expect(browserHost.appendOutput('log\n')).resolves.toBeUndefined();
+  });
+
+  it('getConfig 回默认值（浏览器没有 Settings UI，画布要能起）', async () => {
+    setWindow(makeWindow({}));
+    const { browserHost } = await import('../../src/lib/host/browserHost');
+    const cfg = await browserHost.getConfig();
+    expect(cfg.sandbox.wireStyle).toBe('metro');
+    expect(cfg.compile.autoRecompile).toBe(true);
   });
 
   it('导出走 <a download>：文件名与 mime 都按调用方给的走，返回 true', async () => {
     const win = makeWindow({});
     const clicks: string[] = [];
-    const created: any[] = [];
     (win as any).document = {
       createElement: (tag: string) => {
         const el: any = { tagName: tag, style: {}, click: () => { clicks.push(el.download); }, remove: () => { } };
-        created.push(el);
         return el;
       },
       body: { appendChild: () => { }, removeChild: () => { } },
@@ -124,22 +125,22 @@ describe('vscodeHost：Webview RPC 的形状', () => {
 
   it('请求带自增 id 与方法名；应答按 id 认领（并发两问不许串号）', async () => {
     const { vscodeHost } = await load();
-    const p1 = vscodeHost.readProjectFile('a.v');
-    const p2 = vscodeHost.listProjectTree();
+    const p1 = vscodeHost.copyToSandbox([{ name: '我的电路.djs', content: '{"cells":[]}' }]);
+    const p2 = vscodeHost.getConfig();
     expect(sent.length).toBe(2);
-    expect(sent[0].method).toBe('readProjectFile');
-    expect(sent[0].args).toEqual({ name: 'a.v' });
+    expect(sent[0].method).toBe('copyToSandbox');
+    expect(sent[0].args).toEqual({ files: [{ name: '我的电路.djs', content: '{"cells":[]}' }] });
     expect(sent[1].id).not.toBe(sent[0].id);
     // 后到的问题先答：谁认领自己的 id
-    win.__fire('message', { vvh: 'res', id: sent[1].id, ok: true, data: { files: [], folders: [] } });
-    win.__fire('message', { vvh: 'res', id: sent[0].id, ok: true, data: 'module top; endmodule' });
-    expect((await p2).files).toEqual([]);
-    expect(await p1).toBe('module top; endmodule');
+    win.__fire('message', { vvh: 'res', id: sent[1].id, ok: true, data: { compile: {}, sandbox: {} } });
+    win.__fire('message', { vvh: 'res', id: sent[0].id, ok: true, data: ['我的电路.djs'] });
+    expect((await p2).sandbox).toEqual({});
+    expect(await p1).toEqual(['我的电路.djs']);
   });
 
   it('ok:false 转成 Error（带宿主给的话），不静默 resolve', async () => {
     const { vscodeHost } = await load();
-    const p = vscodeHost.deleteProjectFile('x.v');
+    const p = vscodeHost.jumpToSource('x.v', 1);
     win.__fire('message', { vvh: 'res', id: sent[0].id, ok: false, error: '没有权限' });
     await expect(p).rejects.toThrow('没有权限');
   });
@@ -148,7 +149,7 @@ describe('vscodeHost：Webview RPC 的形状', () => {
     vi.useFakeTimers();
     try {
       const { vscodeHost } = await load();
-      const p = vscodeHost.readProjectConfig();
+      const p = vscodeHost.getConfig();
       let settled = 'pending';
       p.then(() => { settled = 'resolved'; }, () => { settled = 'rejected'; });
       await vi.advanceTimersByTimeAsync(21000);   // 默认 20s
@@ -175,10 +176,10 @@ describe('hostFire：fire-and-forget 的留痕语义', () => {
     setWindow(makeWindow({}));
     const { hostFire } = await import('../../src/lib/host/host');
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => { });
-    hostFire('Failed to save file to project directory:', (h) => h.saveProjectFile('a.v', 'x'));
+    hostFire('Failed to copy circuit to sandbox:', (h) => h.copyToSandbox([{ name: 'a.djs', content: '{}' }]));
     await new Promise((r) => setTimeout(r, 10));        // 等那条后台 promise 落地
     expect(warn).toHaveBeenCalledTimes(1);
-    expect(warn.mock.calls[0][0]).toBe('Failed to save file to project directory:');
+    expect(warn.mock.calls[0][0]).toBe('Failed to copy circuit to sandbox:');
     expect(warn.mock.calls[0][1]).toBeInstanceOf(Error);
     warn.mockRestore();
   });

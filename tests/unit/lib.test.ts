@@ -187,3 +187,25 @@ describe('verilogCircuit 电路后处理', () => {
     expect(subNames[1]).toBe('N3');
   });
 });
+
+describe('gateSystem R145 多层绑定前缀键（宿主文档::实例名）', () => {
+  it('有 ctx 且命中前缀 ⇒ 用前缀文件；无 ctx/未录 ⇒ 裸键与同名兜底照旧（零回归）', async () => {
+    const { resolvePartRef, setPartFileSource, setActivePartBindings, setActiveCtxDoc } = await import('../../src/lib/gateSystem');
+    const files: any[] = [
+      { id: 'ctrl.djs', name: 'ctrl.djs', role: 'part', kind: 'djs', graphJson: '{"cells":[]}' },
+      { id: 'adder.djs', name: 'adder.djs', role: 'part', kind: 'djs', graphJson: '{"cells":[]}' },
+      { id: 'alt/adder_impl.djs', name: 'alt/adder_impl.djs', role: 'part', kind: 'djs', graphJson: '{"cells":[]}' },
+    ];
+    try {
+      setPartFileSource(() => files);
+      setActivePartBindings({ 'ctrl.djs::adder': 'alt/adder_impl.djs' });
+      setActiveCtxDoc('ctrl.djs');
+      expect(resolvePartRef('adder')!.file.name).toBe('alt/adder_impl.djs');  // 顶层展开 ctrl 层：前缀赢
+      expect(resolvePartRef('adder', '', 'other.djs')!.file.name).toBe('adder.djs'); // 别的宿主没录前缀 ⇒ 裸/同名兜底
+      setActiveCtxDoc('');
+      expect(resolvePartRef('adder')!.file.name).toBe('adder.djs');           // 无上下文＝裸键世界（旧行为）
+    } finally {
+      setActivePartBindings(null); setActiveCtxDoc(''); setPartFileSource(null);
+    }
+  });
+});

@@ -22,7 +22,7 @@ const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1584;
-try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1584)); } catch { } const URL = `http://localhost:${PORT}/`;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1584)); } catch { } const URL = `http://localhost:${PORT}/gates.html`;
 const UI = require('./_ui.cjs');
 const sleep = UI.sleep;
 const J = (o) => JSON.stringify(o);
@@ -190,10 +190,11 @@ async function mainInfo(page, pa) {
       open2 === false ? '入口没起来' : `弹窗 ${J(st2 && { nRows: st2.nRows, rows: st2.rows })} 要=${J(expect2)}`);
     await closeFileBinding(page);
 
-    // ===== [4] 自动/失效说实话（先于任何显式绑定）=====
-    // 这颗弹窗的"自动"是**如实预选**：没显式绑定时，下拉挂在 autoMap 现算那颗上
-    // （resolvePartRef 按作用域打分的结果），而不是自己发明一颗 —— 所以对照物是
-    // `resolvePartRef(PA, dirOf(主文件))` 的 file.id，外加"store 里没有任何显式绑定"。
+    // ===== [4] M4：放置部件即自动写绑定（先于任何手动绑定）=====
+    // M4（用户裁决）：沙盒模式用部件＝自动改配置——把部件放进电路的那一刻，就把
+    // 「绑定名 → 部件文件」写进该电路的 partBindings（resolvePartRef 最高优先）。
+    // 所以对照物是 `resolvePartRef(PA, '')` 现算的那颗，且 store 里**已录**这条显式绑定，
+    // 弹窗对应行当场指向它并画「已绑定」（不再是"未绑定时预选自动"）。
     const autoId = await page.evaluate(async (pa) => {
       const g = await import('/src/lib/gateSystem.ts');
       const r = g.resolvePartRef(pa, '');
@@ -206,13 +207,13 @@ async function mainInfo(page, pa) {
       const m = await import('/src/store/sandboxStore.ts');
       return m.sandboxStore.get(id)?.partBindings || {};
     }, mi.id);
-    const autoOk = (rowA4 && rowA4.val === autoId) && Object.keys(dbPre).length === 0;
+    const autoOk = rowA4 && rowA4.val === autoId && dbPre[PA] === autoId && rowA4.bound === true;
     (autoOk ? ok : bad)(
-      '[4] 未显式绑定时：行如实预选到 autoMap 现算的那颗（下拉值 = resolvePartRef 结果），store 无显式绑定',
-      `val=${J(rowA4 && rowA4.val)} auto=${J(autoId)} 显式绑定=${J(dbPre)}`);
+      '[4] 放置部件即自动写绑定（M4）：store.partBindings[celltype] = resolvePartRef 结果，弹窗行即时「已绑定」',
+      `val=${J(rowA4 && rowA4.val)} auto=${J(autoId)} bound=${J(rowA4 && rowA4.bound)} 显式绑定=${J(dbPre)}`);
     await closeFileBinding(page);
 
-    // 删掉 A 的部件文件 ⇒ 重开：那行必须说实话"没得选了"
+    // 删掉 A 的部件文件 ⇒ 重开：那行必须说实话"没得选了"（哪怕 store 里还留着一条指向它的旧绑定）
     await page.locator('button[data-activity="files"]').first().click(); await sleep(700);
     const del = await fileMenu(page, `[data-sbfile$="${PA}.djs"]`, '删除');
     const open4b = await openFileBinding(page);

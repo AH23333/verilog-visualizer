@@ -72,6 +72,16 @@ describe('webview HTML 改写', () => {
     expect(tag).toContain('nonce="NONCE123"');
     expect(tag).toContain('src="vscode-webview://ext/dist/assets/');
   });
+
+  it('.djs 文档入口 doc.html 也是真实构建产物的一员（双入口缺一颗＝custom editor 白屏）', () => {
+    const docPath = path.join(ROOT, 'dist', 'doc.html');
+    if (!fs.existsSync(docPath)) { console.warn('  [跳过] 没有 dist/doc.html（先 pnpm build）'); return; }
+    const raw = fs.readFileSync(docPath, 'utf8');
+    const out = run(raw);
+    expect(out).toContain('Content-Security-Policy');
+    // doc 入口 ⛔ 引 yosys（6MB JS + 16MB wasm 只该在编译画布那条路）——引用了说明入口分岔失败
+    expect(raw).not.toMatch(/yosys/);
+  });
 });
 
 /** 内存假 fs：让路径规则与扫描顺序可判，⛔ 开 VS Code 才看得见 */
@@ -212,15 +222,20 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
   // 两边各写一张表，中间隔着一条 webview 消息边界 ⇒ 加一颗宿主能力时**只改一边**是静默失败：
   // 前端 `rpc('newMethod')` 发出去，宿主落进 `default:` 抛"不认识的调用"，症状是"这个功能按了没反应"。
   // 这颗闸门读的是两份**源码文本**（⛔ 运行时探测），因为它判的就是"两张表是否同一张"。
+  // 片 5：宿主那张表搬家了——extension.ts 只留装载，case 表在 dispatch.ts（Panel 与 custom editor 共用）。
   const client = fs.readFileSync(path.join(ROOT, 'src/lib/host/vscodeHost.ts'), 'utf8');
-  const host = fs.readFileSync(path.join(ROOT, 'extension/src/extension.ts'), 'utf8');
-  const sent = [...client.matchAll(/rpc<[^>]*>\('([a-zA-Z]+)'/g)].map((m) => m[1]).sort();
+  const host = fs.readFileSync(path.join(ROOT, 'extension/src/dispatch.ts'), 'utf8');
+  // ⚠ 正则要吃下嵌套泛型（`rpc<Record<string, string>>('getDocBindings'…`）——`[^>]*` 在内层 `>` 处断掉；
+  //   惰性取到第一颗 `('` 为止（⛔ 用 `.*?`：`import('./x')` 形状会误抽出 'x' 当方法名）。
+  const sent = [...client.matchAll(/rpc\b[^;]*?\('([a-zA-Z]+)'/g)].map((m) => m[1]).sort();
   const handled = [...host.matchAll(/case '([a-zA-Z]+)':/g)].map((m) => m[1]).sort();
 
   it('两边都真抽到了名字（⛔ 正则失配造成的"两边都空 ⇒ 相等 ⇒ 绿"）', () => {
-    // 16＝R140 片 4-C1 起（多了 `listSandboxTree`）。⛔ 把这个数改小：改小＝允许某一边漏一颗。
-    expect(sent.length).toBeGreaterThanOrEqual(16);
-    expect(handled.length).toBeGreaterThanOrEqual(16);
+    // 9＝片 5-B3 起（getConfig/saveExportFile/publishProblems/appendOutput/copyToSandbox/
+    // importLegacyData/getDocBindings/setDocBindings/jumpToSource）。
+    // 旧 18 颗里文件 CRUD/配置/剪贴板那 12 颗随旧 React UI 退役。⛔ 把这个数改小：改小＝允许某一边漏一颗。
+    expect(sent.length).toBeGreaterThanOrEqual(9);
+    expect(handled.length).toBeGreaterThanOrEqual(9);
   });
 
   it('两张表逐字相同：前端调的每一颗宿主都认得，宿主认得的每一颗前端都在调', () => {
@@ -232,12 +247,14 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
   });
 
   it('面板释放登记只有**一处**，且在两条装载路共用的 wirePanel 里', () => {
-    // 面板有两个来路：`openPanel`（按命令新开）与 serializer（窗口重启恢复）。
+    // 面板有两个来路：`openPanel`（开局自动/compileAndShow 复用）与 serializer（窗口重启恢复）。
     // 只挂在 openPanel 上时：恢复出面板 → 关掉 → `currentPanel` 仍指着已释放的那颗
     // ⇒ 再按命令走 `reveal()`＝"点了没反应"。所以这一颗登记⛔ 有两个主人。
-    expect((host.match(/onDidDispose/g) || []).length).toBe(1);
-    const wireAt = host.indexOf('function wirePanel');
+    // ⚠ 判 extension.ts（装载线）；dispatch.ts 是能力路由，没有面板生命周期。
+    const extensionSrc = fs.readFileSync(path.join(ROOT, 'extension/src/extension.ts'), 'utf8');
+    expect((extensionSrc.match(/onDidDispose/g) || []).length).toBe(1);
+    const wireAt = extensionSrc.indexOf('function wirePanel');
     expect(wireAt).toBeGreaterThan(-1);
-    expect(host.indexOf('onDidDispose')).toBeGreaterThan(wireAt);
+    expect(extensionSrc.indexOf('onDidDispose')).toBeGreaterThan(wireAt);
   });
 });

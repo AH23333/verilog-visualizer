@@ -9,7 +9,7 @@ const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-c
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1427;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1427)); } catch { }
-const URL = `http://localhost:${PORT}/`;
+const URL = `http://localhost:${PORT}/gates.html`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const results = { pass: 0, fail: 0 };
 const ok = (n, m = '') => { results.pass++; console.log(`  PASS  ${n}${m ? ' — ' + m : ''}`); };
