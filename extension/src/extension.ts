@@ -24,6 +24,7 @@ import {
 } from './sandboxFiles';
 import { openBindingPanel } from './bindingPanel';
 import { loadProjectApiOverride } from './apiSurface';
+import { loadProjectGrants } from './apiGrants';
 import { initProject } from './vvProject';
 import { flushAudit } from './apiAudit';
 import { parseVerilogInstances } from './verilogParseLite';
@@ -283,6 +284,13 @@ export function activate(context: vscode.ExtensionContext) {
       void vscode.window.showWarningMessage("API 工程覆盖被拒绝：" + rejects.join("；") + "（已沿用默认账）");
     }
   }).catch(() => { /* 读不到工程覆盖＝默认账，常态 */ });
+
+  // 协议⑨闸③：工程授权档案 .vv/api.grants.json（可选提交；缺席＝闸不生效——activate 一次性加载，热更新需重启窗口）
+  void loadProjectGrants(context).then((notes) => {
+    if (notes.length) {
+      void vscode.window.showWarningMessage("API 授权档案告警：" + notes.join("；") + "（该条不生效，详见 .vv/api.grants.json）");
+    }
+  }).catch(() => { /* 读档案失败＝无闸；闸 1/2 照办 */ });
 
   // M7 归一清扫（一次性、幂等）：盘上 `x.djs.djs` 裁尾 + 各层绑定表值归一写回（前缀键随迁）。
   // 后台跑不拦 activate；零改动不打扰（有改动才广播+轻报）——第二遍起必然静默。

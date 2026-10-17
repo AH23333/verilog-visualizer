@@ -847,6 +847,10 @@
         "url": "./schemas/vv-api.schema.json"
       },
       {
+        "fileMatch": "**/.vv/api.grants.json",
+        "url": "./schemas/vv-grants.schema.json"
+      },
+      {
         "fileMatch": "**/.vv/project.json",
         "url": "./schemas/vv-project.schema.json"
       }

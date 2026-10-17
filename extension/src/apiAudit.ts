@@ -1,6 +1,7 @@
 // ============================================================================
 // API 审计通道（CONFIG_PROTOCOL §9.5）
 // 每次过闸的工具调用一行 JSONL：{ts, traceId, tool, ref, subject, verdict, ms, argsDigest, configHash}
+//   verdict 七值：auto/approved/denied/error/surface-denied/not-registered/not-granted（闸③档案拒）
 //   落 `.vv/audit/trace-YYYYMMDD.jsonl`（.gitignore 的 audit/ 规则保它不入库）。
 // 反超前铁律：工程未 initProject（无 .vv/）＝通道静默；dirState 只判一次，开户须重启窗口（工程开户是大事）。
 // 写策略：内存缓冲 + 批量整写日文件（workspace.fs 无 append）——30 行/5 秒即刷；日文件滚动上限 500 行。
@@ -12,7 +13,7 @@ import * as crypto from 'crypto';
 import { projectRoot } from './dispatch';
 import { loadApiContract } from './apiSurface';
 
-export type AuditVerdict = 'auto' | 'approved' | 'denied' | 'error' | 'surface-denied' | 'not-registered';
+export type AuditVerdict = 'auto' | 'approved' | 'denied' | 'error' | 'surface-denied' | 'not-registered' | 'not-granted';
 export interface AuditLine {
   ts: string; traceId: string; tool: string | null; ref: string; subject: string;
   verdict: AuditVerdict; ms: number; argsDigest: string; note?: string; configHash: string;

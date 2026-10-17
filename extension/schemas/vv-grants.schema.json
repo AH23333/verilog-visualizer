@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verilog-visualizer.local/schemas/vv-grants.schema.json",
+  "title": "Verilog Visualizer 授权闸③·调用方档案（CONFIG_PROTOCOL §9.4 第三行）",
+  "description": "`.vv/api.grants.json`：subject（端点身份）绑 profile，profile 是工具 id 白名单。只收窄永不放宽——闸 1（surfacesGlobal）与固有审批先于本闸；审批弹窗只在闸 1/3 都通过后才发起。文件缺席＝不自设这道闸。",
+  "type": "object",
+  "required": ["subjects", "profiles"],
+  "properties": {
+    "schemaVersion": { "type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$" },
+    "$schema": { "type": "string" },
+    "meta": { "type": "object" },
+    "subjects": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^(ui|mcp:[A-Za-z0-9_-]+|cli:[A-Za-z0-9_-]+)$", "description": "ui=本扩展画布 webview；mcp/cli 按连接身份（§10.2 端点无特权）" },
+      "additionalProperties": { "type": "string", "minLength": 1 }
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_-]*$" },
+      "additionalProperties": {
+        "type": "array",
+        "uniqueItems": true,
+        "items": { "type": "string", "pattern": "^(circuit|project|bindings|compile|host)\\.[a-z][A-Za-z]*$", "description": "工具 id 域词表封闭（§9.2）；惯例：reviewer=只读集、builder=+写集" }
+      }
+    }
+  },
+  "additionalProperties": false
+}

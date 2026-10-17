@@ -7,6 +7,7 @@ import type { FsLike } from './projectStore';
 import { getAllBindings, setDocBindings, ensureDirsMeta, setBindingInDir } from './sandboxFiles';
 import { loadApiContract, toolIdForRpc, canSurface } from './apiSurface';
 import { auditToolCall, type AuditVerdict } from './apiAudit';
+import { checkGrant } from './apiGrants';
 
 /** Problems 面板接管：webview 编译后经 publishProblems 落到这里。
  *  ⚠ **惰性创建**：extensionHost.test 的 vscode 桩没有 createDiagnosticCollection/
@@ -104,7 +105,7 @@ function sanitizeRelName(raw: unknown, fallback: string): string {
   return segs.join('/') || fallback;
 }
 
-// ── 协议 §9.5 审计壳（刀）：计时 + 六 verdict 记账（auto/approved/denied/surface-denied/not-registered/error）。
+// ── 协议 §9.5 审计壳（刀）：计时 + 七 verdict 记账（auto/approved/denied/error/surface-denied/not-registered/not-granted）。
 // 账落在 dispatch 外层＝闸前错误也进账（deny/not-registered 正是最想审计的两类）。
 export async function dispatch(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
   const t0 = Date.now();
@@ -118,6 +119,7 @@ export async function dispatch(context: vscode.ExtensionContext, method: string,
     const msg = String(e && (e as any).message || e);
     const verdict: AuditVerdict = msg.includes("[API_NOT_REGISTERED]") ? "not-registered"
       : msg.includes("[API_SURFACE_DENIED]") ? "surface-denied"
+      : msg.includes("[API_NOT_GRANTED]") ? "not-granted"
       : msg.includes("[API_NOT_APPROVED]") ? "denied" : "error";
     auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "rpc", verdict, ms: Date.now() - t0, args, note: msg.slice(0, 200) });
     throw e;
@@ -125,12 +127,17 @@ export async function dispatch(context: vscode.ExtensionContext, method: string,
 }
 
 async function dispatchCore(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
-  // 协议 §9.4 执行钩子（阶段二第二刀）：RPC 面入口先过契约闸——
-  // ① 未登记方法（绕过对账锁的运行时残寇）＝拒；② surfaces 全局开关/端点未开＝拒（API_SURFACE_DENIED）；
-  // ③ requiresApproval 的工具＝暂停弹宿主确认（verdict 入拒绝文案；审批记录通道随审计刀落地）。
+  // 协议 §9.4 执行钩子（阶段二第二刀）：RPC 面入口先过契约闸（硬序 1→2硬→3→2审批）——
+  // ① surfaces 全局开关；② 工具 surfaces（未上账已在 apiSurface 反查拦掉）；③ 档案授权 api.grants.json；
+  // ④ requiresApproval 的工具＝最后才暂停弹宿主确认（审批弹窗只在闸 1/3 都通过后发起；§9.4 协议硬序）。
   const toolId = toolIdForRpc(method);
   if (!toolId) throw new Error(`[API_NOT_REGISTERED] ${method} 未在 API 契约登记（加方法必先上账）`);
   if (!canSurface(toolId, 'rpc')) throw new Error(`[API_SURFACE_DENIED] ${method}：端点未对 rpc 开放（工具账 ${toolId}）`);
+  // 协议⑨闸③（§9.4 第三行）：调用方档案授权——硬序 1→2(硬)→3→2(审批)，审批弹窗只在闸 1/3 都过后才发起。
+  // 阶段二全部 rpc 流量都来自本扩展自己的画布 webview ⇒ subject='ui'（apiGrants.ts 头注）。
+  if (!checkGrant('ui', toolId)) {
+    throw new Error(`[API_NOT_GRANTED] ${method}：调用方档案（ui）未获工具 ${toolId} 授权（改 .vv/api.grants.json）`);
+  }
   const tool = loadApiContract().tools[toolId];
   if (tool.requiresApproval) {
     const pick = await vscode.window.showWarningMessage(

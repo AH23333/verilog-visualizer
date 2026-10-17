@@ -502,6 +502,88 @@ describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
     expect(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.vv/project.json').path.toLowerCase())!)).toBe(mine);
   });
 
+  it('协议⑨闸③臂①：api.grants.json 白名单语义——只在册的工具放行，档案外＝API_NOT_GRANTED 且审计记 not-granted', async () => {
+    const grants = JSON.stringify({
+      schemaVersion: '0.3.1',
+      subjects: { ui: 'builder' },
+      profiles: { builder: ['host.getConfig', 'host.getAllBindings'] },
+    });
+    await boot({ folders: ['D:/g1'], seed: {
+      'D:/g1/.vv/project.json': '{"kind":"project"}',
+      'D:/g1/.vv/api.grants.json': grants,
+    } });
+    await needPanel();
+    expect((await rpc(vscode.state.panels[0], 'getConfig', {})).ok).toBe(true);
+    expect((await rpc(vscode.state.panels[0], 'getAllBindings', { doc: 'x.v' })).ok).toBe(true);
+    const cut = await rpc(vscode.state.panels[0], 'copyToSandbox', { files: [{ name: 'a', content: '{}' }] });
+    expect(cut.ok).toBe(false);
+    expect(String(cut.error)).toContain('API_NOT_GRANTED');       // 档案没给＝拒（与 SURFACE_DENIED 各归各位）
+    await new Promise((r) => setTimeout(r, 5));                   // 审计 fire-and-forget：等它入缓冲再催收
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+    const day = new Date().toISOString().slice(0, 10);
+    const raw = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/g1/.vv/audit/trace-' + day + '.jsonl').path.toLowerCase())!);
+    const deny = raw.split('\n').filter(Boolean).map((l) => JSON.parse(l)).filter((v: any) => v.ref === 'copyToSandbox').pop();
+    expect(deny?.verdict).toBe('not-granted');                    // 账本也记被拒（§9.5 不变量）
+    expect(String(deny?.note)).toContain('API_NOT_GRANTED');
+  });
+
+  it('协议⑨闸③臂②：档案拒绝走得比审批弹窗早——requiresApproval 工具未获授权⛔ 默不进弹窗', async () => {
+    const grants = JSON.stringify({ subjects: { ui: 'reviewer' }, profiles: { reviewer: ['host.getConfig'] } });
+    await boot({ folders: ['D:/g2'], seed: { 'D:/g2/.vv/api.grants.json': grants } });
+    await needPanel();
+    vscode.state.modalChoice = '允许';                            // 逆预设：若闸序错了，这一拍就把工具放行了
+    const cut = await rpc(vscode.state.panels[0], 'importLegacyData', { items: [] });
+    expect(cut.ok).toBe(false);
+    expect(String(cut.error)).toContain('API_NOT_GRANTED');
+    expect(String(cut.error)).not.toContain('API_NOT_APPROVED');  // 拒在闸③＝审批从未发生
+  });
+
+  it('协议⑨闸③臂③：绑了个查无档案的 profile＝fail-closed（白名单清空），⛔ 当成"忘绑"放行', async () => {
+    const grants = JSON.stringify({ subjects: { ui: 'ghost' }, profiles: { reviewer: ['host.getConfig'] } });
+    await boot({ folders: ['D:/g3'], seed: { 'D:/g3/.vv/api.grants.json': grants } });
+    await needPanel();
+    const cut = await rpc(vscode.state.panels[0], 'getConfig', {});
+    expect(cut.ok).toBe(false);
+    expect(String(cut.error)).toContain('API_NOT_GRANTED');
+  });
+
+  it('协议⑨闸③臂④：档案只收窄它绑定过的调用方——ui 未绑＝不受闸；mcp:身份绑了＝同文件同闸拦住', async () => {
+    const { checkGrant, loadProjectGrants } = await import('../../extension/src/apiGrants');
+    const grants = JSON.stringify({ subjects: { 'mcp:probe-server': 'reviewer' }, profiles: { reviewer: ['host.getAllBindings'] } });
+    await boot({ folders: ['D:/g4'], seed: { 'D:/g4/.vv/api.grants.json': grants } });
+    await needPanel();
+    await loadProjectGrants({ extensionUri: vscode.Uri.file(EXT_DIR) } as any);   // 重读档案（activate 那拍异步的确定化）
+    expect((await rpc(vscode.state.panels[0], 'getConfig', {})).ok).toBe(true);   // ui 没绑＝闸对它没话
+    expect(checkGrant('mcp:probe-server', 'host.getConfig')).toBe(false);          // mcp 身份绑了：不在册＝拒
+    expect(checkGrant('mcp:probe-server', 'host.getAllBindings')).toBe(true);      // 在册＝放
+    expect(checkGrant('cli:unknown-proc', 'host.getConfig')).toBe(true);           // cli 没绑＝同 ui 没话
+  });
+
+  it('协议⑨闸③臂⑤：档案解析失败＝紧告警宽运行（收窄器坏了⛔ 砖死全 UI）', async () => {
+    await boot({ folders: ['D:/g5'], seed: { 'D:/g5/.vv/api.grants.json': '{ not-json' } });
+    await needPanel();
+    await new Promise((r) => setTimeout(r, 5));
+    expect(vscode.state.warnMessages.some((m: string) => m.includes('解析失败'))).toBe(true);
+    expect((await rpc(vscode.state.panels[0], 'getConfig', {})).ok).toBe(true);    // 闸不生效，闸 1/2 照办
+  });
+
+  it('协议⑨闸③臂⑥：vv-grants schema 挂进 jsonValidation + 词表要用对（⛔ 说书两张皮）', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
+    const hit = (manifest.contributes.jsonValidation || []).find((x: any) => x.fileMatch === '**/.vv/api.grants.json');
+    expect(hit?.url).toBe('./schemas/vv-grants.schema.json');
+    const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/schemas/vv-grants.schema.json'), 'utf8'));
+    const subjRe = new RegExp(schema.properties.subjects.propertyNames.pattern);
+    expect(subjRe.test('ui')).toBe(true);
+    expect(subjRe.test('mcp:probe-server')).toBe(true);
+    expect(subjRe.test('mcp:')).toBe(false);
+    const profRe = new RegExp(schema.properties.profiles.propertyNames.pattern);
+    expect(profRe.test('builder')).toBe(true);
+    expect(profRe.test('config.write') || profRe.test('9bad')).toBe(false);         // 域词表封闭 ⛔ config.*（§9.6）
+    const idRe = new RegExp(schema.properties.profiles.additionalProperties.items.pattern);
+    expect(idRe.test('host.getConfig')).toBe(true);
+    expect(idRe.test('config.writeAll') || idRe.test('unknown.tool')).toBe(false);  // ⛔ 起野域 / 查账外工具
+  });
+
   it('jumpToSource：打开文件并滚到那一行（画布双击器件 → 源码）', async () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'line0\nline1\nmodule top; endmodule' } });
     const res = await rpc(vscode.state.panels[0], 'jumpToSource', { file: 'top.v', line: 2 });
