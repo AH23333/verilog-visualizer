@@ -57,10 +57,13 @@
   新加的那一步验的是真机里 `host.getAllBindings` 也走 `executeTool`、幽灵 method 真进账、
   且调用方手里那颗 `traceId` 能在**盘上**账本里查到（409ms）；`registeredTools` 下界从 24 提到 **35**
   ＝真宿主那条线也登记了 RPC 九颗（`realSuite` 过去⛔ 调 `registerRpcTools`——两处登记清单不一致）。
-- 第二次全量跑批（74 格）＝**GREEN 30 / RED 44 / ENVRED 0**（波次一前＝12/61）；红的归族与"单跑对照"
-  推翻"跑批超载"假设那格，全部写在 [GATE_LAYERS.md](./GATE_LAYERS.md) ⑤-补3。
+- 第二次全量跑批（74 格）＝**GREEN 30 / RED 44 / ENVRED 0**（波次一前＝12/61）；净进 18 颗＝19 红转绿 − **2 绿转红**
+  （`r42-verify` 单跑已复元＝22/0 ⇒ 跑批时序；`r48-verify` 的"导航打断 evaluate"至今⛔ 单跑定案）。
+  红的 44 颗按**档自己的源码**归族、以及"单跑对照"推翻"跑批超载"假设那格，全写在 [GATE_LAYERS.md](./GATE_LAYERS.md) ⑤-补3。
 - 跑批波次一之后的第二批（74 颗）仍在跑；已知红族＝17 颗编译侧档往浏览器 `import('/src/store/fileStore.ts')` 塞文件
   （该模块已随旧 React UI 退役＝404 早退），波次二逐颗换 `tests/_ui.cjs` 的 `pushCompile/waitCompiled`。
+  > **补记（同夜 R155，⛔ 静默改上面那句）**：那一批已跑完＝GREEN 30 / RED 44，
+  > 上面"17 颗"与现读集合差一致；两颗绿转红（r42/r48）与归族更正见 R155 那节的 Readings。
 
 ---
 ## [未发布 Unreleased] — R154：验证系统自己的诚信（2026-10-18 夜·用户令代管）

@@ -164,8 +164,15 @@ GREEN 名单（12 颗）：`r12-export` `r13-custom-gate` `r42-verify` `r48-veri
 
 **成对读数（这一句是本节的目的）**：波次一把 35 颗沙盒侧档的入口从 `/` 一行换到 `/gates.html`，
 换之前 73 格＝**GREEN 12 / RED 61**，换之后 74 格＝**GREEN 30 / RED 44 / ENVRED 0 / NOVERDICT 0**。
-净进 18 颗绿、⛔ 一颗由绿转红 ⇒ 波次一是**净收益**（这条"颗数只增不减"的比法就是它的证人）。
-新增那颗格＝`r154-dochost-persist-gate`（7 格全绿）。
+净进 18 颗绿＝**19 颗红转绿**减**2 颗绿转红**（`r42-verify`、`r48-verify`——现读两份日志的集合差，
+⚠ 我第一版在这里写的是"⛔ 一颗由绿转红"，那是没算集合差就发的榜）。两颗都要单跑定案：
+
+- `r42-verify`：**本轮已单跑过＝22 PASS / 0 FAIL**（它正是波次一里被重写成四层的那颗）
+  ⇒ 批跑那发的 `[4a] 展开图=null` + `locator.click 超时`属**跑批时序**（同批 8 个 node 进程抢 CPU，
+  而它的等待上限是 30s），⛔ 产品红。
+- `r48-verify`：批跑读数是 `FATAL Execution context was destroyed, most likely because of a navigation`
+  ⇒ 页面导航与 `page.evaluate` 抢拍。**这颗⛔ 单跑过**（R48/R49 那一族从 R1 起就没判成过），
+  列入波次三第一格。
 
 红的 44 格按**原因**分族（分类⛔ 按记账写：每颗都回到它自己那行日志或它自己的源码）：
 
