@@ -61,3 +61,6 @@ FEASIBILITY_REPORT.md
 # VS Code 扩展构建产物（R134 骨架）
 vscode-ext/node_modules/
 vscode-ext/out/
+
+# 产品自己写进夹具目录的配置表（真机验收遗物，⛔ 进版本库）
+test_files/**/.verilogviz.json
