@@ -273,31 +273,50 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
     expect(handled).toEqual(sent);
   });
 
-  it('API 契约对账锁（阶段二第一刀）：vv-api.defaults 的 rpc 投影＝dispatch 表、ui 投影全在命令面板、schema 形状自检', () => {
+  it('API 契约对账锁（阶段二第一刀）：rpc 投影＝dispatch 表、ui 投影每颗指得着真身、id/词表双向自检', () => {
+    // ⚠ 这一颗以前有**五处**写成 `expect('文案' + 布尔).toBeTruthy()`：字符串拼布尔恒为非空串，
+    //   ⇒ ①id 词表、③ui 投影、④perm/sideEffects 词表、④surfaces 去重 从来没有判过任何东西，
+    //   整段只剩 ② 在真跑。现读两条"如果它活着会说什么"：
+    //    · ① 的命名空间表还停在 `circuit|project|bindings|compile|host`，而契约里 20 颗属于
+    //      `fs.`/`res.`/`sys.`/`circuits.` ⇒ 恒红；
+    //    · ③「ui 投影全在命令面板」不成立：27 颗里 13 颗的 ref 不是 contributed command
+    //      （bindings.*/circuits.list/res.*/compile.closure/sys.* 是 registry 侧的 handler 名）。
+    //   改法⛔ 把文案塞进 expect 的第二参当值测（那是 vitest 的 message 位），而是
+    //   **把不合格的名字收进数组、判它等于空**——红名必须直接报出是哪几颗。
     const api = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/api/vv-api.defaults.json'), 'utf8'));
     const tools: Array<{ id: string; t: any }> = Object.entries(api.tools).map(([id, t]) => ({ id, t: t as any }));
     expect(tools.length).toBeGreaterThanOrEqual(10);
-    // ① 工具 id 词表（域.动词 闭集形状）
-    const idRe = /^(circuit|project|bindings|compile|host)\.[a-z][A-Za-z]*$/;
-    for (const { id } of tools) expect(`[${id}] ` + idRe.test(id)).toBeTruthy();
+    // ① 工具 id 词表（域.动词 闭集形状）。命名空间本身也钉成等式：新增一域要同时改这里，
+    //    ⛔ 让 ① 跟着放宽（词表由被检对象自己决定＝没检）。
+    const NS = ['bindings', 'circuits', 'compile', 'fs', 'host', 'res', 'sys'];
+    const idRe = new RegExp(`^(${NS.join('|')})\\.[a-z][A-Za-z]*$`);
+    expect(tools.map(({ id }) => id).filter((id) => !idRe.test(id))).toEqual([]);
+    expect([...new Set(tools.map(({ id }) => id.split('.')[0]))].sort()).toEqual(NS);
     // ② rpc surfaces 投影 == dispatch case 表（双向：漏登/幽灵都红）
     const rpcRefs = tools.filter(({ t }) => t.surfaces.includes('rpc')).map(({ t }) => t.ref).sort();
     expect(rpcRefs).toEqual(handled);
-    // ③ ui 投影逐颗存在于 contributes.commands
+    // ③ ui 投影的 ref 必须指得着一颗真身：命令面板里的 command，或 registry 里真登记了的 handler。
+    //    ⛔ 只判"在 commands 里"——那会把工具域（ref＝id）一起判死，历史上正是这条把它写虚的。
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
     const cmdIds = new Set((manifest.contributes.commands || []).map((c: any) => c.command));
-    for (const { id, t } of tools.filter(({ t }) => t.surfaces.includes('ui')))
-      expect(`${id}→${t.ref} 在 commands: ` + cmdIds.has(t.ref)).toBeTruthy();
+    const handlerSrc = fs.readFileSync(path.join(ROOT, 'extension/src/toolsDomain.ts'), 'utf8')
+      + fs.readFileSync(path.join(ROOT, 'extension/src/toolsFs.ts'), 'utf8');
+    const handlerIds = new Set([...handlerSrc.matchAll(/^\s*id: '([^']+)'/gm)].map((m) => m[1]));
+    expect(tools.filter(({ t }) => t.surfaces.includes('ui'))
+      .filter(({ id, t }) => !cmdIds.has(t.ref) && !handlerIds.has(t.ref))
+      .map(({ id, t }) => `${id}→${t.ref}`)).toEqual([]);
+    //    反方向同样钉住：registry 里有一颗 handler 而契约没登记＝契约在说谎（另一面）
+    expect([...handlerIds].filter((h) => !tools.some(({ id }) => id === h)).sort()).toEqual([]);
     // ④ 字段词表与 schema 同源（改枚举必先改 schema——词表漂移＝契约说谎）
     const schema = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/schemas/vv-api.schema.json'), 'utf8'));
     const permEnum: string[] = schema.properties.tools.additionalProperties.properties.perm.enum;
     const seEnum: string[] = schema.properties.tools.additionalProperties.properties.sideEffects.enum;
-    for (const { id, t } of tools) {
-      expect(`${id}.perm:${t.perm} 在词表 ` + permEnum.includes(t.perm)).toBeTruthy();
-      expect(`${id}.sideEffects:${t.sideEffects} 在词表 ` + seEnum.includes(t.sideEffects)).toBeTruthy();
-      expect(t.surfaces.length).toBeGreaterThan(0);                    // 全空 surfaces＝没人可达的死登记（要么开一端要么删账）
-      expect(`[${id}] surfaces 不许有重复项 ` + (new Set(t.surfaces).size === t.surfaces.length)).toBeTruthy();
-    }
+    expect({
+      perm: tools.filter(({ t }) => !permEnum.includes(t.perm)).map(({ id, t }) => `${id}.perm=${t.perm}`),
+      sideEffects: tools.filter(({ t }) => !seEnum.includes(t.sideEffects)).map(({ id, t }) => `${id}.sideEffects=${t.sideEffects}`),
+      空surfaces: tools.filter(({ t }) => !t.surfaces.length).map(({ id }) => id),          // 全空＝没人可达的死登记
+      重复surfaces: tools.filter(({ t }) => new Set(t.surfaces).size !== t.surfaces.length).map(({ id }) => id),
+    }).toEqual({ perm: [], sideEffects: [], 空surfaces: [], 重复surfaces: [] });
   });
 
   it('面板释放登记只有**一处**，且在两条装载路共用的 wirePanel 里', () => {
