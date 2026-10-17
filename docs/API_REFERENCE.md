@@ -484,7 +484,7 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "date": {
       "type": "string",
-      "description": "YYYYMMDD（缺省今天）"
+      "description": "YYYY-MM-DD（缺省今天）。落盘名就是这颗串直接拼出来的，⛔ 另一种分隔——为免调用方猜，8 位纯数字（YYYYMMDD）也归一接受"
     },
     "limit": {
       "type": "number",

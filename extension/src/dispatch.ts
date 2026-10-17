@@ -253,11 +253,19 @@ async function dispatchCore(context: vscode.ExtensionContext, method: string, ar
 
     // 旧版 localStorage 档一次性迁成工作区真文件（B1）：.v/.djs 都归工作区。
     // 名字逐颗消毒（⛔ `..`/绝对路径逃逸），重名自动 (n)；返回全部落盘名。
+    // X18：旧沙盒档里还带着两份**身份**——`role:'part'`（这颗是可编辑部件）与
+    // `partBindings`（文件级绑定，值＝批内那颗部件的旧文件 id）。修前只交 {name,content}，
+    // 两样整批丢掉 ⇒ 迁完部件退化成普通画布档、显式录入的实现关系无声变成"看同名兜底"，
+    // 正是 R152「配置里录了才算」的反面。绑定值⛔ 能按名字连：重名会带 (n)、消毒会改字，
+    // 所以前端逐颗带一颗 `key`（旧 id），这里用「同批下标」建 key→落盘名 再连。
     case 'importLegacyData': {
       const root = projectRoot(context);
       const written: string[] = [];
       const taken = new Set<string>();
-      for (const it of (args.items || []) as Array<{ name: string; content: string }>) {
+      type LegacyIn = { name: string; content: string; key?: string; role?: string; bindings?: Record<string, string> };
+      const items = (args.items || []) as LegacyIn[];
+      const keyToWritten = new Map<string, string>();
+      for (const it of items) {
         const withExt = /\.[A-Za-z0-9]+$/.test(sanitizeRelName(it.name, 'legacy')) ? sanitizeRelName(it.name, 'legacy') : sanitizeRelName(it.name, 'legacy') + '.v';
         let name = withExt;
         for (let i = 2; taken.has(name.toLowerCase()) || await then(vscode.workspace.fs.stat(vscode.Uri.joinPath(root, ...name.split('/')))).then(() => true, () => false); i++) {
@@ -268,6 +276,28 @@ async function dispatchCore(context: vscode.ExtensionContext, method: string, ar
         await then(vscode.workspace.fs.createDirectory(vscode.Uri.joinPath(root, ...name.split('/').slice(0, -1))));
         await then(vscode.workspace.fs.writeFile(vscode.Uri.joinPath(root, ...name.split('/')), new TextEncoder().encode(String(it.content ?? ''))));
         written.push(name);
+        if (it.key) keyToWritten.set(String(it.key), name);
+      }
+      // 落表走 `setBindingInDir`（单层**合并一条**）⛔ `setDocBindings`（那是整表替换——
+      // 迁移是往用户已有的表里加条目，整表替换＝抹掉他手编过的其它绑定）。
+      // 旧档的部件语义只存在于 `.djs` 那半颗（`.v` 侧的 role/bindings 一律忽略）。
+      const dangling: string[] = [];
+      for (const [i, it] of items.entries()) {
+        const mine = written[i];
+        if (!mine || !/\.djs$/i.test(mine)) continue;
+        const dirRel = mine.includes('/') ? mine.slice(0, mine.lastIndexOf('/')) : '';
+        if (it.role === 'part') {
+          const bare = mine.split('/').pop()!.replace(/\.djs$/i, '');
+          await setBindingInDir(context, dirRel, bare, mine);                 // 「我就是这个 celltype 的实现」
+        }
+        for (const [celltype, boundKey] of Object.entries(it.bindings || {})) {
+          const target = keyToWritten.get(String(boundKey));
+          if (!target) { dangling.push(`${mine} 的「${celltype}」`); continue; }   // ⛔ 落一条永远解不开的悬空绑定
+          await setBindingInDir(context, dirRel, celltype, target);
+        }
+      }
+      if (dangling.length) {
+        out().append(`[importLegacyData] ${dangling.length} 条旧绑定解不到同批落盘名（旧档里被绑的那颗没一起搬来），已跳过：\n  ${dangling.join('\n  ')}\n`);
       }
       // 迁移落盘的 .djs 同样触发「目录有部件就有表」（.v 不触发，ensureDirsMeta 内部按 .djs 过滤）
       await ensureDirsMeta(context, written);

@@ -2149,6 +2149,20 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.nope', {})).rejects.toThrow(/\[API_NOT_REGISTERED\]/);
   });
 
+  it('sys.readAudit 的 date 实参归一：交 20261017（上一版 schema 就教这么写）也读到当天那颗连字符档——⛔ 把调用方的笔误伪装成"今天没人调用过"', async () => {
+    const day = new Date().toISOString().slice(0, 10);            // apiAudit.flushAudit 落盘用的就是这颗串
+    await boot({ folders: ['D:/a17'], seed: {
+      [`D:/a17/.vv/audit/trace-${day}.jsonl`]: '{"verdict":"auto","tool":"fs.copyPath"}\n{"verdict":"error","tool":"fs.delete"}\n',
+    } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const hyphen = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.readAudit', { date: day }) as any;
+    expect(hyphen.exists).toBe(true);
+    expect(hyphen.lines.length).toBe(2);
+    // 成对判据（⛔ 只判"归一后读得到"）：两种写法必须交回**同一份**读数
+    const bare = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.readAudit', { date: day.replace(/-/g, '') }) as any;
+    expect(bare).toEqual(hyphen);
+  });
+
   it('闸② surface-denied：mcp 面全局关（surfacesGlobal.mcp=false）→ agent 现阶段进不来', async () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/main.djs': '{"cells":[]}' } });
     const { executeTool } = await import('../../extension/src/toolRegistry');

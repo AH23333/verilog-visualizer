@@ -220,12 +220,16 @@ export function registerDomainTools(): void {
     id: 'sys.readAudit', title: '读调用审计', description: '§14/§15 readLogs：读 `.vv/audit/trace-YYYY-MM-DD.jsonl`（带连字符，与 apiAudit 落盘那颗串逐字一致）最近 N 行（缺省 50，帽 200）；未开户=空账。幂等只读。',
     schema: {
       type: 'object',
-      properties: { date: { type: 'string', description: 'YYYYMMDD（缺省今天）' }, limit: { type: 'number', description: '行数（缺省 50）' } },
+      properties: { date: { type: 'string', description: 'YYYY-MM-DD（缺省今天）。落盘名就是这颗串直接拼出来的，⛔ 另一种分隔——为免调用方猜，8 位纯数字（YYYYMMDD）也归一接受' }, limit: { type: 'number', description: '行数（缺省 50）' } },
     },
     handler: async (ctx, a) => {
       // ⚠ 日文件名口径与 apiAudit.flushAudit 逐字一致（trace-YYYY-MM-DD.jsonl，带连字符）——
       //   自检抓到的真 bug：读侧曾用无连字符 YYYYMMDD ⇒ 永远 exists:false。
-      const date = String(a.date ?? new Date().toISOString().slice(0, 10));
+      // ⚠ 归一⛔ 靠描述：这颗是**对外实参**（系统边界），agent 照上一版 schema 交 `20261017`
+      //   就会读成"查无此档"，而那句读数看起来完全像"今天没人调用过"——把调用方的笔误
+      //   伪装成事实是最贵的一种错（同族：browserHost 返回空结果冒充"宿主没有"）。
+      const rawDate = String(a.date ?? new Date().toISOString().slice(0, 10));
+      const date = /^\d{8}$/.test(rawDate) ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}` : rawDate;
       const limit = Math.min(Math.max(Number(a.limit ?? 50), 1), AUDIT_CAP);
       const uri = vscode.Uri.joinPath(projectRoot(ctx), '.vv', 'audit', `trace-${date}.jsonl`);
       let raw: string;
