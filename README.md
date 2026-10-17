@@ -28,7 +28,11 @@
 诚实版进度：
 - ✅ **我们自己的二进制跑得起来**：基座官方启动脚本 `scripts/code.bat --user-data-dir=<独立目录> <工程文件夹>`
   已在 2026-10-13 真跑通（窗口标题 `Verilog Visualizer - demo - Verilog Visualizer Dev`）。
-  ⚠ 本仓⛔ 自写启动脚本（`pnpm app` / `pnpm studio:run` 那一族 R138–R140 的包装已按用户令删除，见 R141）。
+  ⚠ 删掉的是**自写的启动程序**（R138–R140 那两颗 `pnpm studio:run` / `pnpm app:check` 的 .mjs 包装，
+  按用户令在 R141 整颗删除；找回走 git）。⚠ 今天仍在的 `pnpm app` **是 package.json 里的一条 npm script**，
+  内容＝`pnpm build` + `pnpm -C extension build` + 基座官方 `scripts\code.bat --extensionDevelopmentPath`，
+  也就是"官方框架自己的生命周期命令"，⛔ 第三种自造 CLI——这条界线是 9214fc7 当时定的，本行把两边都说清，
+  ⛔ 再出现"pnpm app 已删除"那种过时表述（上一版这句在这里躺了几批，与 package.json 相反）。
 - ✅ **Tauri 那条线整条已拆**（`src-tauri/`、Rust 后端 14 颗命令、`tauriHost`、自绘标题栏 `WindowControls.tsx`；
   要找回那一版走 git，账本卷四十三末尾有提交号）。
 - ✅ **宿主中立层已跑通**：官方 flag `--extensionDevelopmentPath` 能把本扩展挂到任意一份 VS Code / 我们自己的二进制上。

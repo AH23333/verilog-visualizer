@@ -76,28 +76,31 @@ pnpm ext:package         # optional .vsix for your own VS Code: code --install-e
 ### 0. Install
 
 The product form is **our own fork of the VS Code sources, shipped as a standalone binary** (the Cursor /
-Windsurf pattern, decided by the user on 2026-10-13). One command starts it (the Tauri line was fully
-removed in R138 — `MIGRATION_VSCODE.md` §8):
+Windsurf pattern, decided by the user on 2026-10-13). Launching it uses the **base's own official command** —
+since R141 there is no wrapper script of ours (`pnpm studio:run` / `pnpm app:check` were self-written
+launchers and are gone; `MIGRATION_VSCODE.md` §8, `studio/README.md` §1d):
 
 ```bash
 pnpm install
-pnpm studio:run      # ← one command for OUR OWN binary: build web → build extension → install into the base → launch (canvas opens itself)
-pnpm studio:run D:\my\project      # pass a folder and it opens that project
+pnpm build                       # webview 产物（tsc + vite）
+pnpm ext:build                   # extension host 产物（esbuild）
+cd /d D:\vv-studio\vscode
+call scripts\code.bat --user-data-dir=D:\vv-studio\profile            # 空窗口起来
+call scripts\code.bat --user-data-dir=D:\vv-studio\profile D:\my\project   # 或直接开某个工程文件夹
 ```
 
 > ⚠ **One-time prerequisite**: the base checkout must have been installed and compiled once
 > (`npm install` + `npm run compile-client` + `npm run electron` — minutes to tens of minutes, several GB).
-> `studio:run` prints those exact commands instead of silently kicking off work that size. The checkout path
+> Those are the base's own scripts; nothing here runs them for you. The checkout path
 > must contain **no spaces**, and the base needs node 24.18.0 plus a C++ toolchain **with Spectre-mitigated
 > libraries** — every prerequisite is a measured finding in [`studio/README.md`](../studio/README.md) §4.
-> Base somewhere else? `VERILOG_STUDIO_FORK=<path> pnpm studio:run`. Dry run: `pnpm studio:run --check`.
 
 **Development loops** (⛔ not the deliverable)
 
 ```bash
-pnpm app             # loads this extension into the VS Code you already installed, via --extensionDevelopmentPath
-pnpm app:check       # report only: which CLI was found / is dist fresh / what it would run
-pnpm dev             # browser preview → http://localhost:1420 (same features; export dialogs fall back to downloads)
+pnpm app             # package.json 里那条 npm script：跑上面三步的组合，最后用官方 --extensionDevelopmentPath
+                     # 把本扩展装进你已装好的 VS Code。⛔ 自写 .mjs 启动器（R141 删的就是那种）
+pnpm dev             # 浏览器预览 → http://localhost:1420（同一套画布代码；宿主 RPC 那几颗会明确报"宿主不支持"）
 ```
 
 > You can also install it into your own VS Code: `pnpm ext:package` builds the `.vsix` (vsce is a devDependency now), then
