@@ -184,6 +184,29 @@ describe('项目目录后端（与当年 Rust 后端那 14 颗命令逐条同语
     expect(tree.files.some((f) => f.name === 'notes.txt')).toBe(false);
   });
 
+  it('X4：目录软链（link 记号）不上报也不走进——循环 symlink 不再把 walk 打成死循环', async () => {
+    const fs6 = memFs({ 'keep.v': 'module keep; endmodule' });
+    const origReadDir = fs6.readDir.bind(fs6);
+    (fs6 as any).readDir = async (p: string) =>
+      (p === '@root/软' ? [{ name: '自指', type: 'link' }, { name: 'leak.v', type: 'file' }] : origReadDir(p));
+    const tree = await new ProjectStore(fs6 as never, '@root').listTree();
+    expect(tree.folders).toEqual([]);                          // 软链目录整支不上报
+    expect(tree.files.map((f) => f.name)).toEqual(['keep.v']); // 软链下的 .v 也不收（不走进）
+  });
+
+  it('X4：深度 16 护栏——第 17 层的文件不再上报，目录壳仍可见（护栏只挡走进）', async () => {
+    let seed: Record<string, string> = { 'top.v': 'module top; endmodule' };
+    let relPath = '';
+    for (let i = 0; i < 17; i++) relPath = `${relPath}层${i}/`;
+    seed[`${relPath}deep.v`] = 'module deep; endmodule';
+    const fs7 = memFs(seed);
+    const tree = await new ProjectStore(fs7 as never, '@root').listTree();
+    expect(tree.files.map((f) => f.name)).toEqual(['top.v']);  // 第 17 层的 deep.v 被护栏截住
+    expect(tree.folders).toHaveLength(16);                     // 层0..层15 的目录壳在册（push 走回券序，别按位置断言）
+    expect(tree.folders.some((f) => f.endsWith('层15'))).toBe(true);
+    expect(tree.folders.some((f) => f.endsWith('层16'))).toBe(false);   // 层16 整支无踪（护栏在进入它的目录体前截断）
+  });
+
   it('两颗表各收各的：`.djs` 只进 `listSandboxTree`，⛔ 混进 Verilog 那份（片 4-C1 的分界）', async () => {
     // 为什么这一格值得单独钉：`src/store/fileStore.ts` 的 refresh() 会把 listProjectTree 回的**每一颗**
     // 当 Verilog 源码读进来解析模块，还带一条"磁盘上没了就从状态删"的分支。

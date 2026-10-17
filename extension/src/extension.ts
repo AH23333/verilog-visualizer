@@ -68,6 +68,26 @@ export function activate(context: vscode.ExtensionContext) {
     codeFilesTree.refresh(); sandboxPartsTree.refresh();
   };
 
+  // X6 域设防（2026-10-17）：导入命令按入口分域——codeFiles 吃编译域（v/sv/vh）、sandboxFiles 吃
+  // 沙盒域（djs）、explorer/命令面板通用三档；跨界文件在对话框与落盘侧双保险拦下，skipped 数当面告示。
+  const doImport = (exts: string[]) => async (arg: any) => {
+    const uri = menuUri(arg);
+    let dir = projectRoot(context);
+    if (uri) {
+      const isDir = await then(vscode.workspace.fs.stat(uri)).then((s) => (s as any).type === 2, () => false);
+      dir = isDir ? uri : vscode.Uri.joinPath(uri, '..');   // 目录右键＝落进目录；文件右键＝落进它所在目录
+    }
+    const result = await importFiles(context, dir, exts);
+    if (result?.written.length) {
+      refreshAllTrees();
+      void vscode.window.showInformationMessage(
+        `已导入 ${result.written.length} 个文件：${result.written.slice(0, 3).join('、')}${result.written.length > 3 ? '…' : ''}` +
+        (result.skipped ? `（另有 ${result.skipped} 个非本域文件已跳过）` : ''));
+    } else if (result && result.skipped) {
+      void vscode.window.showInformationMessage('没有可导入的文件：所选文件都不属于本视图的域（编译域＝.v/.sv/.vh，沙盒域＝.djs）。');
+    }
+  };
+
   // 活动栏**双容器**（用户裁决：编译与沙盒分家，各自 文件/模块(部件)/层次结构 三视图）：
   //   · 「代码编译」（">_" 图标）：codeFiles / modules / hierarchy —— .v 世界的三棵
   //   · 「沙盒编辑」（沙盒图标）：sandboxFiles / sandboxParts / sandboxHierarchy —— .djs 世界的三棵
@@ -113,7 +133,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('verilogViz.openDoc', (arg: any) => { const uri = menuUri(arg); if (uri) void openDoc(uri); }),
     vscode.commands.registerCommand('verilogViz.renameFile', async (arg: any) => { const uri = menuUri(arg); if (uri) { await renameFile(context, uri); refreshAllTrees(); broadcastBindingsChanged(); } }),
     vscode.commands.registerCommand('verilogViz.deleteFile', async (arg: any) => { const uri = menuUri(arg); if (uri) { await deleteFile(context, uri); refreshAllTrees(); broadcastBindingsChanged(); } }),
-    vscode.commands.registerCommand('verilogViz.duplicateFile', (arg: any) => { const uri = menuUri(arg); if (uri) void duplicateFile(context, uri); }),
+    vscode.commands.registerCommand('verilogViz.duplicateFile', async (arg: any) => {
+      const uri = menuUri(arg); if (!uri) return;
+      await duplicateFile(context, uri);
+      refreshAllTrees();   // X5：命令体主动张榜（⛔ 只指望 watcher 竞速）
+    }),
     vscode.commands.registerCommand('verilogViz.togglePartRole', async (arg: any) => {
       const uri = menuUri(arg);
       if (!uri) return;
@@ -213,26 +237,17 @@ export function activate(context: vscode.ExtensionContext) {
       void arg;
     }),
 
-    // R144 右键补全家（照旧 UI 清单）：复制文件夹 / 导入文件（目录右键定位落点，标题钮＝项目根）
+    // R144 右键补全家（照旧 UI 清单）：复制文件夹（目录右键定位落点，标题钮＝项目根）
     vscode.commands.registerCommand('verilogViz.duplicateFolder', async (arg: any) => {
       const uri = menuUri(arg);
       if (!uri) return;
       await duplicateFolder(context, uri);
       refreshAllTrees();
     }),
-    vscode.commands.registerCommand('verilogViz.importFiles', async (arg: any) => {
-      const uri = menuUri(arg);
-      let dir = projectRoot(context);
-      if (uri) {
-        const isDir = await then(vscode.workspace.fs.stat(uri)).then((s) => (s as any).type === 2, () => false);
-        dir = isDir ? uri : vscode.Uri.joinPath(uri, '..');   // 目录右键＝落进目录；文件右键＝落进它所在目录
-      }
-      const written = await importFiles(context, dir);
-      if (written?.length) {
-        refreshAllTrees();
-        void vscode.window.showInformationMessage(`已导入 ${written.length} 个文件：${written.slice(0, 3).join('、')}${written.length > 3 ? '…' : ''}`);
-      }
-    }),
+    // 导入三分域（X6）：定义在 push 体外的 doImport 工厂（menuUri/refreshAllTrees 闭包共享）
+    vscode.commands.registerCommand('verilogViz.importFiles', doImport(['v', 'sv', 'djs'])),
+    vscode.commands.registerCommand('verilogViz.importVerilogFiles', doImport(['v', 'sv', 'vh'])),
+    vscode.commands.registerCommand('verilogViz.importSandboxFiles', doImport(['djs'])),
 
     // R137：「打开绑定配置」——目录级 .verilogviz.json 直开原生编辑器（无则建空表）。
     // 入口：树文件/文件夹右键、explorer .djs/.v 右键、命令面板。手改保存 → watcher 广播回灌画布。
@@ -252,10 +267,11 @@ export function activate(context: vscode.ExtensionContext) {
   );
 
   // 树的刷新时机（trees.ts 头注释承诺的那三条）：
-  //   ① 工作区里 .v/.djs 的增删改 ⇒ 三棵树都重建（模块树读 .v、沙盒树读 .djs）
+  //   ① 工作区里 .v/.sv/.vh/.djs 的增删改 ⇒ 三棵树都重建（模块树读 .v、沙盒树读 .djs）
   //   ② 打开/切换文件夹 ⇒ 项目根换了，三棵树的数据源整体换轨
   //   ③ 活动编辑器变化 ⇒ 层次树的根跟随当前 .v 文件
-  for (const glob of ['**/*.v', '**/*.djs', '**/.verilogviz.json']) {
+  // X2（2026-10-17）：`**/*.v` 一颗挡不住 .sv——改名/新建 .sv 不自动刷新的窟窿补上三域各自一颗。
+  for (const glob of ['**/*.v', '**/*.sv', '**/*.vh', '**/*.djs', '**/.verilogviz.json']) {
     const watcher = vscode.workspace.createFileSystemWatcher(glob);
     watcher.onDidCreate(refreshAllTrees);                // 新文件/新目录立刻进树（标题按钮建的也走这条）
     watcher.onDidChange(() => { moduleTree.refresh(); hierarchyTree.refresh(); if (glob.includes('verilogviz')) broadcastBindingsChanged(); });
@@ -408,7 +424,10 @@ function vscodeFsLike(rootUri: vscode.Uri): FsLike {
     readDir: async (p) => {
       try {
         const entries = await vscode.workspace.fs.readDirectory(toUri(p));
-        return entries.map(([name, type]) => ({ name, type: type === vscode.FileType.Directory ? 'dir' as const : 'file' as const }));
+        // X4：符号链接带上 'link' 记号（目录软链 ⇒ walk 侧整支跳过，防循环 symlink 死循环 collect）
+        const kind = (t: number): 'file' | 'dir' | 'link' =>
+          (t & vscode.FileType.SymbolicLink) ? 'link' : t === vscode.FileType.Directory ? 'dir' : 'file';
+        return entries.map(([name, type]) => ({ name, type: kind(type) }));
       } catch { return []; }
     },
   };

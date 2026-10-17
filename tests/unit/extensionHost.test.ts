@@ -80,7 +80,8 @@ describe('开局面板：判据真的接在 activate 上（⛔ 只是"纯函数�
       'verilogViz.auditBindings', 'verilogViz.auditFlush', 'verilogViz.bindParts', 'verilogViz.compileAndShow',
       'verilogViz.completeBindings', 'verilogViz.deleteFile',
       'verilogViz.duplicateFile', 'verilogViz.duplicateFolder', 'verilogViz.exportSvg',
-      'verilogViz.importFiles', 'verilogViz.initProject', 'verilogViz.materializeBindings',
+      'verilogViz.importFiles', 'verilogViz.importSandboxFiles', 'verilogViz.importVerilogFiles',
+      'verilogViz.initProject', 'verilogViz.materializeBindings',
       'verilogViz.newSandboxFile',
       'verilogViz.newSandboxFolder', 'verilogViz.newVerilogFile',
       'verilogViz.openBindingConfig',
@@ -303,22 +304,26 @@ describe('侧边栏双容器六视图（片 5-B 编译/沙盒分家；R152 起�
 
   it('刷新时机：.v/.djs/.verilogviz.json 三颗 watcher 在册，fire 增删改不炸（树刷新+绑定回灌接线）', async () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule' } });
-    expect(vscode.state.watchers.map((w) => w.glob).sort()).toEqual(['**/*.djs', '**/*.v', '**/.verilogviz.json']);
+    const globs = ['**/*.djs', '**/*.sv', '**/*.v', '**/*.vh', '**/.verilogviz.json'];   // X2：五域 watcher 在册（ASCII 排序位）
+    expect(vscode.state.watchers.map((w) => w.glob).sort()).toEqual(globs);
+    const watcherOf = (glob: string) => vscode.state.watchers.find((w) => w.glob === glob)!;
     const uri = vscode.Uri.file('D:/p/新模块.v');
-    expect(() => vscode.state.watchers[0].fireCreate(uri)).not.toThrow();
-    expect(() => vscode.state.watchers[0].fireChange(uri)).not.toThrow();
-    expect(() => vscode.state.watchers[0].fireDelete(uri)).not.toThrow();
+    for (const w of vscode.state.watchers) {
+      expect(() => w.fireCreate(uri)).not.toThrow();          // 五颗 watcher 对 .v 增删改都不炸
+      expect(() => w.fireChange(uri)).not.toThrow();
+      expect(() => w.fireDelete(uri)).not.toThrow();
+    }
     // R137：手改 `.verilogviz.json` 存盘 ⇒ 活画布收到 bindingsChanged 推送（改完即生效的回灌链）
     const { registerWebviewSink, unregisterWebviewSink } = await import('../../extension/src/dispatch');
     const got: any[] = [];
     const sink: any = { postMessage: (m: any) => { got.push(m); return Promise.resolve(true); } };
     registerWebviewSink(sink);
     try {
-      vscode.state.watchers[2].fireChange(vscode.Uri.file('D:/p/.verilogviz.json'));
+      watcherOf('**/.verilogviz.json').fireChange(vscode.Uri.file('D:/p/.verilogviz.json'));
       expect(got.some((m) => m.vvh === 'push' && m.op === 'bindingsChanged')).toBe(true);
       got.length = 0;
       // ⛔ 混线：.v 那颗 watcher 的改动不广播绑定（只刷树）
-      vscode.state.watchers[0].fireChange(uri);
+      watcherOf('**/*.v').fireChange(uri);
       expect(got.filter((m) => m.op === 'bindingsChanged')).toHaveLength(0);
     } finally { unregisterWebviewSink(sink); }
     // 工作区切换与活动编辑器变化两条监听也接线了
@@ -861,8 +866,8 @@ describe('双容器六树的台架驱动（片 5-B）', () => {
     // 文件行：编译/重命名/副本/删除/绑定全家
     for (const cmd of ['verilogViz.compileAndShow', 'verilogViz.renameFile', 'verilogViz.duplicateFile', 'verilogViz.deleteFile', 'verilogViz.bindParts', 'verilogViz.openBindingConfig'])
       expect(vic.some((m: any) => m.when === 'view == verilogViz.codeFiles && viewItem == codeFile' && m.command === cmd)).toBe(true);
-    // 目录行：在此新建两族 + 导入 + 复制/删除
-    for (const cmd of ['verilogViz.newVerilogFile', 'verilogViz.newSandboxFolder', 'verilogViz.importFiles', 'verilogViz.duplicateFolder', 'verilogViz.deleteFile'])
+    // 目录行：在此新建两族 + 导入（X6 域设防：codeFiles 只吃编译域命令）+ 复制/删除
+    for (const cmd of ['verilogViz.newVerilogFile', 'verilogViz.newSandboxFolder', 'verilogViz.importVerilogFiles', 'verilogViz.duplicateFolder', 'verilogViz.deleteFile'])
       expect(vic.some((m: any) => m.when === 'view == verilogViz.codeFiles && viewItem == codeDir' && m.command === cmd)).toBe(true);
     expect(manifest.contributes.menus['webview/context']).toBeUndefined();     // R152：webview 通道整档退场
     expect(manifest.contributes.menus['explorer/context'].some((m: any) => String(m.when).includes('!resourceScheme'))).toBe(true); // 空白族在
@@ -1159,6 +1164,34 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     vscode.state.modalChoice = '删除';
     await vscode.commands.executeCommand('verilogViz.deleteFile', vscode.Uri.file('D:/p/parts/counter.djs'));
     expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ other: 'parts/other.djs' });
+  });
+
+  it('X1/G6：删目录＝recursive+useTrash 双真（真机"非空目录删不掉"的根因）＋确认弹窗报子件数', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/lib/a.v': 'module a; endmodule',
+      'D:/p/lib/sub/b.djs': '{"cells":[]}',
+    } });
+    vscode.state.modalChoice = '删除';
+    await vscode.commands.executeCommand('verilogViz.deleteFile', vscode.Uri.file('D:/p/lib'));
+    const call = vscode.state.deleteCalls.find((c) => c.path.toLowerCase().endsWith('lib'));
+    expect(call?.recursive).toBe(true);                 // ⛔ 不带 recursive＝真宿主抛"目录非空"
+    expect(call?.useTrash).toBe(true);                  // G5：永远回收站
+    expect(vscode.state.warnMessages.join()).toContain('2 个文件');   // X7：确认里亮出规模（a.v + sub/b.djs）
+    expect(vscode.state.files.has('d:/p/lib/a.v')).toBe(false);       // 孩子真没了
+    expect(vscode.state.files.has('d:/p/lib/sub/b.djs')).toBe(false);
+  });
+
+  it('X6：importFiles 域设防——跨界文件不落盘、skipped 当面告示', async () => {
+    await boot({ folders: ['D:/p'] });
+    vscode.state.openDialogResult = [
+      vscode.Uri.file('C:/tmp/want.v'),
+      vscode.Uri.file('C:/tmp/board.json'),            // ⛔ 域外（.json 不在编译域）
+    ];
+    const { importFiles } = await import('../../extension/src/sandboxFiles');
+    const out = await importFiles({} as never, vscode.Uri.file('D:/p/lib'), ['v', 'sv', 'vh']);
+    expect(out!.written).toEqual(['lib/want.v']);
+    expect(out!.skipped).toBe(1);
+    expect(vscode.state.files.has('d:/p/lib/board.json')).toBe(false);
   });
 
   it('审计臂①-a 未开户（无 .vv/）＝通道静默：rpc 照常走，audit/ 目录一颗不落地', async () => {

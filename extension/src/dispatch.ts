@@ -65,7 +65,10 @@ export function vscodeFs(rootUri: vscode.Uri): FsLike {
     readDir: async (p) => {
       try {
         const entries = await vscode.workspace.fs.readDirectory(toUri(p));
-        return entries.map(([name, type]) => ({ name, type: type === vscode.FileType.Directory ? 'dir' as const : 'file' as const }));
+        // X4：符号链接带 'link' 记号（与 extension.vscodeFsLike 同口径；walk 侧目录软链整支跳过）
+        const kind = (t: number): 'file' | 'dir' | 'link' =>
+          (t & vscode.FileType.SymbolicLink) ? 'link' : t === vscode.FileType.Directory ? 'dir' : 'file';
+        return entries.map(([name, type]) => ({ name, type: kind(type) }));
       } catch { return []; }
     },
   };

@@ -24,7 +24,8 @@ export interface FsLike {
   rename(from: string, to: string): Promise<void>;
   copy(from: string, to: string): Promise<void>;
   stat(path: string): Promise<{ type: 'file' | 'dir'; size: number; mtimeMs: number } | null>;
-  readDir(path: string): Promise<Array<{ name: string; type: 'file' | 'dir' }>>;
+  /** 真宿主的 readDirectory 带 SymbolicLink 位 ⇒ 适配层把它折成 'link'（collect 对目录软链整支跳过防环） */
+  readDir(path: string): Promise<Array<{ name: string; type: 'file' | 'dir' | 'link' }>>;
 }
 
 const VERILOG_EXT = ['v', 'sv', 'vh'];
@@ -138,15 +139,20 @@ export class ProjectStore {
   private async collect(exts: string[]): Promise<{ files: Array<{ name: string, size: number, modified: number }>, folders: string[] }> {
     const files: Array<{ name: string, size: number, modified: number }> = [];
     const folders: string[] = [];
-    const walk = async (dirRel: string) => {
+    // X4（2026-10-17）：深度 16 护栏 + 目录软链（'link'）整支跳过——循环 symlink 会把 walk
+    // 打成死循环（hasDjsUnder 早就有 depth=8 的同类护栏，collect 这边反倒没有 ⇒ 补齐同门）。
+    const DEPTH = 16;
+    const walk = async (dirRel: string, depth: number) => {
+      if (depth > DEPTH) return;
       const abs = dirRel ? this.abs(dirRel) : this.root;
       let entries;
       try { entries = await this.fs.readDir(abs); } catch { return; }
       for (const e of entries) {
+        if (e.type === 'link') continue;            // 软链一律不走进也不上报（目录环/外锚都对树构成噪声）
         const rel = dirRel ? `${dirRel}/${e.name}` : e.name;
         if (e.type === 'dir') {
           if (shouldSkipDir(e.name)) continue;      // ⛔ 走进去，也⛔ 把它当空文件夹上报
-          await walk(rel);
+          await walk(rel, depth + 1);
           folders.push(rel);
           continue;
         }
@@ -156,7 +162,7 @@ export class ProjectStore {
         files.push({ name: rel, size: st.size, modified: st.mtimeMs });
       }
     };
-    await walk('');
+    await walk('', 1);
     return { files, folders };
   }
 

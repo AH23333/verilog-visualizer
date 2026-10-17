@@ -3,6 +3,7 @@
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
 import { ensureDirMeta } from './sandboxFiles';
+import { uniqueName } from './naming';
 import { VERILOG_EXAMPLES } from '../../shared/examples';
 
 const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> =>
@@ -12,18 +13,6 @@ const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): 
 function relOfRoot(root: vscode.Uri, uri: vscode.Uri): string {
   const rootFs = root.fsPath.replace(/[\\/]+$/, '');
   return uri.fsPath.slice(rootFs.length + 1).replace(/\\/g, '/');
-}
-
-/** 重名自动 `(n)`（语义照抄 fileStore.getUniqueName）：stat 到＝已占用 */
-async function uniqueName(dir: vscode.Uri, name: string): Promise<string> {
-  const dot = name.lastIndexOf('.');
-  const stem = dot > 0 ? name.slice(0, dot) : name;
-  const ext = dot > 0 ? name.slice(dot) : '';
-  let candidate = name;
-  for (let i = 2; await then(vscode.workspace.fs.stat(vscode.Uri.joinPath(dir, candidate))).then(() => true, () => false); i++) {
-    candidate = `${stem} (${i})${ext}`;
-  }
-  return candidate;
 }
 
 /** QuickPick 选示例 → 写入 examples/<名> → 开文本编辑器 → 自动编译出电路 */

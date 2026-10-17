@@ -8,6 +8,7 @@
 // role 的消费方：customEditors._siblings（init 带 role）→ DocApp → gateSystem 部件打分。
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
+import { uniqueName, uniqueFolderName } from './naming';
 
 export const META_FILE = '.verilogviz.json';
 
@@ -249,16 +250,7 @@ function pathRel(root: vscode.Uri, uri: vscode.Uri): string {
   return uri.fsPath.slice(rootFs.length + 1).replace(/\\/g, '/');
 }
 
-async function uniqueName(dir: vscode.Uri, name: string): Promise<string> {
-  const dot = name.lastIndexOf('.');
-  const stem = dot > 0 ? name.slice(0, dot) : name;
-  const ext = dot > 0 ? name.slice(dot) : '';
-  let candidate = name;
-  for (let i = 2; await then(vscode.workspace.fs.stat(vscode.Uri.joinPath(dir, candidate))).then(() => true, () => false); i++) {
-    candidate = `${stem} (${i})${ext}`;
-  }
-  return candidate;
-}
+// naming.ts 的 uniqueName 顶掉本文件内部的 `(n)` 循环（X9 双轨合一）
 
 /** 打开电路画布（树项菜单与双击同语义；⛔ showTextDocument） */
 export async function openDoc(uri: vscode.Uri): Promise<void> {
@@ -313,11 +305,35 @@ export async function renameFile(context: vscode.ExtensionContext, uri: vscode.U
   }
 }
 
+/** 递归数目录下的文件个数（确认弹窗用；深度 10 护栏挡软链环） */
+async function countFilesUnder(dir: vscode.Uri, depth = 10): Promise<number> {
+  if (depth <= 0) return 0;
+  let n = 0;
+  try {
+    for (const [name, type] of await then(vscode.workspace.fs.readDirectory(dir))) {
+      if (type === 2) n += await countFilesUnder(vscode.Uri.joinPath(dir, name), depth - 1);
+      else n++;
+    }
+  } catch { /* 读不到计 0 */ }
+  return n;
+}
+
 export async function deleteFile(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
   const name = uri.path.split('/').pop() || uri.fsPath;
-  const pick = await vscode.window.showWarningMessage(`删除「${name}」？`, { modal: true }, '删除');
+  // X1：目录删除必须 recursive:true（真相 2026-10-17：缺它是真机「删不掉非空目录」的根因，单测的桩闭眼放行）
+  const isDir = await then(vscode.workspace.fs.stat(uri)).then((s) => (s as any).type === 2, () => false);
+  let pick: string | undefined = '删除';
+  if (isDir) {
+    const files = await countFilesUnder(uri);
+    // X7/G6：目录删除的确认要亮出规模（子的规模 + 绑定记录将同葬的警告——不让人盲删）
+    pick = await vscode.window.showWarningMessage(
+      `删除目录「${name}」？其中含 ${files} 个文件；指向目录内文件的部件记录与绑定将一并清除。`,
+      { modal: true }, '删除');
+  } else {
+    pick = await vscode.window.showWarningMessage(`删除「${name}」？`, { modal: true }, '删除');
+  }
   if (pick !== '删除') return;
-  await then(vscode.workspace.fs.delete(uri, { useTrash: true }));
+  await then(vscode.workspace.fs.delete(uri, { useTrash: true, recursive: true }));
   const root = projectRoot(context);
   const deletedFull = pathRel(root, uri);
   // circuits 清理（根表）
@@ -350,14 +366,11 @@ export async function duplicateFile(context: vscode.ExtensionContext, uri: vscod
   void context; // role 不随副本（新副本默认 circuit）
 }
 
-/** 复制文件夹（旧 UI「复制文件夹」的原生落点）：`x` → `x 副本 (n)`，fs.copy 递归。 */
+/** 复制文件夹（旧 UI「复制文件夹」的原生落点）：`x` → `x 副本 (n)`，fs.copy 递归（X9：出名单一算法 uniqueFolderName）。 */
 export async function duplicateFolder(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
   const dir = vscode.Uri.joinPath(uri, '..');
   const name = uri.path.split('/').filter(Boolean).pop() || 'folder';
-  let candidate = `${name} 副本`;
-  for (let i = 2; await then(vscode.workspace.fs.stat(vscode.Uri.joinPath(dir, candidate))).then(() => true, () => false); i++) {
-    candidate = `${name} 副本 (${i})`;
-  }
+  const candidate = await uniqueFolderName(dir, name);
   await then(vscode.workspace.fs.copy(uri, vscode.Uri.joinPath(dir, candidate), { overwrite: false }));
   // 副本里有 .djs（部件目录）才配得上「目录有部件就有表」——真扫一层，⛔ 空目录也建表
   const root = projectRoot(context);
@@ -378,28 +391,42 @@ async function hasDjsUnder(dir: vscode.Uri, depth = 8): Promise<boolean> {
 }
 
 /**
- * 导入外部文件进工作区（旧 UI「导入文件…」）：原生多选 `.v/.sv/.djs` → 落右击目录（⛔ 同名覆盖，自动 (n)）
- * → `.djs` 触发「目录有部件就有表」。返回全部落盘名（取消＝undefined）。
+ * 导入外部文件进工作区（旧 UI「导入文件…」）：原生多选 → 落右击目录（⛔ 同名覆盖，自动 (n)）
+ * → `.djs` 触发「目录有部件就有表」。
+ * X6 域设防：`exts` 由入口给（编译树 v/sv/vh、沙盒树 djs、explorer 通用默认三档）——
+ * 　对话框过滤 + 拆选双保险：非本域文件不落盘，返回 skipped 个数让调用侧告知。
+ * 返回 {written, skipped}（取消＝undefined）。
  */
-export async function importFiles(context: vscode.ExtensionContext, dirUri?: vscode.Uri): Promise<string[] | undefined> {
+export async function importFiles(
+  context: vscode.ExtensionContext,
+  dirUri?: vscode.Uri,
+  exts?: string[],
+): Promise<{ written: string[]; skipped: number } | undefined> {
+  const allowed = exts ?? ['v', 'sv', 'djs'];
+  const filters: Record<string, string[]> = {};
+  if (allowed.every((e) => e === 'djs')) filters['沙盒电路文件'] = ['djs'];
+  else if (allowed.every((e) => e !== 'djs')) filters['Verilog 源文件'] = allowed;
+  else filters['Verilog / 电路文件'] = allowed;
   const picked = await vscode.window.showOpenDialog({
     canSelectMany: true,
     openLabel: '导入',
-    filters: { 'Verilog / 电路文件': ['v', 'sv', 'djs'] } as any,
+    filters: filters as any,
   });
   if (!picked || !picked.length) return undefined;
   const root = projectRoot(context);
   const dir = dirUri ?? root;
   const written: string[] = [];
+  let skipped = 0;
   for (const src of picked) {
     const base = src.path.split('/').filter(Boolean).pop() || 'imported.v';
-    const withExt = /\.(v|sv|djs)$/i.test(base) ? base : `${base}.v`;
-    const final = await uniqueName(dir, withExt);
+    const ext = (base.includes('.') ? base.slice(base.lastIndexOf('.') + 1) : '').toLowerCase();
+    if (!allowed.includes(ext)) { skipped++; continue; }   // 双保险：文件管理器放行也会拦这里
+    const final = await uniqueName(dir, base);
     await then(vscode.workspace.fs.copy(src, vscode.Uri.joinPath(dir, final), { overwrite: false }));
     written.push(pathRel(root, vscode.Uri.joinPath(dir, final)));
   }
   await ensureDirsMeta(context, written);
-  return written;
+  return { written, skipped };
 }
 
 /**

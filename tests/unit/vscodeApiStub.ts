@@ -22,8 +22,8 @@
  * rejection）。桩要是回 Promise，那颗助手就永远测不到。
  */
 
-/** 与 vscode.FileType 同值（1＝File，2＝Directory）：数值对上才有意义，⛔ 我们自创一套 */
-export const FileType = { Unknown: 0, File: 1, Directory: 2 } as const;
+/** 与 vscode.FileType 同值（1＝File，2＝Directory，64＝SymbolicLink 位）：数值对上才有意义，⛔ 我们自创一套 */
+export const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 } as const;
 export const ViewColumn = { One: 1, Two: 2, Active: -1, Beside: -2 } as const;
 export const ExtensionMode = { Production: 1, Development: 2, Test: 3 } as const;
 /** 与 vscode.TreeItemCollapsibleState 同值（类型面也合并：trees.ts 把它当类型标注用） */
@@ -361,6 +361,8 @@ export interface FakeMachine {
   modalChoice: string | undefined;
   /** R146：showWarningMessage 的流水账（audit 提示语的判据面） */
   warnMessages: string[];
+  /** X1 钉子：workspace.fs.delete 的参数流水账（recursive/useTrash 必须对） */
+  deleteCalls: Array<{ path: string; recursive?: boolean; useTrash?: boolean }>;
   /** 片 5：活动 Tab（compilePanel 的退路判别用） */
   activeTab: { input: any } | undefined;
 }
@@ -372,7 +374,7 @@ export const state: FakeMachine = {
   treeProviders: {}, webviewViews: {}, watchers: [], diagnostics: new Map(), outputText: '',
   editors: [], openWithCalls: [], activeEditor: undefined, workspaceFolderListeners: [], activeEditorListeners: [],
   configValues: {}, configListeners: [], saveListeners: [], customEditorProviders: {},
-  quickPickResult: undefined, quickPickQueue: [], inputBoxResult: undefined, modalChoice: undefined, warnMessages: [], activeTab: undefined,
+  quickPickResult: undefined, quickPickQueue: [], inputBoxResult: undefined, modalChoice: undefined, warnMessages: [], deleteCalls: [], activeTab: undefined,
 };
 
 export function resetMachine(patch: Partial<FakeMachine> = {}) {
@@ -408,6 +410,7 @@ export function resetMachine(patch: Partial<FakeMachine> = {}) {
   state.inputBoxResult = undefined;
   state.modalChoice = undefined;
   state.warnMessages = [];
+  state.deleteCalls = [];
   state.activeTab = undefined;
   Object.assign(state, patch);
 }
@@ -435,6 +438,7 @@ export const workspace = {
     createDirectory: (u: Uri): ThenableLike<void> => { state.dirs.add(key(u)); return settled(undefined); },
     delete: (u: Uri, o?: { recursive?: boolean, useTrash?: boolean }): ThenableLike<void> => {
       const k = key(u);
+      state.deleteCalls.push({ path: k, recursive: o?.recursive, useTrash: o?.useTrash });
       if (state.files.has(k)) state.files.delete(k);
       if (o?.recursive) for (const f of [...state.files.keys()]) if (f.startsWith(`${k}/`)) state.files.delete(f);
       for (const d of [...state.dirs]) if (d === k || d.startsWith(`${k}/`)) state.dirs.delete(d);
