@@ -31,6 +31,35 @@ export function parseVerilogInstances(source: string): string[] {
   return instances;
 }
 
+/**
+ * 带行号的实例清单（诊断锚点用）：形状与 parseVerilogInstances 同判据，但注释用
+ * **等长掩码**（⛔ 拼接成单空格——那会让行号整体漂移），命中下标折原源 1-based 行号。
+ */
+export function parseVerilogInstancesWithLines(source: string): Array<{ name: string; line: number }> {
+  // 等长掩码：`//…` 换行内抹平，`/*…*/` 保留换行只抹内容——下标与原源逐位对应
+  const masked = source
+    .replace(/\/\/[^\n]*/g, (s) => ' '.repeat(s.length))
+    .replace(/\/\*[\s\S]*?\*\//g, (s) => s.replace(/[^\n]/g, ' '));
+  const definedModules = new Set(parseVerilogModules(source));
+  const primitives = new Set([
+    'and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor', 'buf', 'bufif0', 'bufif1',
+    'notif0', 'notif1', 'add', 'sub', 'module', 'endmodule', 'input', 'output',
+    'inout', 'wire', 'reg', 'assign', 'always', 'initial', 'if', 'else', 'case',
+    'endcase', 'begin', 'end', 'posedge', 'negedge', 'parameter', 'localparam',
+  ]);
+  const seen = new Set<string>();
+  const out: Array<{ name: string; line: number }> = [];
+  const re = /\b([A-Za-z_][\w$]*)\s+(?:#\s*\([^)]*\)\s*)?([A-Za-z_][\w$]*)\s*\(/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(masked)) !== null) {
+    const mod = m[1];
+    if (primitives.has(mod) || definedModules.has(m[2]) || seen.has(mod)) continue;
+    seen.add(mod);
+    out.push({ name: mod, line: source.slice(0, m.index).split('\n').length });
+  }
+  return out;
+}
+
 function stripComments(source: string): string {
   return source
     .replace(/\/\/.*$/gm, ' ')

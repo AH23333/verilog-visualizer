@@ -163,7 +163,7 @@ export default function CanvasApp() {
       if (!d || d.vvh !== 'push') return;
       switch (d.op) {
         case 'compile':
-          runCompileJob({ files: (d.files as any) || [], topModule: d.topModule || '', entryName: d.entryName || 'circuit', bindingErrors: (d.bindingErrors as any) || undefined });
+          runCompileJob({ files: (d.files as any) || [], topModule: d.topModule || '', entryName: d.entryName || 'circuit', bindingErrors: (d.bindingErrors as any) || undefined, bindingAnchors: (d.bindingAnchors as any) || undefined });
           break;
         case 'sim':
           if (d.action === 'togglePause') setSimPaused((p) => !p);

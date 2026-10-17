@@ -20,6 +20,9 @@ export interface CompileJob {
   entryName: string;
   /** R152：宿主侧绑定解析失败清单（未录入 / 解不到 / `.djs` 转换失败）——有则编译拦下 */
   bindingErrors?: string[];
+  /** 诊断锚点：与 bindingErrors 逐条平行的行号落点（缺失绑定的部件在宿主源文件里的 1-based 行）。
+   *  用户裁决（2026-10-17）：BUG 报错要锚在出错的部件所在行，⛔ 全部糊到入口文件第 1 行。 */
+  bindingAnchors?: Array<{ file: string; line: number | null }>;
 }
 
 export function useHostCompile() {
@@ -45,8 +48,12 @@ export function useHostCompile() {
     // 不再走接口预检（否则同一缺失模块会二次报"未定义"）。这是"配置里没有就不能编译"的编译侧落点。
     const bindingErrors = job.bindingErrors || [];
     if (bindingErrors.length > 0) {
-      const parsed: ProblemItem[] = bindingErrors.map((message) => ({
-        fileName: job.entryName, line: null, message, severity: 'error' as const,
+      const anchors = job.bindingAnchors || [];
+      const parsed: ProblemItem[] = bindingErrors.map((message, i) => ({
+        fileName: anchors[i]?.file || job.entryName,
+        line: anchors[i]?.line ?? null,
+        message,
+        severity: 'error' as const,
       }));
       setProblems(parsed);
       hostFire('Failed to publish problems', (h) => h.publishProblems(parsed));

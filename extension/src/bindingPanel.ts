@@ -4,7 +4,7 @@ import { vscodeFs } from './dispatch';
 import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 import { bindingsForFile, setBinding, META_FILE, openBindingConfig } from './sandboxFiles';
 import { closureOf } from './compilePanel';
-import { parseVerilogInstances } from './verilogParseLite';
+import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
 import { ProjectStore } from './projectStore';
 
 const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> =>
@@ -124,21 +124,40 @@ let panel: vscode.WebviewPanel | undefined;
 let panelUri: vscode.Uri | undefined;
 let panelContext: vscode.ExtensionContext | undefined;
 
-async function pushData(context: vscode.ExtensionContext, p: vscode.WebviewPanel, uri: vscode.Uri) {
+/** **Webview is disposed 事故绳**（真机实证：面板关闭/复用竞态里 postMessage/改 title 会把
+ *  "Webview is disposed" 冒成命令错误）。可抛面收拢成三件：①复用先探测活尸（探到就当无）；
+ *  ②一切 webview 触碰走 pushSafe（吞掉 disposed＝面板没了，用户重开就有）；③探尸用「读 html」
+ *  这颗 guaranteed-throw 的标准方法。 */
+function livePanel(p: vscode.WebviewPanel | undefined): boolean {
+  if (!p) return false;
+  try { void p.webview.html; return true; } catch { return false; }
+}
+
+async function pushSafe(p: vscode.WebviewPanel | undefined, msg: unknown): Promise<void> {
+  if (!p) return;
+  try { await p.webview.postMessage(msg); } catch { /* 面板没了＝消息自然没处投 */ }
+}
+
+async function pushData(context: vscode.ExtensionContext, p: vscode.WebviewPanel | undefined, uri: vscode.Uri) {
+  if (!p) return;
   const data = await bindingDataFor(context, uri);
-  p.title = `部件绑定：${basename(data.docRel)}`;
-  await p.webview.postMessage({ vvh: 'binding', op: 'data', data });
+  if (!livePanel(p)) return;                       // 数据途中面板关了 ⇒ ⛔ 再去摸 title/postMessage
+  try { p.title = `部件绑定：${basename(data.docRel)}`; } catch { return; }
+  await pushSafe(p, { vvh: 'binding', op: 'data', data });
 }
 
 export async function openBindingPanel(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
   panelUri = uri;
-  if (panel) {
+  if (livePanel(panel)) {
+    const p = panel!;
     const data = await bindingDataFor(context, uri);
-    panel.title = `部件绑定：${basename(data.docRel)}`;
-    panel.reveal(vscode.ViewColumn.Active);
-    await panel.webview.postMessage({ vvh: 'binding', op: 'data', data });
+    if (!livePanel(p)) return;
+    p.title = `部件绑定：${basename(data.docRel)}`;
+    p.reveal(vscode.ViewColumn.Active);
+    await pushSafe(p, { vvh: 'binding', op: 'data', data });
     return;
   }
+  panel = undefined;                                // 尸体（dispose 事件还没走到的窗口期）就地清掉——再走新建
   panelContext = context;
   panel = vscode.window.createWebviewPanel(
     'verilogViz.binding',
@@ -163,24 +182,42 @@ export async function openBindingPanel(context: vscode.ExtensionContext, uri: vs
 
   panel.webview.onDidReceiveMessage(async (msg: any) => {
     if (msg?.vvh !== 'binding') return;
+    const p = panel;                                  // 本消息所属代次；处理途中面板被关＝pushSafe 自然吞
     if (msg.op === 'ready') {
-      return void pushData(context, panel!, uri);
+      return void pushData(context, p, uri);
     }
     if (msg.op === 'save') {
       const changes = msg.changes || msg.bindings || {};
+      // 写前校验：.v/.sv 目标必须真的定义了该模块（真机惨案：实例 counter 记到 r50_counter.v，
+      // 该文件定义的其实是 r50_counter——"绑定完成"却注定 [BINDING_UNRESOLVED_RECORD]。
+      // 零件清单只是文件名维度，语义校验只能在这里把关——改错时把该文件内实际定义一并报出来。
+      const errors: string[] = [];
+      for (const [name, part] of Object.entries(changes)) {
+        if (!name) continue;
+        const v = part as string | null;
+        if (v && /\.(v|sv)$/i.test(v.trim())) {
+          let mods: string[] | null = null;
+          try {
+            mods = parseVerilogModules(new TextDecoder().decode(
+              await then(vscode.workspace.fs.readFile(vscode.Uri.joinPath(projectRoot(context), ...v.trim().split('/'))))));
+          } catch { /* 读失败也要报 */ }
+          if (!mods) errors.push(`「${name}」→ ${v}：文件读取失败，先确认路径存在。`);
+          else if (!mods.includes(name)) errors.push(`「${name}」→ ${v}：该文件里没有名为「${name}」的模块（它定义的是：${mods.slice(0, 4).join('、') || '无'}${mods.length > 4 ? '…' : ''}）。`);
+        } else if (v && /\.(djs|gate)$/i.test(v.trim())) {
+          try { await then(vscode.workspace.fs.stat(vscode.Uri.joinPath(projectRoot(context), ...v.trim().split('/')))); }
+          catch { errors.push(`「${name}」→ ${v}：部件文件不存在。`); }
+        }
+      }
+      if (errors.length) { await pushSafe(p, { vvh: 'binding', op: 'saveError', errors }); return; }
       let written = 0;
       for (const [name, part] of Object.entries(changes)) {
         if (!name) continue;
         const v = part as string | null;
-        if (v && v.trim()) {
-          await setBinding(context, name, v, uri);
-          written++;
-        } else {
-          await setBinding(context, name, null, uri);
-        }
+        if (v && v.trim()) { await setBinding(context, name, v.trim(), uri); written++; }
+        else { await setBinding(context, name, null, uri); }
       }
-      await pushData(context, panel!, uri);
-      await panel!.webview.postMessage({ vvh: 'binding', op: 'saved', written });
+      await pushData(context, p, uri);
+      await pushSafe(p, { vvh: 'binding', op: 'saved', written });
       return;
     }
     if (msg.op === 'openConfig') {
@@ -193,7 +230,7 @@ export async function openBindingPanel(context: vscode.ExtensionContext, uri: vs
 }
 
 export function notifyBindingPanelBindingsChanged(): void {
-  if (panel && panelContext && panelUri) {
-    void pushData(panelContext, panel, panelUri);
+  if (livePanel(panel) && panelContext && panelUri) {
+    void pushData(panelContext, panel!, panelUri);
   }
 }

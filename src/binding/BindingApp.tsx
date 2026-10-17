@@ -22,6 +22,7 @@ export default function BindingApp() {
   const [data, setData] = useState<BindingData | null>(null);
   const [sel, setSel] = useState<Record<string, string>>({});
   const [savedAt, setSavedAt] = useState<number>(0);
+  const [saveErrors, setSaveErrors] = useState<string[]>([]);
 
   const getBridge = useCallback(() => {
     if (!bridge.current && typeof (window as any).acquireVsCodeApi === 'function') {
@@ -40,6 +41,7 @@ export default function BindingApp() {
       if (d?.vvh !== 'binding') return;
       if (d.op === 'data') {
         setData(d.data as BindingData);
+        setSaveErrors([]);
         const initial: Record<string, string> = {};
         for (const it of (d.data as BindingData).instances) {
           initial[it.name] = it.recorded || it.auto || '';
@@ -48,6 +50,10 @@ export default function BindingApp() {
       }
       if (d.op === 'saved') {
         setSavedAt(Date.now());
+        setSaveErrors([]);
+      }
+      if (d.op === 'saveError') {
+        setSaveErrors(Array.isArray(d.errors) ? d.errors.map(String) : [String(d.errors || '保存被拒绝')]);
       }
     };
     window.addEventListener('message', onMsg);
@@ -171,6 +177,18 @@ export default function BindingApp() {
       </div>
       {savedAt > 0 && (
         <div style={{ marginTop: 8, fontSize: '12px', color: 'var(--success, #4caf50)' }}>已保存。</div>
+      )}
+      {saveErrors.length > 0 && (
+        <div
+          data-binding-save-errors
+          style={{ marginTop: 8, padding: '6px 10px', border: '1px solid var(--danger, #e53935)', borderRadius: 4,
+            background: 'color-mix(in srgb, var(--danger, #e53935) 8%, transparent)', fontSize: '12px' }}
+        >
+          <div style={{ fontWeight: 700, color: 'var(--danger, #e53935)', marginBottom: 4 }}>保存被拒（绑定目标校验未过，一条都没写）：</div>
+          {saveErrors.map((e, i) => (
+            <div key={i} style={{ color: 'var(--text-secondary, #aaa)' }}>{e}</div>
+          ))}
+        </div>
       )}
     </div>
   );

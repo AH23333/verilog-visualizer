@@ -1725,3 +1725,86 @@ describe('R152 / M2：`.djs` 部件绑定 ⇒ 转 Verilog 入编译闭包', () =
     expect(mux.content).toContain('module mux');
   });
 });
+
+describe('诊断锚点 + 写前校验（2026-10-17 用户五连投诉：报错落部件行；假成功绑定拦下）', () => {
+  const compilePush = (): any => {
+    const p = vscode.state.panels[0];
+    return [...(p.messageLog || [])].reverse().find((m: any) => m.vvh === 'push' && m.op === 'compile');
+  };
+
+  it('parseVerilogInstancesWithLines：注释等长掩码 ⛔ 漂移行号；实例名与行号同账', async () => {
+    const { parseVerilogInstancesWithLines } = await import('../../extension/src/verilogParseLite');
+    const src = [
+      '// adder fake();            ← 行注释横跨第 1 行',
+      '/* wire not_real(1); */     ← 块注释（换行必须保留）',
+      'module top;',
+      '  adder a1();',
+      'endmodule',
+    ].join('\n');
+    const hits = parseVerilogInstancesWithLines(src);
+    expect(hits.map((h) => h.name)).toEqual(['adder']);
+    expect(hits[0].line).toBe(4);   // 实例在源文件第 4 行（前两行被注释占掉但行数原样保留）
+  });
+
+  it('closureOf 坏记录 ⇒ bindingAnchors 与 bindingErrors 逐条平行，锚在例化行（⛔ 全糊文件首行）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': [
+        'module top;',
+        '',
+        '  // 注释也来一行，行号必须如实',
+        '  counter u1();',
+        '  adder  a2();',
+        'endmodule',
+      ].join('\n'),
+      'D:/p/r50_counter.v': 'module r50_counter; endmodule',   // 真机惨案：记录的文件里没有 counter
+      'D:/p/lib/adder.v': 'module adder; endmodule',
+      'D:/p/.verilogviz.json': JSON.stringify({ bindings: { counter: 'r50_counter.v', adder: 'lib/adder.v' } }),
+    } });
+    await vscode.commands.executeCommand('verilogViz.compileAndShow', vscode.Uri.file('D:/p/top.v'));
+    await new Promise((r) => setTimeout(r, 0));
+    const job = compilePush();
+    expect((job.bindingErrors || []).some((s: string) => s.includes('BINDING_UNRESOLVED_RECORD') && s.includes('r50_counter'))).toBe(true);
+    expect((job.bindingErrors || []).some((s: string) => s.includes('定义的是'))).toBe(true);   // 文案补"该文件内定义的是：r50_counter"
+    const anchors = job.bindingAnchors;
+    expect(Array.isArray(anchors) && anchors.length === job.bindingErrors.length).toBe(true);   // 平行数组硬不变量
+    const bad = anchors.find((a: any) => (job.bindingErrors[anchors.indexOf(a)] || '').includes('BINDING_UNRESOLVED_RECORD'));
+    expect(bad.file).toBe('top.v');
+    expect(bad.line).toBe(4);       // counter 例化行（不是入口文件首行）
+  });
+
+  it('绑定面板写前校验：记录里的 .v 没这个模块 ⇒ saveError 拒落表 + 面板拿到错误清单', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); endmodule',
+      'D:/p/r50_counter.v': 'module r50_counter; endmodule',   // ⛔ 不含 adder——真机惨案形状
+      'D:/p/lib/adder.v': 'module adder; endmodule',
+      'D:/p/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"counter"}]}',
+      'D:/p/parts/adder.djs': '{"cells":[]}',
+    } });
+    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/main.djs'));
+    const panel = vscode.state.panels.find((p: any) => p.viewType === 'verilogViz.binding')!;
+    await panel.fired[0]({ vvh: 'binding', op: 'save', changes: { counter: 'r50_counter.v' } });
+    const err = panel.messageLog.find((m: any) => m.vvh === 'binding' && m.op === 'saveError');
+    expect(err).toBeTruthy();
+    expect(err.errors.join('')).toContain('r50_counter');
+    const meta = vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase());
+    expect(meta).toBeUndefined();                            // ⛔ 半吊子记录进表
+  });
+
+  it('绑定面板写前校验：.djs 目标文件缺失同样拒落；产物齐的正常保存照写', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); endmodule',
+      'D:/p/lib/adder.v': 'module adder; endmodule',
+      'D:/p/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"counter"}]}',
+      'D:/p/parts/adder.djs': '{"cells":[]}',
+    } });
+    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/main.djs'));
+    const panel = vscode.state.panels.find((p: any) => p.viewType === 'verilogViz.binding')!;
+    await panel.fired[0]({ vvh: 'binding', op: 'save', changes: { counter: 'ghost/missing.djs' } });
+    expect(panel.messageLog.find((m: any) => m.vvh === 'binding' && m.op === 'saveError')).toBeTruthy();
+    expect(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())).toBeUndefined();
+    // 正常路径回归：目标存在 ⇒ 照写（校验不该拦合格记录）
+    await panel.fired[0]({ vvh: 'binding', op: 'save', changes: { counter: 'parts/adder.djs' } });
+    const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
+    expect(meta.bindings.counter).toBe('parts/adder.djs');
+  });
+});

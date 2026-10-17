@@ -9,7 +9,7 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { projectRoot } from './dispatch';
 import { bindingsForFile } from './sandboxFiles';
-import { parseVerilogModules, parseVerilogInstances } from './verilogParseLite';
+import { parseVerilogModules, parseVerilogInstances, parseVerilogInstancesWithLines } from './verilogParseLite';
 import { djsToVerilog } from './djsVerilog';
 
 /** 推给 webview 的编译单：files 全量给（yosys 要看依赖闭包），topModule 定根 */
@@ -19,6 +19,9 @@ export interface CompileJob {
   entryName: string;
   /** R152：绑定解析失败清单（未录入 / 录入的文件缺失或不含该模块 / `.djs` 部件转换失败）——编译拦下并红字告知 */
   bindingErrors?: string[];
+  /** 诊断锚点（与 bindingErrors **逐条等长平行**）：缺失绑定的部件在宿主源文件里的 1-based 行号
+   *  ——Problems 从"全锚文件首行"改锚实例行（用户裁决：报错要落在出事的地方）。给不出行＝缺条目。 */
+  bindingAnchors?: Array<{ file: string; line: number | null }>;
 }
 
 /** 画布 Panel 的打开/复用（extension.ts 注入，避免反向依赖） */
@@ -59,6 +62,7 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
   const seen = new Set<string>();                       // 真实文件（fsPath）与合成文件（名）统一去重
   const synthSeen = new Set<string>();
   const bindCache = new Map<string, Record<string, string>>();
+  const anchors: Array<{ file: string; line: number | null }> = [];   // 与 bindingErrors 逐条平行（见 CompileJob 注）
   const bindingsFor = async (ownerRel: string): Promise<Record<string, string>> => {
     const dir = ownerRel.includes('/') ? ownerRel.slice(0, ownerRel.lastIndexOf('/')) : '';
     if (!bindCache.has(dir)) bindCache.set(dir, await bindingsForFile(context, dir ? `${dir}/_` : '_'));
@@ -77,22 +81,31 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
     files.set(item.name.toLowerCase(), { name: item.name, content });
     if (!entryText) entryText = content;
     const ovs = await bindingsFor(item.ownerRel);
+    // 实例行锚点：每错误条目都要有对应锚（⛔ 平行数组断位）——文件级错误全给真实行，真机点击落例化处
+    const instLine = new Map(parseVerilogInstancesWithLines(content).map((r) => [r.name, r.line]));
+    const anchorOf = (name: string): { file: string; line: number | null } =>
+      ({ file: item.name, line: instLine.get(name) ?? null });
     for (const inst of parseVerilogInstances(content)) {
       // R145 多层精控：`宿主文档::实例名` 前缀键只约束那一层；无命中回落裸键。⛔ 无同名兜底。
       const ov = ovs[`${item.name}::${inst}`] ?? ovs[`${item.ownerRel}::${inst}`] ?? ovs[inst];
       if (!ov) {
         bindingErrors.push(`[BINDING_MISSING] 模块「${inst}」（在 ${item.name}）未录入绑定配置：右键「写全配置」或用绑定面板录制`);
+        anchors.push(anchorOf(inst));
         continue;
       }
       if (/\.(v|sv)$/i.test(ov)) {
         const def = vscode.Uri.joinPath(root, ...ov.split('/'));
         try {
-          if (!parseVerilogModules(await readText(def)).includes(inst)) {
-            bindingErrors.push(`[BINDING_UNRESOLVED_RECORD] 模块「${inst}」按记录取「${ov}」，但该文件里没有它（recorded → ${ov}）`);
+          const defText = await readText(def);
+          const defMods = parseVerilogModules(defText);
+          if (!defMods.includes(inst)) {
+            bindingErrors.push(`[BINDING_UNRESOLVED_RECORD] 模块「${inst}」按记录取「${ov}」，但该文件里没有它（recorded → ${ov}；该文件内定义的是：${defMods.slice(0, 4).join('、') || '无'}${defMods.length > 4 ? '…' : ''}）`);
+            anchors.push(anchorOf(inst));
             continue;
           }
         } catch {
           bindingErrors.push(`[BINDING_UNRESOLVED_RECORD] 模块「${inst}」按记录取「${ov}」，但文件不存在（recorded → ${ov}）`);
+          anchors.push(anchorOf(inst));
           continue;
         }
         const key = def.fsPath.toLowerCase();
@@ -109,17 +122,23 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
           cells = (JSON.parse(await readText(vscode.Uri.joinPath(root, ...ov.split('/')))) || {}).cells;
         } catch {
           bindingErrors.push(`[UNRESOLVED_REF] 模块「${inst}」按记录取部件「${ov}」，但文件不存在或不是合法电路 json（recorded → ${ov}）`);
+          anchors.push(anchorOf(inst));
           continue;
         }
-        const conv = djsToVerilog(cells as never, inst);        if (conv.errors.length) { bindingErrors.push(...conv.errors.map((e) => `（${ov}）${e}`)); continue; }
+        const conv = djsToVerilog(cells as never, inst);
+        if (conv.errors.length) { bindingErrors.push(...conv.errors.map((e) => `（${ov}）${e}`)); anchors.push(...conv.errors.map(() => anchorOf(inst))); continue; }
         queue.push({ name: genName, content: conv.verilog, ownerRel: ov });
       } else {
         bindingErrors.push(`[SCHEMA_INVALID] 模块「${inst}」绑定为「${ov}」：不支持的绑定目标（只认 .v/.sv 定义或 .djs/.gate 部件）`);
+        anchors.push(anchorOf(inst));
       }
     }
   }
   const topModule = cfg0.get<string>('compile.topModule') || parseVerilogModules(entryText)[0] || path.basename(entry.fsPath).replace(/\.sv?$/, '');
-  return { files: [...files.values()], topModule, entryName: entryRel, ...(bindingErrors.length ? { bindingErrors } : {}) };
+  return {
+    files: [...files.values()], topModule, entryName: entryRel,
+    ...(bindingErrors.length ? { bindingErrors, bindingAnchors: anchors } : {}),
+  };
 }
 
 /** 相邻两次同一错误集不重复弹窗（保存自动重编译的刷屏守卫） */
