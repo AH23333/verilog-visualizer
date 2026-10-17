@@ -135,6 +135,20 @@ GREEN 名单（12 颗）：`r12-export` `r13-custom-gate` `r42-verify` `r48-veri
 > 口径提醒（写给自己）：以上 61 颗红里，**目前没有一颗被证实是产品缺陷**；同样，⛔ 有 61 颗"安全"。
 > 每换一次入口/锚点都要重跑那颗闸门拿新读数，⛔ 用这张族谱替读数背书。
 
+### ⑤-补 这一跑之后入册的一颗新证人
+
+`tests/r154-dochost-persist-gate.cjs`（**7 格全绿**，`tests/run-all.cjs` 的 `GATES` 现读 **74** 颗＝73+1）。
+它补的是这批迁移里最大的一块**覆盖真空**：`.djs` 成为工作区真文档后，
+"编辑 → 保存 → 刷新 → 重开不丢"这条用户承诺在自动化里一度⛔ 任何一层覆盖
+（`qc-realuser`/`qc-paused` 那一族量的是已退役的旧单页 + localStorage 沙盒库，真机点验我又⛔ 逐格替用户打勾）。
+落点＝`tests/_dochost.cjs` 那颗假宿主（照 `dispatch.ts` 的 9 颗 `req` 与 `customEditors.ts` 的
+`{vvh:'doc'}` init/revert ⇄ ready/edit 说话，文件表落 `localStorage['vv-fake-fs']` 跨 reload 存活）
+＋被测的**产品本体两颗**：`src/doc/DocApp.tsx` 与 `src/components/SandboxCanvas.tsx`。
+七格：挂载 / 点部件库真放置 / commit 走 `doc/edit` 且落盘正文含那颗 / 正文是 `{cells:[]}` 形状 /
+刷新重开还在 / **反向臂**（盘上正文换回空档 ⇒ 画布跟着变空，这颗专门防"同页内存冒充磁盘"的假绿）/ 无 pageerror。
+⚠ 一颗假宿主⛔ 等于真宿主：`fs.delete`、watcher 自刷、真 Uri、回收站那几处仍归 `pnpm test:real` 与 X 层。
+
+
 
 ## ⑥ 挂账
 

@@ -18,7 +18,7 @@ const SEED_ID = 'probe' + Date.now();
 const DOC = 'parts/probe_main.djs';
 
 (async () => {
-  let server, browser;
+  let server, browser, fatal = false;
   try {
     server = spawn(process.execPath, [path.join(ROOT, 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: ROOT, stdio: 'pipe' });
     const dl = Date.now() + 40000; while (Date.now() < dl) { try { const r = await fetch(URL); if (r.ok) break; } catch { } await sleep(500); }
@@ -39,17 +39,30 @@ const DOC = 'parts/probe_main.djs';
     });
     console.log('[1] doc.html 挂载:', JSON.stringify(canvasNow), '| 假宿主:', JSON.stringify(await DH.fakeHostReadout(page)));
 
-    // ② 真点一颗门（走 UI.ensurePalette + UI.clickGate 这两把既有锚点）
-    await UI.ensurePalette(page);
-    const before = await page.evaluate(() => (window.__sandboxPaper ? window.__sandboxPaper.model.getElements().length : -1));
-    await UI.clickGate(page, 'And');
-    await sleep(1600);
-    const after = await page.evaluate(() => (window.__sandboxPaper ? window.__sandboxPaper.model.getElements().length : -1));
-    const readout = await DH.fakeHostReadout(page);
-    console.log('[2] 放置:', JSON.stringify({ before, after }), '| edit 流水:', JSON.stringify({
-      edits: readout && readout.edits, docMessages: readout && readout.docMessages,
-      落盘正文里有And: readout && /"And"/.test(String(readout.files[DOC] || '')),
+    // ② 真点一颗门。⚠ doc 模式**没有**那颗活动栏（`DocApp.tsx:159` 只交 `doc` prop，⛔ 传 leftPanel，
+    // 而 `UI.ensurePalette` 等的是夹具外壳的 `button[data-activity="modules"]`）⇒ 先现读这一页
+    // 到底把哪些锚点亮出来了，再决定用不用 ensurePalette（第一版直接借外壳的尺，读回来的
+    // 「等不到活动栏」是我这把尺的射程错，⛔ 是产品坏）。
+    const anchors = await page.evaluate(() => ({
+      gates: document.querySelectorAll('button[data-gate]').length,
+      sidebar: !!document.querySelector('[data-sandbox-sidebar]'),
+      btns: Array.from(document.querySelectorAll('button')).map((b) => (b.getAttribute('title') || b.textContent || '').trim()).filter(Boolean).slice(0, 24),
     }));
+    console.log('[2a] doc 模式可见锚点:', JSON.stringify(anchors));
+    let before = null, after = null, ro2 = null;
+    if (!anchors.gates) {
+      console.log('[2] ⛔ 放置：这一页没亮出部件库（data-gate=0）——读数到此为止，归责留给下一步');
+    } else {
+      before = await page.evaluate(() => (window.__sandboxPaper ? window.__sandboxPaper.model.getElements().length : -1));
+      await UI.clickGate(page, 'And');
+      await sleep(1600);
+      after = await page.evaluate(() => (window.__sandboxPaper ? window.__sandboxPaper.model.getElements().length : -1));
+      ro2 = await DH.fakeHostReadout(page);
+      console.log('[2] 放置:', JSON.stringify({ before, after }), '| edit 流水:', JSON.stringify({
+        edits: ro2 && ro2.edits, docMessages: ro2 && ro2.docMessages,
+        落盘正文里有And: ro2 && /"And"/.test(String(ro2.files[DOC] || '')),
+      }));
+    }
 
     // ③ 刷新＝同 seedId（磁盘⛔ 重铺），看画布是否从"盘上正文"长回来
     await page.reload({ waitUntil: 'domcontentloaded' });
@@ -68,11 +81,13 @@ const DOC = 'parts/probe_main.djs';
       JSON.stringify(Object.keys((readout2 && readout2.files) || {})));
     console.log('[4] 页面异常/错误读数:', JSON.stringify(perr.slice(0, 6)), `共 ${perr.length} 条`);
     console.log('[读数小结] 挂载=' + canvasNow.paper + ' 放置前后=' + before + '→' + after
-      + ' 重开后=' + reopened.elements + ' 落盘含And=' + (readout && /"And"/.test(String(readout.files[DOC] || ''))));
-  } catch (e) { console.log('FATAL', e); } finally {
+      + ' 重开后=' + reopened.elements + ' 落盘含And=' + (ro2 && /"And"/.test(String(ro2.files[DOC] || ''))));
+  } catch (e) { console.log('FATAL', e); fatal = true; } finally {
     try { browser && await browser.close(); } catch { }
     try { server && server.kill(); } catch { }
     try { UI.reapViteByPort(PORT); } catch { }
-    process.exit(0);
+    // ⚠ 这颗是纯读数探针（无 PASS/FAIL 判定，⛔ 进跑批），但 FATAL 必须留得下痕迹：
+    // 上一版无论成败都 `exit(0)`，那声 FATAL 差点被"退出码 0"读成跑通了（名册 301 那一族）。
+    process.exit(fatal ? 2 : 0);
   }
 })();
