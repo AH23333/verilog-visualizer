@@ -14,7 +14,7 @@ export function renderApiReference(): string {
   const lines: string[] = [];
   lines.push('# API_REFERENCE（生成物 · 统一调用层）');
   lines.push('');
-  lines.push(`> ⛔ **手改无效**：本文件由 \`pnpm api:doc\` 从 registry（extension/src/toolsFs.ts）+ 契约（extension/api/vv-api.defaults.json，工程层 \`.vv/api.json\` 只许收窄）**生成**；漂移会被台架钉住。`);
+  lines.push('> ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。');
   lines.push(`> apiVersion \`${c.apiVersion}\` · 生成工具数 **${tools.length}** · 调用面 ${Object.entries(c.surfacesGlobal ?? {}).map(([k, v]) => `${k}=${v ? '开' : '关'}`).join(' / ')}`);
   lines.push('>');
   lines.push('> **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。');
@@ -56,7 +56,12 @@ export function renderApiReference(): string {
   const rpcNoHandler = off('rpc');
   const uiNoHandler = contractIds.filter((id) => !c.tools[id].surfaces.includes('rpc') && !registeredIds.has(id));
   const handlerOffContract = tools.map((t) => t.id).filter((id) => !contractIds.includes(id));
-  lines.push(`- dispatch 的 **${rpcNoHandler.length}** 颗 webview RPC（${rpcNoHandler.map((s) => s.replace(/^host\./, '')).join(' / ') || '（无）'}）——闸已在跑（dispatch 入口那份内联四闸），迁移＝换执行器、不改语义。`);
+  const rpcOnContract = contractIds.filter((id) => c.tools[id].surfaces.includes('rpc'));
+  // ⚠ 这句话必须**随颗数换说法**：上一版无论 0 颗还是 9 颗都印"闸已在跑（dispatch 入口那份内联四闸）"，
+  //   RPC 收编完后它就变成一份不存在实现的说明书——生成物也会说谎，而且说得更权威。
+  lines.push(rpcNoHandler.length
+    ? `- dispatch 的 **${rpcNoHandler.length}** 颗 webview RPC（${rpcNoHandler.map((s) => s.replace(/^host\./, '')).join(' / ')}）——还没上 registry，正由 dispatch 自己那层壳执行。`
+    : `- webview RPC：待迁 **0** 颗（契约 rpc 面在册 ${rpcOnContract.length} 颗已全部走 \`executeTool\`；名册正本＝\`dispatch.ts\` 那颗 \`RPC_METHODS\`，对账锁拿它与契约 rpc 投影双向钉）。`);
   lines.push(`- 契约上账、非 rpc 面且⛔ registry handler：**${uiNoHandler.length}** 颗（${uiNoHandler.map((id) => `${id}→${c.tools[id].ref}`).join(' / ') || '（无）'}）——这几颗现在由命令面板直调 Extension Host 里的实现，绕开 executeTool。`);
   lines.push(`- 反向（registry 有 handler 而契约⛔ 上账）：**${handlerOffContract.length}** 颗（${handlerOffContract.join(' / ') || '（无）'}）。`);
   lines.push('- OS 拖入的字节流写盘（拖拽 writeDropped 内联中）。');

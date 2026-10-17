@@ -10,6 +10,10 @@
 
 红名从 vitest `--reporter=verbose` 的实测行形状取（C2 台架探针量过，带 ANSI 先抹色）。
 期望⛔ 手打整颗 it 标题（名册 310）：按助记短串在现读标题里找，命中数⛔ 恰一颗就停手。
+
+阶段三收编（R154）加了两臂：M9 只改实现体的 case 标签 ⇒ 要求**只有**新证人「名册 ↔ 实现体双向」红；
+M10 只摘名册上一颗 ⇒ 四把尺一起红（新证人若只判"switch 多的那一半"，M10 就抓不到它）。
+名册尺（COVER）随之加这颗新证人：没有臂点名的新证人＝不合格。
 """
 import ast
 import io
@@ -25,7 +29,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 TEST = os.path.join("tests", "unit", "vscodeShell.test.ts")
 API = os.path.join("extension", "api", "vv-api.defaults.json")
+DISPATCH = os.path.join("extension", "src", "dispatch.ts")
 LOCK = "契约对账锁"
+ROSTER = "名册 ↔ 实现体双向"          # 阶段三收编后新增那颗证人（本台架 M9/M10 就是给它配的）
 
 ANSI = re.compile(chr(27) + r"\[[0-9;]*m")
 RED = re.compile(r"^\s*" + chr(0xD7) + r"\s+(.+)$", re.M)
@@ -60,6 +66,15 @@ APPEND_PERM = '"host.appendOutput":        { "perm": "read",'
 APPEND_PERM_BAD = '"host.appendOutput":        { "perm": "network",'
 ALL_GET_SURF = '"surfaces": ["rpc"], "ref": "getAllBindings"'
 ALL_GET_SURF_BAD = '"surfaces": ["rpc", "rpc"], "ref": "getAllBindings"'
+
+# ---- 名册↔实现体那一颗证人的两颗变异（阶段三收编新增）----
+# M9：只动**实现体**（case 标签改名）⇒ 名册/前端照旧齐，唯独新证人该红（红名相等不够：needle 见底）
+CASE_JUMP = "    case 'jumpToSource': {"
+CASE_JUMP_BAD = "    case 'jumpToSourceX': {"
+# M10：只动**名册**（摘掉一颗）⇒ 三把尺一起红（名册↔实现体、前端↔名册、契约 rpc 投影↔名册）。
+# 这一臂的用途是**正件**：证明新证人真能指出"名册少一颗"的方向（单向尺会漏的那一半）。
+ROSTER_JUMP = "  'importLegacyData', 'getAllBindings', 'setDocBindings', 'jumpToSource',"
+ROSTER_JUMP_BAD = "  'importLegacyData', 'getAllBindings', 'setDocBindings',"
 
 # ---- 断言侧的"旧写法"还原颗（证 B 用：那一格换回修前形状）----
 LIVE_1 = ("    expect(tools.map(({ id }) => id).filter((id) => !idRe.test(id))).toEqual([]);\n"
@@ -98,9 +113,15 @@ ARMS = [
      [(API, GET_REF, GET_REF_BAD), (TEST, LIVE_3, DEAD_3)], [], None),
     ("M8 旧形状 ④＋perm 漂出词表＝读不到红",
      [(API, APPEND_PERM, APPEND_PERM_BAD), (TEST, LIVE_4, DEAD_4)], [], None),
+    # ── 阶段三收编：名册↔实现体那颗新证人的两向（⛔ 只配单向＝"名册少一颗"那一半永远不响）──
+    ("M9 实现体改名、名册照旧＝只有新证人红",
+     [(DISPATCH, CASE_JUMP, CASE_JUMP_BAD)], [ROSTER], "jumpToSourceX"),
+    ("M10 名册少一颗＝四把尺一起红（新证人的正件方向）",
+     [(DISPATCH, ROSTER_JUMP, ROSTER_JUMP_BAD)],
+     [ROSTER, "两张表逐字相同", "两边都真抽到了名字", LOCK], "jumpToSource"),
 ]
 
-COVER = [LOCK]
+COVER = [LOCK, ROSTER]
 
 
 def run_vitest():

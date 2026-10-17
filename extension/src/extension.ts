@@ -32,6 +32,7 @@ import { uniqueName } from './naming';
 import { executeTool, CALLER_UI, onToolExecuted } from './toolRegistry';
 import { registerFilesystemTools } from './toolsFs';
 import { registerDomainTools } from './toolsDomain';
+import { registerRpcTools } from './dispatch';
 import { ProjectStore, type FsLike } from './projectStore';
 import { watcherGlobs, isBindablePath, rootRel } from './verilogDomain';
 
@@ -46,6 +47,7 @@ const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): 
 export function activate(context: vscode.ExtensionContext) {
   registerFilesystemTools();   // 统一调用层批次一：文件系统十工具上账（幂等）
   registerDomainTools();       // 批次二：bindings/circuits/res/compile/sys 四族十四工具（§15 范式）
+  registerRpcTools();          // 阶段三第一刀：RPC 那 9 颗也上同一张执行器（闸与账⛔ 有两套）
   const storeFactory = () => new ProjectStore(vscodeFsLike(projectRoot(context)), '@root');
   const moduleTree = new ModuleTree();
   const hierarchyTree = new HierarchyTree();

@@ -1331,7 +1331,7 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     expect(last.traceId && last.ts && typeof last.ms === 'number').toBeTruthy();
   });
 
-  it('审计臂②拒绝也进账：未登记（not-registered）/端点关（surface-denied）/审批拒（denied）三类 verdict 与 note 齐', async () => {
+  it('审计臂②拒绝也进账：未登记（not-registered）与审批拒（denied）两格 verdict+note 齐，批准那格记 approved（⛔ auto）', async () => {
     await boot({ folders: ['D:/c'], seed: { 'D:/c/.vv/project.json': '{"kind":"project"}' } });
     await new Promise((r) => setTimeout(r, 5));
     const ghost = await rpc(vscode.state.panels[0], 'noSuchTool', {});
@@ -1346,7 +1346,13 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     const day = new Date().toISOString().slice(0, 10);
     const raw = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/c/.vv/audit/trace-' + day + '.jsonl').path.toLowerCase())!);
     const vs = raw.split('\n').filter(Boolean).map((l) => JSON.parse(l));
-    expect(vs.find((v: any) => v.ref === 'noSuchTool')?.verdict).toBe('not-registered');
+    // 阶段三后 RPC 与树命令走**同一执行器** ⇒ 幽灵行记的是完整 id（`host.noSuchTool`），
+    // ⛔ 旧的裸 method 名（那是 dispatch 自己那层壳的产物：它把 `host.` 前缀在门外抹掉，
+    // 于是同一颗工具在账上有两种拼法，按 ref 聚合必然漏）。
+    const g = vs.find((v: any) => v.ref === 'host.noSuchTool');
+    expect(g?.verdict).toBe('not-registered');
+    expect(g?.tool).toBeNull();                                  // ⛔ 存在的工具⛔ 进 `tool` 槽（账本形状定死 null，否则"没登记"被读成"调用过"）
+    expect(String(g?.note)).toContain('API_NOT_REGISTERED');      // verdict 与 code 不是一一对应，note 必须自带机读码
     expect(vs.find((v: any) => v.ref === 'importLegacyData' && v.verdict === 'denied')).toBeTruthy();
     const ap = vs.find((v: any) => v.verdict === 'approved');                                 // 批准正臂＝approved（审批过≠auto）
     expect(ap).toBeTruthy();

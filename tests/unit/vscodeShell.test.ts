@@ -255,7 +255,12 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
   // ⚠ 正则要吃下嵌套泛型（`rpc<Record<string, string>>('getDocBindings'…`）——`[^>]*` 在内层 `>` 处断掉；
   //   惰性取到第一颗 `('` 为止（⛔ 用 `.*?`：`import('./x')` 形状会误抽出 'x' 当方法名）。
   const sent = [...client.matchAll(/rpc\b[^;]*?\('([a-zA-Z]+)'/g)].map((m) => m[1]).sort();
-  const handled = [...host.matchAll(/case '([a-zA-Z]+)':/g)].map((m) => m[1]).sort();
+  // 阶段三第一刀后，rpc 面的身份清单正本＝dispatch.ts 那颗 `RPC_METHODS`（switch 还在，但闸与账
+  // 归 executeTool，"扫 case 标签"那把尺读的已是内部实现）。名册⛔ 只给锁用：它同时是
+  // `registerRpcTools` 的登记清单（运行时活着的用途）；`dispatch()` 那颗前置挡册已摘——挡在门外
+  // 就进不了账本（见 extensionHost 的「审计臂②」：幽灵调用必须留一行 not-registered）。
+  const roster = /export const RPC_METHODS = \[([\s\S]*?)\] as const;/.exec(host)?.[1] ?? '';
+  const handled = [...roster.matchAll(/'([a-zA-Z]+)'/g)].map((m) => m[1]).sort();
 
   it('两边都真抽到了名字（⛔ 正则失配造成的"两边都空 ⇒ 相等 ⇒ 绿"）', () => {
     // 9＝片 5-B3 起（getConfig/saveExportFile/publishProblems/appendOutput/copyToSandbox/
@@ -271,6 +276,17 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
     expect(sent.filter((m) => !handled.includes(m))).toEqual([]);
     expect(handled.filter((m) => !sent.includes(m))).toEqual([]);
     expect(handled).toEqual(sent);
+  });
+
+  it('名册 ↔ 实现体双向：RPC_METHODS 上有的 dispatchCore 必有一体，switch 里有的必在名册上', () => {
+    // 收编后 `dispatch()` ⛔ 看名册（查册交 executeTool），名册与 switch 之间只剩"注册 handler"一根线：
+    //  · 名册有、switch 漏 ⇒ 只有真调用时才炸（default 那句「名册与实现漂移」），闸门期毫无读数；
+    //  · switch 有、名册漏 ⇒ 那颗 case ⛔ 注册成 handler＝死码，而契约 rpc 面照样放行。
+    // 所以⛔ 等运行期，源码层双向比（红名直接报是哪一颗）。
+    const cases = [...host.matchAll(/\bcase '([a-zA-Z]+)':/g)].map((m) => m[1]).sort();
+    expect(cases.length).toBeGreaterThanOrEqual(9);          // ⛔ 正则失配造成的"两边都空 ⇒ 相等 ⇒ 绿"
+    expect(cases.filter((c) => !handled.includes(c))).toEqual([]);
+    expect(handled.filter((c) => !cases.includes(c))).toEqual([]);
   });
 
   it('API 契约对账锁（阶段二第一刀）：rpc 投影＝dispatch 表、ui 投影每颗指得着真身、id/词表双向自检', () => {

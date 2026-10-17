@@ -1,7 +1,7 @@
 # API_REFERENCE（生成物 · 统一调用层）
 
-> ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（extension/src/toolsFs.ts）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
-> apiVersion `0.1.0` · 生成工具数 **24** · 调用面 ui=开 / rpc=开 / mcp=关 / cli=关
+> ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
+> apiVersion `0.1.0` · 生成工具数 **33** · 调用面 ui=开 / rpc=开 / mcp=关 / cli=关
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
@@ -30,6 +30,15 @@
 | `fs.move` | 移动 | file-write | file-write | ui | — | `verilogViz.moveTo` | 0.2.0 |
 | `fs.rename` | 重命名 | file-write | file-write | ui | — | `verilogViz.renameFile` | 0.2.0 |
 | `fs.revealInOS` | 在磁盘显示 | read | none | ui | — | `verilogViz.revealInOS` | 0.2.0 |
+| `host.appendOutput` | 写输出面板 | read | none | rpc | — | `appendOutput` | 0.1.0 |
+| `host.copyToSandbox` | 编译图落沙盒 | file-write | file-write | rpc | — | `copyToSandbox` | 0.1.0 |
+| `host.getAllBindings` | 读绑定链 | read | none | rpc | — | `getAllBindings` | 0.1.0 |
+| `host.getConfig` | 读宿主配置 | read | none | rpc | — | `getConfig` | 0.1.0 |
+| `host.importLegacyData` | 旧档一次性搬运 | file-write | file-write | rpc | **HITL** | `importLegacyData` | 0.1.0 |
+| `host.jumpToSource` | 跳到源码行 | read | none | rpc | — | `jumpToSource` | 0.1.0 |
+| `host.publishProblems` | 发 Problems | read | none | rpc | — | `publishProblems` | 0.1.0 |
+| `host.saveExportFile` | 宿主另存为 | file-write | file-write | rpc | — | `saveExportFile` | 0.1.0 |
+| `host.setDocBindings` | 写一份文档的绑定表 | config-write | config-write | rpc | — | `setDocBindings` | 0.1.0 |
 | `res.listProject` | 列编译域文件 | read | none | ui | — | `res.listProject` | 0.2.0 |
 | `res.listSandbox` | 列沙盒域文件 | read | none | ui | — | `res.listSandbox` | 0.2.0 |
 | `res.readProjectFile` | 读工程文件 | read | none | ui | — | `res.readProjectFile` | 0.2.0 |
@@ -411,6 +420,234 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
+### `host.appendOutput` — 写输出面板
+
+写输出面板
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "追加的原文（宿主不加工）"
+    }
+  }
+}
+```
+
+### `host.copyToSandbox` — 编译图落沙盒
+
+编译图落沙盒
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "files": {
+      "type": "array",
+      "description": "第 0 颗 = 主电路；其余为子部件（逐颗落 `<name>.djs` 并写所在目录绑定表）",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "`folder/name`，⛔ 带 .djs 后缀（宿主统一补）"
+          },
+          "content": {
+            "type": "string",
+            "description": "画布序列化串 {cells:[…]}"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### `host.getAllBindings` — 读绑定链
+
+读绑定链
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "doc": {
+      "type": "string",
+      "description": "根相对文档路径＝走目录链合并（近层覆盖）；不给＝项目根表原文"
+    }
+  }
+}
+```
+
+### `host.getConfig` — 读宿主配置
+
+读宿主配置
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### `host.importLegacyData` — 旧档一次性搬运
+
+旧档一次性搬运
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "旧 localStorage 档；X18 起可带身份三颗（key/role/bindings），带上就跟着落目录绑定表",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "无扩展名的条目按 `.v` 落盘（源码那半颗的路径）"
+          },
+          "content": {
+            "type": "string"
+          },
+          "key": {
+            "type": "string",
+            "description": "旧档批内 id——只当这批的连接键用"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "part"
+            ],
+            "description": "这颗是可编辑部件"
+          },
+          "bindings": {
+            "type": "object",
+            "description": "celltype → 同批里那颗部件的旧 id（⛔ 名字：重名/消毒会连错档）"
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### `host.jumpToSource` — 跳到源码行
+
+跳到源码行
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "file": {
+      "type": "string",
+      "description": "根相对路径"
+    },
+    "line": {
+      "type": "number",
+      "description": "0-based（编辑器口径）"
+    }
+  },
+  "required": [
+    "file"
+  ]
+}
+```
+
+### `host.publishProblems` — 发 Problems
+
+发 Problems
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "description": "一条 = 一行 Problems；line=null 表示给不出行（⛔ 冒充第 1 行）",
+      "items": {
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string",
+            "description": "工作区根相对路径"
+          },
+          "line": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "1-based；null = 未知"
+          },
+          "message": {
+            "type": "string"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning"
+            ]
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+### `host.saveExportFile` — 宿主另存为
+
+宿主另存为
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "base64": {
+      "type": "string",
+      "description": "要写出去的字节（base64；消息过 JSON 通道 ⇒ ⛔ 直接交 Uint8Array）"
+    },
+    "defaultName": {
+      "type": "string",
+      "description": "默认文件名（决定另存对话框的扩展名过滤器）"
+    },
+    "mime": {
+      "type": "string",
+      "description": "调用方语义标注（当前仅用于日志/文档）"
+    }
+  },
+  "required": [
+    "base64",
+    "defaultName"
+  ]
+}
+```
+
+### `host.setDocBindings` — 写一份文档的绑定表
+
+写一份文档的绑定表
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "docName": {
+      "type": "string",
+      "description": "根相对文档路径；表落在它的目录层"
+    },
+    "bindings": {
+      "type": "object",
+      "description": "⚠ 整表替换那颗目录的 bindings（手编条目会没）；单条改动走宿主内直调 setBindingInDir"
+    }
+  }
+}
+```
+
 ### `res.listProject` — 列编译域文件
 
 工程树（编译域 .v/.sv/.vh + 全量目录，跳过 node_modules/点开头；深度 16 护栏）。幂等只读。
@@ -496,7 +733,7 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 
 ## 尚未收编（第二批挂账）
 
-- dispatch 的 **9** 颗 webview RPC（appendOutput / copyToSandbox / getAllBindings / getConfig / importLegacyData / jumpToSource / publishProblems / saveExportFile / setDocBindings）——闸已在跑（dispatch 入口那份内联四闸），迁移＝换执行器、不改语义。
+- webview RPC：待迁 **0** 颗（契约 rpc 面在册 9 颗已全部走 `executeTool`；名册正本＝`dispatch.ts` 那颗 `RPC_METHODS`，对账锁拿它与契约 rpc 投影双向钉）。
 - 契约上账、非 rpc 面且⛔ registry handler：**3** 颗（compile.auditBindings→verilogViz.auditBindings / compile.completeBindings→verilogViz.completeBindings / compile.compileAndShow→verilogViz.compileAndShow）——这几颗现在由命令面板直调 Extension Host 里的实现，绕开 executeTool。
 - 反向（registry 有 handler 而契约⛔ 上账）：**0** 颗（（无））。
 - OS 拖入的字节流写盘（拖拽 writeDropped 内联中）。

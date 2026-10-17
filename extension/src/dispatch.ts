@@ -1,17 +1,15 @@
-// dispatch：webview → 宿主能力的唯一路由。
-// RPC 面**现读 9 颗**（getConfig/saveExportFile/publishProblems/appendOutput/copyToSandbox/
-// importLegacyData/getAllBindings/setDocBindings/jumpToSource）：文件 CRUD/配置文件/剪贴板那批
+// dispatch：webview → 宿主能力的唯一路由（**闸与账都在 executeTool**，本文件只余名册与实现体）。
+// RPC 面**现读 9 颗**（正本＝下面那颗 `RPC_METHODS`）：文件 CRUD/配置文件/剪贴板那批
 // 随旧 React UI 一起退役——文件管理归原生 Explorer 与我们的两颗树，配置归
 // contributes.configuration，画布要的文件内容由宿主**推**（compile/doc init）。
-// ⚠ 颗数是**对账锁**的结果不是抄的：vscodeShell.test 钉「vv-api.defaults 的 rpc 投影 == 本文件
-// 的 case 表」双向（漏登/幽灵都红），所以这里写死的数字改一行代码就会点红台账。
+// ⚠ 颗数是**对账锁**的结果不是抄的：`vscodeShell.test` 三向钉死——「契约 vv-api.defaults 的 rpc 投影
+// == RPC_METHODS」「RPC_METHODS == 前端 vscodeHost 真在调的方法」「RPC_METHODS == dispatchCore 的 case 表」
+// （漏登/幽灵/死码都红，且都读源码文本、⛔ 等运行期），所以加一颗方法要三处一起齐。
 // Panel（verilogVisualizer）与 custom editor（verilogViz.doc）两条装载线共用这一份。
 import * as vscode from 'vscode';
 import type { FsLike } from './projectStore';
 import { getAllBindings, setDocBindings, ensureDirsMeta, setBindingInDir } from './sandboxFiles';
-import { loadApiContract, toolIdForRpc, canSurface } from './apiSurface';
-import { auditToolCall, type AuditVerdict } from './apiAudit';
-import { checkGrant } from './apiGrants';
+import { executeTool, getTool, registerTool, type ToolSchema } from './toolRegistry';
 
 /** Problems 面板接管：webview 编译后经 publishProblems 落到这里。
  *  ⚠ **惰性创建**：extensionHost.test 的 vscode 桩没有 createDiagnosticCollection/
@@ -112,45 +110,33 @@ function sanitizeRelName(raw: unknown, fallback: string): string {
   return segs.join('/') || fallback;
 }
 
-// ── 协议 §9.5 审计壳（刀）：计时 + 七 verdict 记账（auto/approved/denied/error/surface-denied/not-registered/not-granted）。
-// 账落在 dispatch 外层＝闸前错误也进账（deny/not-registered 正是最想审计的两类）。
+// ── 协议 §9.4/§9.5：RPC 面＝统一执行器的一条投影（阶段三第一刀，卷六十二遗留①）────────────
+// 修前的形状：`dispatch` 自己带一份四闸（surfaces→grants→HITL）＋一层审计壳，
+// 与 `executeTool` 那份是**两套并行实现**——同一句"谁能调用什么"有两个主人，
+// 两边各修各的：RPC 侧⛔ 实参必填检查、审计 subject 写成通道名、"approved" 由契约反推而⛔ 真审批。
+// 现在：本文件只留**名册 + 实现体**，闸与账全部归 `toolRegistry.executeTool`（唯一执行入口）。
+// 名册这颗 `RPC_METHODS` 是 rpc 面的身份清单正本：`registerRpcTools` 按它上账（运行时活着的用途），
+// 对账锁（vscodeShell）拿它与契约的 rpc 投影双向比（⛔ 一份"只为文档存在"的死名单）。
+// ⛔ 在 `dispatch` 里再拿它挡一次幽灵 method：前置抛错会绕过账本（见下面那句注释）。
+export const RPC_METHODS = [
+  'getConfig', 'saveExportFile', 'publishProblems', 'appendOutput', 'copyToSandbox',
+  'importLegacyData', 'getAllBindings', 'setDocBindings', 'jumpToSource',
+] as const;
+export type RpcMethod = typeof RPC_METHODS[number];
+
+/** webview → 宿主的一次调用。闸与审计都在 executeTool 里（`subject='ui'`＝本扩展画布这个身份，
+ *  端点记在 `surface` 上、落账为 `channel`）。 */
 export async function dispatch(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
-  const t0 = Date.now();
-  const toolId = toolIdForRpc(method);
-  try {
-    const out = await dispatchCore(context, method, args);
-    auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "ui", channel: "rpc",
-      verdict: toolId && loadApiContract().tools[toolId].requiresApproval ? "approved" : "auto", ms: Date.now() - t0, args });
-    return out;
-  } catch (e) {
-    const msg = String(e && (e as any).message || e);
-    const verdict: AuditVerdict = msg.includes("[API_NOT_REGISTERED]") ? "not-registered"
-      : msg.includes("[API_SURFACE_DENIED]") ? "surface-denied"
-      : msg.includes("[API_NOT_GRANTED]") ? "not-granted"
-      : msg.includes("[API_NOT_APPROVED]") ? "denied" : "error";
-    auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "ui", channel: "rpc", verdict, ms: Date.now() - t0, args, note: msg.slice(0, 200) });
-    throw e;
-  }
+  // ⛔ 在本函数"先挡野 method"：那样抛的错⛔ 不进 executeTool 的账，§9.5「每次调用必进账，含被拒」
+  // 当场破洞——agent 试一个不存在的名字，账上一片干净＝那件事没发生过（修前 dispatch 就是这么漏的，
+  // 而它自己那句注释还写着"审计那行由 executeTool 记"：措辞与实现对不上，证人也没测到这一格）。
+  // 查册交给执行器（registry ∧ 契约 双查）：`host.<method>` 不在册 ⇒ verdict=not-registered + [API_NOT_REGISTERED]。
+  return executeTool(context, { surface: 'rpc', subject: 'ui', interactive: false }, `host.${method}`, args ?? {});
 }
 
 async function dispatchCore(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
-  // 协议 §9.4 执行钩子（阶段二第二刀）：RPC 面入口先过契约闸（硬序 1→2硬→3→2审批）——
-  // ① surfaces 全局开关；② 工具 surfaces（未上账已在 apiSurface 反查拦掉）；③ 档案授权 api.grants.json；
-  // ④ requiresApproval 的工具＝最后才暂停弹宿主确认（审批弹窗只在闸 1/3 都通过后发起；§9.4 协议硬序）。
-  const toolId = toolIdForRpc(method);
-  if (!toolId) throw new Error(`[API_NOT_REGISTERED] ${method} 未在 API 契约登记（加方法必先上账）`);
-  if (!canSurface(toolId, 'rpc')) throw new Error(`[API_SURFACE_DENIED] ${method}：端点未对 rpc 开放（工具账 ${toolId}）`);
-  // 协议⑨闸③（§9.4 第三行）：调用方档案授权——硬序 1→2(硬)→3→2(审批)，审批弹窗只在闸 1/3 都过后才发起。
-  // 阶段二全部 rpc 流量都来自本扩展自己的画布 webview ⇒ subject='ui'（apiGrants.ts 头注）。
-  if (!checkGrant('ui', toolId)) {
-    throw new Error(`[API_NOT_GRANTED] ${method}：调用方档案（ui）未获工具 ${toolId} 授权（改 .vv/api.grants.json）`);
-  }
-  const tool = loadApiContract().tools[toolId];
-  if (tool.requiresApproval) {
-    const pick = await vscode.window.showWarningMessage(
-      `API 工具「${toolId}」要求确认后执行（${method}）。${tool.description ?? ''}`, { modal: true } as any, '允许');
-    if (pick !== '允许') throw new Error(`[API_NOT_APPROVED] ${method}：用户未批准（verdict=denied）`);
-  }
+  // 闸（surfaces/grants/HITL）与实参必填检查都⛔ 在这里——统一由 executeTool 过（见上面那段）。
+  // 本函数只剩"按名字干活"；名字⛔ 在名册上时 executeTool 的 handler 查账也会挡下。
   switch (method) {
     // Settings UI（contributes.configuration）→ 画布：一次拉全量。字体跟随原生 editor.fontSize。
     case 'getConfig': {
@@ -323,6 +309,129 @@ async function dispatchCore(context: vscode.ExtensionContext, method: string, ar
       return null;
     }
 
-    default: throw new Error(`Extension Host 不认识的调用：${method}`);
+    default:
+      // 走到这里＝名册上有这颗而 switch 漏了一体（迁移时的真 bug 形状）。喊得响过"静默返回 undefined"。
+      throw new Error(`[API_NOT_REGISTERED] ${method} 在 RPC_METHODS 名册上而 dispatchCore ⛔ 这一体（名册与实现漂移）`);
+  }
+}
+
+// ── 把名册上的九颗登记成工具（唯一执行入口＝executeTool；闸、账、实参必填检查都在它那里）────
+/** rpc 面各颗的**参数 schema**（文档＋校验双用）。`required` 只标"缺了必然失败"的两颗：
+ *  其余几颗的旧实现本来就容缺（`args.items || []`、`?? ''`），⛔ 靠新增必填把老调用方判死。 */
+const RPC_SCHEMAS: Record<RpcMethod, { title: string; schema: ToolSchema }> = {
+  getConfig: {
+    title: '读宿主配置', schema: { type: 'object', properties: {} },
+  },
+  saveExportFile: {
+    title: '宿主另存为',
+    schema: {
+      type: 'object',
+      properties: {
+        base64: { type: 'string', description: '要写出去的字节（base64；消息过 JSON 通道 ⇒ ⛔ 直接交 Uint8Array）' },
+        defaultName: { type: 'string', description: '默认文件名（决定另存对话框的扩展名过滤器）' },
+        mime: { type: 'string', description: '调用方语义标注（当前仅用于日志/文档）' },
+      },
+      required: ['base64', 'defaultName'],
+    },
+  },
+  publishProblems: {
+    title: '发 Problems',
+    schema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          description: '一条 = 一行 Problems；line=null 表示给不出行（⛔ 冒充第 1 行）',
+          items: {
+            type: 'object',
+            properties: {
+              fileName: { type: 'string', description: '工作区根相对路径' },
+              line: { type: ['number', 'null'], description: '1-based；null = 未知' },
+              message: { type: 'string' }, severity: { type: 'string', enum: ['error', 'warning'] },
+            },
+          },
+        },
+      },
+    },
+  },
+  appendOutput: {
+    title: '写输出面板',
+    schema: { type: 'object', properties: { text: { type: 'string', description: '追加的原文（宿主不加工）' } } },
+  },
+  copyToSandbox: {
+    title: '编译图落沙盒',
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          description: '第 0 颗 = 主电路；其余为子部件（逐颗落 `<name>.djs` 并写所在目录绑定表）',
+          items: {
+            type: 'object',
+            properties: { name: { type: 'string', description: '`folder/name`，⛔ 带 .djs 后缀（宿主统一补）' }, content: { type: 'string', description: '画布序列化串 {cells:[…]}' } },
+          },
+        },
+      },
+    },
+  },
+  importLegacyData: {
+    title: '旧档一次性搬运',
+    schema: {
+      type: 'object',
+      properties: {
+        items: {
+          type: 'array',
+          description: '旧 localStorage 档；X18 起可带身份三颗（key/role/bindings），带上就跟着落目录绑定表',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: '无扩展名的条目按 `.v` 落盘（源码那半颗的路径）' },
+              content: { type: 'string' },
+              key: { type: 'string', description: '旧档批内 id——只当这批的连接键用' },
+              role: { type: 'string', enum: ['part'], description: '这颗是可编辑部件' },
+              bindings: { type: 'object', description: 'celltype → 同批里那颗部件的旧 id（⛔ 名字：重名/消毒会连错档）' },
+            },
+          },
+        },
+      },
+    },
+  },
+  getAllBindings: {
+    title: '读绑定链',
+    schema: { type: 'object', properties: { doc: { type: 'string', description: '根相对文档路径＝走目录链合并（近层覆盖）；不给＝项目根表原文' } } },
+  },
+  setDocBindings: {
+    title: '写一份文档的绑定表',
+    schema: {
+      type: 'object',
+      properties: {
+        docName: { type: 'string', description: '根相对文档路径；表落在它的目录层' },
+        bindings: { type: 'object', description: '⚠ 整表替换那颗目录的 bindings（手编条目会没）；单条改动走宿主内直调 setBindingInDir' },
+      },
+    },
+  },
+  jumpToSource: {
+    title: '跳到源码行',
+    schema: {
+      type: 'object',
+      properties: { file: { type: 'string', description: '根相对路径' }, line: { type: 'number', description: '0-based（编辑器口径）' } },
+      required: ['file'],
+    },
+  },
+};
+
+/** activate 期调用（与 `registerDomainTools` 同拍）。
+ *  ⛔ 用 `toolsFs`/`toolsDomain` 那种模块级 `registered` 布尔：那颗标志一旦为真，
+ *  `activate` 第二次调用会整批跳过登记——而 M7 幂等测试恰恰靠"再启一遍"活着。
+ *  按 id 在场与否跳过：重复 activate＝空转，清场后重激活仍能补齐。 */
+export function registerRpcTools(): void {
+  for (const method of RPC_METHODS) {
+    if (getTool(`host.${method}`)) continue;
+    const meta = RPC_SCHEMAS[method];
+    registerTool({
+      id: `host.${method}`, title: meta.title, description: meta.title,
+      schema: meta.schema,
+      handler: async (ctx, args) => dispatchCore(ctx, method, args),
+    });
   }
 }

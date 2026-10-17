@@ -84,14 +84,24 @@ export async function executeTool(
   const contract = loadApiContract();
   const def = getTool(id);
   const ct = contract.tools[id];
-  const audit = (verdict: AuditVerdict, note?: string, knownId?: string): void => {
-    const ref = knownId ? (contract.tools[knownId]?.ref ?? knownId) : id;
-    // `subject`＝身份（闸 3 按它放行）、`channel`＝端点（闸 2 按它放行）——两颗分开落账，
-    // ⛔ 再像 dispatch 旧壳那样把通道名塞进 subject（那条账会让 agent 把"谁能调用"推错）。
-    auditToolCall(context, { tool: knownId, ref, subject: caller.subject, channel: caller.surface, verdict, ms: Date.now() - t0, args, note });
+  const audit = (verdict: AuditVerdict, note?: string): void => {
+    // `ref` 一颗算法贯穿到底：契约里那颗 `ref` 拿得到就用它，拿不到才退回 id。
+    // ⚠ 修前两处不一致——放行路径传了 knownId（ref=契约那颗，如 `copyToSandbox`），
+    //   而四道拒单都走 `audit(verdict, note)`（ref 变成 `host.copyToSandbox`）。
+    //   同一颗工具在账本里因"这次成没成"而有两个 ref＝按 ref 聚合调用记录的读法必然漏，
+    //   而 RPC 时代没人发现是因为 dispatch 自己那层壳把 ref 一律写成 method 名（重复实现遮蔽了它）。
+    const ref = contract.tools[id]?.ref ?? id;
+    // `tool` 只在"这颗确实登记了"时才写名：not-registered 那一行若也带上名字，账本就把一个⛔ 存在的
+    // 工具说成调用过（审计臂②判的正是这一格）。
+    auditToolCall(context, { tool: getTool(id) ? id : undefined, ref, subject: caller.subject, channel: caller.surface, verdict, ms: Date.now() - t0, args, note });
   };
   const fail = (code: ToolError['code'], verdict: AuditVerdict, msg: string, note?: string): never => {
-    audit(verdict, note);
+    // 拒单那行必须**自带机读码**（`[API_*]`）且⛔ 空。两条理由：
+    //   · `sys.readAudit`/agent 自调试是按 note 反查拒因的，note=undefined 的账＝"被拦了，为什么没说"；
+    //   · verdict 与 code ⛔ 一一对应——BAD_ARGS 和 handler 抛错都落 `error`，只盯 verdict 会把
+    //     "调用方实参写错"读成"工具自己有 bug"，归责方向直接反了。
+    // 缺省 note 时整条 msg 上账（msg 本就带标签）；给了 note 就补标签，两界读法一致。
+    audit(verdict, note ? `[API_${code}] ${note}` : msg);
     throw new ToolError(code, msg);
   };
   if (!def || !ct) {
@@ -126,11 +136,11 @@ export async function executeTool(
   }
   try {
     const out = await def.handler(context, args, caller);
-    audit(approved ? 'approved' : 'auto', undefined, id);
+    audit(approved ? 'approved' : 'auto');
     toolExecuted.fire({ toolId: id, caller, ms: Date.now() - t0 });
     return out;
   } catch (e) {
-    audit('error', String(e instanceof Error ? e.message : e).slice(0, 200), id);
+    audit('error', String(e instanceof Error ? e.message : e).slice(0, 200));
     throw e;
   }
 }
