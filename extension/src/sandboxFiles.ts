@@ -8,7 +8,7 @@
 // role 的消费方：customEditors._siblings（init 带 role）→ DocApp → gateSystem 部件打分。
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
-import { uniqueName, uniqueFolderName } from './naming';
+import { uniqueName, uniqueFolderName, sanitizeNameInput } from './naming';
 
 export const META_FILE = '.verilogviz.json';
 
@@ -261,48 +261,59 @@ export async function renameFile(context: vscode.ExtensionContext, uri: vscode.U
   const name = uri.path.split('/').pop() || uri.fsPath;
   const next = await vscode.window.showInputBox({ prompt: '重命名', value: name });
   if (!next || next === name) return;
-  try {
-    const target = vscode.Uri.joinPath(vscode.Uri.joinPath(uri, '..'), next);
-    await then(vscode.workspace.fs.rename(uri, target, { overwrite: false }));
-    // role 跟随改名（⛔ 改名后部件身份丢失）
-    const root = projectRoot(context);
-    const oldFull = pathRel(root, uri);
-    // target 串可能带未折的 `../`（桩/极端 joinPath 形状；真宿主会归一）——过 resolveLayerValue 折死，双保险
-    const newFull = resolveLayerValue('', pathRel(root, target));
-    // circuits 是**根表**语义（与 getCircuitsSet 同层），迁移也必须在根表做（⛔ 去文档层表找它）
-    const rootMeta = await readMeta(context);
-    let touched = false;
-    if (rootMeta.circuits.includes(oldFull)) {
-      rootMeta.circuits = rootMeta.circuits.map((n) => (n === oldFull ? newFull : n));
-      await writeMeta(context, rootMeta, '');
-      touched = true;
-    }
-    // R137：绑定值也迁移（旧路径改名 ⇒ 引用悬空＝"绑了却没生效"；值可能写在祖先层表里，逐层扫）
-    for (const chainDir of dirChain(oldFull)) {
-      const m = await readMetaAt(context, chainDir);
-      if (!m) continue;
-      let hit = false;
-      for (const [k, v] of Object.entries(m.bindings)) {
-        // R145：`宿主::实例` 前缀键的宿主被改名 ⇒ 键迁移（指旧文档的精控⛔ 悬空）
-        if (k.includes('::')) {
-          const hostRel = resolveLayerValue(chainDir, normalizePartName(k.slice(0, k.lastIndexOf('::'))));
-          if (hostRel === oldFull) {
-            const nh = chainDir && newFull.startsWith(`${chainDir}/`) ? newFull.slice(chainDir.length + 1) : relFrom(chainDir, newFull);
-            m.bindings[`${nh}${k.slice(k.lastIndexOf('::'))}`] = v; delete m.bindings[k]; hit = true; continue;
-          }
-        }
-        const resolved = resolveLayerValue(chainDir, normalizePartName(String(v || '')));
-        if (resolved === oldFull) {
-          m.bindings[k] = chainDir && newFull.startsWith(`${chainDir}/`) ? newFull.slice(chainDir.length + 1) : relFrom(chainDir, newFull);
-          hit = true;
-        }
-      }
-      if (hit) { await writeMeta(context, m, chainDir); touched = true; }
-    }
-    void touched; // 广播由调用侧（extension.ts 命令层）统一处理：避免 dispatch↔sandboxFiles 循环依赖
-  } catch (e) {
+  // G7（2026-10-17 审查补）：输入框直连盘上路径，裸收 `../` 能把文件改名出工作区——单段消毒
+  const clean = sanitizeNameInput(next, { single: true });
+  if (!clean || clean === name) return;
+  await performRename(context, uri, vscode.Uri.joinPath(vscode.Uri.joinPath(uri, '..'), clean));
+}
+
+/** renameFile/moveToFile 共源：盘上搬家 → 按对象形态迁绑定（文件＝精确身份；目录＝前缀族群 G1）。 */
+async function performRename(context: vscode.ExtensionContext, uri: vscode.Uri, target: vscode.Uri): Promise<boolean> {
+  const root = projectRoot(context);
+  const oldFull = pathRel(root, uri);
+  // 目录判定＝**动手前先看源**（⛔ 改名后再 stat target：盘上顺序、宿主实现、测试桩三方都更稳——
+  // 万一 rename 失败也早知道动了什么形状；2026-10-17 批次B 实测修正）
+  let isDir = false;
+  try { isDir = (await then(vscode.workspace.fs.stat(uri)) as any).type === 2; } catch { /* 文件走 false */ }
+  // 目标占用与重名顺延：overwrite:false 语义（重名会失败并具体告知——G8）
+  try { await then(vscode.workspace.fs.rename(uri, target, { overwrite: false })); }
+  catch (e) {
     void vscode.window.showErrorMessage(`重命名失败：${String(e instanceof Error ? e.message : e)}`);
+    return false;
   }
+  // target 串可能带未折的 `../`（桩/极端 joinPath 形状；真宿主会归一）——过 resolveLayerValue 折死，双保险
+  const newFull = resolveLayerValue('', pathRel(root, target));
+  if (isDir) {
+    // G1（X3/D5/C9 共源）：目录改名 ⇒ 值/`宿主::`前缀键/根表 circuits 全族随迁
+    await migratePrefix(context, oldFull, newFull);
+    return true;
+  }
+  // —— 文件级迁移：全表层精确身份扫（G1 三路共源的文件路）——
+  // 2026-10-17 审查补：旧实现只扫 `dirChain(oldFull)`（祖先链），但任何目录的表都可能用 `../`
+  // 相对写法指到这颗文件 ⇒ 跨目录引用全漏。收口进 migrateFileRef（与 migratePrefix 同一把扫法）。
+  await migrateFileRef(context, oldFull, newFull);
+  return true;
+}
+
+/** C9「移动到」的机械体：dest 目录内 (n) 去重 → performRename（迁移语义同源）。返回终 uri（失败 null）。 */
+export async function moveToFile(context: vscode.ExtensionContext, srcUri: vscode.Uri, destDirUri: vscode.Uri): Promise<vscode.Uri | null> {
+  const root = projectRoot(context);
+  const srcFull = pathRel(root, srcUri);
+  const destRel = pathRel(root, destDirUri);
+  const name = srcUri.path.split('/').filter(Boolean).pop() || 'entry';
+  let isDir = false;
+  try { isDir = (await then(vscode.workspace.fs.stat(srcUri)) as any).type === 2; } catch { /* 少见；当文件处理 */ }
+  if (isDir && (destRel === srcFull || destRel.startsWith(`${srcFull}/`))) {
+    void vscode.window.showErrorMessage(`不能把目录「${name}」移动到它自己或它的子目录里。`);
+    return null;
+  }
+  // 原地"移动"＝no-op（⛔ 白跑 (n) 顺延把 parts 改成「parts (2)」——审查缺陷 #5，2026-10-17）
+  const srcDir = srcFull.includes('/') ? srcFull.slice(0, srcFull.lastIndexOf('/')) : '';
+  if (destRel === srcDir) return srcUri;
+  const next = await uniqueName(destDirUri, name);
+  const target = vscode.Uri.joinPath(destDirUri, next);
+  const ok = await performRename(context, srcUri, target);
+  return ok ? target : null;
 }
 
 /** 递归数目录下的文件个数（确认弹窗用；深度 10 护栏挡软链环） */
@@ -333,27 +344,19 @@ export async function deleteFile(context: vscode.ExtensionContext, uri: vscode.U
     pick = await vscode.window.showWarningMessage(`删除「${name}」？`, { modal: true }, '删除');
   }
   if (pick !== '删除') return;
+  const wasDir = isDir;
   await then(vscode.workspace.fs.delete(uri, { useTrash: true, recursive: true }));
   const root = projectRoot(context);
   const deletedFull = pathRel(root, uri);
-  // circuits 清理（根表）
-  const meta = await readMeta(context);
   let changed = false;
-  if (meta.circuits.includes(deletedFull)) {
-    meta.circuits = meta.circuits.filter((n) => n !== deletedFull);
-    await writeMeta(context, meta, '');
+  if (wasDir) {
+    // G1（X3 与 D4 共源）：删除目录 ⇒ 整个前缀族群的值/前缀键/根表 circuits 清空（⛔ 留悬空）
+    await migratePrefix(context, deletedFull, null);
     changed = true;
-  }
-  // R137：指向被删部件的绑定逐层清除（悬空绑定=渲染失败无提示的另一来源）
-  for (const chainDir of dirChain(deletedFull)) {
-    const m = await readMetaAt(context, chainDir);
-    if (!m) continue;
-    let hit = false;
-    for (const [k, v] of Object.entries(m.bindings)) {
-      if (k.includes('::') && resolveLayerValue(chainDir, normalizePartName(k.slice(0, k.lastIndexOf('::')))) === deletedFull) { delete m.bindings[k]; hit = true; continue; }   // R145 前缀键宿主删除
-      if (resolveLayerValue(chainDir, normalizePartName(String(v || ''))) === deletedFull) { delete m.bindings[k]; hit = true; }
-    }
-    if (hit) { await writeMeta(context, m, chainDir); changed = true; }
+  } else {
+    // 文件删除：全表层精确身份清（migrateFileRef(null)——含 circuits 与跨目录 ../ 引用，审查缺陷 #4）
+    await migrateFileRef(context, deletedFull, null);
+    changed = true;
   }
   void changed;
 }
@@ -560,10 +563,162 @@ export async function collectInstanceHits(context: vscode.ExtensionContext, docR
   return hits;
 }
 
+/* ================= G1 引擎（2026-10-17 批次B）：全工作区表层的**前缀级**迁移/清空 ================= */
+
+/** 全工作区所有带配置表的目录层（''＝根；跳过 node_modules/点开头——与 normalizeBindingsDisk 同源）。 */
+async function tableDirsOf(context: vscode.ExtensionContext): Promise<string[]> {
+  const root = projectRoot(context);
+  const rootPathL = root.fsPath.replace(/[\\/]+$/, '').toLowerCase();
+  return ['', ...await collectTableDirs(root, rootPathL)];
+}
+
+/**
+ * G1 引擎：把根相对前缀 `oldPrefix/` 下的盘上身份迁到 `newPrefix`（null＝删除 ⇒ 悬空清空）。
+ * 一把扫全表层，三层语义同源：
+ *  ① 绑定值——根相对解析后落在前缀内的 ⇒ 重映射（或删）
+ *  ② `宿主::`前缀键——宿主落在前缀内的 ⇒ 键迁移（或整键删）
+ *  ③ 根表 circuits——名单连同整条前缀族群走
+ * ⛔ 动改名后**已随盘搬家**的目录内表（fs.rename 连孩子连表一起走，其相对书写天然仍指向族内，
+ *   位置＝newPrefix ⇒ 跳过）。⚠ 这是"目录改名/删除什么都不迁"的根因修复：旧里逐层扫只按
+ *   `resolved === oldFull` 精确相等判，目录路径永不出现在值的解析位上 ⇒ 全军经过也不动。
+ */
+export async function migratePrefix(
+  context: vscode.ExtensionContext,
+  oldPrefix: string,
+  newPrefix: string | null,
+): Promise<void> {
+  if (!oldPrefix) return;                                    // 根整个没有"改名"语义
+  const pre = `${oldPrefix}/`;
+  for (const dir of await tableDirsOf(context)) {
+    // 已搬家的表：位置在 newPrefix 内 ⇒ 跳过（相对书写天然正确；extra/协议头不被二次改写）
+    if (newPrefix !== null && (dir === newPrefix || dir.startsWith(`${newPrefix}/`))) continue;
+    const m = await readMetaAt(context, dir);
+    if (!m) continue;
+    const out: Record<string, string> = {};
+    let touched = false;
+    for (const [k, raw] of Object.entries(m.bindings)) {
+      if (typeof raw !== 'string') { out[k] = raw as string; continue; }
+      let dropped = false;
+      let newKey = k;
+      let newVal = raw;
+      if (k.includes('::')) {
+        const sep = k.lastIndexOf('::');
+        const hostFull = resolveLayerValue(dir, normalizePartName(k.slice(0, sep)));
+        if (hostFull.startsWith(pre)) {
+          if (!newPrefix) dropped = true;                     // 删除 ⇒ 宿主没了，整键清
+          else newKey = `${relFrom(dir, newPrefix + hostFull.slice(oldPrefix.length))}::${k.slice(sep + 2)}`;
+        }
+      }
+      if (!dropped) {
+        const full = resolveLayerValue(dir, normalizePartName(raw));
+        if (full.startsWith(pre)) {
+          if (!newPrefix) dropped = true;                     // 删除 ⇒ 值断了，清
+          else {
+            const nf = newPrefix + full.slice(oldPrefix.length);
+            newVal = dir && nf.startsWith(`${dir}/`) ? nf.slice(dir.length + 1) : relFrom(dir, nf);
+          }
+        }
+      }
+      if (!dropped) out[newKey] = newVal;
+    }
+    if (JSON.stringify(out) !== JSON.stringify(m.bindings)) {
+      await writeMeta(context, { circuits: m.circuits || [], bindings: out, _extra: m._extra }, dir);
+      touched = true;
+    }
+    void touched;
+  }
+  // 根表 circuits 的族群迁移/清除（显式取消名单的语义在根——与 getCircuitsSet 同层）
+  const rootMeta = await readMeta(context);
+  if (rootMeta.circuits.some((n) => n === oldPrefix || n.startsWith(pre))) {
+    rootMeta.circuits = newPrefix
+      ? rootMeta.circuits.map((n) => (n === oldPrefix || n.startsWith(pre) ? newPrefix + n.slice(oldPrefix.length) : n))
+      : rootMeta.circuits.filter((n) => !n.startsWith(pre));
+    await writeMeta(context, rootMeta, '');
+  }
+}
+
+/**
+ * 文件身份的全表层迁移/清空（G1 三路共源的**文件路**，2026-10-17 审查补）：
+ * 旧实现（改名/删除）只扫 `dirChain(oldFull)`——被改名文件的**祖先链**。但任何目录的表都可能用
+ * `../` 相对写法指到这颗文件（如 lib 表值 `../fsm.djs`）：祖先链扫不到 ⇒ 引用悬空＝"绑了却没生效"。
+ * 与 migratePrefix 同一把 `tableDirsOf` 全表层扫法，匹配从 startsWith 收紧为**精确身份**：
+ *  ① 绑定值解析后 === oldFull ⇒ 重映射（newFull=null＝删除 ⇒ 清）
+ *  ② `宿主::`前缀键的宿主 === oldFull ⇒ 键随迁（或整键清）
+ *  ③ 根表 circuits 精确名单随迁/清除
+ */
+export async function migrateFileRef(
+  context: vscode.ExtensionContext,
+  oldFull: string,
+  newFull: string | null,
+): Promise<void> {
+  for (const dir of await tableDirsOf(context)) {
+    const m = await readMetaAt(context, dir);
+    if (!m) continue;
+    const rewrite = (t: string): string =>
+      dir && t.startsWith(`${dir}/`) ? t.slice(dir.length + 1) : relFrom(dir, t);
+    const out: Record<string, string> = {};
+    for (const [k, raw] of Object.entries(m.bindings)) {
+      if (typeof raw !== 'string') { out[k] = raw as string; continue; }
+      let dropped = false;
+      let newKey = k;
+      let newVal = raw;
+      if (k.includes('::')) {
+        const sep = k.lastIndexOf('::');
+        const hostFull = resolveLayerValue(dir, normalizePartName(k.slice(0, sep)));
+        if (hostFull === oldFull) {
+          if (!newFull) dropped = true;                     // 删除 ⇒ 宿主没了，整键清
+          else newKey = `${rewrite(newFull)}::${k.slice(sep + 2)}`;
+        }
+      }
+      if (!dropped) {
+        const full = resolveLayerValue(dir, normalizePartName(raw));
+        if (full === oldFull) {
+          if (!newFull) dropped = true;                     // 删除 ⇒ 值断了，清
+          else newVal = rewrite(newFull);
+        }
+      }
+      if (!dropped) out[newKey] = newVal;
+    }
+    if (JSON.stringify(out) !== JSON.stringify(m.bindings)) {
+      await writeMeta(context, { circuits: m.circuits || [], bindings: out, _extra: m._extra }, dir);
+    }
+  }
+  // 根表 circuits 精确名单（显式取消语义在根——与 getCircuitsSet 同层）
+  const rootMeta = await readMeta(context);
+  if (rootMeta.circuits.includes(oldFull)) {
+    rootMeta.circuits = newFull
+      ? rootMeta.circuits.map((n) => (n === oldFull ? newFull : n))
+      : rootMeta.circuits.filter((n) => n !== oldFull);
+    await writeMeta(context, rootMeta, '');
+  }
+}
+
+/* ================= 右键三件套（C9/C10/C11）：移动到 / 复制路径 / 在磁盘显示 ================= */
+
+/** 扫全工作区的目录清单（QuickPick「移动到」用；跳过 node_modules/点开头，深度 16 护栏）。 */
+export async function scanDirChoices(context: vscode.ExtensionContext): Promise<Array<{ rel: string; uri: vscode.Uri }>> {
+  const root = projectRoot(context);
+  const out: Array<{ rel: string; uri: vscode.Uri }> = [{ rel: '', uri: root }];
+  const walk = async (dirRel: string, depth: number): Promise<void> => {
+    if (depth > 16) return;
+    let entries: Array<[string, number]>;
+    try { entries = await then(vscode.workspace.fs.readDirectory(dirRel ? vscode.Uri.joinPath(root, ...dirRel.split('/')) : root)); }
+    catch { return; }
+    for (const [name, type] of entries) {
+      if (type !== 2 || name === 'node_modules' || name.startsWith('.')) continue;
+      const rel = dirRel ? `${dirRel}/${name}` : name;
+      out.push({ rel, uri: vscode.Uri.joinPath(root, ...rel.split('/')) });
+      await walk(rel, depth + 1);
+    }
+  };
+  await walk('', 1);
+  return out.sort((a, b) => a.rel.localeCompare(b.rel));
+}
+
 /* ================= M7 一次性归一清扫（幂等）：盘名 `x.djs.djs` 裁尾 + 各层表值归一写回 ================= */
 
 /** 收集 root 下所有目录（含根的 ''）：跳过 node_modules 与点开头目录（配置表所在目录必含部件或用户手放过）。 */
-async function collectTableDirs(dir: vscode.Uri, rootPathL: string, depth = 8, acc: string[] = []): Promise<string[]> {
+async function collectTableDirs(dir: vscode.Uri, rootPathL: string, depth = 16, acc: string[] = []): Promise<string[]> {
   if (depth <= 0) return acc;
   let entries: Array<[string, number]> = [];
   try { entries = await then(vscode.workspace.fs.readDirectory(dir)); } catch { return acc; }

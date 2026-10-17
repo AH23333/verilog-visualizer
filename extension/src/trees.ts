@@ -23,6 +23,8 @@ type Node = {
   /** 层次树的展开链（'/' 分隔的模块名）：链上出现过的实例⛔ 再展开＝环守卫（A⇄B 互相例化别死循环） */
   chain?: string;
   kind?: 'file' | 'module' | 'instance' | 'hint';
+  /** 沙盒树文件叶子的角色角标（H1/Q4）：circuits 名单里的 .djs＝主电路（circuit-board 图标） */
+  circuit?: boolean;
   collapsible?: vscode.TreeItemCollapsibleState;
 };
 
@@ -212,7 +214,8 @@ export class CodeFilesTree implements vscode.TreeDataProvider<Node> {
 
   getTreeItem(n: Node): vscode.TreeItem {
     if (n.dir !== undefined) return dirItemOf(n, 'codeDir');
-    const uri = uriOfRel(n.name!);
+    if (!n.name) return makeItem(n);   // 空态提示节点（审查缺陷 #1：uriOfRel(n.name!) 对 undefined.split 当场崩）
+    const uri = uriOfRel(n.name);
     const item = makeItem(n, { command: 'verilogViz.openFile', title: '打开文件', arguments: [uri] });
     item.resourceUri = uri;
     item.contextValue = 'codeFile';
@@ -320,7 +323,8 @@ export class SandboxHierarchyTree implements vscode.TreeDataProvider<Node> {
 export class SandboxTree implements vscode.TreeDataProvider<Node> {
   private _change = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._change.event;
-  constructor(private readonly _store: () => ProjectStore) { }
+  /** circuits 名单供给（H1/Q4 角标用；不给＝不做角标，老签名兼容） */
+  constructor(private readonly _store: () => ProjectStore, private readonly _circuits?: () => Promise<Set<string>>) { }
   refresh(): void { this._change.fire(); }
 
   getTreeItem(n: Node): vscode.TreeItem {
@@ -330,6 +334,8 @@ export class SandboxTree implements vscode.TreeDataProvider<Node> {
       // ⛔ 用 openFile（文本）：`.djs` 的主人是电路画布 custom editor——树点与双击同进画布
       command: 'vscode.openWith', title: '打开电路画布', arguments: [uri, 'verilogViz.doc'],
     } : undefined);
+    // H1（Q4 裁决 2026-10-17 做角标）：circuits 名单里的 .djs＝主电路，circuit-board 图标在列表里一眼可辨
+    if (n.circuit) item.iconPath = new vscode.ThemeIcon('circuit-board');
     // 右键菜单（view/item/context）按节点种类分流：文件=重命名/删除/副本/部件角色；目录=重命名/删除
     item.contextValue = uri ? 'sandboxFile' : undefined;
     return item;
@@ -339,6 +345,78 @@ export class SandboxTree implements vscode.TreeDataProvider<Node> {
     let tree;
     try { tree = await this._store().listSandboxTree(); }
     catch { return [{ label: '沙盒目录尚未创建', desc: '进沙盒保存一个电路即可', kind: 'hint' }]; }
-    return childrenOfLayer(tree, el?.dir ?? '', { sizes: true });
+    const nodes = childrenOfLayer(tree, el?.dir ?? '', { sizes: true });
+    if (this._circuits) {
+      const circuits = await this._circuits();
+      for (const n of nodes) if (n.name && circuits.has(n.name)) n.circuit = true;
+    }
+    return nodes;
+  }
+}
+
+/* ============ F 族（F1/F3/F4/F6）：文件树拖拽（树内移动 + OS 拖入），2026-10-17 落地 ============ */
+/**
+ * 两棵文件树各挂一颗（域由 `_exts` 圈死＝F3）：
+ *  · 树内拖（F1/F6）：多选 uri 逐颗走注入的 `_onMove`（extension.ts 里共源 `moveToFile`
+ *    ⇒ G1 迁移/自环拒/(n) 去重与 C9 一条路），完成后宿主侧统一刷树+广播；
+ *  · OS 拖入（F4，API≥1.83）：`item.file`（DataTransferFile）读字节交 `_onWriteIn`，
+ *    落盘去重与域过滤在宿主侧（与 E6 导入同一口径）。
+ * 剪贴板 MIME 只挂自己树的那颗（跨树拖动被平台层拒掉＝域限制的第一道闸）。
+ */
+export class FileTreeDragAndDrop implements vscode.TreeDragAndDropController<vscode.TreeItem> {
+  readonly dropMimeTypes: string[];
+  readonly dragMimeTypes = ['text/uri-list'];
+  constructor(
+    private readonly _viewId: string,
+    private readonly _exts: string[],
+    private readonly _onMove: (srcs: vscode.Uri[], destDir: vscode.Uri, skipped: number) => Promise<void>,
+    private readonly _onWriteIn: (files: Array<{ name: string; bytes: Uint8Array }>, destDir: vscode.Uri, skipped: number) => Promise<void>,
+  ) {
+    this.dropMimeTypes = [`application/vnd.code.tree.${this._viewId.toLowerCase()}`];
+  }
+
+  private mime(): string { return `application/vnd.code.tree.${this._viewId.toLowerCase()}`; }
+  private extOf(u: vscode.Uri): string {
+    const base = u.path.split('/').pop() || '';
+    const i = base.lastIndexOf('.');
+    return i > 0 ? base.slice(i + 1).toLowerCase() : '';
+  }
+  /** 松手点的目录语义：落在目录＝它；落在文件＝它所在目录；落空白（树底）＝项目根 */
+  private async _destDirOf(target?: vscode.TreeItem): Promise<vscode.Uri> {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file('.');
+    const uri = target?.resourceUri;
+    if (!uri) return root;
+    let isDir = false;
+    try { isDir = (await vscode.workspace.fs.stat(uri) as any).type === 2; } catch { /* 读不到＝按文件处理 */ }
+    return isDir ? uri : vscode.Uri.joinPath(uri, '..');
+  }
+
+  handleDrag(source: readonly vscode.TreeItem[], dataTransfer: vscode.DataTransfer): void {
+    const uris = source.map((t) => t.resourceUri).filter((u): u is vscode.Uri => !!u);
+    if (uris.length) dataTransfer.set(this.mime(), new vscode.DataTransferItem(uris));
+  }
+
+  async handleDrop(target: vscode.TreeItem | undefined, dataTransfer: vscode.DataTransfer): Promise<void> {
+    const dest = await this._destDirOf(target);
+    // ① 树内拖移（域过滤后逐颗移动；被域拦下的当面记账）
+    const internal = dataTransfer.get(this.mime())?.value as vscode.Uri[] | undefined;
+    if (internal?.length) {
+      const srcs = internal.filter((u) => this._exts.includes(this.extOf(u)));
+      await this._onMove(srcs, dest, internal.length - srcs.length);
+      return;
+    }
+    // ② OS 拖入（F4）：DataTransferFile → 字节交给宿主写盘（去重/域过滤/建表同 E6）
+    const files: Array<{ name: string; bytes: Uint8Array }> = [];
+    let skipped = 0;
+    for (const [, item] of dataTransfer) {
+      const f = (item as unknown as { file?: { name?: string; data?: () => Promise<ArrayBuffer> } }).file;
+      if (!f?.data || !f.name) continue;
+      const i = f.name.lastIndexOf('.');
+      const ext = i > 0 ? f.name.slice(i + 1).toLowerCase() : '';
+      if (!this._exts.includes(ext)) { skipped++; continue; }
+      try { files.push({ name: f.name, bytes: new Uint8Array(await f.data()) }); }
+      catch { skipped++; }
+    }
+    if (files.length || skipped) await this._onWriteIn(files, dest, skipped);
   }
 }

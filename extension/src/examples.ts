@@ -3,7 +3,7 @@
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
 import { ensureDirMeta } from './sandboxFiles';
-import { uniqueName } from './naming';
+import { uniqueName, sanitizeNameInput } from './naming';
 import { VERILOG_EXAMPLES } from '../../shared/examples';
 
 const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> =>
@@ -41,7 +41,10 @@ export async function newSandboxFile(context: vscode.ExtensionContext, openDoc: 
     placeHolder: 'adder.djs',
   });
   if (!raw) return;                                     // 取消＝正常下落（⛔ 报错）
-  const name = /\.djs$/i.test(raw) ? raw : `${raw}.djs`;
+  // G7（2026-10-17 审查补）：输入框直连盘上路径——`../` 段丢弃 + 非法字符替换（原裸收能写出工作区）
+  const cleaned = sanitizeNameInput(raw);
+  if (!cleaned) return;
+  const name = /\.djs$/i.test(cleaned) ? cleaned : `${cleaned}.djs`;
   const root = projectRoot(context);
   const base = dirUri ?? root;
   const finalName = await uniqueName(base, name);       // (n) 去重对**目标目录**判定
@@ -75,7 +78,10 @@ export async function newVerilogFile(context: vscode.ExtensionContext, dirUri?: 
     placeHolder: 'top.v',
   });
   if (!raw) return;                                     // 取消＝正常下落（⛔ 报错）
-  const name = /\.v$/i.test(raw) ? raw : `${raw}.v`;
+  // G7（2026-10-17 审查补）：同 newSandboxFile——子路径允许、`..` 段与非法字符消毒
+  const cleaned = sanitizeNameInput(raw);
+  if (!cleaned) return;
+  const name = /\.v$/i.test(cleaned) ? cleaned : `${cleaned}.v`;
   const stem = name.replace(/\.v$/i, '').replace(/[\\/:*?"<>|]/g, '_');
   const base = dirUri ?? projectRoot(context);
   if (name.includes('/')) {

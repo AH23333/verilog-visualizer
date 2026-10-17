@@ -255,6 +255,19 @@
         "icon": "$(desktop-download)"
       },
       {
+        "command": "verilogViz.moveTo",
+        "title": "移动到…",
+        "icon": "$(arrow-right)"
+      },
+      {
+        "command": "verilogViz.copyPath",
+        "title": "复制路径"
+      },
+      {
+        "command": "verilogViz.revealInOS",
+        "title": "在磁盘显示"
+      },
+      {
         "command": "verilogViz.auditBindings",
         "title": "检查绑定完整性…",
         "icon": "$(search)"
@@ -398,6 +411,21 @@
           "group": "2_edit@3"
         },
         {
+          "command": "verilogViz.moveTo",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "6_move@1"
+        },
+        {
+          "command": "verilogViz.copyPath",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "8_reveal@1"
+        },
+        {
+          "command": "verilogViz.revealInOS",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "8_reveal@2"
+        },
+        {
           "command": "verilogViz.newVerilogFile",
           "when": "view == verilogViz.codeFiles && viewItem == codeDir",
           "group": "1_new@1"
@@ -421,6 +449,21 @@
           "command": "verilogViz.deleteFile",
           "when": "view == verilogViz.codeFiles && viewItem == codeDir",
           "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.moveTo",
+          "when": "view == verilogViz.codeFiles && viewItem == codeDir",
+          "group": "6_move@1"
+        },
+        {
+          "command": "verilogViz.copyPath",
+          "when": "view == verilogViz.codeFiles && viewItem == codeDir",
+          "group": "8_reveal@1"
+        },
+        {
+          "command": "verilogViz.revealInOS",
+          "when": "view == verilogViz.codeFiles && viewItem == codeDir",
+          "group": "8_reveal@2"
         },
         {
           "command": "verilogViz.openDoc",
@@ -468,6 +511,21 @@
           "group": "2_edit@3"
         },
         {
+          "command": "verilogViz.moveTo",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "6_move@1"
+        },
+        {
+          "command": "verilogViz.copyPath",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "8_reveal@1"
+        },
+        {
+          "command": "verilogViz.revealInOS",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "8_reveal@2"
+        },
+        {
           "command": "verilogViz.newSandboxFile",
           "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
           "group": "1_new@1"
@@ -491,6 +549,21 @@
           "command": "verilogViz.deleteFile",
           "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
           "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.moveTo",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
+          "group": "6_move@1"
+        },
+        {
+          "command": "verilogViz.copyPath",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
+          "group": "8_reveal@1"
+        },
+        {
+          "command": "verilogViz.revealInOS",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
+          "group": "8_reveal@2"
         }
       ],
 

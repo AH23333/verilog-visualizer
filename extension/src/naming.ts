@@ -28,3 +28,21 @@ export async function uniqueFolderName(dir: vscode.Uri, name: string): Promise<s
   }
   return candidate;
 }
+
+/**
+ * 用户输入名的消毒（G7 统一口径，2026-10-17 审查补）：新建/重命名这些**输入框直连盘上路径**的落点
+ * 此前只有 dispatch RPC 侧有 `sanitizeRelName`、newSandboxFolder 有内联版——renameFile 与
+ * newVerilogFile/newSandboxFile 都是裸收，`../` 能把文件写到工作区外（审查缺陷 #2/#3）。
+ *  - 段级：丢 `.`/`..`/空段（目录逃逸在此死掉）；Windows 非法字符 `\ / : * ? " < > |` 替成 `_`；
+ *  - `single`＝重命名单段语义：`../evil` 这类输入按段过滤后只剩 `evil`（slash 视作分隔丢掉，
+ *    改名进子目录是 C9「移动到」的职责，不在改名里夹带）。
+ * 返回 ''＝输入被消毒干净（调用侧当取消处理）。
+ */
+export function sanitizeNameInput(raw: string, opts?: { single?: boolean }): string {
+  let s = String(raw ?? '').replace(/\\/g, '/').trim();
+  if (opts?.single) s = s.split('/').filter((p) => p && p !== '.' && p !== '..').join('/');
+  const segs = s.split('/')
+    .filter((p) => p && p !== '.' && p !== '..')
+    .map((p) => p.replace(/[*?"<>|:]/g, '_'));
+  return segs.join('/');
+}

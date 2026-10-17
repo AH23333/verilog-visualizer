@@ -24,6 +24,13 @@
 
 /** 与 vscode.FileType 同值（1＝File，2＝Directory，64＝SymbolicLink 位）：数值对上才有意义，⛔ 我们自创一套 */
 export const FileType = { Unknown: 0, File: 1, Directory: 2, SymbolicLink: 64 } as const;
+
+/** H1 角标（circuit-board）落进 TreeItem.iconPath 用的最小形状——⛔ 测试里 new 一颗真 ThemeIcon 等价物 */
+export class ThemeIcon {
+  static readonly File = new ThemeIcon('file');
+  static readonly Folder = new ThemeIcon('folder');
+  constructor(readonly id: string, public color?: unknown) { }
+}
 export const ViewColumn = { One: 1, Two: 2, Active: -1, Beside: -2 } as const;
 export const ExtensionMode = { Production: 1, Development: 2, Test: 3 } as const;
 /** 与 vscode.TreeItemCollapsibleState 同值（类型面也合并：trees.ts 把它当类型标注用） */
@@ -115,6 +122,8 @@ export class TreeItem {
   description?: string | boolean;
   resourceUri?: Uri;
   command?: Command;
+  /** H1 角标（ThemeIcon 或 {light,dark}）——形状对真宿主逐字，桩里只当透明载荷 */
+  iconPath?: unknown;
   /** 右键菜单分流（contributes.menus view/item/context 的 when 子句读它） */
   contextValue?: string;
   constructor(label: string, collapsibleState?: number) {
@@ -129,6 +138,27 @@ export interface TreeDataProvider<T> {
   onDidChangeTreeData?: Event<T | T[] | undefined | null | void>;
   getTreeItem(element: T): TreeItem | ThenableLike<TreeItem>;
   getChildren?(element?: T): ProviderResult<T[]>;
+}
+
+/* ============ F 族拖拽（批次B 2026-10-17）：最小类型面 ============
+ * 根 tsc 把 extension 源码也按本桩编译（vscode alias 指这），桩⛔ 缺 TypeExport 就编译炸。
+ * 形状贴 @types/vscode 1.140 的 TreeDragAndDropController/DataTransfer 家族（够 trees.ts 用）。 */
+export class DataTransferItem {
+  constructor(public value: any) { }
+  asString(): string { return String(this.value); }
+}
+export class DataTransfer {
+  private _items = new Map<string, DataTransferItem>();
+  get(mimeType: string): DataTransferItem | undefined { return this._items.get(mimeType); }
+  set(mimeType: string, value: DataTransferItem): void { this._items.set(mimeType, value); }
+  has(mimeType: string): boolean { return this._items.has(mimeType); }
+  *[Symbol.iterator](): IterableIterator<[string, DataTransferItem]> { for (const [k, v] of this._items) yield [k, v]; }
+}
+export interface TreeDragAndDropController<T> {
+  dropMimeTypes: readonly string[];
+  dragMimeTypes?: readonly string[];
+  handleDrag?(source: readonly T[], dataTransfer: DataTransfer, token?: unknown): void;
+  handleDrop(target: T | undefined, dataTransfer: DataTransfer, token?: unknown): void | Promise<void>;
 }
 
 /** 事件源：真宿主同名 API 的最小形状——fire 顺序调用在册监听器（树刷新判据靠它） */
@@ -597,7 +627,16 @@ export const window = {
   createTreeView: (viewId: string, options: { treeDataProvider: TreeDataProvider<any>; showCollapseAll?: boolean }): any => {
     state.treeViews.push({ id: viewId, showCollapseAll: !!options.showCollapseAll });
     state.treeProviders[viewId] = options.treeDataProvider as unknown as TreeProviderLike;   // 树驱动格子照旧从这取
-    return { dispose() { } };
+    // F 族（拖拽控制器）：本仓 @types/vscode(1.140) 走 **TreeViewOptions.dragAndDropController** 构造参数
+    // （⛔ TreeView 可写属性，TS2339 实测）——台账从 options 记到 treeViews 条目，测试按 id 取。
+    const rec = state.treeViews[state.treeViews.length - 1] as any;
+    rec.dragAndDrop = (options as any).dragAndDropController;
+    const view: any = { dispose() { } };
+    Object.defineProperty(view, 'dragAndDropController', {
+      set(c: unknown) { rec.dragAndDrop = c; },
+      get() { return rec.dragAndDrop; },
+    });
+    return view;
   },
   /** R147：webview view 的注册流水账——立即 resolve（台架把"视图显示"这一步压成同步，测试直接拿 view 判 html/发消息） */
   registerWebviewViewProvider: (viewId: string, provider: any, _o?: any): any => {

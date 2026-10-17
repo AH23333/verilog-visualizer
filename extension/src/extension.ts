@@ -12,7 +12,7 @@ import { broadcastConfigChanged, broadcastBindingsChanged, dispatch, projectRoot
 import { clearActiveCanvas, pushToActiveCanvas, setActiveCanvas } from './activeCanvas';
 import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 import { AUTOOPEN_ENV, isBuiltIntoThisApp, shouldAutoOpen } from './startupPolicy';
-import { ModuleTree, HierarchyTree, SandboxTree, openAtModule, getActiveSandboxDocUri,
+import { ModuleTree, HierarchyTree, SandboxTree, FileTreeDragAndDrop, openAtModule, getActiveSandboxDocUri,
   CodeFilesTree, SandboxPartsTree, SandboxHierarchyTree, onActiveSandboxDocChange } from './trees';
 import { DOC_VIEW_TYPE, VvDocProvider } from './customEditors';
 import { compileAndShow, recompileOnSave, flushPendingCompile, closureOf, type EnsurePanel } from './compilePanel';
@@ -20,7 +20,8 @@ import { newVerilogFile, newSandboxFile, newSandboxFolder, openExamples } from '
 import {
   deleteFile, duplicateFile, duplicateFolder, importFiles, openDoc, renameFile, togglePartRole,
   getCircuitsSet, openBindingConfig, materializeBindings,
-  collectInstanceHits, completeFromHits, normalizeBindingsDisk, META_FILE
+  collectInstanceHits, completeFromHits, normalizeBindingsDisk, META_FILE,
+  moveToFile, scanDirChoices, ensureDirsMeta
 } from './sandboxFiles';
 import { openBindingPanel } from './bindingPanel';
 import { loadProjectApiOverride } from './apiSurface';
@@ -28,6 +29,7 @@ import { loadProjectGrants } from './apiGrants';
 import { initProject } from './vvProject';
 import { flushAudit } from './apiAudit';
 import { parseVerilogInstances } from './verilogParseLite';
+import { uniqueName } from './naming';
 import { ProjectStore, type FsLike } from './projectStore';
 
 const VIEW_TYPE = 'verilogVisualizer';
@@ -42,7 +44,7 @@ export function activate(context: vscode.ExtensionContext) {
   const storeFactory = () => new ProjectStore(vscodeFsLike(projectRoot(context)), '@root');
   const moduleTree = new ModuleTree();
   const hierarchyTree = new HierarchyTree();
-  const sandboxTree = new SandboxTree(storeFactory);
+  const sandboxTree = new SandboxTree(storeFactory, () => getCircuitsSet(context));
   const codeFilesTree = new CodeFilesTree(storeFactory);
   const sandboxPartsTree = new SandboxPartsTree(storeFactory, () => getCircuitsSet(context));
   const sandboxHierarchyTree = new SandboxHierarchyTree();
@@ -94,15 +96,51 @@ export function activate(context: vscode.ExtensionContext) {
   // ⚠ 必须 createTreeView（⛔ registerTreeDataProvider）：只有前者认 `showCollapseAll: true`，
   //   基座 TreeViewPane 才把自带的「折叠全部」标题按钮点亮（treeView.ts 自动注册的
   //   workbench.actions.treeView.<id>.collapseAll，受 treeView.<id>.enableCollapseAll 上下文键门控）。
-  const treeViewOf = (id: string, provider: vscode.TreeDataProvider<any>) =>
-    vscode.window.createTreeView(id, { treeDataProvider: provider, showCollapseAll: true });
+  // F 族（F1/F3/F4/F6）接线：树内拖移走共源 moveToFile（G1 迁移/自环拒/(n) 去重与 C9 一条路），
+  // OS 拖入走 E6 同口径域过滤 + (n) 落盘；完成统一刷树+广播（G3/G4——⛔ 只指望 watcher 竞速）。
+  // ⚠ 本仓 @types/vscode(1.140) 的拖拽 API 是 **TreeViewOptions.dragAndDropController**（构造参数），
+  //   ⛔ 当 TreeView 可写属性赋（TS2339 实测）。
+  const moveDropped = async (srcs: vscode.Uri[], destDir: vscode.Uri, skipped: number) => {
+    let moved = 0;
+    for (const src of srcs) if (await moveToFile(context, src, destDir)) moved++;
+    if (moved) { refreshAllTrees(); broadcastBindingsChanged(); }
+    if (moved || skipped) {
+      const destName = rel(projectRoot(context), destDir) || '项目根';
+      const note = skipped ? `；另有 ${skipped} 个非本域文件被域限制拦下` : '';
+      void vscode.window.showInformationMessage(`已移动 ${moved} 项到「${destName}」${note}（绑定记录随迁）。`);
+    }
+  };
+  const writeDropped = async (files: Array<{ name: string; bytes: Uint8Array }>, destDir: vscode.Uri, skipped: number) => {
+    const written: string[] = [];
+    for (const f of files) {
+      const final = await uniqueName(destDir, f.name);
+      const uri = vscode.Uri.joinPath(destDir, final);
+      await then(vscode.workspace.fs.writeFile(uri, f.bytes));
+      written.push(rel(projectRoot(context), uri));
+    }
+    await ensureDirsMeta(context, written);          // 「目录有部件就有表」与 E6 导入同口径
+    if (written.length) refreshAllTrees();
+    if (written.length || skipped) {
+      void vscode.window.showInformationMessage(`已拖入 ${written.length} 个文件${skipped ? `（另有 ${skipped} 个非本域文件已跳过）` : ''}。`);
+    }
+  };
+  const codeDrop = new FileTreeDragAndDrop('verilogViz.codeFiles', ['v', 'sv', 'vh'], moveDropped, writeDropped);
+  const sandboxDrop = new FileTreeDragAndDrop('verilogViz.sandboxFiles', ['djs'], moveDropped, writeDropped);
+
+  const treeViewOf = (
+    id: string,
+    provider: vscode.TreeDataProvider<any>,
+    drop?: vscode.TreeDragAndDropController<vscode.TreeItem>,
+  ) => vscode.window.createTreeView(id, { treeDataProvider: provider, showCollapseAll: true, ...(drop ? { dragAndDropController: drop } : {}) });
+  // F 族：两棵文件树要挂拖拽控制器（构造参数进 TreeViewOptions）
+  const codeFilesTv = treeViewOf('verilogViz.codeFiles', codeFilesTree, codeDrop);
+  const modulesTv = treeViewOf('verilogViz.modules', moduleTree);
+  const hierarchyTv = treeViewOf('verilogViz.hierarchy', hierarchyTree);
+  const sandboxFilesTv = treeViewOf('verilogViz.sandboxFiles', sandboxTree, sandboxDrop);
+  const sandboxPartsTv = treeViewOf('verilogViz.sandboxParts', sandboxPartsTree);
+  const sandboxHierarchyTv = treeViewOf('verilogViz.sandboxHierarchy', sandboxHierarchyTree);
   context.subscriptions.push(
-    treeViewOf('verilogViz.codeFiles', codeFilesTree),
-    treeViewOf('verilogViz.modules', moduleTree),
-    treeViewOf('verilogViz.hierarchy', hierarchyTree),
-    treeViewOf('verilogViz.sandboxFiles', sandboxTree),
-    treeViewOf('verilogViz.sandboxParts', sandboxPartsTree),
-    treeViewOf('verilogViz.sandboxHierarchy', sandboxHierarchyTree),
+    codeFilesTv, modulesTv, hierarchyTv, sandboxFilesTv, sandboxPartsTv, sandboxHierarchyTv,
     // 沙盒层次树的数据源：活动 .djs 文档的子电路实例（customEditors init/edit 时上报）
     onActiveSandboxDocChange(() => sandboxHierarchyTree.refresh()),
     vscode.commands.registerCommand('verilogVisualizer.refreshTrees', refreshAllTrees),
@@ -248,6 +286,32 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('verilogViz.importFiles', doImport(['v', 'sv', 'djs'])),
     vscode.commands.registerCommand('verilogViz.importVerilogFiles', doImport(['v', 'sv', 'vh'])),
     vscode.commands.registerCommand('verilogViz.importSandboxFiles', doImport(['djs'])),
+    // C9「移动到…」：QuickPick 选目标目录（含「项目根」）→ (n) 去重 → G1 迁移引擎随迁
+    vscode.commands.registerCommand('verilogViz.moveTo', async (arg: any) => {
+      const uri = menuUri(arg);
+      if (!uri) { void vscode.window.showInformationMessage('先在文件/目录上右键再选「移动到…」。'); return; }
+      const dirs = await scanDirChoices(context);
+      const pick = await vscode.window.showQuickPick(
+        dirs.map((d) => ({ label: d.rel || '项目根（磁盘顶层）', description: d.rel || undefined, dir: d })),
+        { placeHolder: '移动到哪个目录？（绑定记录随迁）' },
+      );
+      if (!pick) return;
+      const moved = await moveToFile(context, uri, pick.dir.uri);
+      if (moved) { refreshAllTrees(); broadcastBindingsChanged(); }
+    }),
+    // C10「复制路径」：剪贴板吃绝对路径，告示里把根相对也亮出来（两口径都可按）
+    vscode.commands.registerCommand('verilogViz.copyPath', async (arg: any) => {
+      const uri = menuUri(arg);
+      if (!uri) return;
+      const relPath = rel(projectRoot(context), uri);
+      await vscode.env.clipboard.writeText(uri.fsPath);
+      void vscode.window.showInformationMessage(`已复制路径：${relPath}（绝对＝${uri.fsPath}）`);
+    }),
+    // C11「在磁盘显示」：revealFileInOS（工作台自带，扩展只递 uri）
+    vscode.commands.registerCommand('verilogViz.revealInOS', (arg: any) => {
+      const uri = menuUri(arg);
+      if (uri) void vscode.commands.executeCommand('revealFileInOS', uri);
+    }),
 
     // R137：「打开绑定配置」——目录级 .verilogviz.json 直开原生编辑器（无则建空表）。
     // 入口：树文件/文件夹右键、explorer .djs/.v 右键、命令面板。手改保存 → watcher 广播回灌画布。

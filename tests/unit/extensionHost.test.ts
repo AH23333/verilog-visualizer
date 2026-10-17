@@ -78,16 +78,16 @@ describe('开局面板：判据真的接在 activate 上（⛔ 只是"纯函数�
     expect([...vscode.state.commands.keys()].sort()).toEqual([
       'verilogVisualizer.refreshTrees', 'verilogVisualizer.revealProjectDir',
       'verilogViz.auditBindings', 'verilogViz.auditFlush', 'verilogViz.bindParts', 'verilogViz.compileAndShow',
-      'verilogViz.completeBindings', 'verilogViz.deleteFile',
+      'verilogViz.completeBindings', 'verilogViz.copyPath', 'verilogViz.deleteFile',
       'verilogViz.duplicateFile', 'verilogViz.duplicateFolder', 'verilogViz.exportSvg',
       'verilogViz.importFiles', 'verilogViz.importSandboxFiles', 'verilogViz.importVerilogFiles',
-      'verilogViz.initProject', 'verilogViz.materializeBindings',
+      'verilogViz.initProject', 'verilogViz.materializeBindings', 'verilogViz.moveTo',
       'verilogViz.newSandboxFile',
       'verilogViz.newSandboxFolder', 'verilogViz.newVerilogFile',
       'verilogViz.openBindingConfig',
       'verilogViz.openDoc', 'verilogViz.openExamples', 'verilogViz.openFile',
       'verilogViz.openModuleAt', 'verilogViz.openModuleItem', 'verilogViz.renameFile',
-      'verilogViz.sim.stepOnce', 'verilogViz.sim.togglePause', 'verilogViz.togglePartRole',
+      'verilogViz.revealInOS', 'verilogViz.sim.stepOnce', 'verilogViz.sim.togglePause', 'verilogViz.togglePartRole',
     ]);
     expect(vscode.state.serializerViewTypes).toEqual(['verilogVisualizer']);
   });
@@ -1832,5 +1832,177 @@ describe('诊断锚点 + 写前校验（2026-10-17 用户五连投诉：报错�
     await panel.fired[0]({ vvh: 'binding', op: 'save', changes: { counter: 'parts/adder.djs' } });
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
     expect(meta.bindings.counter).toBe('parts/adder.djs');
+  });
+});
+
+describe('文件系统批次B（2026-10-17 审查后落）：G1 三路共源 + C9/C10/C11/D7 + F 族拖拽 + H1 角标', () => {
+  const readMetaFile = (p: string) => {
+    const b = vscode.state.files.get(vscode.Uri.file(p).path.toLowerCase());
+    return b ? JSON.parse(new TextDecoder().decode(b)) : undefined;
+  };
+  const treeViewRec = (id: string): any => vscode.state.treeViews.find((t: any) => t.id === id);
+  const SANDBOX_MIME = 'application/vnd.code.tree.verilogviz.sandboxfiles';
+
+  it('G1 文件路（审查缺陷 #4）：跨目录表层的 `../` 引用随「移动到」随迁（旧实现只扫祖先链必漏）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: ['fsm.djs'], bindings: { fsm: 'fsm.djs' } }),
+      'D:/p/lib/.verilogviz.json': JSON.stringify({ bindings: { fsm: '../fsm.djs' } }),   // lib 表不在 fsm 的祖先链上
+      'D:/p/fsm.djs': '{"cells":[]}',
+      'D:/p/gates/.keep': '',
+    } });
+    vscode.state.quickPickResult = { label: 'gates', dir: { rel: 'gates', uri: vscode.Uri.file('D:/p/gates') } };
+    await vscode.commands.executeCommand('verilogViz.moveTo', vscode.Uri.file('D:/p/fsm.djs'));
+    expect(has('D:/p/gates/fsm.djs')).toBe(true);
+    const root = readMetaFile('D:/p/.verilogviz.json');
+    expect(root.circuits).toEqual(['gates/fsm.djs']);
+    expect(root.bindings).toEqual({ fsm: 'gates/fsm.djs' });
+    // 旧实现漏的正是这条：lib 表的 `../fsm.djs` 随迁成 `../gates/fsm.djs`
+    expect(readMetaFile('D:/p/lib/.verilogviz.json').bindings).toEqual({ fsm: '../gates/fsm.djs' });
+  });
+
+  it('G1 目录路（D5/X3）：目录改名 ⇒ 全表层前缀族群随迁；随盘搬走的表⛔ 二次改写', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: ['parts/counter.djs'], bindings: { counter: 'parts/counter.djs', outside: 'other.djs' } }),
+      'D:/p/parts/.verilogviz.json': JSON.stringify({ bindings: { a: 'counter.djs', up: '../main.djs' } }),
+      'D:/p/parts/counter.djs': '{"cells":[]}',
+      'D:/p/main.djs': '{"cells":[]}',
+      'D:/p/other.djs': '{"cells":[]}',
+    } });
+    vscode.state.inputBoxResult = 'gates';
+    await vscode.commands.executeCommand('verilogViz.renameFile', vscode.Uri.file('D:/p/parts'));
+    expect(has('D:/p/gates/counter.djs')).toBe(true);
+    const root = readMetaFile('D:/p/.verilogviz.json');
+    expect(root.circuits).toEqual(['gates/counter.djs']);
+    expect(root.bindings).toEqual({ counter: 'gates/counter.djs', outside: 'other.djs' });
+    // 随盘搬走的表内容原样（相对书写天然仍正确；⛔ 被 G1 二次改写丢协议头/私货）
+    expect(readMetaFile('D:/p/gates/.verilogviz.json').bindings).toEqual({ a: 'counter.djs', up: '../main.djs' });
+  });
+
+  it('G1 目录路（D4）：删目录 ⇒ 前缀族群的值/根表 circuits 全清（⛔ 悬空引用）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: ['parts/counter.djs'], bindings: { counter: 'parts/counter.djs', other: 'main.djs' } }),
+      'D:/p/parts/counter.djs': '{"cells":[]}',
+      'D:/p/main.djs': '{"cells":[]}',
+    } });
+    vscode.state.modalChoice = '删除';
+    await vscode.commands.executeCommand('verilogViz.deleteFile', vscode.Uri.file('D:/p/parts'));
+    const root = readMetaFile('D:/p/.verilogviz.json');
+    expect(root.circuits).toEqual([]);
+    expect(root.bindings).toEqual({ other: 'main.djs' });
+  });
+
+  it('moveToFile 防自环与原地 no-op：目录⛔ 进自己子树；同目录"移动"⛔ 白跑 (n) 顺延', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/parts/counter.djs': '{"cells":[]}',
+      'D:/p/parts/sub/inner.djs': '{"cells":[]}',
+    } });
+    // 自环：parts → parts/sub
+    vscode.state.quickPickResult = { label: 'parts/sub', dir: { rel: 'parts/sub', uri: vscode.Uri.file('D:/p/parts/sub') } };
+    await vscode.commands.executeCommand('verilogViz.moveTo', vscode.Uri.file('D:/p/parts'));
+    expect(vscode.state.errorMessages.some((m: string) => m.includes('子目录'))).toBe(true);
+    expect(has('D:/p/parts/counter.djs')).toBe(true);
+    // 原地：counter.djs → parts（它已在的目录）
+    vscode.state.quickPickResult = { label: 'parts', dir: { rel: 'parts', uri: vscode.Uri.file('D:/p/parts') } };
+    await vscode.commands.executeCommand('verilogViz.moveTo', vscode.Uri.file('D:/p/parts/counter.djs'));
+    expect(has('D:/p/parts/counter.djs')).toBe(true);
+    expect(has('D:/p/parts/counter (2).djs')).toBe(false);
+  });
+
+  it('G7（审查缺陷 #2）：重命名输入 `../../evil.djs` 消毒成工程内名字，⛔ 改名出根', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/fsm.djs': '{"cells":[]}' } });
+    vscode.state.inputBoxResult = '../../evil.djs';
+    await vscode.commands.executeCommand('verilogViz.renameFile', vscode.Uri.file('D:/p/fsm.djs'));
+    expect(has('D:/p/evil.djs')).toBe(true);
+    expect(has('D:/p/fsm.djs')).toBe(false);
+    expect(has('D:/evil.djs')).toBe(false);
+  });
+
+  it('G7（审查缺陷 #3）：新建 Verilog 输入 `../../evil/top` 段消毒后落工程内，⛔ 逃出根', async () => {
+    await boot({ folders: ['D:/p'] });
+    vscode.state.inputBoxResult = '../../evil/top';
+    await vscode.commands.executeCommand('verilogViz.newVerilogFile');
+    expect(has('D:/p/evil/top.v')).toBe(true);
+    expect(has('D:/evil/top.v')).toBe(false);
+  });
+
+  it('C9/C10/C11/D7：三颗新命令 × 两树 × 文件/目录 = 12 条菜单在册；两树的拖拽控制器挂上（域 MIME 圈死）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/main.djs': '{"cells":[]}' } });
+    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
+    const menus = manifest.contributes.menus['view/item/context'];
+    const want = (cmd: string, view: string, item: string) =>
+      menus.some((m: any) => m.command === cmd && m.when === `view == verilogViz.${view} && viewItem == ${item}`);
+    for (const cmd of ['verilogViz.moveTo', 'verilogViz.copyPath', 'verilogViz.revealInOS']) {
+      expect(want(cmd, 'codeFiles', 'codeFile')).toBe(true);
+      expect(want(cmd, 'codeFiles', 'codeDir')).toBe(true);
+      expect(want(cmd, 'sandboxFiles', 'sandboxFile')).toBe(true);
+      expect(want(cmd, 'sandboxFiles', 'sandboxDir')).toBe(true);
+    }
+    expect((treeViewRec('verilogViz.codeFiles').dragAndDrop as any).dropMimeTypes)
+      .toEqual(['application/vnd.code.tree.verilogviz.codefiles']);
+    expect((treeViewRec('verilogViz.sandboxFiles').dragAndDrop as any).dropMimeTypes).toEqual([SANDBOX_MIME]);
+  });
+
+  it('C10/C11：复制路径＝绝对路径进剪贴板（告示带根相对）；在磁盘显示照递 uri 不炸', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/main.djs': '{"cells":[]}' } });
+    await vscode.commands.executeCommand('verilogViz.copyPath', vscode.Uri.file('D:/p/main.djs'));
+    expect(vscode.state.clipboard.replace(/\\/g, '/').toLowerCase()).toBe('d:/p/main.djs');
+    expect(vscode.state.infoMessages.some((m: string) => m.includes('main.djs'))).toBe(true);
+    await vscode.commands.executeCommand('verilogViz.revealInOS', vscode.Uri.file('D:/p/main.djs'));   // ⛔ 炸＝断言败
+  });
+
+  it('F1/F3/G3：树内拖入目录——多选移动、域外拦下、绑定随迁、bindingsChanged 广播', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ bindings: { main: 'main.djs' } }),
+      'D:/p/main.djs': '{"cells":[]}',
+      'D:/p/lib/top.v': 'module top; endmodule',
+      'D:/p/parts/.keep': '',
+    } });
+    const { registerWebviewSink } = await import('../../extension/src/dispatch');
+    const pushes: any[] = [];
+    registerWebviewSink({ postMessage: (m: any) => { pushes.push(m); return Promise.resolve(true); } } as any);
+    const drop: any = treeViewRec('verilogViz.sandboxFiles').dragAndDrop;
+    const dt: any = { get: (m: string) => (m === SANDBOX_MIME ? { value: [vscode.Uri.file('D:/p/main.djs'), vscode.Uri.file('D:/p/lib/top.v')] } : undefined) };
+    await drop.handleDrop({ resourceUri: vscode.Uri.file('D:/p/parts') } as any, dt);
+    expect(has('D:/p/parts/main.djs')).toBe(true);
+    expect(has('D:/p/main.djs')).toBe(false);
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ main: 'parts/main.djs' });   // G1 随迁
+    expect(pushes.some((m) => m.op === 'bindingsChanged')).toBe(true);                            // G3 广播
+    expect(vscode.state.infoMessages.some((m: string) => m.includes('已移动 1 项') && m.includes('1 个非本域'))).toBe(true);
+  });
+
+  it('F4：OS 拖入——DataTransferFile 读字节落盘、(n) 去重；域外文件当面跳过', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/parts/x.djs': '{"cells":[]}',
+      'D:/p/parts/new.djs': '{"cells":[]}',   // 占位 ⇒ 拖入的 new.djs 顺延 (2)
+    } });
+    const drop: any = treeViewRec('verilogViz.sandboxFiles').dragAndDrop;
+    const bytes = new TextEncoder().encode('{"cells":[]}');
+    const item = (name: string) => ({ file: { name, data: async () => bytes.buffer } });
+    const dt: any = {
+      get: (_m: string) => undefined,            // 树内 MIME 不在 ⇒ 走 OS 文件路（真 DataTransfer 两路都有）
+      [Symbol.iterator]: function* () {
+        yield ['application/octet-stream', item('new.djs')];
+        yield ['application/octet-stream', item('readme.txt')];   // 域外 ⇒ skipped
+      },
+    };
+    await drop.handleDrop({ resourceUri: vscode.Uri.file('D:/p/parts') } as any, dt);
+    expect(has('D:/p/parts/new (2).djs')).toBe(true);
+    expect(vscode.state.infoMessages.some((m: string) => m.includes('已拖入 1 个文件') && m.includes('1 个非本域文件已跳过'))).toBe(true);
+  });
+
+  it('H1（Q4）：circuits 名单里的 .djs 在沙盒树标 circuit=true 并挂 circuit-board 图标；名单外不挂', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: ['main.djs'], bindings: {} }),
+      'D:/p/main.djs': '{"cells":[]}',
+      'D:/p/part.djs': '{"cells":[]}',
+    } });
+    const sandbox = vscode.state.treeProviders['verilogViz.sandboxFiles'];
+    const nodes = await sandbox.getChildren();
+    const main = nodes.find((n: any) => n.label === 'main.djs');
+    const part = nodes.find((n: any) => n.label === 'part.djs');
+    expect(main.circuit).toBe(true);
+    expect(part.circuit).toBeUndefined();
+    const item = sandbox.getTreeItem(main);
+    expect((item as any).iconPath?.id).toBe('circuit-board');
   });
 });
