@@ -10,7 +10,7 @@
 // 真源语义（F1）：沙盒正文从 localStorage 迁到工作区真文件——打开=读盘，保存=宿主写盘
 // （webview ⛔ 参与写盘，只负责把最新 content 推上来），Explorer/git/侧边栏沙盒树看到的就是真文件。
 import * as vscode from 'vscode';
-import { dispatch, projectRoot, registerWebviewSink, unregisterWebviewSink, broadcastBindingsChanged, vscodeFs } from './dispatch';
+import { dispatchAndReply, projectRoot, registerWebviewSink, unregisterWebviewSink, broadcastBindingsChanged, vscodeFs } from './dispatch';
 import { clearActiveCanvas, setActiveCanvas } from './activeCanvas';
 import { ensureDirsMeta, getCircuitsSet, completeFromHits } from './sandboxFiles';
 import { setActiveSandboxDoc } from './trees';
@@ -129,13 +129,8 @@ export class VvDocProvider implements vscode.CustomEditorProvider<VvCircuitDocum
         return;
       }
       if (msg.vvh !== 'req' || typeof msg.id !== 'string') return;
-      const reply = (ok: boolean, data?: unknown, error?: string) =>
-        void webview.postMessage({ vvh: 'res', id: msg.id, ok, data, error });
-      try {
-        reply(true, await dispatch(this._context, msg.method, msg.args || {}));
-      } catch (e) {
-        reply(false, undefined, String(e instanceof Error ? e.message : e));
-      }
+      // 回包形状与 Panel 那条线同一份主人（dispatch.ts）
+      await dispatchAndReply(this._context, (m) => { void webview.postMessage(m); }, msg);
     }, null, this._context.subscriptions);
 
     panel.onDidDispose(() => {

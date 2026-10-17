@@ -11,6 +11,10 @@
 | 🔧 指南 How-to | [USER_GUIDE.md](../docs/USER_GUIDE.md) 用户指南 | 使用者（双语） |
 | 🔧 指南 How-to | [DEVELOPMENT.md](./DEVELOPMENT.md) 开发与测试 | 贡献者（双语） |
 | 📖 参考 Reference | [ARCHITECTURE.md](./ARCHITECTURE.md) 架构总览 | 开发者（双语） |
+| 📖 参考 Reference | [API_REFERENCE.md](./API_REFERENCE.md) 统一调用层工具表（**生成物**：`pnpm api:doc`，手改无效） | 集成方 / agent |
+| 🏗 协议 Reference | [CONFIG_PROTOCOL.md](./CONFIG_PROTOCOL.md) 配置与 API 层协议（§9 三闸/审计，§9.7 agent 深度四档 D0–D3） | 架构 |
+| 📖 解释 Explanation | [AGENT_PRODUCT_ARCHITECTURE.md](./AGENT_PRODUCT_ARCHITECTURE.md) Agent 产品架构与逐项可行性（含 R155 落地进度） | 架构 |
+| 🧪 参考 Reference | [GATE_LAYERS.md](./GATE_LAYERS.md) 闸门分层与跑批读数 ｜ [FILESYSTEM_CHECKLIST.md](./FILESYSTEM_CHECKLIST.md) 两模式文件系统点验单 ｜ [REAL_HOST_E2E.md](./REAL_HOST_E2E.md) 真宿主 E2E 台架 | 开发/质检 |
 | 📖 参考 Reference | [SANDBOX_DEV.md](./SANDBOX_DEV.md) 沙盒实现细节与探针教训 | 沙盒开发者 |
 | 📖 参考 Reference | [FEATURES_BEYOND_PLAN.md](./FEATURES_BEYOND_PLAN.md) 超越 OpenCircuits 特性对照 | 产品 |
 | 🔧 指南 How-to | [MIGRATION_VSCODE.md](./MIGRATION_VSCODE.md) VS Code 套壳迁移台账（含真机点验单） | 贡献者 |

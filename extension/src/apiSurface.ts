@@ -22,13 +22,23 @@ export interface ApiToolDef {
 }
 export interface ApiContract {
   apiVersion: string;
+  schemaVersion?: string;
   sources?: unknown;
   surfacesGlobal?: Record<string, boolean>;
   tools: Record<string, ApiToolDef>;
 }
 const DEFAULTS = defaults as ApiContract;
-/** 合并后的生效契约（工程覆盖载入前＝默认账） */
+/** 合并后的生效契约（工程覆盖载入前＝默认账）。
+ *  ⚠ `loadProjectApiOverride` 每次载入**都从默认账重算**——⛔ 让上一个工程/上一次载入的收窄留在身上：
+ *    句头注写的"文件不存在＝静默"只有在这个前提下才是真话（否则"这扇没上闸"读成"没闸"，
+ *    而 `sys.selfCheck` 会拿着上一份收窄说现在）。 */
 let merged: ApiContract = DEFAULTS;
+
+/** 上一次工程覆盖载入的结果留档（`sys.selfCheck` 用）：⛔ 让"被拒的原因"只活在会消失的弹窗里。 */
+let lastOverride: { present: boolean; rejects: string[] } = { present: false, rejects: [] };
+export function apiOverrideSnapshot(): { present: boolean; rejects: string[]; narrowed: boolean } {
+  return { ...lastOverride, narrowed: merged !== DEFAULTS };
+}
 
 export function loadApiContract(): ApiContract { return merged; }
 
@@ -52,17 +62,28 @@ export function toolIdForRpc(method: string): string | undefined {
  */
 export async function loadProjectApiOverride(context: vscode.ExtensionContext): Promise<string[]> {
   const rejects: string[] = [];
+  merged = DEFAULTS;                                  // 从默认账重算（含"这扇没覆盖档"那一格）
+  lastOverride = { present: false, rejects: [] };
   const uri = vscode.Uri.joinPath(projectRootOf(context), '.vv', 'api.json');
   let raw: string;
   try { raw = new TextDecoder().decode(await then(vscode.workspace.fs.readFile(uri))); } catch { return rejects; }
+  lastOverride = { present: true, rejects: [] };
   let proj: Partial<ApiContract> & Record<string, unknown>;
-  try { proj = JSON.parse(raw); } catch { return ['api.json 解析失败：沿用默认账']; }
+  try { proj = JSON.parse(raw); } catch {
+    const r = ['api.json 解析失败：沿用默认账'];
+    lastOverride = { present: true, rejects: r };
+    return r;
+  }
   // 固有属性越权检测：工程文件里出现 perm/ref/sideEffects 任一 ⇒ 整份拒绝（下限不可谈）
   const INTRINSIC = ['perm', 'ref', 'sideEffects'];
   for (const [id, t] of Object.entries((proj.tools || {}) as Record<string, any>)) {
     if (!DEFAULTS.tools[id]) { rejects.push(`未知工具 ${id}（默认账无此登记）：忽略该行`); continue; }
     const intr = INTRINSIC.filter((k) => t[k] !== undefined);
-    if (intr.length) { return [`工程 api.json 试图改动固有属性 [${intr.join(',')}]（${id}）：整份拒绝，沿用默认账`]; }
+    if (intr.length) {
+      const r = [`工程 api.json 试图改动固有属性 [${intr.join(',')}]（${id}）：整份拒绝，沿用默认账`];
+      lastOverride = { present: true, rejects: r };
+      return r;
+    }
   }
   const tools: Record<string, ApiToolDef> = { ...DEFAULTS.tools };
   for (const [id, ov] of Object.entries((proj.tools || {}) as Record<string, Partial<ApiToolDef>>)) {
@@ -80,6 +101,7 @@ export async function loadProjectApiOverride(context: vscode.ExtensionContext): 
   const sg = { ...DEFAULTS.surfacesGlobal };
   for (const [k, v] of Object.entries(proj.surfacesGlobal || {})) if (v === false) sg[k] = false;    // 总开关只许关
   merged = { ...DEFAULTS, apiVersion: proj.apiVersion || DEFAULTS.apiVersion, surfacesGlobal: sg, tools };
+  lastOverride = { present: true, rejects };
   return rejects;
 }
 

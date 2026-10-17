@@ -355,6 +355,20 @@
 
 UI 手动执行也算一次调用：`{ traceId, ts, tool, subject, args(redact 规则), verdict: auto|approved|denied, result: ok|err(code), ms, configHash }` 行 JSONL。`configHash`=sha256(合并快照剔 secretRef)，trace 首行入记录，回溯「这次运行看到的配置」。审计文件本身 ⛔ 提交（§12.5）。
 
+**落地读数（R154 阶段三收编后，正本＝`extension/src/apiAudit.ts` 的 `AuditLine`）**：字段实际是
+`{ ts, traceId, tool, ref, subject, channel, verdict, ms, argsDigest, note?, configHash }`，与本节草案有三处出入，
+以代码为准并各有一句理由：
+
+- `verdict` 七值 `auto|approved|denied|error|surface-denied|not-registered|not-granted`（草案的三值分不出"哪道闸拦的"，
+  而"被端点关"与"被档案关"要给的补救动作完全不同）；草案的 `result` 一槽⛔ 另立——`verdict` 已含错误面，`note` 放机读码。
+- `subject`＝调用方**身份**（闸 3 按它放行）、`channel`＝**端点**（闸 2 按它放行）。⛔ 合成一颗：
+  RPC 那条线上端点是 `rpc` 而身份是 `ui`，历史上这一格被写成通道名，拿账反推"谁能调用"必然推错。
+- `tool` 只在"这颗确实登记了"时写名，未登记那行是 `null`（⛔ 把一个不存在的工具说成调用过）；`argsDigest`
+  ＝键名+类型+字节数的形状摘要（⛔ 原值，整段电路 json 一字符不落账本）。
+- **`traceId` 由执行器发号并回给调用方**（`ToolError.traceId`；RPC 回包带同串的 `trace`）：一次调用一个号，
+  ⛔ 在落账侧现算——异步落账与同步抛错两路各取随机数＝调用方手里那串在账上查无此行。
+  最坏情况下 agent 拿到的只有"被拒"两个字，凭这串能查到账上是哪道闸、什么实参形状、看的哪份契约（`configHash`）。
+
 
 
 ### 9.6 与域 C 的既有纪律同源
@@ -365,9 +379,37 @@ UI 手动执行也算一次调用：`{ traceId, ts, tool, subject, args(redact �
 
 
 
+### 9.7 深度四档（R154 阶段三落地；给 agent 的"要多深就取多深"）
+
+> ⚠ 三套编号各管一条轴，⛔ 混用：本节 **D0–D3＝信息深度**（取多少）；
+> `AGENT_PRODUCT_ARCHITECTURE.md` §3.6 的 **T0–T3＝权限/风险档**（能不能做、做坏了怎么退）；
+> 同一文档 §3.x 的 **L1–L7＝架构层**（代码住在哪）。本节刻意用 D 前缀就是因为后两套已经把 L/T 占了。
+
+
+
+同一套能力按**深度**分四颗只读工具，agent 按问题大小选一颗，⛔ 一进门就倒全表（上下文是最贵的预算）：
+
+| 档 | 工具 | 回答的问题 | 关键读数 |
+|---|---|---|---|
+| D0 | `sys.listTools` | 「这里有什么」 | 全部工具的 id/标题/描述/参数 schema/契约属性（浅档，一颗一条） |
+| D1 | `sys.describeTool` | 「这一颗我能不能打、怎么打」 | registry 卡 + 契约卡 + **闸前预演**（`blockers` 逐条说出是哪道闸）+ 该工具最近 5 行账 |
+| D2 | `sys.selfCheck` | 「这套 API 现在整体能不能用、哪道闸在拦、拦了去哪查」 | 契约规模与端点开关、registry∧契约**双向**漂移、工程覆盖载入结果、授权档案在不在跑及其告警、审计通道三张脸＋当日 verdict 统计与最近拒单、可选 `probe` |
+| D3 | `sys.readAudit` | 「把账本原文给我」 | 日档最近 N 行（帽 200，⛔ 整账倒给 agent） |
+
+三条纪律（各配了变异臂，见 `bin/C5/bench_c5_agent_tiers.py`）：
+
+1. **预演⛔ 执行**：D1/D2 的 `probe` 照 `executeTool` 的硬序把①登记 ②surfaces ③grants ②必填 ④审批**判一遍**，
+   ⛔ 调 handler ⇒ 零副作用（预演不能变成"先打一枪看看"，那是最坏情况下的第二次事故）。
+2. **闸②两半分开报**：`surfaceOpen=false` 必须同时说清是**总闸**（`surfacesGlobal`，放开 agent 的产品开关）
+   还是**这颗工具的 surfaces 没这条线**——两种情况的补救动作完全相反，合成一句会把人支使去改错的文件。
+3. **挂账⛔ 算故障**：`drift.registeredOffContract`（契约在说谎＝真故障）与 `drift.pendingHandlers`
+   （契约已上账而 handler 未收编＝状态）是两颗读数；把后者也计入 `verdict`，自检会恒响而没人再看它。
+
+诊断工具本身挂在 `ui/mcp/cli` 三条端点上（`rpc` ⛔ 加：`dispatch` 只认 `host.` 前缀那九颗，加也到不了）。
+今天 agent 仍进不来，是因为 `surfacesGlobal.mcp:false` 这一颗总闸——**放开＝改契约一行**，这正是统一层的杠杆点。
+
+
 ## 10. ★ 阶段三 · agent 系统（两分支中立，细节延迟定稿）
-
-
 
 ### 10.1 分支 A · VS Code 宿主能力（Chat Participant / Language Model API / MCP 客户端）
 

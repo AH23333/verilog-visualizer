@@ -1,7 +1,7 @@
 # API_REFERENCE（生成物 · 统一调用层）
 
 > ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
-> apiVersion `0.1.0` · 生成工具数 **33** · 调用面 ui=开 / rpc=开 / mcp=关 / cli=关
+> apiVersion `0.1.0` · 生成工具数 **35** · 调用面 ui=开 / rpc=开 / mcp=关 / cli=关
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
@@ -42,9 +42,11 @@
 | `res.listProject` | 列编译域文件 | read | none | ui | — | `res.listProject` | 0.2.0 |
 | `res.listSandbox` | 列沙盒域文件 | read | none | ui | — | `res.listSandbox` | 0.2.0 |
 | `res.readProjectFile` | 读工程文件 | read | none | ui | — | `res.readProjectFile` | 0.2.0 |
-| `sys.getStatus` | 宿主状态 | read | none | ui | — | `sys.getStatus` | 0.2.0 |
-| `sys.listTools` | 工具发现 | read | none | ui | — | `sys.listTools` | 0.2.0 |
-| `sys.readAudit` | 读调用审计 | read | none | ui | — | `sys.readAudit` | 0.2.0 |
+| `sys.describeTool` | 单颗工具深档（含闸门预演） | read | none | ui/mcp/cli | — | `sys.describeTool` | 0.3.0 |
+| `sys.getStatus` | 宿主状态 | read | none | ui/mcp/cli | — | `sys.getStatus` | 0.2.0 |
+| `sys.listTools` | 工具发现 | read | none | ui/mcp/cli | — | `sys.listTools` | 0.2.0 |
+| `sys.readAudit` | 读调用审计 | read | none | ui/mcp/cli | — | `sys.readAudit` | 0.2.0 |
+| `sys.selfCheck` | 调用层自检（agent 进门第一枪） | read | none | ui/mcp/cli | — | `sys.selfCheck` | 0.3.0 |
 
 ## 工具详情（参数 schema）
 
@@ -689,6 +691,43 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
+### `sys.describeTool` — 单颗工具深档（含闸门预演）
+
+深度 D1：一颗工具的**全部真相**＝registry 卡（标题/描述/参数 schema）+ 契约卡（perm/sideEffects/surfaces/ref/审批/since）+ 闸前预演（这一枪会不会被①②③④哪道拦、缺哪颗必填）+ 该工具最近的审计行（带 traceId）。⛔ 执行 handler＝零副作用。agent ⛔ 靠真打一枪来试签名。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "tool": {
+      "type": "string",
+      "description": "工具 id 逐字（`fs.rename`／`host.getConfig`…）；rpc 的 method 名⛔ 裸写，要带 `host.` 前缀"
+    },
+    "args": {
+      "type": "object",
+      "description": "打算交的实参（只用于验必填项，⛔ 落盘⛔ 执行）"
+    },
+    "surface": {
+      "type": "string",
+      "enum": [
+        "ui",
+        "rpc",
+        "mcp",
+        "cli"
+      ],
+      "description": "按哪条端点判闸②（缺省＝调用方自己那条）。诊断工具挂在所有端点上，所以从 agent 线问\"画布那条线通不通\"是正当问题"
+    },
+    "subject": {
+      "type": "string",
+      "description": "按哪个身份判闸③（缺省＝调用方自己）。⛔ 绕闸通道：只回一份判断，⛔ 执行"
+    }
+  },
+  "required": [
+    "tool"
+  ]
+}
+```
+
 ### `sys.getStatus` — 宿主状态
 
 契约版本/调用面开关/工具账规模/工程根。幂等只读。
@@ -726,6 +765,47 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
     "limit": {
       "type": "number",
       "description": "行数（缺省 50）"
+    }
+  }
+}
+```
+
+### `sys.selfCheck` — 调用层自检（agent 进门第一枪）
+
+深度 D2：一枪回答"这套 API 现在能不能用、哪道闸在拦、拦了去哪查"——生效契约规模与调用面开关、registry∧契约**双向**漂移、工程覆盖 `.vv/api.json` 载入结果与被拒原因、授权档案在不在跑及其告警、审计通道三张脸（未开户/仍在缓冲/日文件为空）＋当日 verdict 统计与最近拒单（含 traceId）。可选 `probe` 顺带预演一颗工具。⛔ 任何写操作。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "probe": {
+      "type": "object",
+      "description": "闸前预演一颗（与 sys.describeTool 同一把尺）；给了就顺带答\"这颗我现在能打吗\"",
+      "properties": {
+        "tool": {
+          "type": "string"
+        },
+        "args": {
+          "type": "object"
+        },
+        "surface": {
+          "type": "string",
+          "enum": [
+            "ui",
+            "rpc",
+            "mcp",
+            "cli"
+          ],
+          "description": "按哪条端点判（缺省＝调用方自己那条）"
+        },
+        "subject": {
+          "type": "string",
+          "description": "按哪个身份判闸③（缺省＝调用方自己）"
+        }
+      },
+      "required": [
+        "tool"
+      ]
     }
   }
 }

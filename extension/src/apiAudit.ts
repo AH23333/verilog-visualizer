@@ -74,13 +74,15 @@ function digestOf(args: unknown): string {
   } catch { return 'unreadable'; }
 }
 
-/** 记账入口（fire-and-forget：dispatch 不 await，写失败⛔ 影响调用结果——账丢了是账的损失）。 */
-export function auditToolCall(context: vscode.ExtensionContext, p: { tool?: string; ref: string; subject: string; channel?: string; verdict: AuditVerdict; ms: number; args: unknown; note?: string }): void {
+/** 记账入口（fire-and-forget：dispatch 不 await，写失败⛔ 影响调用结果——账丢了是账的损失）。
+ *  `traceId` 由**调用方**（executeTool）发号并回给调用方：调用失败时人拿到的那串就是账上这行的 traceId。
+ *  ⛔ 在这里现算——异步落账与抛错两路各取一个随机数＝调用方那串永远查不到自己的行。 */
+export function auditToolCall(context: vscode.ExtensionContext, p: { tool?: string; ref: string; subject: string; channel?: string; verdict: AuditVerdict; ms: number; args: unknown; note?: string; traceId?: string }): void {
   void (async () => {
     try {
       if (!await vvReady(context)) return;
       const line: AuditLine = {
-        ts: new Date().toISOString(), traceId: crypto.randomBytes(4).toString('hex'),
+        ts: new Date().toISOString(), traceId: p.traceId || crypto.randomBytes(4).toString('hex'),
         tool: p.tool ?? null, ref: p.ref, subject: p.subject, channel: p.channel ?? p.subject, verdict: p.verdict,
         ms: Math.round(p.ms * 100) / 100, argsDigest: digestOf(p.args), ...(p.note ? { note: String(p.note).slice(0, 200) } : {}),
         configHash: configHash(),
@@ -90,6 +92,13 @@ export function auditToolCall(context: vscode.ExtensionContext, p: { tool?: stri
       else if (!timer) timer = setTimeout(() => void flushAudit(context), 5000);
     } catch { /* 审计自身炸＝静默，主业优先 */ }
   })();
+}
+
+/** 通道现状（`sys.selfCheck` 用）。⚠ "读不到账"有三张脸，⛔ 让调用方猜是哪一张：
+ *  ① 工程没开户（`.vv/` 不在）② 行还在内存缓冲没落盘 ③ 日文件在但确实零行。
+ *  `ready` 答①、`pending` 答②，③由读侧的 `exists/total` 答。 */
+export async function auditChannelState(context: vscode.ExtensionContext): Promise<{ ready: boolean; pending: number }> {
+  return { ready: await vvReady(context), pending: pending.length };
 }
 
 /** 落盘（日文件整写；测试收口与未来 deactivate 手动催）。返回本轮写出行数。 */

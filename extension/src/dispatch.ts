@@ -9,7 +9,7 @@
 import * as vscode from 'vscode';
 import type { FsLike } from './projectStore';
 import { getAllBindings, setDocBindings, ensureDirsMeta, setBindingInDir } from './sandboxFiles';
-import { executeTool, getTool, registerTool, type ToolSchema } from './toolRegistry';
+import { executeTool, getTool, registerTool, ToolError, type ToolSchema } from './toolRegistry';
 
 /** Problems 面板接管：webview 编译后经 publishProblems 落到这里。
  *  ⚠ **惰性创建**：extensionHost.test 的 vscode 桩没有 createDiagnosticCollection/
@@ -132,6 +132,25 @@ export async function dispatch(context: vscode.ExtensionContext, method: string,
   // 而它自己那句注释还写着"审计那行由 executeTool 记"：措辞与实现对不上，证人也没测到这一格）。
   // 查册交给执行器（registry ∧ 契约 双查）：`host.<method>` 不在册 ⇒ verdict=not-registered + [API_NOT_REGISTERED]。
   return executeTool(context, { surface: 'rpc', subject: 'ui', interactive: false }, `host.${method}`, args ?? {});
+}
+
+/** webview 请求的回包唯一形状（Panel 与 custom editor 两条装载线共用；⛔ 各写一份）。
+ *  `trace`＝`executeTool` 为这次调用发的那串（只对被闸拦下的 `ToolError` 有值）：
+ *  画布/agent 拿到"被拒"时同时拿到账本行号，⛔ 只能复述现象回来找人。 */
+export async function dispatchAndReply(
+  context: vscode.ExtensionContext,
+  post: (m: unknown) => void,
+  msg: { id: string; method: string; args?: any },
+): Promise<void> {
+  try {
+    post({ vvh: 'res', id: msg.id, ok: true, data: await dispatch(context, msg.method, msg.args || {}) });
+  } catch (e) {
+    post({
+      vvh: 'res', id: msg.id, ok: false, data: undefined,
+      error: String(e instanceof Error ? e.message : e),
+      trace: e instanceof ToolError ? e.traceId : undefined,
+    });
+  }
 }
 
 async function dispatchCore(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {

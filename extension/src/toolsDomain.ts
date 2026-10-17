@@ -3,6 +3,9 @@
 //   · discoverTools   → sys.listTools（agent 必须信权威 schema，⛔ 靠经验猜签名）
 //   · readLogs        → sys.readAudit（§14 jsonl 账本的读侧——"AI 查调用"落地形态）
 //   · getStatus       → sys.getStatus
+//   · **深度分级**（阶段三给 agent 的四档，按"要多深"选一颗，⛔ 一上来就倒全表）：
+//       D0 sys.listTools（全工具浅档）→ D1 sys.describeTool（单颗深档＋闸前预演，⛔ 执行）
+//       → D2 sys.selfCheck（整套 API 现在能不能用／哪道闸在拦／拦了去哪查）→ D3 sys.readAudit（账本原文）
 //   · readResource 族 → res.readProjectFile / res.listProject / res.listSandbox（pull 式零副作用，
 //                       让 agent"看懂现状"；sanitizeRel 圈死工程根 ⛔ 穿越）
 //   · 领域 Tools      → bindings.*（链合并读/目录层写/审计/写全/固化）、circuits.*（名单读/角色翻转）、
@@ -11,7 +14,7 @@
 //   （策略引擎）、subscribe（hook 埋点）、readMemory/writeMemory（记忆存储）、长操作 getStatus 句柄。
 // ============================================================================
 import * as vscode from 'vscode';
-import { registerTool, argUri } from './toolRegistry';
+import { registerTool, argUri, getTool, listTools, type ToolCaller, type ToolSurface } from './toolRegistry';
 import { broadcastBindingsChanged, projectRoot, vscodeFs } from './dispatch';
 import { ProjectStore, sanitizeRel } from './projectStore';
 import {
@@ -19,12 +22,79 @@ import {
   materializeBindings, togglePartRole, getCircuitsSet, pathRel, META_FILE,
 } from './sandboxFiles';
 import { closureOf, scanDefs } from './compilePanel';
-import { loadApiContract } from './apiSurface';
-import { listTools } from './toolRegistry';
+import { apiOverrideSnapshot, canSurface, loadApiContract } from './apiSurface';
+import { checkGrant, grantsSnapshot } from './apiGrants';
+import { auditChannelState } from './apiAudit';
 
 let registered = false;
 
 const AUDIT_CAP = 200;   // readAudit 单次行数上限（⛔ 整账倒给 agent 撑上下文）
+
+/** 日档读数的**唯一主人**（sys.readAudit / sys.describeTool / sys.selfCheck 三处共用一份口径）。
+ *  ⚠ 文件名与 apiAudit.flushAudit 落盘那颗串逐字一致（`trace-YYYY-MM-DD.jsonl`，带连字符）——
+ *    自检抓到的真 bug：读侧曾用无连字符 YYYYMMDD ⇒ 永远 exists:false。
+ *  ⚠ 归一⛔ 只写在描述里：这颗是**对外实参**（系统边界），agent 照上一版 schema 交 `20261017`
+ *    就会读成"查无此档"，而那句读数看起来完全像"今天没人调用过"——把调用方的笔误
+ *    伪装成事实是最贵的一种错（同族：browserHost 返回空结果冒充"宿主没有"）。 */
+async function readAuditDay(ctx: vscode.ExtensionContext, rawDate: unknown, rawLimit: unknown) {
+  const input = String(rawDate ?? new Date().toISOString().slice(0, 10));
+  const date = /^\d{8}$/.test(input) ? `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}` : input;
+  const limit = Math.min(Math.max(Number(rawLimit ?? 50), 1), AUDIT_CAP);
+  const uri = vscode.Uri.joinPath(projectRoot(ctx), '.vv', 'audit', `trace-${date}.jsonl`);
+  let raw: string;
+  try { raw = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)); }
+  catch { return { exists: false, date, total: 0, lines: [] as any[] }; }
+  const all = raw.split('\n').filter(Boolean);
+  const lines = all.slice(-limit).map((l) => { try { return JSON.parse(l); } catch { return { raw: l }; } });
+  return { exists: true, date, total: all.length, lines: lines as any[] };
+}
+
+/** 端点词表（与 toolRegistry.ToolSurface 同一份四值）。*/
+const SURFACES: readonly string[] = ['ui', 'rpc', 'mcp', 'cli'];
+
+/** 预演问的是**哪条线**：诊断工具本身⛔ 挂在所有端点上（不然 agent 从 mcp 进来连"我能不能调用"都问不了），
+ *  所以"这一枪打得响吗"必须由实参说出问的端点/身份，缺省＝调用方自己那条。
+ *  ⚠ 这⛔ 是绕闸通道：只回一份判断，⛔ 调 handler⛔ 改任何状态——真打那枪照旧过四道闸。
+ *  词表外的 `surface` 值⛔ 静默采纳（那会把"写错了"读成"那条线不通"），回落到调用方自己那条并如实记一笔。 */
+function targetCaller(a: Record<string, unknown>, caller: ToolCaller): { probe: ToolCaller; askedSurface: string; surfaceFallback: boolean } {
+  const askedSurface = typeof a.surface === 'string' ? a.surface : caller.surface;
+  const known = SURFACES.includes(askedSurface);
+  const subject = typeof a.subject === 'string' && a.subject ? a.subject : caller.subject;
+  return {
+    probe: { surface: (known ? askedSurface : caller.surface) as ToolSurface, subject, interactive: caller.interactive },
+    askedSurface, surfaceFallback: !known,
+  };
+}
+
+/** 闸前预演（D1/D2 共用）：照 executeTool 的硬序把①登记 ②surfaces ③grants ②必填 ④审批**判一遍**，
+ *  ⛔ 调 handler ⇒ 零副作用。agent 的"我这一枪会不会被拦"必须有便宜答案，⛔ 靠真打一枪看现象。 */
+function probeTool(id: string, probeArgs: Record<string, unknown>, caller: ToolCaller) {
+  const c = loadApiContract();
+  const def = getTool(id);
+  const ct = c.tools[id];
+  const missingArgs = (def?.schema.required ?? []).filter((k) => probeArgs?.[k] === undefined);
+  const surfaceOpen = canSurface(id, caller.surface);
+  const granted = checkGrant(caller.subject, id);
+  // 闸②有两半（总闸 / 这颗的 surfaces），最坏情况下 agent 要听的正是"哪一半关的"：
+  // 前者＝产品一行开关（放开 agent 的杠杆），后者＝这颗工具本身没这条线。判据仍⛔ 重算 `surfaceOpen`，
+  // 这里只负责把**原因**说清（⛔ 让两处各判一次再对不上——canSurface 是唯一主人）。
+  const globalOpen = (loadApiContract().surfacesGlobal?.[caller.surface] ?? true) !== false;
+  const isOwnUi = caller.surface === 'ui' && caller.subject === 'ui' && caller.interactive === true;
+  const blockers = [
+    ...(!def ? ['未登记：registry ⛔ 这颗 id（闸①两半之一）'] : []),
+    ...(!ct ? ['契约缺账：vv-api.defaults.json ⛔ 这颗 id（闸①两半的另一半）'] : []),
+    ...(!surfaceOpen ? [`端点未开放：闸②按 surface=${caller.surface} 拒（${globalOpen ? `契约里这颗的 surfaces 没带 ${caller.surface}` : '契约总闸 surfacesGlobal 关着——这是放开这条线的产品开关，⛔ 改工程 api.json，它只许关'}）`] : []),
+    ...(!granted ? [`档案未授权：闸③按 subject=${caller.subject} 拒（改 .vv/api.grants.json）`] : []),
+    ...(missingArgs.length ? [`缺必填实参：${missingArgs.join(', ')}`] : []),
+  ];
+  return {
+    id, surface: caller.surface, subject: caller.subject,
+    surfaceOpen, surfaceGlobalOpen: globalOpen, surfaceInTool: !!ct?.surfaces.includes(caller.surface),
+    granted, needsApproval: !!ct?.requiresApproval && !isOwnUi,
+    requiresApproval: !!ct?.requiresApproval, missingArgs, blockers,
+    verdict: blockers.length ? 'blocked' : 'ready',
+  } as const;
+}
 
 /** 上账入口（activate 调一次；幂等）。 */
 export function registerDomainTools(): void {
@@ -222,22 +292,102 @@ export function registerDomainTools(): void {
       type: 'object',
       properties: { date: { type: 'string', description: 'YYYY-MM-DD（缺省今天）。落盘名就是这颗串直接拼出来的，⛔ 另一种分隔——为免调用方猜，8 位纯数字（YYYYMMDD）也归一接受' }, limit: { type: 'number', description: '行数（缺省 50）' } },
     },
-    handler: async (ctx, a) => {
-      // ⚠ 日文件名口径与 apiAudit.flushAudit 逐字一致（trace-YYYY-MM-DD.jsonl，带连字符）——
-      //   自检抓到的真 bug：读侧曾用无连字符 YYYYMMDD ⇒ 永远 exists:false。
-      // ⚠ 归一⛔ 靠描述：这颗是**对外实参**（系统边界），agent 照上一版 schema 交 `20261017`
-      //   就会读成"查无此档"，而那句读数看起来完全像"今天没人调用过"——把调用方的笔误
-      //   伪装成事实是最贵的一种错（同族：browserHost 返回空结果冒充"宿主没有"）。
-      const rawDate = String(a.date ?? new Date().toISOString().slice(0, 10));
-      const date = /^\d{8}$/.test(rawDate) ? `${rawDate.slice(0, 4)}-${rawDate.slice(4, 6)}-${rawDate.slice(6, 8)}` : rawDate;
-      const limit = Math.min(Math.max(Number(a.limit ?? 50), 1), AUDIT_CAP);
-      const uri = vscode.Uri.joinPath(projectRoot(ctx), '.vv', 'audit', `trace-${date}.jsonl`);
-      let raw: string;
-      try { raw = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)); }
-      catch { return { exists: false, date, lines: [] }; }
-      const all = raw.split('\n').filter(Boolean);
-      const lines = all.slice(-limit).map((l) => { try { return JSON.parse(l); } catch { return { raw: l }; } });
-      return { exists: true, date, total: all.length, lines };
+    handler: async (ctx, a) => readAuditDay(ctx, a.date, a.limit),
+  });
+
+  registerTool({
+    id: 'sys.describeTool', title: '单颗工具深档（含闸门预演）',
+    description: '深度 D1：一颗工具的**全部真相**＝registry 卡（标题/描述/参数 schema）+ 契约卡（perm/sideEffects/surfaces/ref/审批/since）+ 闸前预演（这一枪会不会被①②③④哪道拦、缺哪颗必填）+ 该工具最近的审计行（带 traceId）。⛔ 执行 handler＝零副作用。agent ⛔ 靠真打一枪来试签名。',
+    schema: {
+      type: 'object',
+      properties: {
+        tool: { type: 'string', description: '工具 id 逐字（`fs.rename`／`host.getConfig`…）；rpc 的 method 名⛔ 裸写，要带 `host.` 前缀' },
+        args: { type: 'object', description: '打算交的实参（只用于验必填项，⛔ 落盘⛔ 执行）' },
+        surface: { type: 'string', enum: ['ui', 'rpc', 'mcp', 'cli'], description: '按哪条端点判闸②（缺省＝调用方自己那条）。诊断工具挂在所有端点上，所以从 agent 线问"画布那条线通不通"是正当问题' },
+        subject: { type: 'string', description: '按哪个身份判闸③（缺省＝调用方自己）。⛔ 绕闸通道：只回一份判断，⛔ 执行' },
+      },
+      required: ['tool'],
+    },
+    handler: async (ctx, a, caller) => {
+      const id = String(a.tool ?? '');
+      const probeArgs = (a.args && typeof a.args === 'object') ? a.args as Record<string, unknown> : {};
+      const t = targetCaller(a, caller);
+      const gates = probeTool(id, probeArgs, t.probe);
+      const c = loadApiContract();
+      const def = getTool(id);
+      const ct = c.tools[id];
+      const ref = ct?.ref ?? id;
+      // 最近 5 行按 `ref` 聚合（账本的正本读法）：⛔ 用 `tool`——拒单那几行 `tool` 是 null（⛔ 存在的工具⛔ 名字上账）。
+      const day = await readAuditDay(ctx, undefined, AUDIT_CAP);
+      const recent = day.lines.filter((l) => l && l.ref === ref).slice(-5)
+        .map((l) => ({ ts: l.ts, verdict: l.verdict, subject: l.subject, channel: l.channel, ms: l.ms, note: l.note, traceId: l.traceId }));
+      return {
+        tool: id, ref,
+        asked: { surface: gates.surface, subject: gates.subject, askedSurface: t.askedSurface, surfaceFallback: t.surfaceFallback },
+        caller: { subject: caller.subject, surface: caller.surface, interactive: caller.interactive },
+        card: def ? { id: def.id, title: def.title, description: def.description, schema: def.schema } : null,
+        contract: ct ? { perm: ct.perm, sideEffects: ct.sideEffects, surfaces: ct.surfaces, ref: ct.ref, requiresApproval: !!ct.requiresApproval, since: ct.since ?? null } : null,
+        gates, recent,
+        auditDate: day.date, auditExists: day.exists,
+      };
+    },
+  });
+
+  registerTool({
+    id: 'sys.selfCheck', title: '调用层自检（agent 进门第一枪）',
+    description: '深度 D2：一枪回答"这套 API 现在能不能用、哪道闸在拦、拦了去哪查"——生效契约规模与调用面开关、registry∧契约**双向**漂移、工程覆盖 `.vv/api.json` 载入结果与被拒原因、授权档案在不在跑及其告警、审计通道三张脸（未开户/仍在缓冲/日文件为空）＋当日 verdict 统计与最近拒单（含 traceId）。可选 `probe` 顺带预演一颗工具。⛔ 任何写操作。',
+    schema: {
+      type: 'object',
+      properties: {
+        probe: {
+          type: 'object',
+          description: '闸前预演一颗（与 sys.describeTool 同一把尺）；给了就顺带答"这颗我现在能打吗"',
+          properties: {
+            tool: { type: 'string' }, args: { type: 'object' },
+            surface: { type: 'string', enum: ['ui', 'rpc', 'mcp', 'cli'], description: '按哪条端点判（缺省＝调用方自己那条）' },
+            subject: { type: 'string', description: '按哪个身份判闸③（缺省＝调用方自己）' },
+          },
+          required: ['tool'],
+        },
+      },
+    },
+    handler: async (ctx, a, caller) => {
+      const c = loadApiContract();
+      const ids = listTools().map((t) => t.id);
+      const contractIds = Object.keys(c.tools);
+      // 漂移分两颗，⛔ 合成一颗喊"有问题"：registeredOffContract＝契约在说谎（闸①当场拒，真故障）；
+      // pendingHandlers＝契约上了账而 handler 还没收编（文档挂账清单，系统照常可用）。
+      const drift = {
+        registeredOffContract: ids.filter((i) => !c.tools[i]),
+        pendingHandlers: contractIds.filter((i) => !getTool(i)),
+      };
+      const override = apiOverrideSnapshot();
+      const grants = grantsSnapshot();
+      const ch = await auditChannelState(ctx);
+      const day = await readAuditDay(ctx, undefined, AUDIT_CAP);
+      const byVerdict: Record<string, number> = {};
+      for (const l of day.lines) if (l && typeof l.verdict === 'string') byVerdict[l.verdict] = (byVerdict[l.verdict] ?? 0) + 1;
+      const denials = day.lines.filter((l) => l && l.verdict && l.verdict !== 'auto' && l.verdict !== 'approved').slice(-5)
+        .map((l) => ({ ts: l.ts, ref: l.ref, verdict: l.verdict, subject: l.subject, channel: l.channel, note: l.note, traceId: l.traceId }));
+      const findings = [
+        ...drift.registeredOffContract.map((i) => `registry 有 handler 而契约⛔ 上账：${i}（闸①会以 not-registered 拒这颗）`),
+        ...override.rejects.map((r) => `工程 .vv/api.json：${r}`),
+        ...grants.notes.map((n) => `授权档案 .vv/api.grants.json：${n}`),
+        ...(!ch.ready ? ['审计通道未开户（工程⛔ `.vv/`）＝调用不留账，事后无从查证'] : []),
+        ...(ch.pending ? [`审计缓冲中 ${ch.pending} 行未落盘（催一下：verilogViz.auditFlush）`] : []),
+      ];
+      const probe = a.probe && typeof a.probe === 'object' ? a.probe as { tool?: string; args?: Record<string, unknown>; surface?: string; subject?: string } : undefined;
+      return {
+        apiVersion: c.apiVersion, schemaVersion: c.schemaVersion ?? null,
+        surfacesGlobal: c.surfacesGlobal ?? {},
+        contractTools: contractIds.length, registeredTools: ids.length,
+        drift, override, grants, audit: { ready: ch.ready, pending: ch.pending, date: day.date, exists: day.exists, total: day.total, byVerdict, denials },
+        caller: { subject: caller.subject, surface: caller.surface, interactive: caller.interactive },
+        // verdict 只由**真故障**决定：缓冲/未收编都只是状态，把它们混进"坏了"会让这颗永远响、永远没人看。
+        verdict: (drift.registeredOffContract.length || override.rejects.length || grants.notes.length || !ch.ready) ? 'attention' : 'ready',
+        findings,
+        ...(probe ? { probe: probeTool(String(probe.tool ?? ''), probe.args ?? {}, targetCaller(probe, caller).probe) } : {}),
+      };
     },
   });
 }

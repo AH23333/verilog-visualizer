@@ -24,6 +24,22 @@ export interface GrantsFile {
 
 /** subject → 白名单（undefined＝档案缺席，闸不生效） */
 let grants: Record<string, string[]> | undefined;
+/** 上一次载入的结果留档：弹窗会消失、告警不能跟着消失——`sys.selfCheck` 靠它回答"这道闸现在到底在不在跑"。 */
+let lastLoad: { present: boolean; notes: string[] } = { present: false, notes: [] };
+
+export interface GrantsSnapshot {
+  /** `.vv/api.grants.json` 在盘上读到了（读到但解析失败也算 present） */
+  present: boolean;
+  /** 闸③真在跑＝解析成功且形状对（`grants` 有表） */
+  active: boolean;
+  /** 已绑档案的 subject → 白名单（未绑的调用方不在此表＝不受此闸约束） */
+  bound: Record<string, string[]>;
+  /** 上一次载入的告警（fail-closed 之类都在这） */
+  notes: string[];
+}
+export function grantsSnapshot(): GrantsSnapshot {
+  return { present: lastLoad.present, active: grants !== undefined, bound: { ...(grants ?? {}) }, notes: [...lastLoad.notes] };
+}
 
 function then<T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> {
   return new Promise<T>((res, rej) => t.then(res, (e) => rej(e)));
@@ -35,14 +51,22 @@ function then<T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): 
  */
 export async function loadProjectGrants(context: vscode.ExtensionContext): Promise<string[]> {
   grants = undefined;
+  lastLoad = { present: false, notes: [] };
   const notes: string[] = [];
   const uri = vscode.Uri.joinPath(projectRoot(context), '.vv', 'api.grants.json');
   let raw: string;
   try { raw = new TextDecoder().decode(await then(vscode.workspace.fs.readFile(uri))); } catch { return notes; }  // 缺席＝常返（阶段一常态）
+  lastLoad = { present: true, notes: [] };
   let p: Partial<GrantsFile> & Record<string, unknown>;
-  try { p = JSON.parse(raw); } catch { return ['api.grants.json 解析失败：当作未设置（授权闸不生效），请修好后再重启窗口']; }
+  try { p = JSON.parse(raw); } catch {
+    const r = ['api.grants.json 解析失败：当作未设置（授权闸不生效），请修好后再重启窗口'];
+    lastLoad = { present: true, notes: r };
+    return r;
+  }
   if (!p || typeof p !== 'object' || typeof p.subjects !== 'object' || p.subjects === null || typeof p.profiles !== 'object' || p.profiles === null) {
-    return ['api.grants.json 形状不对（需要 subjects/profiles 两张表）：当作未设置'];
+    const r = ['api.grants.json 形状不对（需要 subjects/profiles 两张表）：当作未设置'];
+    lastLoad = { present: true, notes: r };
+    return r;
   }
   const g: Record<string, string[]> = {};
   for (const [subject, profile] of Object.entries(p.subjects)) {
@@ -55,6 +79,7 @@ export async function loadProjectGrants(context: vscode.ExtensionContext): Promi
     g[subject] = list.filter(String);
   }
   grants = g;
+  lastLoad = { present: true, notes };
   return notes;
 }
 

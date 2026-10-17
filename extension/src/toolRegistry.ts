@@ -12,8 +12,11 @@
 // 工具账双真源纪律：registry（TS，title/description/schema/handler）+ 契约 JSON（perm/sideEffects/
 //   surfaces/ref/requiresApproval）——双方 id 必须**一一对齐**（apiDoc.test 钉死孤儿），
 //   docs/API_REFERENCE.md 由 apiDoc.ts 从两源**生成**（⛔ 手写文档漂移）。
+// 调用号：每次 executeTool 发一颗 `traceId`，审计那行与拒单抛回的 `ToolError.traceId` 是同一串——
+//   最坏情况下 agent 手里只有"被拒"两个字，凭这串就能查到账上是哪道闸、什么实参形状、看的哪份契约。
 // ============================================================================
 import * as vscode from 'vscode';
+import * as crypto from 'crypto';
 import { canSurface, loadApiContract } from './apiSurface';
 import { checkGrant } from './apiGrants';
 import { auditToolCall, type AuditVerdict } from './apiAudit';
@@ -59,9 +62,12 @@ export function listTools(): ToolDef[] { return [...registry.values()].sort((a, 
 /** 测试/热载清场（⛔ 生产路径不调） */
 export function __resetRegistryForTest(): void { registry.clear(); }
 
-/** 带码错误：调用方（webview/agent）按 code 机读，message 人读。 */
+/** 带码错误：调用方（webview/agent）按 code 机读，message 人读。
+ *  `traceId`＝这次调用在审计账上的那一行（同串）——最坏情况下 agent 拿到的只有"被拒"，
+ *  有了它就能 `sys.readAudit`/grep 账本定位"哪道闸、什么实参形状、看到的契约是哪份（configHash）"，
+ *  ⛔ 只能靠复述现象回来找人。 */
 export class ToolError extends Error {
-  constructor(readonly code: 'NOT_REGISTERED' | 'SURFACE_DENIED' | 'NOT_GRANTED' | 'NOT_APPROVED' | 'BAD_ARGS', message: string) { super(message); }
+  constructor(readonly code: 'NOT_REGISTERED' | 'SURFACE_DENIED' | 'NOT_GRANTED' | 'NOT_APPROVED' | 'BAD_ARGS', message: string, readonly traceId: string) { super(message); }
 }
 
 /** 工具成功执行后的宿主联动（extension.ts 订阅：sideEffects≠none ⇒ refreshAllTrees） */
@@ -81,6 +87,9 @@ export async function executeTool(
   args: Record<string, unknown> = {},
 ): Promise<unknown> {
   const t0 = Date.now();
+  // 一次调用一个号，且**由执行器发**（⛔ 让落账那侧现算：拒单是先抛后异步写，两边各取随机数＝
+  // 调用方手里那串在账上永远查不到，"给我看日志"变成"给我猜是哪一行"）。
+  const traceId = crypto.randomBytes(4).toString('hex');
   const contract = loadApiContract();
   const def = getTool(id);
   const ct = contract.tools[id];
@@ -93,7 +102,7 @@ export async function executeTool(
     const ref = contract.tools[id]?.ref ?? id;
     // `tool` 只在"这颗确实登记了"时才写名：not-registered 那一行若也带上名字，账本就把一个⛔ 存在的
     // 工具说成调用过（审计臂②判的正是这一格）。
-    auditToolCall(context, { tool: getTool(id) ? id : undefined, ref, subject: caller.subject, channel: caller.surface, verdict, ms: Date.now() - t0, args, note });
+    auditToolCall(context, { tool: getTool(id) ? id : undefined, ref, subject: caller.subject, channel: caller.surface, verdict, ms: Date.now() - t0, args, note, traceId });
   };
   const fail = (code: ToolError['code'], verdict: AuditVerdict, msg: string, note?: string): never => {
     // 拒单那行必须**自带机读码**（`[API_*]`）且⛔ 空。两条理由：
@@ -102,7 +111,7 @@ export async function executeTool(
     //     "调用方实参写错"读成"工具自己有 bug"，归责方向直接反了。
     // 缺省 note 时整条 msg 上账（msg 本就带标签）；给了 note 就补标签，两界读法一致。
     audit(verdict, note ? `[API_${code}] ${note}` : msg);
-    throw new ToolError(code, msg);
+    throw new ToolError(code, msg, traceId);
   };
   if (!def || !ct) {
     return fail('NOT_REGISTERED', 'not-registered',

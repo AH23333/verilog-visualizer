@@ -9,7 +9,7 @@
  *     文件管理归原生 Explorer。
  */
 import * as vscode from 'vscode';
-import { broadcastConfigChanged, broadcastBindingsChanged, dispatch, projectRoot, registerWebviewSink, unregisterWebviewSink } from './dispatch';
+import { broadcastConfigChanged, broadcastBindingsChanged, dispatchAndReply, projectRoot, registerWebviewSink, unregisterWebviewSink } from './dispatch';
 import { clearActiveCanvas, pushToActiveCanvas, setActiveCanvas } from './activeCanvas';
 import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 import { AUTOOPEN_ENV, isBuiltIntoThisApp, shouldAutoOpen } from './startupPolicy';
@@ -462,13 +462,8 @@ function wirePanel(context: vscode.ExtensionContext, panel: vscode.WebviewPanel)
     // 画布就绪握手（首编译推送被丢的修法，与 doc ready 同族）：ready → 补推挂起的编译单
     if (msg.vvh === 'push' && msg.op === 'ready') { void flushPendingCompile(context, panel); return; }
     if (msg.vvh !== 'req' || typeof msg.id !== 'string') return;
-    const reply = (ok: boolean, data?: unknown, error?: string) =>
-      void webview.postMessage({ vvh: 'res', id: msg.id, ok, data, error });
-    try {
-      reply(true, await dispatch(context, msg.method, msg.args || {}));
-    } catch (e) {
-      reply(false, undefined, String(e instanceof Error ? e.message : e));
-    }
+    // 回包形状（含被闸拦下时那串 `trace`）只有一份主人——见 dispatch.ts 的 dispatchAndReply。
+    await dispatchAndReply(context, (m) => { void webview.postMessage(m); }, msg);
   }, null, context.subscriptions);
 }
 

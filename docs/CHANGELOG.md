@@ -7,7 +7,59 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R155：统一调用层阶段三（RPC 收编 + 给 agent 的深度四档）（2026-10-18 夜·同一夜）
+
+> 顺序仍按用户令：完善系统 → 深度检验 → **构建统一 API 层**（与文档同批）。
+> 这一批把「闸与账」收成一套主人，再把 agent 最坏情况下的调试面（"我被谁拦了、为什么"）做成能查的读数。
+
+### Changed
+- **RPC 那 9 颗收编进 `executeTool`**（`extension/src/dispatch.ts`）：修前 `dispatch` 自带一份四闸＋一层审计壳，
+  与 `executeTool` 是**两套并行实现**——同一句"谁能调用什么"两个主人，RPC 侧因此⛔ 实参必填检查、
+  审计把通道名写进 `subject`、`approved` 由契约反推而⛔ 真审批。现在本文件只余名册 `RPC_METHODS`
+  （＝`registerRpcTools` 的登记清单）与实现体 `dispatchCore`。
+  名册⛔ 再在 `dispatch()` 里挡一次幽灵 method：**前置抛错会绕过账本**（见下面 Fixed 第一条）。
+- **回包形状一份主人**：新增 `dispatchAndReply()`，Panel 与 custom editor 两条装载线各写一份 `reply()` 的时期结束；
+  被闸拦下时回包带 `trace`（＝`ToolError.traceId`）。
+- **文档生成器不再说谎**：`apiDoc.ts` 那句「待迁 N 颗」以前无论 0 颗还是 9 颗都印同一句
+  "闸已在跑（dispatch 入口那份内联四闸）"，收编完就成了描述一份不存在实现的说明书；现按颗数换说法。
+
+### Added
+- **给 agent 的深度四档**（只读，契约 `surfaces: ui/mcp/cli`；协议见 CONFIG_PROTOCOL §9.7）：
+  D0 `sys.listTools`（全表浅档）／D1 `sys.describeTool`（单颗全档＋**闸前预演**，⛔ 执行 handler）／
+  D2 `sys.selfCheck`（整套调用层现在能不能用：契约规模、registry∧契约双向漂移、工程覆盖载入结果、
+  授权档案在不在跑及其告警、审计三张脸＋当日 verdict 统计与最近拒单，可选 `probe`）／D3 `sys.readAudit`（账本原文）。
+- **`traceId` 由执行器发号并回给调用方**：一次调用一个号，账上那行与抛回的 `ToolError.traceId` 同串
+  （⛔ 在落账侧现算——异步落账与同步抛错两路各取随机数＝调用方那串在账上查无此行）。
+- `sys.readAudit`/预演共用的**日档读数一份主人**（`readAuditDay`），与 `apiAudit` 的连字符日名口径不再两处各写。
+
+### Fixed
+- **幽灵 RPC 调用⛔ 进账**（§9.5 不变量破洞）：修前 `dispatch` 在册外 method 上先抛，executeTool 从未被调用 ⇒
+  账上一片干净＝"那件事没发生过"，而它自己那句注释还写着"审计那行由 executeTool 记"。证人＝审计臂②
+  （`ref=host.noSuchTool` 那行必须存在、`tool` 必须是 `null`、`note` 必须带 `[API_NOT_REGISTERED]`）。
+- **拒单那行 `note` 可为空/无码**：`verdict` 与 `code` 不是一一对应（`BAD_ARGS` 与 handler 抛错同落 `error`），
+  只盯 verdict 会把"调用方实参写错"读成"工具自己有 bug"——归责方向正好相反。现在 `[API_*]` 必进 note。
+- **同一颗工具因"这次成没成"有两个 `ref`**（放行＝契约那颗名、拒单＝带前缀 id）：按 `ref` 聚合调用记录必然漏。
+- **换工程⛔ 重算生效契约**（`apiSurface.loadProjectApiOverride`）：修前只在读到覆盖档时重算 `merged`，
+  没有覆盖档的那一扇沿用**上一扇的收窄**，而句头注写着"文件不存在＝静默"。这颗是 `sys.selfCheck`
+  把 `override.narrowed` 暴露成读数之后才看得见的（正件：前一扇被裁的那颗 rpc 工具，后一扇照旧放行）。
+- **`registerRpcTools` 幂等按 id 判**：⛔ 用 `toolsFs`/`toolsDomain` 那种模块级布尔——那颗标志一为真，
+  `activate` 第二次调用会整批跳过登记，而 M7 幂等测试恰恰靠"再启一遍"活着（现场：`工具 host.getConfig 重复注册`）。
+- 测试台架两处自己的漏：`boot()` 不清审计缓冲/`dirState`（A 工作区的行会被写进 B 的日档、
+  无 `.vv/` 的用例被说成"已开户"）；`__resetAuditForTest` 导出后从未被调用（现已接上）。
+
+### Readings（本批权威读数）
+- `pnpm test` **255 passed / 0 failed**（含四档新增 4 颗、审计臂② 改写、名册↔实现体新增 1 颗）。
+- `pnpm ext:check`（tsc + esbuild）**rc=0**；`pnpm api:doc` 两跑：第一跑红＝写出、第二跑绿＝零漂移；
+  生成工具数 **24 → 35**（registry 收编 9 颗 RPC + 新增 2 颗诊断）。
+- `bin/C4/bench_c4_lock.py` **11 臂 0 不合格**（M9 只响新证人／M10 四把尺一起响＝新证人的正件方向）＋还原逐字节相同；
+  `bin/C5/bench_c5_agent_tiers.py`（新台架）**6 臂 0 不合格**，名册尺 4 颗新证人 0 缺。
+- 跑批波次一之后的第二批（74 颗）仍在跑；已知红族＝17 颗编译侧档往浏览器 `import('/src/store/fileStore.ts')` 塞文件
+  （该模块已随旧 React UI 退役＝404 早退），波次二逐颗换 `tests/_ui.cjs` 的 `pushCompile/waitCompiled`。
+
+---
 ## [未发布 Unreleased] — R154：验证系统自己的诚信（2026-10-18 夜·用户令代管）
+
+
 
 > 起点＝用户令「先完善系统→深度检验→统一 API 层，构建与文档同步，一切为后续 agent 系统考虑」。
 > 这一批的产品功能改动很少，做的是**把"看起来在检、其实恒过"的三处拆出来**——

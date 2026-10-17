@@ -73,6 +73,11 @@ L0  宿主（VS Code 扩展：Extension Host + Webview + React + digitaljs 渲�
 - **主要风险**：双语言调试栈；`thread_id` 错配=跨会话状态泄漏（静默 bug）；持久化往 PostgresSaver/Platform 拽（本地用 MemorySaver/本地 SQLite 即可，图能力全有）。
 
 ### 3.3 统一调用层 / 工具门面（L3）
+> **落地进度（R155，2026-10-18 夜）**：本节"代码基础：无注册表"已过期。现在注册表＋单执行器＋三闸＋审计都在
+> `extension/src/{toolRegistry,apiSurface,apiGrants,apiAudit}.ts`（35 颗在册，RPC 那 9 颗也走同一执行器），
+> 工具清单/schema 由 `pnpm api:doc` 从代码生成到 [docs/API_REFERENCE.md](./API_REFERENCE.md)，
+> 闸与账的协议见 [CONFIG_PROTOCOL.md](./CONFIG_PROTOCOL.md) §9，agent 侧取数深度见其 **§9.7 深度四档（D0–D3）**。
+> 仍未落地的：Resources/Prompts 两面、undo/snapshot、MCP 接线（`surfacesGlobal.mcp` 仍=false）。
 - **方案**：工具门面拆为 **Webview（持 `paper`）+ Extension Host（持 agent 运行时 + 多数 headless 工具）**，经 VS Code webview 消息暴露 MCP 三原语（Tools/Resources/Prompts）+ 治理四件套（undo/permission/HITL/snapshot）+ 可观测（readLogs/traceId）+ 异步/记忆（§15）。
 - **代码基础**：无注册表；模型=paper（§0）→ 契约降级为 `serialize→mutate→load`。
 - **难度：中高（VS Code 下较 Tauri 更优）**。约束变为「Webview 持 paper + Extension Host 持运行时」拆分 + 跨 webview 序列化往返 + 护栏；但编译/分析/探针等多数工具在 Node 侧更接近 headless，比 Tauri「全挤 renderer」干净。每个接口须 schema+超时+幂等+结果整形；`discoverTools` 必须权威。

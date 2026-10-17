@@ -40,6 +40,11 @@ const ctx = (mode: number) => ({
  */
 async function boot(opts: { folders?: string[], mode?: number, seed?: Record<string, string>, appRoot?: string } = {}) {
   const ext = await import('../../extension/src/extension');
+  // 每颗用例独占一份账：`pending` 缓冲与 `dirState` 都是模块级状态，⛔ 清场就会串门——
+  // A 工作区缓冲的行会被下一次 flush 写进 B 的日档；先开过户的用例让后面无 `.vv/` 的用例
+  // 也被说成"已开户"（`sys.selfCheck` 的 audit.ready 就是读它的）。
+  const { __resetAuditForTest } = await import('../../extension/src/apiAudit');
+  __resetAuditForTest();
   vscode.resetMachine({
     ...(opts.appRoot ? { appRoot: opts.appRoot } : {}),
     ...(opts.folders ? { workspaceFolders: opts.folders.map((f, i) => ({ uri: vscode.Uri.file(f), name: f, index: i })) } : {}),
@@ -2436,5 +2441,150 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const c2 = await executeTool(ctx(PROD) as never, CALLER_UI, 'compile.closure', { uri: 'D:/p/top.v' }) as any;
     expect(c2.files).not.toContain('adder.v');
     expect((c2.bindingErrors ?? []).some((s: string) => s.includes('adder'))).toBe(true);
+  });
+});
+
+describe('阶段三·给 agent 的四档深度（D0 全表／D1 单颗预演／D2 自检／D3 账本）', () => {
+  // RPC 那条线的调用档案：端点＝rpc、身份＝ui（画布）、非交互（审批得由执行器出）。
+  const RPC_CALLER = { surface: 'rpc', subject: 'ui', interactive: false } as const;
+  const flush = async () => {
+    await new Promise((r) => setTimeout(r, 5));                              // 审计是 fire-and-forget：等它入缓冲
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+  };
+  const dayFile = (root: string) => {
+    const day = new Date().toISOString().slice(0, 10);
+    const bytes = vscode.state.files.get(vscode.Uri.file(`${root}/.vv/audit/trace-${day}.jsonl`).path.toLowerCase());
+    expect(bytes).toBeTruthy();                                              // ⛔ 让"没落盘"读成"零行"
+    return new TextDecoder().decode(bytes!).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  };
+
+  it('D1 sys.describeTool：预演说清"哪道闸会拦"，⛔ 真打一枪（有副作用那颗零落账）', async () => {
+    await boot({ folders: ['D:/z1'], seed: {
+      'D:/z1/.vv/project.json': '{"kind":"project"}',
+      'D:/z1/.vv/api.json': JSON.stringify({ tools: { 'host.getAllBindings': { surfaces: [] } } }),   // 工程把这颗的端点裁光
+      'D:/z1/main.djs': '{"cells":[]}',
+    } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const d = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool', { tool: 'fs.rename' }) as any;
+    expect(d.card.schema.properties.uri).toBeTruthy();                       // registry 卡（标题/描述/参数 schema）
+    expect(d.contract.perm).toBe('file-write');                              // 契约卡（perm/sideEffects/surfaces/审批）
+    expect(d.gates.missingArgs).toEqual(['uri', 'newName']);                  // 必填预演与 executeTool 同一把尺（同一份 schema.required）
+    expect(d.gates.verdict).toBe('blocked');
+    expect(d.gates.blockers.filter((s: string) => /缺必填实参/.test(s))).toHaveLength(1);
+    const ok = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool',
+      { tool: 'fs.rename', args: { uri: 'D:/z1/main.djs', newName: 'x.djs' } }) as any;
+    expect(ok.gates.verdict).toBe('ready');                                  // 补齐实参＝预演放行（仍⛔ 执行）
+    const cut = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool',
+      { tool: 'host.getAllBindings', surface: 'rpc' }) as any;
+    expect(cut.gates.surfaceOpen).toBe(false);                               // 工程覆盖裁光端点，预演当场说得出
+    expect(cut.gates.blockers.filter((s: string) => /端点未开放/.test(s))).toHaveLength(1);
+    // 闸②两半分开报：rpc 总闸开着而**这颗的 surfaces 被裁光** ⇒ 文案指工具那一半（⛔ 让 agent 去拧总闸）
+    expect(cut.gates.surfaceGlobalOpen).toBe(true);
+    expect(cut.gates.surfaceInTool).toBe(false);
+    expect(cut.gates.blockers[0]).toContain('契约里这颗的 surfaces');
+    // agent 那条线：契约给五颗诊断工具开了 mcp，但**总闸关着**＝今天进不来（放开＝改契约一行，这正是统一层的杠杆）
+    const mcp = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool', { tool: 'sys.selfCheck', surface: 'mcp' }) as any;
+    expect(mcp.gates.surfaceInTool).toBe(true);
+    expect(mcp.gates.surfaceGlobalOpen).toBe(false);
+    expect(mcp.gates.blockers[0]).toContain('surfacesGlobal');
+    // 词表外的 surface 实参⛔ 静默采纳（那会把"我写错了"读成"那条线不通"）：回落并如实记一笔
+    const typo = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool', { tool: 'fs.rename', surface: 'ipc' }) as any;
+    expect(typo.asked.surfaceFallback).toBe(true);
+    expect(typo.asked.surface).toBe('ui');                                   // 按调用方自己那条判
+    expect(typo.gates.surfaceOpen).toBe(true);
+    const ghost = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool', { tool: 'no.such' }) as any;
+    expect(ghost.card).toBeNull();
+    expect(ghost.contract).toBeNull();
+    expect(ghost.gates.blockers.filter((s: string) => /未登记|契约缺账/.test(s))).toHaveLength(2);   // 闸①双查的两半各说一句
+    await flush();
+    const log = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.readAudit', { limit: 200 }) as any;
+    expect(log.lines.filter((l: any) => l.tool === 'fs.rename')).toEqual([]);                       // 正件：预演⛔ 碰 handler
+    expect(log.lines.some((l: any) => l.tool === 'sys.describeTool' && l.verdict === 'auto')).toBe(true);
+  });
+
+  it('D2 sys.selfCheck：挂账⛔ 算故障，而档案告警/覆盖被拒/缓冲三张脸必进 findings', async () => {
+    await boot({ folders: ['D:/z2'], seed: { 'D:/z2/.vv/project.json': '{"kind":"project"}' } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    await flush();                                                            // 先清缓冲：pending 不许是别的用例留下的
+    const s = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.selfCheck', { probe: { tool: 'fs.rename', args: {} } }) as any;
+    expect(s.audit.ready).toBe(true);
+    expect(s.audit.pending).toBe(0);
+    expect(s.drift.registeredOffContract).toEqual([]);                        // 契约说谎那一半＝真故障
+    expect(s.drift.pendingHandlers.length).toBeGreaterThanOrEqual(3);         // 那三颗由命令直调＝挂账（状态），⛔ 让 verdict 响
+    expect(s.contractTools).toBeGreaterThanOrEqual(s.registeredTools);        // 方向也钉住：挂账只可能"契约多"，反向是漂移
+    expect(s.verdict).toBe('ready');
+    expect(s.findings).toEqual([]);
+    expect(s.probe.verdict).toBe('blocked');                                  // probe＝顺手预演一颗，与 D1 同尺
+    expect(s.probe.missingArgs).toEqual(['uri', 'newName']);
+
+    // 档案告警：绑了不存在的 profile＝该调用方 fail-closed；ui 未绑＝照旧放行（所以这颗自检打得响）
+    await boot({ folders: ['D:/z3'], seed: {
+      'D:/z3/.vv/project.json': '{"kind":"project"}',
+      'D:/z3/.vv/api.grants.json': JSON.stringify({ schemaVersion: '0.3.1', subjects: { 'mcp:agent': 'ghost' }, profiles: {} }),
+    } });
+    const g = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.selfCheck', {}) as any;
+    expect(g.grants.present).toBe(true);
+    expect(g.grants.active).toBe(true);
+    expect(g.grants.bound['mcp:agent']).toEqual([]);                          // fail-closed 落进读数＝白名单空
+    expect(g.grants.notes.join('')).toContain('查无此档案');
+    expect(g.verdict).toBe('attention');
+    expect(g.findings.some((f: string) => /授权档案/.test(f))).toBe(true);
+
+    // 覆盖被拒：动固有属性＝整份拒绝；"沿用默认账"这句话现在有读数可证（⛔ 只活在会消失的弹窗里）
+    await boot({ folders: ['D:/z4'], seed: {
+      'D:/z4/.vv/project.json': '{"kind":"project"}',
+      'D:/z4/.vv/api.json': JSON.stringify({ tools: { 'host.getConfig': { perm: 'write' } } }),
+    } });
+    const o = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.selfCheck', {}) as any;
+    expect(o.override.present).toBe(true);
+    expect(o.override.rejects.join('')).toContain('固有属性');
+    expect(o.override.narrowed).toBe(false);
+    expect(o.verdict).toBe('attention');
+    expect(await executeTool(ctx(PROD) as never, RPC_CALLER, 'host.getConfig', {})).toBeTruthy();  // 默认账照旧放行
+  });
+
+  it('阶段三·换工程＝生效契约从默认账重算：同一颗 rpc 调用前一扇被裁、后一扇放行', async () => {
+    // 为什么单独立一颗：`loadProjectApiOverride` 修前只在"读到覆盖档"时重算 merged——没有覆盖档的那扇
+    // 沿用**上一扇的收窄**，而句头注写着"文件不存在＝静默"。自检把 narrowed 暴露成读数后这格才看得见。
+    const { executeTool } = await import('../../extension/src/toolRegistry');
+    await boot({ folders: ['D:/y1'], seed: {
+      'D:/y1/.vv/project.json': '{"kind":"project"}',
+      'D:/y1/.vv/api.json': JSON.stringify({ tools: { 'host.getAllBindings': { surfaces: [] } } }),
+    } });
+    await expect(executeTool(ctx(PROD) as never, RPC_CALLER, 'host.getAllBindings', {})).rejects.toThrow(/\[API_SURFACE_DENIED\]/);
+    await boot({ folders: ['D:/y2'], seed: { 'D:/y2/.vv/project.json': '{"kind":"project"}' } });   // 这扇⛔ 覆盖档
+    const out = await executeTool(ctx(PROD) as never, RPC_CALLER, 'host.getAllBindings', {});
+    expect(typeof out).toBe('object');                                        // 收窄没跟着搬家
+  });
+
+  it('阶段三·一颗调用一个号：ToolError.traceId == 账上那行 == RPC 回包那颗（拿"被拒"两字能反查到闸）', async () => {
+    const grants = JSON.stringify({ schemaVersion: '0.3.1', subjects: { ui: 'builder' }, profiles: { builder: ['host.getConfig'] } });
+    await boot({ folders: ['D:/z5'], seed: { 'D:/z5/.vv/project.json': '{"kind":"project"}', 'D:/z5/.vv/api.grants.json': grants } });
+    const { executeTool, ToolError } = await import('../../extension/src/toolRegistry');
+    const { dispatchAndReply } = await import('../../extension/src/dispatch');
+    let caught: any;
+    try { await executeTool(ctx(PROD) as never, RPC_CALLER, 'host.copyToSandbox', { files: [] }); } catch (e) { caught = e; }
+    expect(caught).toBeInstanceOf(ToolError);
+    expect(caught.code).toBe('NOT_GRANTED');
+    expect(String(caught.traceId)).toMatch(/^[0-9a-f]{8}$/);
+    const got: any[] = [];
+    await dispatchAndReply(ctx(PROD) as never, (m) => { got.push(m); }, { id: 'q1', method: 'copyToSandbox', args: { files: [] } });
+    await dispatchAndReply(ctx(PROD) as never, (m) => { got.push(m); }, { id: 'q2', method: 'getConfig', args: {} });
+    expect(got[0].ok).toBe(false);
+    expect(got[0].error).toContain('API_NOT_GRANTED');
+    expect(got[0].trace).toBeTruthy();
+    expect(got[0].trace).not.toBe(caught.traceId);                            // 两次调用＝两颗号（⛔ 复用，也⛔ 落账侧现算）
+    expect(got[1].ok).toBe(true);                                             // 白名单里那颗照旧通
+    expect(got[1].trace).toBeUndefined();                                     // 放行那格⛔ 造号
+    await flush();
+    const vs = dayFile('D:/z5');
+    for (const t of [caught.traceId, got[0].trace]) {
+      const line = vs.find((v: any) => v.traceId === t);
+      expect(line?.verdict).toBe('not-granted');
+      expect(String(line?.note)).toContain('API_NOT_GRANTED');
+      expect(line?.subject).toBe('ui');                                       // 身份/端点两颗槽也顺带对账
+      expect(line?.channel).toBe('rpc');
+    }
+    expect(vs.filter((v: any) => v.traceId).length).toBeGreaterThan(1);
   });
 });
