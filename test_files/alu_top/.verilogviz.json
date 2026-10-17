@@ -1,0 +1,10 @@
+{
+  "circuits": [],
+  "bindings": {
+    "alu_core.djs::adder": "adder.djs",
+    "multiplier.djs::adder": "adder.djs",
+    "adder.djs::full_adder": "full_adder.djs",
+    "alu_core.djs::multiplier": "multiplier.djs",
+    "fsm_controller.djs::counter": "counter.djs"
+  }
+}
