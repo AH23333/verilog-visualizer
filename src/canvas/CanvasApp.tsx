@@ -25,6 +25,8 @@ import { exportSVG, exportCircuitJSON, exportNetlistVerilog } from '../lib/expor
 import { collectToFiles, stripBoundInlineJson, setBindingPolicy } from '../lib/gateSystem';
 import { collectLegacyItems, markLegacyMigrated, dismissLegacyMigration } from './legacyMigration';
 import { useVscodeTheme } from '../hooks/useVscodeTheme';
+import PartSearchDialog from '../components/PartSearchDialog';
+import { partSearchRegistry } from '../lib/partSearch';
 
 const DEFAULT_SPEED_MS = 10;
 
@@ -60,8 +62,20 @@ export default function CanvasApp() {
     return () => window.removeEventListener('keydown', onKey);
   }, [previewSub]);
 
-  const viewJson = useMemo(() => buildViewJson(circuitJson, viewPath), [circuitJson, viewPath]);
-  // 新编译（circuitJson 换代）→ 回到顶层模块
+  // ---- Ctrl+F 部件搜索：挂载点随旧 React 壳退役过一次（源仍由 Canvas 注册在 partSearchRegistry，
+  // 只是没人再开过这颗弹窗——r135-part-search-gate 的 [c1] 就是钉这一格的）。----
+  const [partSearchOpen, setPartSearchOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); setPartSearchOpen(true); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const viewJson = useMemo(() => buildViewJson(circuitJson, viewPath), [circuitJson, viewPath]);  // 新编译（circuitJson 换代）→ 回到顶层模块
   useEffect(() => { setViewPath([]); }, [circuitJson]);
   // 显示中的电路变了（重编译/钻取）→ 清空波形历史
   useEffect(() => { setWaveEpoch((e) => e + 1); }, [viewJson]);
@@ -445,6 +459,10 @@ export default function CanvasApp() {
       {/* 画布右键菜单（旧 App.tsx 同款：点外/Esc 关闭，ContextMenu 组件自带） */}
       {contextMenu && (
         <ContextMenu x={contextMenu.x} y={contextMenu.y} items={contextMenu.items} onClose={closeContextMenu} />
+      )}
+
+      {partSearchOpen && (
+        <PartSearchDialog open onClose={() => setPartSearchOpen(false)} getSource={() => partSearchRegistry.get()} />
       )}
     </div>
   );

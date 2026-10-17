@@ -33,6 +33,7 @@ import { FsmTableModal } from './FsmTableModal';
 import { MemPortsModal } from './MemPortsModal';
 import IOPanel, { type IOHost } from './IOPanel';
 import PromptDialog from './PromptDialog';
+import PartSearchDialog from './PartSearchDialog';
 import ExprGenDialog from './ExprGenDialog';
 import ConfirmDialog from './ConfirmDialog';
 import {
@@ -191,6 +192,8 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
   const [drc, setDrc] = useState<DrcIssue[]>([]);
   const [settings, setSettings] = useState<SandboxSettings>(() => settingsStore.getSandboxSettings());
   const [innerCell, setInnerCell] = useState<any>(null);
+  /** Ctrl+F 部件搜索（数据源走 `partSearchRegistry`：谁在台上谁注册，弹窗只跟总线讲话） */
+  const [partSearchOpen, setPartSearchOpen] = useState(false);
   // 注释编辑态（用户裁决 2026-10-10）：双击空白创建并立即输入；双击已有注释二次编辑。
   // isNew 标记决定「提交时内容为空 → 直接删除便签」，避免留下空壳垃圾。
   const [noteEdit, setNoteEdit] = useState<{ id: string; isNew: boolean } | null>(null);
@@ -2236,6 +2239,8 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       if (mod && k === 'v') { pasteClipboard(); return; }
       if (mod && k === 'd') { e.preventDefault(); duplicateSelection(); return; }
       if (mod && k === 's') { e.preventDefault(); handleSave(); return; }
+      // Ctrl+F＝部件搜索（用户裁决：画布聚焦时归部件搜索；套壳里编辑器是原生的，⛔ 抢这条键）
+      if (mod && k === 'f') { e.preventDefault(); setPartSearchOpen(true); return; }
       if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); return; }
       if (mod && k === 'y') { e.preventDefault(); redo(); return; }
       if (mod && k === 'r') { e.preventDefault(); rotateSelection(e.shiftKey ? -90 : 90); return; }
@@ -3351,6 +3356,13 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
             cell={memViewCell}
             circuitRef={circuitRef}
             onClose={() => { setMemViewCell(null); commit(); }}
+          />
+        )}
+        {partSearchOpen && (
+          <PartSearchDialog
+            open
+            onClose={() => setPartSearchOpen(false)}
+            getSource={() => partSearchRegistry.get()}
           />
         )}
         {memPortsDlg && paperRef.current?.model.getCell(memPortsDlg) && (
