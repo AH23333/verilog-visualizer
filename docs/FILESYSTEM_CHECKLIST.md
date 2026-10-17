@@ -189,6 +189,47 @@
 | P7 | 配置项 `verilogViz.bindings.policy` 切到 `strict` 后重编译 | 未录入的实例⛔ 走同名兜底，当场点名（与 `auto` 的两面对得上） | X 层：R152「录入即权威」那一族臂 | 未跑（配置界面改动后的即时生效需真壳） |
 | P8 | 手编 `.verilogviz.json` 保存 | 编译面板即重算（⛔ 要重按 F5）；而画布那侧即时生效 | X 层：「手编 `.verilogviz.json` 保存 ⇒ 编译面板即重算」臂 | 未跑（保存事件在真壳里的时序） |
 
+---
+
+## 真机读数（R155 夜，2026-10-18 05:24–05:28 UTC+8·探针工作区 `D:\vv-studio\probe-ws`）
+
+**跑法**（⛔ 动他那份 `D:\vv-studio\profile`）：`pnpm build` → 直接拉我们自己的二进制
+`D:\vv-studio\vscode\.build\electron\Verilog Visualizer.exe . D:\vv-studio\probe-ws
+--extensionDevelopmentPath=…\extension --user-data-dir=D:\vv-studio\probe-profile --disable-gpu --no-sandbox`，
+GUI 用 Computer Use 点，读数取屏幕 + 盘上审计账（两路成对）。
+⚠ 起进程前数过别人的实例＝**0 颗**（这台机器当时只有 Qoder 在跑）。
+⚠ 从代理 shell 起真机**必须 `env -u ELECTRON_RUN_AS_NODE`**（设成空串⛔ 等于取消——Electron 只看它在不在）：
+第一发就栽在 `The requested module 'electron' does not provide an export named 'Menu'`，
+症状与 `docs/REAL_HOST_E2E.md` 记的那次一模一样。
+
+| 屏 | 看见的（原样） | 判 |
+|---|---|---|
+| 活动栏 | 我们的两块板都在：**代码编译**、**沙盒编辑**（与 资源管理器/搜索/源控/运行/扩展 并列） | 通 |
+| 资源管理器 | `probe-ws` 下 `.vv/`、`.verilogviz.json`、7 颗 `.djs`、4 颗 `.v`、`probe.sv`、`probe.vh` 全列出，图标按域分（`.djs` 与 `.v` 不同符） | 通（A3/B1/B2 上屏） |
+| 编译面板空态 | 「还没有电路」+「在 .v 编辑器标题栏点『编译并查看电路』（Ctrl+F5），电路会显示在这里。」——**整句中文** | 通（V2 那族已修的形状） |
+| 点 `adder.v` → Ctrl+F5 | 文件在原生文本编辑器打开（标题 `adder.v`），资源管理器那一行右侧亮 **1** 的错误角标，状态栏 `✕ 1` | 通 |
+| Problems 面板 | 一行：`[BINDING_MISSING] 模块「full_adder」（在 adder.v）未录入绑定配置：右键「写全配置」或用绑定面板录制。` 源＝`Verilog Viz`，位置＝行 15 列 1 | 通（R152 绑定权威上屏＋**补救话**＋**行列精确**） |
+| 点 `adder.djs` | 自定义编辑器（⛔ 文本态）：画布真渲染出门/线/IO/子电路实例，左palette 九组、工具条 暂停/单步/速度/波形/保存/自定义门/表达式生成/SVG/综合网表/JSON | 通（B2/C2 上屏） |
+| 画布上的绑定提示条 | 「4 个子部件实例靠同名兜底解析，未录入绑定配置：full_adder、full_adder、full_adder、full_adder」旁边**就有一颗「写全配置」按钮** | 通（补救动作⛔ 要用户手改表——他那条"⛔ 额外步骤"规矩的形状） |
+| 沙盒编辑三板块 | 文件＝7 颗 `.djs`（带 KB）；部件 Parts＝同 7 颗；层次结构 Hierarchy＝`full_adder  adder.djs` | 通（H 域上屏） |
+| 盘上审计 | `probe-ws/.vv/audit/trace-2026-10-17.jsonl` 两行：`host.getConfig auto`、`host.publishProblems auto items:array[1]|143B`（⛔ 正文，只记形状） | 通（§9.5 真壳落盘） |
+
+**这一轮⛔ 判到的（要说清，⛔ 让下一批以为 P 表被覆盖了）**：P1（`.vh` 三处入口）/P2（`.sv/.vh` 在模块与层次两块板）
+/P3（旧 localStorage 档的迁移横幅）/P5（复制纯 `.v` 目录⛔ 建空表）/P6（复制到沙盒的落盘+双击）
+/P7（policy=strict）/P8（手编表保存即重算）＝**仍未跑**。
+本轮点的是"两模式可见＋编译报错链＋`.djs` 编辑器＋沙盒三板块"这一组，与 P 表**部分重叠⛔ 相等**。
+
+**新挂账（这一轮顺手抓到的两颗）**：
+- **X22 首启向导挡在画布前面**：全新 `--user-data-dir` 第一次起我们的二进制，Workbench 会弹
+  「欢迎使用 VS Code／登录以使用 GitHub Copilot」（下一步还是主题选择「自定义」），
+  要人**手动点掉**才看得见我们的面板。按"任何'请重启/请确认'都算缺陷"这条＝**缺陷**：
+  修法在基座侧（默认 `workbench.startupEditor: "none"` + 我们这份 product 里关掉登录/Copilot 提示），
+  ⛔ 让用户第一次打开就先学一遍微软的向导。**未修**（属基座分叉，另批做）。
+- **X23 探针夹具的绑定表只覆盖 `.djs::` 前缀键**：`probe-ws` 那份 `.verilogviz.json` 是从 `test_files/alu_top/`
+  整颗拷来的，里面只有 `adder.djs::full_adder` 这类键，⛔ `adder.v::full_adder` ⇒ 编译 `adder.v` 必报
+  BINDING_MISSING。**这是夹具的账，⛔ 记在产品头上**（也正因如此，这一发意外把"报错链＋补救按钮＋Problems 行列"
+  三条一起验了）。下一轮要跑 P1/P6 之前，先把探针工作区的 `.v` 侧键补上。
+
 
 | 修订记录 | 日期 | 内容 |
 |---|---|---|
@@ -197,3 +238,4 @@
 | v3 | 2026-10-17 | R153：X8+X17 同根闭（域界一颗主人）；X16 迁移丢 .djs 闭；新挂账 X18/X19；A3/C1 证据改名引用（行号会漂） |
 | v4 | 2026-10-17 | R153 深度自检：X20（自动同名按构造命不中）／X21（根相对名七份）落账并闭；台架 12→16 臂＋名册尺；vitest 242/242 |
 | v5 | 2026-10-18 | R154：X18 闭（两半 + 接缝臂 + `bin/C5/bench_c5_x18.py` 五臂 0 不合格）；新增「真机点验单 P1-P8」；全量跑批读数 73 格＝GREEN 12 / RED 61（族谱四支＋逐颗四颗）写进 `docs/GATE_LAYERS.md` 第⑤节；vitest 250/250、`pnpm build` ✓ |
+| v6 | 2026-10-18 | R155：真机一轮（探针工作区＋Computer Use＋盘上账对屏）读数入档＝上面那节；新挂账 **X22**（首启 VS Code 欢迎/Copilot 登录向导挡画布，基座侧修）与 **X23**（探针夹具的 `.v::` 键缺失，是夹具的账⛔ 产品的）；同批 `pnpm test:real` 真宿主 12 步全绿、第二次全量跑批 74 格＝GREEN 30 / RED 44 |

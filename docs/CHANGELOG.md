@@ -53,6 +53,12 @@
   生成工具数 **24 → 35**（registry 收编 9 颗 RPC + 新增 2 颗诊断）。
 - `bin/C4/bench_c4_lock.py` **11 臂 0 不合格**（M9 只响新证人／M10 四把尺一起响＝新证人的正件方向）＋还原逐字节相同；
   `bin/C5/bench_c5_agent_tiers.py`（新台架）**6 臂 0 不合格**，名册尺 4 颗新证人 0 缺。
+- **真宿主（我们自己的二进制 `Verilog Visualizer.exe`）E2E 12 步全绿**（`pnpm test:real`，退出码 0）：
+  新加的那一步验的是真机里 `host.getAllBindings` 也走 `executeTool`、幽灵 method 真进账、
+  且调用方手里那颗 `traceId` 能在**盘上**账本里查到（409ms）；`registeredTools` 下界从 24 提到 **35**
+  ＝真宿主那条线也登记了 RPC 九颗（`realSuite` 过去⛔ 调 `registerRpcTools`——两处登记清单不一致）。
+- 第二次全量跑批（74 格）＝**GREEN 30 / RED 44 / ENVRED 0**（波次一前＝12/61）；红的归族与"单跑对照"
+  推翻"跑批超载"假设那格，全部写在 [GATE_LAYERS.md](./GATE_LAYERS.md) ⑤-补3。
 - 跑批波次一之后的第二批（74 颗）仍在跑；已知红族＝17 颗编译侧档往浏览器 `import('/src/store/fileStore.ts')` 塞文件
   （该模块已随旧 React UI 退役＝404 早退），波次二逐颗换 `tests/_ui.cjs` 的 `pushCompile/waitCompiled`。
 

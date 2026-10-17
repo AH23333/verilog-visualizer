@@ -419,3 +419,24 @@ describe('根相对名一颗主人 rootRel（R153 深度自检：本仓曾有七
     expect(out.endsWith('other/x.v')).toBe(true);
   });
 });
+
+describe('真宿主 E2E 启动器的那两颗 dev 旗标（kebab 会被基座静默丢弃）', () => {
+  // 为什么这颗要存在：基座 argv 只认 `extensionDevelopmentPath`/`extensionTestsPath`（驼峰），
+  // kebab 别名被**静默丢掉**——不报错、不开测试通道，整层真机测试死了 8 天没人看见（R139→R154）。
+  // ⚠ 尺⛔ 扫全文：启动器文件头那段注释正是**解释这件事**的，里面写着 kebab 原形——
+  //   拿整档做"禁项"判定＝把尺撞在自己的说明上（名册 308 同族）。所以只吃 `const args = [...]` 那一块。
+  const src = fs.readFileSync(path.join(ROOT, 'extension/test-real-launch.mjs'), 'utf8');
+  const argsBlock = /const args = \[([\s\S]*?)\];/.exec(src)?.[1] ?? '';
+
+  it('args 里两颗都是驼峰形（⛔ kebab），且这块⛔ 是正则失配读出来的空串', () => {
+    expect(argsBlock.length).toBeGreaterThan(20);                 // 失配＝空串，那下面两条会假绿
+    expect(argsBlock).toContain("'--extensionDevelopmentPath'");
+    expect(argsBlock).toContain("'--extensionTestsPath'");
+    expect(argsBlock).not.toMatch(/--extension-(development|tests)-path/);
+  });
+
+  it('第一个位置参数是 app 目录（源码构建形状：%CODE% . %*），工作区紧随其后', () => {
+    const first = argsBlock.split(',').map((s) => s.trim()).filter(Boolean)[0];
+    expect(first).toBe("'.'");
+  });
+});
