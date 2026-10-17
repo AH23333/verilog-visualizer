@@ -48,11 +48,16 @@ const profile = path.join(os.tmpdir(), `vv-real-profile-${Date.now()}`);
 
 // 3) 拉真机（⚠ 源码构建形状：**第一个位置参数必须 app 目录 `.`**（code.bat 同款 %CODE% . %*）；
 //    cwd=源码仓根；env 复刻 code.bat；`--disable-extension=<id>` 精确压掉内置旧副本防双载）
+// ⚠ 那两颗 dev 旗标**必须写驼峰**：studio 基座 `src/vs/platform/environment/node/argv.ts:167/169`
+//   登记的是 `extensionDevelopmentPath` / `extensionTestsPath`，而 kebab 别名（`--extension-tests-path`
+//   那种）在这份 argv 里⛔ 存在 ⇒ 传 kebab 的结果是"扩展与测试模块都⛔ 被加载"：
+//   真机窗口正常开（window1/exthost.log 只激活 vscode.git/github/emmet 那批内置扩展），
+//   150 秒后 `exit=2`「结果文件不存在」——症状长得像"我们的测试挂了"，其实是旗标被静默丢弃。
 const args = [
   '.',
   ws,
-  '--extension-development-path', path.join(repo, 'extension'),
-  '--extension-tests-path', path.join(repo, 'extension', 'dist', 'test-real.cjs'),
+  '--extensionDevelopmentPath', path.join(repo, 'extension'),
+  '--extensionTestsPath', path.join(repo, 'extension', 'dist', 'test-real.cjs'),
   '--user-data-dir', profile,
   '--disable-extension', 'local.verilog-visualizer-vscode',
   '--disable-workspace-trust',
