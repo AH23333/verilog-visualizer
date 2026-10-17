@@ -1296,3 +1296,32 @@ HEAD 02b56e3 经 `git stash -u` 实测 171/171+tsc 0——**移交良好、WIP �
 4. 真机点验（两 Wave 落地后肉眼过）：Problems 跳行准头、绑定面板重开不尸解、两「文件」树右键与 Explorer 手感一致。
 
 *（卷六十完 · 绑定报错链三雷根除、假成功绑定拦下、文件系统归真资源管理器形态；agent 21 连未推）*
+
+# 卷六十一 · 文件系统战役收口：批次A/B + 深度审查六缺陷 + F 族拖拽落地（2026-10-17）
+
+> 承卷六十。上一代理在「批次B 中途」断线（工作树半成品：G1 引擎半截、C9/C10/C11 命令+菜单已挂、台架注册表钉没跟上=基线 188/189 一红）。本卷：全量深度审查（不可信任前人质量为前提）→ 修六缺陷 → 续完批次B → 全绿 200/200。
+
+## 一、深度审查战果（「不可完全相信之前的工作质量」的实证）
+1. **#12 跨表漏迁（最重要）**：文件改名/删除的绑定迁移只扫 `dirChain(oldFull)` 祖先链——任何目录的表用 `../` 相对写法指到这颗文件就漏（lib 表值 `../fsm.djs`）。⇒ 新增 **migrateFileRef**（全表层精确身份扫），与 migratePrefix 共用 tableDirsOf，**G1 三路（文件/目录/移动）真正共源**。
+2. **#10/#11 G7 逃逸**：renameFile 与 newVerilogFile/newSandboxFile 裸收输入框文本，`../` 可把文件写出工作区 ⇒ naming.ts 增 **sanitizeNameInput**（段级消毒，single=改名单段语义），三处接上。
+3. **#13 空态崩**：CodeFilesTree 的 hint 节点走 `uriOfRel(n.name!)`，undefined.split 当场 TypeError ⇒ 早退守卫。
+4. **#14 原地白跑**：moveToFile 同目录"移动"会 (n) 顺延改名（parts→parts (2)）⇒ destRel===srcDir 短路。
+5. **#15 深度不一**：collectTableDirs depth=8 vs A12 口径 16 ⇒ 统一 16。
+6. **台架两雷**：注册表钉没跟新命令（188/189 假红根因之一）；performRename 用改名后 target stat 判目录——桩 rename 不回填 dirs 表 ⇒ 判成文件走错迁移路。修法：**动手前先 stat 源**（真宿主也更稳）。
+
+## 二、批次B 落地清单
+- **G1 引擎**：migratePrefix（目录前缀族群：值/`宿主::`前缀键/根表 circuits；随盘搬走的表跳过）+ migrateFileRef（文件精确身份）+ deleteFile 双路接通（D4/D5/C9 共源）。
+- **C9/C10/C11/D7**：moveTo（QuickPick scanDirChoices→(n) 去重→performRename）、copyPath（绝对路径进剪贴板+根相对告示）、revealInOS（平台 revealFileInOS）；12 条菜单两树×文件/目录。
+- **F 族拖拽**：FileTreeDragAndDrop（trees.ts）——树内多选移动（moveToFile 共源）、域 MIME 圈死（F3）、OS DataTransferFile 拖入（F4，落盘 (n)+域过滤+E6 同口径）、自环拒；G3/G4 完成后统一刷树+广播。⚠ 本仓 @types/vscode(1.140) 拖拽 API 是 **TreeViewOptions.dragAndDropController 构造参数**（⛔ TreeView 可写属性，TS2339 实测）。
+- **H1（Q4 默认裁决：做）**：SandboxTree circuits 项挂 circuit-board ThemeIcon。
+- **台架**：+11 钉（G1 三路/自环/原地/消毒×2/菜单 12 条/C10C11/拖拽语义×2/H1）；桩增补 ThemeIcon/DataTransfer 家族/createTreeView 台账/TreeItem.iconPath。**200/200 + root build + extension tsc/esbuild 全绿**。
+
+## 三、裁决与遗留
+- **Q1–Q5 默认裁决**（代理代定、可推翻）：Q1 维持单击打开 / Q2 F5 暂缓挂账 / Q3 目录迁移+多选并入（已做）/ Q4 角标做（已做）/ Q5 维持不承诺多根。全部在 FILESYSTEM_CHECKLIST.md v2 补记④。
+- 遗留：X8（.vh 编译入口）车载测试；F5 挂账；真机点验单待用户；r44/r62 幽灵 fileStore 债未动；push 21+3 连待令。
+
+## 四、方向（用户 2026-10-17 问）：统一 API 层 + 规范 API 文档
+- 用户判断「系统过于混乱」，问是否直接开建统一调用层（同时解决 VS Code 解耦与 agent 调用前提），并要求**规范的 API 文档**。
+- 代理初步意见（待专项展开）：**是的，但形态是「收编」不是「另起」**——现有 dispatch(RPC)+apiSurface(契约)+apiGrants(授权)+apiAudit(审计) 已是半个调用层；乱源=树命令直插 sandboxFiles 绕过该边界。统一=建 toolRegistry（schema+域+审批半径）+ executeTool 单执行器，树命令与 webview RPC 与未来 agent 同走一道门；API 文档从 registry **生成**（单一真源），⛔ 手写文档与实现漂移。文件系统九工具（刚 stabilized 的这批）就是第一组 tool。
+
+*（卷六十一完 · 文件系统全绿收口、审查六缺陷闭账、F 族拖拽+G1 三路共源在岗；API 层立项待用户拍板）*
