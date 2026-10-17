@@ -58,7 +58,7 @@ export function __resetRegistryForTest(): void { registry.clear(); }
 
 /** 带码错误：调用方（webview/agent）按 code 机读，message 人读。 */
 export class ToolError extends Error {
-  constructor(readonly code: 'NOT_REGISTERED' | 'SURFACE_DENIED' | 'NOT_GRANTED' | 'NOT_APPROVED', message: string) { super(message); }
+  constructor(readonly code: 'NOT_REGISTERED' | 'SURFACE_DENIED' | 'NOT_GRANTED' | 'NOT_APPROVED' | 'BAD_ARGS', message: string) { super(message); }
 }
 
 /** 工具成功执行后的宿主联动（extension.ts 订阅：sideEffects≠none ⇒ refreshAllTrees） */
@@ -85,7 +85,7 @@ export async function executeTool(
     const ref = knownId ? (contract.tools[knownId]?.ref ?? knownId) : id;
     auditToolCall(context, { tool: knownId, ref, subject: caller.subject, verdict, ms: Date.now() - t0, args, note });
   };
-  const fail = (code: 'NOT_REGISTERED' | 'SURFACE_DENIED' | 'NOT_GRANTED' | 'NOT_APPROVED', verdict: AuditVerdict, msg: string, note?: string): never => {
+  const fail = (code: ToolError['code'], verdict: AuditVerdict, msg: string, note?: string): never => {
     audit(verdict, note);
     throw new ToolError(code, msg);
   };
@@ -93,6 +93,11 @@ export async function executeTool(
     return fail('NOT_REGISTERED', 'not-registered',
       `[API_NOT_REGISTERED] ${id} 未登记（registry=${!!def} contract=${!!ct}——两边必须一一对齐）`,
       `registry=${!!def} contract=${!!ct}`);
+  }
+  // §15 设计纪律「每接口 schema+校验」的最小实现：required 实参在场校验（完整 JSON Schema 校验挂账批次三）。
+  const missing = (def.schema.required ?? []).filter((k) => args?.[k] === undefined);
+  if (missing.length) {
+    return fail('BAD_ARGS', 'error', `[API_BAD_ARGS] ${id} 缺必填实参：${missing.join(', ')}`, `missing=${missing.join(',')}`);
   }
   if (!canSurface(id, caller.surface)) {
     return fail('SURFACE_DENIED', 'surface-denied', `[API_SURFACE_DENIED] ${id}：端点未对 ${caller.surface} 开放（契约工具账）`);

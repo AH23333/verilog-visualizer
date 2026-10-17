@@ -245,7 +245,8 @@ export async function togglePartRole(context: vscode.ExtensionContext, uri: vsco
   await writeMeta(context, meta);
 }
 
-function pathRel(root: vscode.Uri, uri: vscode.Uri): string {
+/** 根相对 posix 名（绑定链/目录表的定位键）——toolsDomain 等外层也要用，导出。 */
+export function pathRel(root: vscode.Uri, uri: vscode.Uri): string {
   const rootFs = root.fsPath.replace(/[\\/]+$/, '');
   return uri.fsPath.slice(rootFs.length + 1).replace(/\\/g, '/');
 }

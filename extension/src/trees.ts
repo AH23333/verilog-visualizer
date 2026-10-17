@@ -179,7 +179,7 @@ function childrenOfLayer(
   const inLayer = (rel: string) => rel.startsWith(prefix) && !rel.slice(prefix.length).includes('/');
   const dirs = (tree.folders || []).filter(inLayer)
     .map((rel) => rel.slice(prefix.length))
-    .sort((a, b) => a.localeCompare(b))
+    .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))   // 自检修复：与文件侧同走 numeric（`x 10` 在 `x 2` 后）
     .map((rel): Node => ({ label: rel, desc: '', dir: prefix + rel, collapsible: vscode.TreeItemCollapsibleState.Collapsed }));
   const files = tree.files.filter((f) => inLayer(f.name))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))

@@ -15,10 +15,10 @@ import { AUTOOPEN_ENV, isBuiltIntoThisApp, shouldAutoOpen } from './startupPolic
 import { ModuleTree, HierarchyTree, SandboxTree, FileTreeDragAndDrop, openAtModule, getActiveSandboxDocUri,
   CodeFilesTree, SandboxPartsTree, SandboxHierarchyTree, onActiveSandboxDocChange } from './trees';
 import { DOC_VIEW_TYPE, VvDocProvider } from './customEditors';
-import { compileAndShow, recompileOnSave, flushPendingCompile, closureOf, type EnsurePanel } from './compilePanel';
+import { compileAndShow, recompileOnSave, flushPendingCompile, type EnsurePanel } from './compilePanel';
 import { newVerilogFile, newSandboxFile, newSandboxFolder, openExamples } from './examples';
 import {
-  openDoc, togglePartRole, getCircuitsSet, openBindingConfig, materializeBindings,
+  openDoc, togglePartRole, getCircuitsSet, openBindingConfig,
   collectInstanceHits, completeFromHits, normalizeBindingsDisk, META_FILE,
   scanDirChoices, importFilters, describeDeletion, ensureDirsMeta
 } from './sandboxFiles';
@@ -27,10 +27,10 @@ import { loadApiContract, loadProjectApiOverride } from './apiSurface';
 import { loadProjectGrants } from './apiGrants';
 import { initProject } from './vvProject';
 import { flushAudit } from './apiAudit';
-import { parseVerilogInstances } from './verilogParseLite';
 import { uniqueName } from './naming';
 import { executeTool, CALLER_UI, onToolExecuted } from './toolRegistry';
 import { registerFilesystemTools } from './toolsFs';
+import { registerDomainTools } from './toolsDomain';
 import { ProjectStore, type FsLike } from './projectStore';
 
 const VIEW_TYPE = 'verilogVisualizer';
@@ -43,6 +43,7 @@ const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): 
 
 export function activate(context: vscode.ExtensionContext) {
   registerFilesystemTools();   // 统一调用层批次一：文件系统十工具上账（幂等）
+  registerDomainTools();       // 批次二：bindings/circuits/res/compile/sys 四族十四工具（§15 范式）
   const storeFactory = () => new ProjectStore(vscodeFsLike(projectRoot(context)), '@root');
   const moduleTree = new ModuleTree();
   const hierarchyTree = new HierarchyTree();
@@ -221,36 +222,15 @@ export function activate(context: vscode.ExtensionContext) {
       await openBindingPanel(context, uri);
     }),
 
-    // R144「固化绑定」：把当前**自动同名命中**且未录入的解析结果一键写进目录表（记录即权威的正方向）。
+    // R144「固化绑定」：机械体已上账为 bindings.materialize 工具（批次二）——命令=薄壳+告示。
     // 已录入的条目⛔ 覆盖（手编内容珍贵）；固化后行为不变——变的是"文件说的和画布做的终于对得上"。
     vscode.commands.registerCommand('verilogViz.materializeBindings', async (arg: any) => {
       const uri = menuUri(arg) ?? getActiveSandboxDocUri();
       if (!uri) { void vscode.window.showInformationMessage('先在文件（.djs 或 .v）上右键。'); return; }
-      const root = projectRoot(context);
-      const docRel = rel(root, uri);
-      let done: string[] = [];
-      if (/\.djs$/i.test(uri.fsPath)) {
-        const content = new TextDecoder().decode(await then(vscode.workspace.fs.readFile(uri)));
-        const cts = [...new Set(((JSON.parse(content)?.cells || []) as Array<{ type?: string; celltype?: string }>)
-          .filter((c) => c?.type === 'Subcircuit' && c.celltype).map((c) => String(c.celltype)))];
-        const names = new Set((await new ProjectStore(vscodeFsLike(root), '@root').listSandboxTree()).files.map((f) => f.name));
-        const dir = docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '';
-        done = await materializeBindings(context, docRel, cts, async (n) =>
-          names.has(`${dir}/${n}.djs`) ? `${dir}/${n}.djs` : names.has(`${n}.djs`) ? `${n}.djs` : null);
-      } else {
-        const job = await closureOf(context, uri);
-        const inJob = new Map(job.files.map((f) => [f.name.replace(/\.sv?$/i, ''), f.name]));
-        const inst = new Set<string>();
-        for (const f of job.files) for (const i of parseVerilogInstances(f.content)) if (i !== job.topModule) inst.add(i);
-        done = await materializeBindings(context, docRel, [...inst], async (n) => {
-          const hit = inJob.get(n);
-          return hit && /\.(v|sv)$/i.test(hit) && hit !== docRel ? hit : null;   // ⛔ 把自己录成部件
-        });
-      }
-      sandboxPartsTree.refresh(); sandboxHierarchyTree.refresh();
-      broadcastBindingsChanged();
-      void vscode.window.showInformationMessage(done.length
-        ? `已固化 ${done.length} 条自动绑定进该目录的 ${META_FILE}：${done.slice(0, 3).join('、')}${done.length > 3 ? '…' : ''}`
+      const docRel = rel(projectRoot(context), uri);
+      const r = await executeTool(context, CALLER_UI, 'bindings.materialize', { doc: docRel }).catch(() => undefined) as { done: string[] } | undefined;
+      void vscode.window.showInformationMessage(r?.done.length
+        ? `已固化 ${r.done.length} 条自动绑定进该目录的 ${META_FILE}：${r.done.slice(0, 3).join('、')}${r.done.length > 3 ? '…' : ''}`
         : '没有需要固化的自动绑定（未录入的要么已按记录走，要么无同名可解）。');
     }),
 

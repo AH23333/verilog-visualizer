@@ -2014,14 +2014,18 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     return b ? JSON.parse(new TextDecoder().decode(b)) : undefined;
   };
 
-  it('registry∧契约 一一对齐（孤儿双查）：fs.* 十工具双侧在账', async () => {
+  it('registry∧契约 一一对齐（孤儿双查，按族）：fs/bindings/circuits/res/compile/sys 六族双侧全在账', async () => {
     await boot({ folders: ['D:/p'] });
     const { listTools } = await import('../../extension/src/toolRegistry');
     const contract = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/api/vv-api.defaults.json'), 'utf8'));
     const regIds = listTools().map((t: any) => t.id);
     for (const id of regIds) expect(contract.tools[id], `registry 独苗（契约缺账）: ${id}`).toBeTruthy();
-    const fsIds = Object.keys(contract.tools).filter((k) => k.startsWith('fs.'));
-    expect([...fsIds].sort()).toEqual([...regIds].sort());
+    for (const fam of ['fs.', 'bindings.', 'circuits.', 'res.', 'sys.']) {
+      const ct = Object.keys(contract.tools).filter((k) => k.startsWith(fam)).sort();
+      const rg = regIds.filter((k: string) => k.startsWith(fam)).sort();
+      expect(rg, `契约族 ${fam} 有未注册孤儿`).toEqual(ct);
+    }
+    expect(regIds.filter((k: string) => k.startsWith('compile.'))).toEqual(['compile.closure']);   // compile 族只上只读分析
   });
 
   it('闸① not-registered：未登记 id 拒（[API_NOT_REGISTERED] 机读码）', async () => {
@@ -2077,7 +2081,13 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
   it('自检·空 uri 实参当场拒（argUri 守卫；⛔ Uri.file(\'\') 双界形状不可靠）', async () => {
     await boot({ folders: ['D:/p'] });
     const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
-    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.copyPath', {})).rejects.toThrow(/uri 实参为空/);
+    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.copyPath', { uri: '' })).rejects.toThrow(/uri 实参为空/);
+  });
+
+  it('闸①-b BAD_ARGS：缺必填实参（§15「schema+校验」最小实现，error verdict）', async () => {
+    await boot({ folders: ['D:/p'] });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.copyPath', {})).rejects.toThrow(/\[API_BAD_ARGS\]/);
   });
 
   it('自检·import 命令级链路回归：对话框 → fs.import 工具 → 落盘+告示（薄壳化后覆盖补回）', async () => {
@@ -2137,5 +2147,103 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
       throw new Error('API 文档已漂移：已再生成 docs/API_REFERENCE.md——复查内容后随代码一并提交（pnpm api:doc 同效）。');
     }
     expect(have).toBe(want);
+  });
+
+  it('批次二·sys.listTools：discoverTools——fs.move 带权威 schema；契约属性齐', async () => {
+    await boot({ folders: ['D:/p'] });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const out = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.listTools', {}) as any;
+    expect(out.tools.length).toBeGreaterThanOrEqual(24);
+    const mv = out.tools.find((t: any) => t.id === 'fs.move');
+    expect(mv.schema.required).toEqual(['src', 'destDir']);
+    expect(mv.perm).toBe('file-write');
+    expect(mv.surfaces).toEqual(['ui']);
+    expect(mv.requiresApproval).toBe(false);
+  });
+
+  it('批次二·sys.getStatus + sys.readAudit：状态账 + readLogs 读侧（含未开户形状）', async () => {
+    await boot({ folders: ['D:/a'], seed: { 'D:/a/.vv/project.json': '{}', 'D:/a/main.djs': '{"cells":[]}' } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const st = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.getStatus', {}) as any;
+    expect(st.registeredTools).toBeGreaterThanOrEqual(24);
+    expect(st.projectRoot).toContain('D:/a');
+    await executeTool(ctx(PROD) as never, CALLER_UI, 'fs.copyPath', { uri: 'D:/a/main.djs' });
+    await new Promise((r) => setTimeout(r, 5));
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+    const log = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.readAudit', {}) as any;
+    expect(log.exists).toBe(true);
+    expect(log.lines.some((l: any) => l.tool === 'fs.copyPath' && l.verdict === 'auto')).toBe(true);
+  });
+
+  it('批次二·bindings 族：get 链合并 / set 目录层写 / materialize 同名固化（headless 全链）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ bindings: { counter: 'shared/counter.djs' } }),
+      'D:/p/sub/.verilogviz.json': JSON.stringify({ bindings: { counter: 'local.djs' } }),
+      'D:/p/sub/local.djs': '{"cells":[]}',
+      'D:/p/shared/counter.djs': '{"cells":[]}',
+    } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const g = await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.get', { doc: 'sub/top.djs' }) as any;
+    expect(g.bindings.counter).toBe('sub/local.djs');            // 近层覆盖 + 值折回根相对
+    await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.set', { dir: 'sub', celltype: 'half', part: 'sub/half.djs' });
+    expect(readMetaFile('D:/p/sub/.verilogviz.json').bindings.half).toBe('half.djs');   // 同目录部件存裸名（相对化正确）
+    const m = await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.materialize', { doc: 'sub/local.djs' }) as any;
+    expect(Array.isArray(m.done)).toBe(true);
+  });
+
+  it('批次二·bindings.materialize：.djs 同目录同名自动命中 → 固化进目录表', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"half"}]}',
+      'D:/p/half.djs': '{"cells":[]}',
+    } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const r = await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.materialize', { doc: 'main.djs' }) as any;
+    expect(r.done.length).toBe(1);
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings.half).toBe('half.djs');
+  });
+
+  it('批次二·circuits 族：list 空账 / toggle 翻转进名单 / 翻回', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/main.djs': '{"cells":[]}' } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    expect((await executeTool(ctx(PROD) as never, CALLER_UI, 'circuits.list', {}) as any).circuits).toEqual([]);
+    const t1 = await executeTool(ctx(PROD) as never, CALLER_UI, 'circuits.toggle', { uri: 'D:/p/main.djs' }) as any;
+    expect(t1.isCircuit).toBe(true);
+    expect((await executeTool(ctx(PROD) as never, CALLER_UI, 'circuits.list', {}) as any).circuits).toEqual(['main.djs']);
+    const t2 = await executeTool(ctx(PROD) as never, CALLER_UI, 'circuits.toggle', { uri: 'D:/p/main.djs' }) as any;
+    expect(t2.isCircuit).toBe(false);
+  });
+
+  it('批次二·res 族：readProjectFile 穿越拒 + 读通；listProject/listSandbox 分域', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; endmodule',
+      'D:/p/lib/adder.v': 'module adder; endmodule',
+      'D:/p/main.djs': '{"cells":[]}',
+    } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const r = await executeTool(ctx(PROD) as never, CALLER_UI, 'res.readProjectFile', { path: 'lib/adder.v' }) as any;
+    expect(r.content).toContain('module adder');
+    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'res.readProjectFile', { path: '../outside.v' })).rejects.toThrow();
+    const l = await executeTool(ctx(PROD) as never, CALLER_UI, 'res.listProject', {}) as any;
+    expect(l.files.map((f: any) => f.name).sort()).toEqual(['lib/adder.v', 'top.v']);   // 根相对（含目录段）
+    const s = await executeTool(ctx(PROD) as never, CALLER_UI, 'res.listSandbox', {}) as any;
+    expect(s.files.map((f: any) => f.name)).toEqual(['main.djs']);
+  });
+
+  it('批次二·compile.closure：R152 绑定权威——未绑定进 bindingErrors，补录后进闭包', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder a1(); endmodule',
+      'D:/p/adder.v': 'module adder; endmodule',
+      'D:/p/.verilogviz.json': JSON.stringify({ bindings: { adder: 'adder.v' } }),
+    } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const c = await executeTool(ctx(PROD) as never, CALLER_UI, 'compile.closure', { uri: 'D:/p/top.v' }) as any;
+    expect(c.topModule).toBe('top');
+    expect(c.files).toContain('adder.v');                        // 已显式绑定 ⇒ 定义文件入闭包
+    expect(c.bindingErrors ?? []).toEqual([]);
+    // 未绑定的对照面：拆表 ⇒ 实例进 bindingErrors（R152：⛔ 同名自动兜底）
+    await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.set', { celltype: 'adder', part: null });
+    const c2 = await executeTool(ctx(PROD) as never, CALLER_UI, 'compile.closure', { uri: 'D:/p/top.v' }) as any;
+    expect(c2.files).not.toContain('adder.v');
+    expect((c2.bindingErrors ?? []).some((s: string) => s.includes('adder'))).toBe(true);
   });
 });
