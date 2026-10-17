@@ -51,6 +51,7 @@ COMPILE = os.path.join(EXT, "compilePanel.ts")
 DOMAIN = os.path.join(EXT, "verilogDomain.ts")
 TOOLS = os.path.join(EXT, "toolsDomain.ts")
 PANEL = os.path.join(EXT, "bindingPanel.ts")
+SANDBOX = os.path.join(EXT, "sandboxFiles.ts")
 PKG = os.path.join(REPO, "extension", "package.json")
 
 ARMS = [
@@ -167,6 +168,11 @@ ARMS = [
       '编译侧录入即权威：绑定把 adder 指向 custom 文件 ⇒ 闭包用之，⛔ 另一颗同名旧文件',
       '编译：前缀键只管那一层的例化（ctrl.v 层的 adder 换实现，顶层同名链路不动）',
       '重命名迁移：部件改名各层绑定与 circuits 同步改指（⛔ 悬空旧路径）']),
+    # M17：X19 那颗判据退回收 `.v|.djs` ⇒ 复制纯源码目录又会凭空配出一张空表（禁项尺同响）
+    ("M17 hasDjsUnder 退回收 .v（X19 漂回）", SANDBOX,
+     "      if (isSandboxPath(name)) return true;",
+     "      if (/\\.(v|djs)$/i.test(name)) return true;",
+     ["只有 Verilog 源码的目录", "第二处写死的域判定"]),
 ]
 
 
@@ -187,7 +193,7 @@ def red_names(out):
 
 COVER = ["两块板上都亮", "X8 结案", "兜底 topModule", "第二处写死的域判定", "主人口径逐颗现读",
          "manifest 里那第五", "未录入实例那一行亮得出", "bindings.materialize 的 **.v 侧**",
-         "根外的 Uri 交回", "根内／子目录"]
+         "根外的 Uri 交回", "根内／子目录", "只有 Verilog 源码的目录"]
 
 
 def main():

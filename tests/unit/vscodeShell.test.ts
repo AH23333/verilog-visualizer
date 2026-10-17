@@ -322,6 +322,7 @@ describe('域界一颗主人（片 C2：哪些文件算 Verilog / 算沙盒）',
     '(v|sv)$/i.test(', '(v|sv|djs)$/i.test(', '(v|sv|djs|gate)$/i.test(',
     "!== '.v'", 'replace(/\\.sv?$',
     '.slice(rootFs.length',                     // 根相对名⛔ 再有人按根串长度切（R153：那三份都交过坏值）
+    '(v|djs)$/i.test(',                        // 沙盒域判定也⛔ 在别处自己写（X19 那颗就是它）
   ];
 
   it('extension/src 里除主人外⛔ 再有第二处写死的域判定（正件：主人的扫描真看得见＝这把尺⛔ 瞎）', () => {

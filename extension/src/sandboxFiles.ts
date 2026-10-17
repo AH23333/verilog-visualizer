@@ -9,7 +9,7 @@
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
 import { uniqueName, uniqueFolderName, sanitizeNameInput } from './naming';
-import { findSandboxUris, rootRel } from './verilogDomain';
+import { findSandboxUris, isSandboxPath, rootRel } from './verilogDomain';
 
 export const META_FILE = '.verilogviz.json';
 
@@ -366,12 +366,17 @@ export async function duplicateFolder(context: vscode.ExtensionContext, uri: vsc
   if (await hasDjsUnder(vscode.Uri.joinPath(dir, candidate))) await ensureDirMeta(context, targetRel);
 }
 
-/** 递归探测目录下是否存在 `.djs`（一层层 readDirectory；深度 8 护栏挡软链环） */
+/**
+ * 递归探测目录下是否存在**沙盒域文件**（`.djs`；逐层 readDirectory，深度 8 护栏挡软链环）。
+ * X19（R153 裁决）：判据从前收 `.v|.djs` ⇒ 复制一个只有 Verilog 源码的目录，副本里会凭空多出
+ * 一张空 `.verilogviz.json`（在用户的仓库里造没人要求的文件）。目录真需要表的时刻是"有绑定要
+ * 落到这一层"，那时 `setBindingInDir` 自己会建；这里⛔ 预铺。域界问一颗主人（`isSandboxPath`）。
+ */
 async function hasDjsUnder(dir: vscode.Uri, depth = 8): Promise<boolean> {
   if (depth <= 0) return false;
   try {
     for (const [name, type] of await then(vscode.workspace.fs.readDirectory(dir))) {
-      if (/\.(v|djs)$/i.test(name)) return true;
+      if (isSandboxPath(name)) return true;
       if (type === 2 && await hasDjsUnder(vscode.Uri.joinPath(dir, name), depth - 1)) return true;
     }
   } catch { /* 读不到＝当作没有 */ }

@@ -1474,6 +1474,20 @@ describe('R144 质检轮：记录即权威 + 自动兜底显形 + 右键/新建�
     expect(vscode.state.files.has(vscode.Uri.file('D:/p/parts 副本/.verilogviz.json').path.toLowerCase())).toBe(true);
   });
 
+  it('X19（R153 裁决）：复制只有 Verilog 源码的目录 ⇒ 副本里⛔ 凭空多出配置表（含子层）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/rtl/dec.v': 'module dec; endmodule',
+      'D:/p/rtl/sub/mux.v': 'module mux; endmodule',
+    } });
+    await vscode.commands.executeCommand('verilogViz.duplicateFolder', vscode.Uri.file('D:/p/rtl'));
+    // 正件先落：递归副本真把子层文件带过去（⛔ 否则"没建表"只是因为整颗副本是空的）
+    expect(vscode.state.files.has(vscode.Uri.file('D:/p/rtl 副本/dec.v').path.toLowerCase())).toBe(true);
+    expect(vscode.state.files.has(vscode.Uri.file('D:/p/rtl 副本/sub/mux.v').path.toLowerCase())).toBe(true);
+    // 禁项：整棵树里一颗 .djs 都没有 ⇒ 根层与子层都⛔ 预铺空表（用户的仓库⛔ 被我们塞配置文件）
+    expect(vscode.state.files.has(vscode.Uri.file('D:/p/rtl 副本/.verilogviz.json').path.toLowerCase())).toBe(false);
+    expect(vscode.state.files.has(vscode.Uri.file('D:/p/rtl 副本/sub/.verilogviz.json').path.toLowerCase())).toBe(false);
+  });
+
   it('导入文件：多选拷进目录、同名 (n) 让位、.djs 触发建表', async () => {
     await boot({ folders: ['D:/p'], seed: {
       'D:/p/lib/top.djs': '{"cells":[]}',
