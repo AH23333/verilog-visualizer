@@ -1351,6 +1351,44 @@ HEAD 02b56e3 经 `git stash -u` 实测 171/171+tsc 0——**移交良好、WIP �
 
 *（卷六十二完 · 统一调用层单执行器在岗、fs 十工具上账、API 文档生成防漂移；agent 三方同门只剩传输层选型）*
 
+# 卷六十三 · 功能链深度自检 + API 层扩容（批次二：36 颗上账）（2026-10-17）
+
+> 用户两令：①按功能链（UI→显示→交互→逻辑→落盘）深度自检；②API 层功能过少——按 docs 内 agent 设计文档（AGENT_ARCH_DECISION §15 接口全集）补成完整集。
+
+## 一、功能链自检矩阵（显示/交互/逻辑/落盘）
+
+| 功能族 | 显示 | 交互 | 逻辑 | 落盘 | 结论 |
+|---|---|---|---|---|---|
+| 两文件树（A1-A10） | 层级/图标/KB角标/空态 hint/展开态 ✓（hint 崩已修） | 左键/右键 12+27 菜单/折叠钮 ✓ | 分域/消毒 ✓ | watcher+主动刷 ✓ | **发现：目录排序非 numeric** → 修（`x 10` 归位） |
+| 拖拽（F 族） | drop 高亮平台 | 树内多选/OS 拖入/域 MIME ✓ | moveToFile 共源+自环拒 ✓ | G1 随迁+广播 ✓ | ✓（OS 字节流写盘内联=挂账） |
+| 绑定链（R137/R145） | 目录表可见/面板红块 ✓ | bindParts 两级/写前校验 ✓ | 链合并近层覆盖 ✓ | 逐层表+相对化 ✓ | ✓（212 钉在岗） |
+| G1 迁移引擎 | — | rename/move/delete/拖拽 ✓ | 三路共源 ✓ | 全表层扫 ✓ | ✓（#12 跨表钉） |
+| circuits/部件树 | circuit-board 角标 ✓ | togglePartRole ✓ | 显式取消语义 ✓ | 根表 ✓ | **发现：经工具走时缺广播** → circuits.toggle handler 补 |
+| 编译面 | Problems/画布推单 ✓ | compileAndShow/自动重编译 ✓ | **R152 绑定权威（⛔ 同名兜底）** | — | **发现：closure 工具漏 bindingErrors** → 补（agent 靠它决定补录） |
+| API 层 | — | ui 薄壳 ×13 ✓ | 闸序/verdict/审计同锅 ✓ | jsonl 落 `.vv/audit/` ✓ | **发现：readAudit 日期格式与写侧不一致（真 bug）** → 修；**BAD_ARGS 最小校验落地** |
+
+**测试期望错三处（产品行为全对，自查改测试）**：listProject 本回根相对（含目录段）；bindings.set 的 `../half.djs` 是相对化语义正确；compile.closure 无同名兜底是 R152 裁决。**时序偶发 1 次**（audit fire-and-forget 5ms 竞速）未复现，在册。
+
+## 二、API 层扩容（批次二：+14 颗 → 契约 36 颗）
+
+按 §15 接口全集对齐（AGENT_ARCH_DECISION §15.2）：
+
+| §15 接口 | 本批落地 | 工具 |
+|---|---|---|
+| discoverTools（必备） | ✅ | `sys.listTools`（registry+契约合并，权威 schema） |
+| readLogs | ✅ | `sys.readAudit`（jsonl 最近 N 行，帽 200） |
+| getStatus | ✅ | `sys.getStatus`（版本/调用面/账规模/工程根） |
+| readResource | ✅ | `res.readProjectFile`（sanitizeRel 圈根+2MB 帽）/ `res.listProject` / `res.listSandbox` |
+| invokeTool 扩面 | ✅ | `bindings.get/set/audit/complete/materialize` + `circuits.list/toggle` + `compile.closure`（R152 bindingErrors 随返） |
+| 未建（诚实挂账） | ⛔ | undo/redo、snapshotState/restoreState（快照栈底座）、checkPermission（策略引擎）、subscribe（hook 埋点）、readMemory/writeMemory（记忆存储）、长操作句柄 |
+
+- executeTool 增 **BAD_ARGS**（required 实参校验=§15「schema+校验」最小实现；完整 JSON Schema 校验挂三批）。
+- materialize 命令薄壳化（resolver 逻辑收进工具，⛔ 双份漂移）。
+- 对齐钉升级按族（fs/bindings/circuits/res/sys 五族双侧全在账 + compile 族只读断言）。
+- 台架 +8 钉=**220/220**；双 build 全绿。**agent 接入仍=契约 `surfacesGlobal.mcp` 一行 + grants 档案**。
+
+*（卷六十三完 · 功能链四维自检闭环、API 按 §15 对齐 36 颗；剩余挂账均有底座缺失的诚实理由）*
+
 ## 卷六十二补记 · 深度自检（用户令「先深度自检」，同标准：不可信任自己刚写的代码）
 
 以攻击者视角重审批次一全部新面，**5 项发现、全数修复**，台架 +5 钉=212/212：
