@@ -77,7 +77,7 @@ describe('开局面板：判据真的接在 activate 上（⛔ 只是"纯函数�
     expect(vscode.state.panels.length).toBe(0);
     expect([...vscode.state.commands.keys()].sort()).toEqual([
       'verilogVisualizer.refreshTrees', 'verilogVisualizer.revealProjectDir',
-      'verilogViz.auditBindings', 'verilogViz.bindParts', 'verilogViz.compileAndShow',
+      'verilogViz.auditBindings', 'verilogViz.auditFlush', 'verilogViz.bindParts', 'verilogViz.compileAndShow',
       'verilogViz.completeBindings', 'verilogViz.deleteFile',
       'verilogViz.duplicateFile', 'verilogViz.duplicateFolder', 'verilogViz.exportSvg',
       'verilogViz.importFiles', 'verilogViz.initProject', 'verilogViz.materializeBindings',
@@ -1051,6 +1051,98 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     vscode.state.modalChoice = '删除';
     await vscode.commands.executeCommand('verilogViz.deleteFile', vscode.Uri.file('D:/p/parts/counter.djs'));
     expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ other: 'parts/other.djs' });
+  });
+
+  it('审计臂①-a 未开户（无 .vv/）＝通道静默：rpc 照常走，audit/ 目录一颗不落地', async () => {
+    await boot({ folders: ['D:/a'], seed: { 'D:/a/top.v': 'module top; endmodule' } });
+    await new Promise((r) => setTimeout(r, 5));                                           // 面板异步创建（activate 内多拍 await）
+    expect((await rpc(vscode.state.panels[0], 'getConfig', {})).ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 5));                                           // fire-and-forget 记账先入缓冲再催收
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+    expect([...vscode.state.files.keys()].some((k) => k.includes('/.vv/'))).toBe(false);
+  });
+
+  it('审计臂①-b 开户即记账：rpc 各调一行 JSONL（verdict auto/六域字段全）', async () => {
+    await boot({ folders: ['D:/b'], seed: { 'D:/b/.vv/project.json': '{"kind":"project"}', 'D:/b/top.v': 'module top; endmodule' } });
+    await new Promise((r) => setTimeout(r, 5));
+    const okRes = await rpc(vscode.state.panels[0], 'getAllBindings', { doc: 'top.v' });
+    expect(okRes.ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 5));                                           // 审计是 fire-and-forget：等它入缓冲
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+    const day = new Date().toISOString().slice(0, 10);
+    const raw = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/b/.vv/audit/trace-' + day + '.jsonl').path.toLowerCase())!);
+    const lines = raw.split('\n').filter(Boolean);
+    expect(lines.length).toBeGreaterThanOrEqual(1);
+    const last = JSON.parse(lines[lines.length - 1]);
+    expect(last.verdict).toBe('auto');
+    expect(last.ref).toBe('getAllBindings');
+    expect(last.tool).toBe('host.getAllBindings');
+    expect(last.subject).toBe('rpc');
+    expect(String(last.configHash)).toMatch(/^[0-9a-f]{64}$/);
+    expect(last.traceId && last.ts && typeof last.ms === 'number').toBeTruthy();
+  });
+
+  it('审计臂②拒绝也进账：未登记（not-registered）/端点关（surface-denied）/审批拒（denied）三类 verdict 与 note 齐', async () => {
+    await boot({ folders: ['D:/c'], seed: { 'D:/c/.vv/project.json': '{"kind":"project"}' } });
+    await new Promise((r) => setTimeout(r, 5));
+    const ghost = await rpc(vscode.state.panels[0], 'noSuchTool', {});
+    expect(ghost.ok).toBe(false);
+    const denied = await rpc(vscode.state.panels[0], 'importLegacyData', { items: [] });   // 没预批＝拒
+    expect(denied.ok).toBe(false);
+    await new Promise((r) => setTimeout(r, 5));
+    vscode.state.modalChoice = '允许';
+    const passed = await rpc(vscode.state.panels[0], 'importLegacyData', { items: [] });
+    expect(passed.ok).toBe(true);
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+    const day = new Date().toISOString().slice(0, 10);
+    const raw = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/c/.vv/audit/trace-' + day + '.jsonl').path.toLowerCase())!);
+    const vs = raw.split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    expect(vs.find((v: any) => v.ref === 'noSuchTool')?.verdict).toBe('not-registered');
+    expect(vs.find((v: any) => v.ref === 'importLegacyData' && v.verdict === 'denied')).toBeTruthy();
+    const ap = vs.find((v: any) => v.verdict === 'approved');                                 // 批准正臂＝approved（审批过≠auto）
+    expect(ap).toBeTruthy();
+    const dLine = vs.find((v: any) => v.verdict === 'denied');
+    expect(dLine.note).toContain('API_NOT_APPROVED');
+  });
+
+  it('审计臂③隐私边界：argsDigest 只记形状（键名+类型+字节数，…NB 收尾）⛔ 整段电路一字不进账本', async () => {
+    const big = 'x'.repeat(4000);
+    await boot({ folders: ['D:/d'], seed: { 'D:/d/.vv/project.json': '{"kind":"project"}' } });
+    await new Promise((r) => setTimeout(r, 5));
+    const res = await rpc(vscode.state.panels[0], 'copyToSandbox', { files: [{ name: 'huge', content: big }] });
+    expect(res.ok).toBe(true);
+    await new Promise((r) => setTimeout(r, 5));
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+    const day = new Date().toISOString().slice(0, 10);
+    const raw = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/d/.vv/audit/trace-' + day + '.jsonl').path.toLowerCase())!);
+    const line = JSON.parse(raw.split('\n').filter(Boolean).pop()!);
+    expect(line.tool).toBe('host.copyToSandbox');
+    expect(line.argsDigest.length).toBeLessThanOrEqual(260);
+    expect(/[0-9]+B$/.test(line.argsDigest)).toBe(true);                                  // 总字节标注（…NB）收尾在位
+    expect(line.argsDigest).toContain('files:array');                                     // 键名+形状在账（排障价值）
+    expect(raw).not.toContain('xxxxxx');                                                  // 电路内容零字符落地（脱敏红线）
+  });
+
+  it('审计臂④configHash 随契约热更新走：合同重合流后同方法记账的 hash 必换（⛔ 冻结旧 hash 骗账本）', async () => {
+    const { loadProjectApiOverride } = await import('../../extension/src/apiSurface');
+    await boot({ folders: ['D:/e'], seed: { 'D:/e/.vv/project.json': '{"kind":"project"}' } });
+    await new Promise((r) => setTimeout(r, 5));                                            // activate 里那份 async 默认合并先用掉
+    const ok1 = await rpc(vscode.state.panels[0], 'getAllBindings', { doc: 'x' });
+    expect(ok1.ok).toBe(true);                                                             // 默认账：getAllBindings 放行
+    vscode.seedText('D:/e/.vv/api.json', JSON.stringify({ tools: { 'host.getAllBindings': { surfaces: [] } } }));
+    const rejects = await loadProjectApiOverride({ extensionUri: vscode.Uri.file(EXT_DIR) } as any);
+    expect(rejects).toEqual([]);                                                           // 工程层合法收窄（端点裁光）
+    const ok2 = await rpc(vscode.state.panels[0], 'getAllBindings', { doc: 'x' });
+    expect(ok2.ok).toBe(false);                                                            // 收窄后同一方法＝拒
+    await new Promise((r) => setTimeout(r, 5));
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+    const day = new Date().toISOString().slice(0, 10);
+    const raw = new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/e/.vv/audit/trace-' + day + '.jsonl').path.toLowerCase())!);
+    const vs = raw.split('\n').filter(Boolean).filter((l) => l.includes('"ref":"getAllBindings"')).map((l) => JSON.parse(l));
+    expect(vs.length).toBe(2);
+    expect(vs[1].verdict).toBe('surface-denied');
+    expect(vs[1].note).toContain('API_SURFACE_DENIED');
+    expect(vs[1].configHash).not.toBe(vs[0].configHash);                                   // 同账本行 hash 随生效契约变
   });
 
   it('协议落地①vv-bind schema：jsonValidation 挂载 + schema 与实现形状互相印证（⛔ 说书两张皮）', () => {    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));

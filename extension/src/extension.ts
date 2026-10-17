@@ -25,6 +25,7 @@ import {
 import { openBindingPanel } from './bindingPanel';
 import { loadProjectApiOverride } from './apiSurface';
 import { initProject } from './vvProject';
+import { flushAudit } from './apiAudit';
 import { parseVerilogInstances } from './verilogParseLite';
 import { ProjectStore, type FsLike } from './projectStore';
 import { VvFilesWebviewProvider } from './filesWebview';
@@ -214,6 +215,9 @@ export function activate(context: vscode.ExtensionContext) {
         ? `已写全 ${written.length} 条绑定进「${docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '项目根'}」的 ${META_FILE}。`
         : `无需写全：${docRel} 的实例解析记录已是完整状态。`);
     }),
+
+    // 审计通道催落（测试收口/排障手催；正常运行靠 30 行/5 秒批量自动）
+    vscode.commands.registerCommand('verilogViz.auditFlush', async () => flushAudit(context)),
 
     // 协议步⑥：.vv/ 工程骨架初始化（幂等——已有文件一颗不覆，只补缺）
     vscode.commands.registerCommand('verilogViz.initProject', async (arg: any) => {

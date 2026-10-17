@@ -6,6 +6,7 @@ import * as vscode from 'vscode';
 import type { FsLike } from './projectStore';
 import { getAllBindings, setDocBindings, ensureDirsMeta, setBindingInDir } from './sandboxFiles';
 import { loadApiContract, toolIdForRpc, canSurface } from './apiSurface';
+import { auditToolCall, type AuditVerdict } from './apiAudit';
 
 /** Problems 面板接管：webview 编译后经 publishProblems 落到这里。
  *  ⚠ **惰性创建**：extensionHost.test 的 vscode 桩没有 createDiagnosticCollection/
@@ -103,7 +104,27 @@ function sanitizeRelName(raw: unknown, fallback: string): string {
   return segs.join('/') || fallback;
 }
 
+// ── 协议 §9.5 审计壳（刀）：计时 + 六 verdict 记账（auto/approved/denied/surface-denied/not-registered/error）。
+// 账落在 dispatch 外层＝闸前错误也进账（deny/not-registered 正是最想审计的两类）。
 export async function dispatch(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
+  const t0 = Date.now();
+  const toolId = toolIdForRpc(method);
+  try {
+    const out = await dispatchCore(context, method, args);
+    auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "rpc",
+      verdict: toolId && loadApiContract().tools[toolId].requiresApproval ? "approved" : "auto", ms: Date.now() - t0, args });
+    return out;
+  } catch (e) {
+    const msg = String(e && (e as any).message || e);
+    const verdict: AuditVerdict = msg.includes("[API_NOT_REGISTERED]") ? "not-registered"
+      : msg.includes("[API_SURFACE_DENIED]") ? "surface-denied"
+      : msg.includes("[API_NOT_APPROVED]") ? "denied" : "error";
+    auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "rpc", verdict, ms: Date.now() - t0, args, note: msg.slice(0, 200) });
+    throw e;
+  }
+}
+
+async function dispatchCore(context: vscode.ExtensionContext, method: string, args: any): Promise<unknown> {
   // 协议 §9.4 执行钩子（阶段二第二刀）：RPC 面入口先过契约闸——
   // ① 未登记方法（绕过对账锁的运行时残寇）＝拒；② surfaces 全局开关/端点未开＝拒（API_SURFACE_DENIED）；
   // ③ requiresApproval 的工具＝暂停弹宿主确认（verdict 入拒绝文案；审批记录通道随审计刀落地）。
