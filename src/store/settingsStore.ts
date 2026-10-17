@@ -1,26 +1,13 @@
-// Global settings store
-// Manages font size, default view mode, sandbox options, and other UI preferences.
+// Sandbox settings store
+// 旧「全局设置 store」退役后（R150 路标③：设置面板已不存在、fontSize/defaultViewMode/
+// autosave 无消费方），只剩沙盒运行偏好的影子内存（真源在宿主 contributes.configuration，
+// 片 5 起不再持久化）。
 //
-// 片 5（配置归 contributes.configuration）后这里**不再持久化**：初值一律内置默认，
-// 真源在宿主（VS Code settings）。宿主推送的配置经 `applyHostConfig` 落进来，
-// 画布/工具条照旧读 getter + subscribe 刷新。
+// 活接口仅四个：`applyHostConfig`（宿主全量推送落店）、`subscribe`、`getSandboxSettings`/
+// `setSandboxSettings`（工具条 simSpeed 滑条 + 闸门驱动）。字号仅作为 `editorFontSize`
+// 的投影保留（applyFontSize 落根字号），读写面不开。
 
 import type { HostConfig } from '../lib/host/host';
-
-export type ViewMode = 'circuit' | 'code' | 'split' | 'sandbox';
-
-/** 自动保存设置（两模式共用）：编译编辑器与沙盒画布都按此开关/间隔落盘。
- *  关掉后仍会在「手动保存 / 切档 / 卸载 / 关窗」时落盘（不会因关闭自动保存而丢正在看的内容）。 */
-export interface AutosaveSettings {
-  enabled: boolean;
-  intervalMs: number;
-}
-
-const DEFAULT_AUTOSAVE: AutosaveSettings = { enabled: true, intervalMs: 2000 };
-
-/** 间隔可选项（ms）—— 面板下拉用 */
-export const AUTOSAVE_INTERVAL_OPTIONS = [1000, 2000, 5000, 10000, 30000];
-
 
 export interface SandboxSettings {
   /** 网格间距（px） */
@@ -53,9 +40,7 @@ const DEFAULT_SANDBOX: SandboxSettings = {
 };
 
 let fontSize: number = 16;
-let defaultViewMode: ViewMode = 'circuit';
 let sandbox: SandboxSettings = { ...DEFAULT_SANDBOX };
-let autosave: AutosaveSettings = { ...DEFAULT_AUTOSAVE };
 let listeners: Array<() => void> = [];
 
 function notify() {
@@ -75,37 +60,6 @@ function applyFontSize(size: number) {
 applyFontSize(fontSize);
 
 export const settingsStore = {
-  getFontSize(): number {
-    return fontSize;
-  },
-
-  setFontSize(size: number): void {
-    fontSize = Math.min(36, Math.max(8, size));
-    applyFontSize(fontSize);
-    notify();
-  },
-
-  increaseFontSize(): void {
-    this.setFontSize(fontSize + 1);
-  },
-
-  decreaseFontSize(): void {
-    this.setFontSize(fontSize - 1);
-  },
-
-  resetFontSize(): void {
-    this.setFontSize(16);
-  },
-
-  getDefaultViewMode(): ViewMode {
-    return defaultViewMode;
-  },
-
-  setDefaultViewMode(mode: ViewMode): void {
-    defaultViewMode = mode;
-    notify();
-  },
-
   // ---- Sandbox options ----
   getSandboxSettings(): SandboxSettings {
     return { ...sandbox };
@@ -113,28 +67,6 @@ export const settingsStore = {
 
   setSandboxSettings(patch: Partial<SandboxSettings>): void {
     sandbox = { ...sandbox, ...patch };
-    notify();
-  },
-
-  resetSandboxSettings(): void {
-    sandbox = { ...DEFAULT_SANDBOX };
-    notify();
-  },
-
-  // ---- Autosave（两模式共用）----
-  getAutosaveSettings(): AutosaveSettings {
-    return { ...autosave };
-  },
-
-  setAutosaveSettings(patch: Partial<AutosaveSettings>): void {
-    const next = { ...autosave, ...patch };
-    next.intervalMs = Math.min(60000, Math.max(500, Number(next.intervalMs) || DEFAULT_AUTOSAVE.intervalMs));
-    autosave = next;
-    notify();
-  },
-
-  resetAutosaveSettings(): void {
-    autosave = { ...DEFAULT_AUTOSAVE };
     notify();
   },
 

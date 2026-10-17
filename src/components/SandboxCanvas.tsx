@@ -57,7 +57,6 @@ let EXAMPLE_SEQ = 0;
 
 interface Props {
   theme: 'dark' | 'light';
-  onOpenSettings?: () => void;
   /** 左栏当前视图（由 App 活动栏的 文件 / 模块 / 层次结构 三个按钮驱动） */
   leftPanel?: 'files' | 'modules' | 'hierarchy';
   sidebarCollapsed?: boolean;
@@ -102,7 +101,7 @@ interface Props {
 // loadCells 已抽至 src/lib/sandboxLoad.ts（R35）：文件装载 / 示例插入 /
 // 粘贴复制电路三个消费方共用一条实现，并支持 id 重映射与位置偏移。
 
-function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarCollapsed = false, onToggleSidebar, onExitSandbox, doc }: Props) {
+function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, onToggleSidebar, onExitSandbox, doc }: Props) {
   const circuitRef = useRef<any>(null);
   const paperRef = useRef<any>(null);
   const selectionRef = useRef<Set<string>>(new Set());
@@ -3231,7 +3230,6 @@ function SandboxCanvas({ theme, onOpenSettings, leftPanel = 'files', sidebarColl
             handleExportNetlist={handleExportNetlist}
             handleExportDjs={handleExportDjs}
             setFileBindingId={setFileBindingId}
-            onOpenSettings={onOpenSettings}
             setIoOpen={setIoOpen}
             ioOpen={ioOpen}
           />

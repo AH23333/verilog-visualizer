@@ -1,5 +1,5 @@
 import { Undo2, Play, Pause, StepForward, RotateCcw, Redo2, RotateCw, Save, Cpu,
-  FunctionSquare, Download, FileCode, Link2, Settings, SlidersHorizontal, AudioWaveform } from 'lucide-react';
+  FunctionSquare, Download, FileCode, Link2, SlidersHorizontal, AudioWaveform } from 'lucide-react';
 import type { CSSProperties } from 'react';
 import { settingsStore, type SandboxSettings } from '../store/settingsStore';
 import type { SandboxFile } from '../store/sandboxStore';
@@ -31,7 +31,6 @@ interface Props {
   handleExportNetlist: () => void;
   handleExportDjs: (f: SandboxFile) => void;
   setFileBindingId: (v: string | null) => void;
-  onOpenSettings?: () => void;
   setIoOpen: React.Dispatch<React.SetStateAction<boolean>>;
   ioOpen: boolean;
 }
@@ -40,7 +39,7 @@ function SandboxToolbar({
   activeFile, running, handlePlayPause, handleStep, handleReset, settings, waveOpen, setWaveOpen,
   undo, canUndo, redo, canRedo, selCount, rotateSelection, handleSave, savingGate, gateName,
   setGateName, handleSaveGate, setSavingGate, setGateError, setExprGenOpen, handleExportSvg,
-  handleExportNetlist, handleExportDjs, setFileBindingId, onOpenSettings, setIoOpen, ioOpen,
+  handleExportNetlist, handleExportDjs, setFileBindingId, setIoOpen, ioOpen,
 }: Props) {
   const sm: CSSProperties = {
     display: 'inline-flex', alignItems: 'center', gap: 4, pointerEvents: 'auto',
@@ -142,10 +141,7 @@ function SandboxToolbar({
       {/* 部件绑定（R100）：doc 模式也显示——绑定写回伪 activeFile + doc.onBind
           （DocApp 会话 Map），部件候选走 gateSystem partFileSource（见对话框接线处） */}
       <button onClick={() => activeFile && setFileBindingId(activeFile.id)} data-sandbox-bindings disabled={!activeFile || activeFile.kind === 'gate'}
-        title="部件绑定：给当前文件里的子电路实例选择部件定义文件" style={activeFile && activeFile.kind !== 'gate' ? sm : dis}><Link2 size={13} />部件绑定</button>
-      {onOpenSettings && (
-        <button onClick={onOpenSettings} data-sandbox-settings title="打开设置面板" style={sm}><Settings size={13} />设置</button>
-      )}
+        title="部件绑定：给当前文件里的子电路实例选择部件定义文件"         style={activeFile && activeFile.kind !== 'gate' ? sm : dis}><Link2 size={13} />部件绑定</button>
       <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
       {/* 输入 / 输出统计与交互：与编译模式的「输入」面板同一颗组件（输出段只读） */}
       <button onClick={() => setIoOpen((v) => !v)} data-sandbox-io
