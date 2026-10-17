@@ -217,7 +217,7 @@ export function registerDomainTools(): void {
   });
 
   registerTool({
-    id: 'sys.readAudit', title: '读调用审计', description: '§14/§15 readLogs：读 `.vv/audit/trace-YYYYMMDD.jsonl` 最近 N 行（缺省 50，帽 200）；未开户=空账。幂等只读。',
+    id: 'sys.readAudit', title: '读调用审计', description: '§14/§15 readLogs：读 `.vv/audit/trace-YYYY-MM-DD.jsonl`（带连字符，与 apiAudit 落盘那颗串逐字一致）最近 N 行（缺省 50，帽 200）；未开户=空账。幂等只读。',
     schema: {
       type: 'object',
       properties: { date: { type: 'string', description: 'YYYYMMDD（缺省今天）' }, limit: { type: 'number', description: '行数（缺省 50）' } },

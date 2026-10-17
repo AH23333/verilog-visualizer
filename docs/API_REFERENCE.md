@@ -5,7 +5,7 @@
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
-> **审计**：每次过闸一行 JSONL 落 `.vv/audit/trace-YYYYMMDD.jsonl`（verdict 七值：auto/approved/denied/error/surface-denied/not-registered/not-granted；args 只记形状摘要）。
+> **审计**：每次过闸一行 JSONL 落 `.vv/audit/trace-YYYY-MM-DD.jsonl`（那颗日期串由 `Date.toISOString().slice(0,10)` 出，带连字符——正本 `apiAudit.ts`，⛔ 信上一版文档的口头描述）。verdict 7 值：auto/approved/denied/error/surface-denied/not-registered/not-granted；args 只记形状摘要（⛔ 值）。
 > **错误标签**：`[API_NOT_REGISTERED]` / `[API_SURFACE_DENIED]` / `[API_NOT_GRANTED]` / `[API_NOT_APPROVED]` / `[API_BAD_ARGS]`（机读 code = 去掉 `[API_]` 壳）。
 
 ## 工具总表
@@ -476,7 +476,7 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 
 ### `sys.readAudit` — 读调用审计
 
-§14/§15 readLogs：读 `.vv/audit/trace-YYYYMMDD.jsonl` 最近 N 行（缺省 50，帽 200）；未开户=空账。幂等只读。
+§14/§15 readLogs：读 `.vv/audit/trace-YYYY-MM-DD.jsonl`（带连字符，与 apiAudit 落盘那颗串逐字一致）最近 N 行（缺省 50，帽 200）；未开户=空账。幂等只读。
 
 ```json
 {
@@ -496,7 +496,8 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 
 ## 尚未收编（第二批挂账）
 
-- dispatch 的 6 颗 webview RPC（host.getConfig/getAllBindings/setDocBindings/copyToSandbox/…）——闸已在跑，迁移=换执行器不改语义。
-- 绑定族命令（bindParts/materialize/audit/complete/togglePartRole）与 compile 族（compileAndShow）。
+- dispatch 的 **9** 颗 webview RPC（appendOutput / copyToSandbox / getAllBindings / getConfig / importLegacyData / jumpToSource / publishProblems / saveExportFile / setDocBindings）——闸已在跑（dispatch 入口那份内联四闸），迁移＝换执行器、不改语义。
+- 契约上账、非 rpc 面且⛔ registry handler：**3** 颗（compile.auditBindings→verilogViz.auditBindings / compile.completeBindings→verilogViz.completeBindings / compile.compileAndShow→verilogViz.compileAndShow）——这几颗现在由命令面板直调 Extension Host 里的实现，绕开 executeTool。
+- 反向（registry 有 handler 而契约⛔ 上账）：**0** 颗（（无））。
 - OS 拖入的字节流写盘（拖拽 writeDropped 内联中）。
 

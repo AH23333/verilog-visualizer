@@ -5,6 +5,7 @@
 // ============================================================================
 import { listTools } from './toolRegistry';
 import { loadApiContract } from './apiSurface';
+import { AUDIT_VERDICTS } from './apiAudit';
 
 /** 渲染整份 API_REFERENCE.md（UTF-8、无前置 BOM；表格列=契约×registry 的并集真相）。 */
 export function renderApiReference(): string {
@@ -18,7 +19,7 @@ export function renderApiReference(): string {
   lines.push('>');
   lines.push('> **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。');
   lines.push('> **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。');
-  lines.push('> **审计**：每次过闸一行 JSONL 落 `.vv/audit/trace-YYYYMMDD.jsonl`（verdict 七值：auto/approved/denied/error/surface-denied/not-registered/not-granted；args 只记形状摘要）。');
+  lines.push(`> **审计**：每次过闸一行 JSONL 落 \`.vv/audit/trace-YYYY-MM-DD.jsonl\`（那颗日期串由 \`Date.toISOString().slice(0,10)\` 出，带连字符——正本 \`apiAudit.ts\`，⛔ 信上一版文档的口头描述）。verdict ${AUDIT_VERDICTS.length} 值：${AUDIT_VERDICTS.join('/')}；args 只记形状摘要（⛔ 值）。`);
   lines.push('> **错误标签**：`[API_NOT_REGISTERED]` / `[API_SURFACE_DENIED]` / `[API_NOT_GRANTED]` / `[API_NOT_APPROVED]` / `[API_BAD_ARGS]`（机读 code = 去掉 `[API_]` 壳）。');
   lines.push('');
   lines.push('## 工具总表');
@@ -47,8 +48,17 @@ export function renderApiReference(): string {
   lines.push('');
   lines.push('## 尚未收编（第二批挂账）');
   lines.push('');
-  lines.push('- dispatch 的 6 颗 webview RPC（host.getConfig/getAllBindings/setDocBindings/copyToSandbox/…）——闸已在跑，迁移=换执行器不改语义。');
-  lines.push('- 绑定族命令（bindParts/materialize/audit/complete/togglePartRole）与 compile 族（compileAndShow）。');
+  // ⚠ 这一节的颗数⛔ 再手打：上一版写「dispatch 的 6 颗 webview RPC」而契约的 rpc 面现读 9 颗——
+  //   本文件的立身之本就是「⛔ 手写文档必漂移」，挂账清单当然也不例外，一律从契约×registry 现算。
+  const registeredIds = new Set(tools.map((t) => t.id));
+  const contractIds = Object.keys(c.tools);
+  const off = (surfaces: string) => contractIds.filter((id) => c.tools[id].surfaces.includes(surfaces) && !registeredIds.has(id));
+  const rpcNoHandler = off('rpc');
+  const uiNoHandler = contractIds.filter((id) => !c.tools[id].surfaces.includes('rpc') && !registeredIds.has(id));
+  const handlerOffContract = tools.map((t) => t.id).filter((id) => !contractIds.includes(id));
+  lines.push(`- dispatch 的 **${rpcNoHandler.length}** 颗 webview RPC（${rpcNoHandler.map((s) => s.replace(/^host\./, '')).join(' / ') || '（无）'}）——闸已在跑（dispatch 入口那份内联四闸），迁移＝换执行器、不改语义。`);
+  lines.push(`- 契约上账、非 rpc 面且⛔ registry handler：**${uiNoHandler.length}** 颗（${uiNoHandler.map((id) => `${id}→${c.tools[id].ref}`).join(' / ') || '（无）'}）——这几颗现在由命令面板直调 Extension Host 里的实现，绕开 executeTool。`);
+  lines.push(`- 反向（registry 有 handler 而契约⛔ 上账）：**${handlerOffContract.length}** 颗（${handlerOffContract.join(' / ') || '（无）'}）。`);
   lines.push('- OS 拖入的字节流写盘（拖拽 writeDropped 内联中）。');
   lines.push('');
   return lines.join('\n') + '\n';
