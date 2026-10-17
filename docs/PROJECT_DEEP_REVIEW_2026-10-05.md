@@ -1325,3 +1325,28 @@ HEAD 02b56e3 经 `git stash -u` 实测 171/171+tsc 0——**移交良好、WIP �
 - 代理初步意见（待专项展开）：**是的，但形态是「收编」不是「另起」**——现有 dispatch(RPC)+apiSurface(契约)+apiGrants(授权)+apiAudit(审计) 已是半个调用层；乱源=树命令直插 sandboxFiles 绕过该边界。统一=建 toolRegistry（schema+域+审批半径）+ executeTool 单执行器，树命令与 webview RPC 与未来 agent 同走一道门；API 文档从 registry **生成**（单一真源），⛔ 手写文档与实现漂移。文件系统九工具（刚 stabilized 的这批）就是第一组 tool。
 
 *（卷六十一完 · 文件系统全绿收口、审查六缺陷闭账、F 族拖拽+G1 三路共源在岗；API 层立项待用户拍板）*
+
+# 卷六十二 · 统一调用层批次一：单执行器落地 + API 文档生成（2026-10-17）
+
+> 承卷六十一方向议题。用户拍板「开工」+ 要求规范 API 文档。批次一交付：**toolRegistry 单执行器 + fs.* 十工具上账 + 全部文件命令薄壳化 + API 文档从双真源生成**。原则=**收编而非另起**。
+
+## 一、落地清单
+- **`toolRegistry.ts`**：`ToolDef`（title/description/参数 JSON Schema/handler）+ `registerTool/listTools` + **`executeTool`**——闸序与 dispatch 逐字同硬序（①registry∧契约双查→②surfaces→③grants→④requiresApproval∧非交互⇒HITL 弹窗），错误标签 `[API_*]` 四种、verdict 七值、审计 args 形状摘要**一锅同账**（`.vv/audit/`）。`ToolCaller{surface,subject,interactive}`：ui 命令=interactive（弹窗归命令，⛔ 二次弹）；agent=非交互→执行器弹（§11 HITL 首落点）。`onToolExecuted` 事件⇒extension 订阅刷树（sideEffects≠none）。
+- **`toolsFs.ts`**：fs.rename/move/delete/duplicateFile/duplicateFolder/import/copyPath/revealInOS/createFile/createFolder 十工具——handler 全指向本日拆出的 headless 机械体（renameEntry/deleteEntry/importFromUris/createVerilogFile/createSandboxFile/createFolder）；对话框/编辑器打开归命令壳。
+- **薄壳化**：renameFile/deleteFile/duplicate×2/moveTo/import×3/copyPath/revealInOS/newFile×2/newFolder 共 13 颗命令改「UI+executeTool」；广播移入 handler、刷树移入订阅——命令层⛔ 各自为政。
+- **契约**：`vv-api.defaults.json` +10 行 fs.*（0.2.0；fs.delete requiresApproval=true）。**apiDoc.test 钉死 registry∧契约孤儿双查**。
+- **API 文档**：`apiDoc.ts` 渲染器 + `pnpm api:doc`（vitest -t 过滤）+ **漂移钉**（docs/API_REFERENCE.md 与双真源不一致=再生成落盘+当场红）——手写文档漂移问题根治。
+- **台架**：+8 钉=208/208（孤儿双查/闸①②③④/agent 字符串实参 headless 全链/审计落账/api:doc 漂移）。
+
+## 二、批次一实战教训（在册）
+1. **argUri 的 scheme 宽正则炸 18 红**：`/^[a-zA-Z][…]*:/` 把 Windows 盘符 `D:\p` 误判成 scheme（`D:` 命中）→ 栽在桩没有的 `Uri.parse` → 被命令层 `.catch` 吞成全静默。修=**只认 `file://` 前缀，其余一律 fsPath**。教训：uri 归一化函数的判定词表必须白名单，⛔ 宽正则猜 scheme。
+2. 审计成功路径漏传 tool id（fail 路径传了）→ 账行 tool=null 被钉住。教训：审计助手的多参签名（verdict,note,toolId）易漏尾参——考虑下批改对象参数。
+3. tests 直 import 的 `importFiles` 已改名 `importFromUris`（机械体上账后旧名退役）——测试随 API 改名同步是纪律。
+
+## 三、未闭（第二、三批）
+1. dispatch 6 颗 RPC 迁 executeTool（闸已在跑，换执行器不改语义）。
+2. 绑定族/compile 族命令上账；OS 拖入字节流写盘收编。
+3. 分支 A（MCP server）/ 分支 B（LangGraph）立项——工具面已就绪，**放开 agent 调用=改契约 surfaces 一行**（mcp=false→true）+ grants 档案。
+4. push 24+2 连待令；真机点验单持续有效。
+
+*（卷六十二完 · 统一调用层单执行器在岗、fs 十工具上账、API 文档生成防漂移；agent 三方同门只剩传输层选型）*
