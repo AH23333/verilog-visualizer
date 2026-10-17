@@ -1235,3 +1235,34 @@ e6e33d3（我的 docs 提交）把账本从 **833 行（卷一~四十二完整�
 - 验证读数（终态）：unit **171/171** · 根+ext tsc 0 · vite build ✓ · esbuild+bundle 闸 OK · lint 0 · 浏览器绿集在册 8 组（本日步⑤⑥未触 webview/编译面，r84/r122 在步④后跑绿过，步⑤⑥仅 extension/ts 面＋两新格，全量含它们）。
 
 *（卷五十八完 · 协议不再是文档——schema 挂上、账立起来、闸跑起来、工程收进来，十四连提交笔笔带判据）*
+
+---
+
+# 卷五十九 · QC 交接（协议⑧四雷整修）→ ⑨授权闸③ → ⑩设置面退役 → 预存在红闸定性（r44/r62 幽灵 fileStore）（2026-10-17）
+> 承卷五十八：QC 交接代理成果后按序落刀① grants ② settingsStore 退役。残留垃圾清（test_files 十八颗重复 .v + 代理私账 current.txt/mem.txt + 杂目录，22 项 git clean 全净）。push 仍挂起（本地 17 连）。
+
+## 一、QC 账：交接代理的协议⑧ WIP 整修（9de36a7）
+`apiAudit.ts` 四处实雷当场落地（交接方读写数诚实但代码在册伪绿）：
+1. **审计臂①一格双 boot**：panels 抹账→`panel.fired` TypeError——按在册「一 boot 一格」纪律拆 -a/-b 两格；
+2. **argsDigest 记原参前缀**（160 字符半截电路进账本）→ 改只记形状（键名+类型+字节数，`…NB` 收尾 ≤260，加 `原参不入账` 断言臂）；
+3. **configHash 冻结缺陷**：sha1 length 哨兵恒 20→hash 永不更新——改每调重算（sha256 当前值），加臂④回归钉住；
+4. **fire-and-forget 记账无脚缝**→加 5ms 时距收口验证。
+HEAD 02b56e3 经 `git stash -u` 实测 171/171+tsc 0——**移交良好、WIP 是败笔**，定性有据。
+
+## 二、提交账（承 14 连，新增 3 颗，现 17 ahead）
+| 笔 | 提交 | 内容 | 判据 |
+|---|------|------|------|
+| 协议⑧ | 9de36a7 | 审计通道（§9.5）：外层壳 dispatch/dispatchCore 分离、七 verdict、JSONL 落 .vv/audit（批量 30 行/5 秒、日滚动 500 行上限）、argsDigest 脱敏、configHash 每调重算 | 审计五臂全绿 |
+| 协议⑨ | cd9db31 | 授权闸③（§9.4）：apiGrants.ts + vv-grants.schema.json + jsonValidation 第 4 条；dispatchCore 闸序 NOT_REGISTERED→canSurface→checkGrant('ui')→审批；profile fail-closed、哨兵 warn-not-fail；profile 集合 {circuit,project,bindings,compile,host}，⛔ config.* | 6 臂全绿 |
+| 协议⑩ | 13d0bc0 | settingsStore 退役（R150 路标③）：ViewMode/defaultViewMode、fontSize 读写面、autosave 全套、resetSandboxSettings 全删；SandboxCanvas/Toolbar 死 onOpenSettings prop 链+死 Settings 图标拆除；活面（get/setSandboxSettings/applyHostConfig/subscribe）不动，160行→92行 | tsc×2 0 · unit 182/182 · build ✓ · lint 0 err · r13 15/15 |
+
+## 三、预存在红闸定性（本轮自查发现，如实挂账）
+- **r44-verify / r62-sandbox-speed-gate FATAL**（`Failed to fetch dynamically imported module: /src/store/fileStore.ts`）：**根因非本轮、非协议战役**——`src/store/fileStore.ts` 模块已不存在（历次重构改名/收编进 sandboxStore 等），两闸 page 端 import 幽灵模块。验证链：① pre-⑩ 文件原样 checkout 复跑同 FATAL（排除我的刀）；② 裸 vite 起服 curl `/src/store/fileStore.ts` 返 **text/html**（fallback，非 500）；③ r13-custom-gate 15/15 全绿（服务、页面、boot 三者健康，锁死根因在闸脚本自身）。两闸均不在卷五十八维护绿集，属**死锚遗留红闸**——判据：定时迁移或改锚（fileStore 语义现居 sandboxStore/store 层），非急务。
+- **遗留后果（债）**：simSpeed 滑条（SandboxToolbar）与 wireStyle 判据自 r44/r62 腐烂后**无在岗浏览器闸**——列下轮闸门卫生专项（与 §13.1:478 设置面退役收尾合并处理）。
+
+## 四、settingsStore 退役调研定案（残尸何处何留）
+- 设置弹窗组件已不存在（无 SettingsDialog；两宿主 DocApp.tsx:159 / GateHarness.tsx:39 均不传 onOpenSettings）→ 按钮早已不渲染，死代码零行为，拆除纯减重；
+- `_ui.cjs setSandboxToggle`（r14/r18/qc-audit 系消费）本来就点空（`?.click()` 空转），本次不动 qc-audit 死格——遗留债同上 第四节闸门卫生；
+- localStorage 旧部残点（SandboxCanvas `verilog-viz-sandbox-w` 侧栏宽 + `verilog-viz-import-clipboard` 剪贴板暂存）：侧栏宽属 UI 会话态非配置语义——保留；import-clipboard 流程已走审批链，其残留 key 列下轮清理。
+
+*（卷五十九完 · QC 四雷整修+两刀落袋：审计通道全线在岗、grants 闸③备装、设置面尸骨清干净；17 连 push 待令）*
