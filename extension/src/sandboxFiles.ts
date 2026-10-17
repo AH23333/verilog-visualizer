@@ -261,10 +261,16 @@ export async function renameFile(context: vscode.ExtensionContext, uri: vscode.U
   const name = uri.path.split('/').pop() || uri.fsPath;
   const next = await vscode.window.showInputBox({ prompt: '重命名', value: name });
   if (!next || next === name) return;
-  // G7（2026-10-17 审查补）：输入框直连盘上路径，裸收 `../` 能把文件改名出工作区——单段消毒
-  const clean = sanitizeNameInput(next, { single: true });
-  if (!clean || clean === name) return;
-  await performRename(context, uri, vscode.Uri.joinPath(vscode.Uri.joinPath(uri, '..'), clean));
+  await renameEntry(context, uri, next);
+}
+
+/** fs.rename 工具的 headless 机械体（统一调用层批次一）：消毒 + performRename。返回 ok（失败已当面告示）。 */
+export async function renameEntry(context: vscode.ExtensionContext, uri: vscode.Uri, newName: string): Promise<boolean> {
+  const name = uri.path.split('/').pop() || uri.fsPath;
+  // G7：输入框直连盘上路径，裸收 `../` 能把文件改名出工作区——单段消毒
+  const clean = sanitizeNameInput(newName, { single: true });
+  if (!clean || clean === name) return false;
+  return performRename(context, uri, vscode.Uri.joinPath(vscode.Uri.joinPath(uri, '..'), clean));
 }
 
 /** renameFile/moveToFile 共源：盘上搬家 → 按对象形态迁绑定（文件＝精确身份；目录＝前缀族群 G1）。 */
@@ -329,36 +335,32 @@ async function countFilesUnder(dir: vscode.Uri, depth = 10): Promise<number> {
   return n;
 }
 
+/** 删除确认的规模账（G6/X7）：目录回子文件数；文件回 1。命令层弹窗用（⛔ 工具层不弹）。 */
+export async function describeDeletion(_context: vscode.ExtensionContext, uri: vscode.Uri): Promise<{ isDir: boolean; files: number }> {
+  const isDir = await then(vscode.workspace.fs.stat(uri)).then((s) => (s as any).type === 2, () => false);
+  return { isDir, files: isDir ? await countFilesUnder(uri) : 1 };
+}
+
 export async function deleteFile(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
   const name = uri.path.split('/').pop() || uri.fsPath;
-  // X1：目录删除必须 recursive:true（真相 2026-10-17：缺它是真机「删不掉非空目录」的根因，单测的桩闭眼放行）
-  const isDir = await then(vscode.workspace.fs.stat(uri)).then((s) => (s as any).type === 2, () => false);
-  let pick: string | undefined = '删除';
-  if (isDir) {
-    const files = await countFilesUnder(uri);
-    // X7/G6：目录删除的确认要亮出规模（子的规模 + 绑定记录将同葬的警告——不让人盲删）
-    pick = await vscode.window.showWarningMessage(
+  const { isDir, files } = await describeDeletion(context, uri);
+  // X7/G6：目录删除的确认要亮出规模（子的规模 + 绑定记录将同葬的警告——不让人盲删）
+  const pick = isDir
+    ? await vscode.window.showWarningMessage(
       `删除目录「${name}」？其中含 ${files} 个文件；指向目录内文件的部件记录与绑定将一并清除。`,
-      { modal: true }, '删除');
-  } else {
-    pick = await vscode.window.showWarningMessage(`删除「${name}」？`, { modal: true }, '删除');
-  }
+      { modal: true }, '删除')
+    : await vscode.window.showWarningMessage(`删除「${name}」？`, { modal: true }, '删除');
   if (pick !== '删除') return;
-  const wasDir = isDir;
+  await deleteEntry(context, uri);
+}
+
+/** fs.delete 工具的 headless 机械体（统一调用层批次一）：回收站删除 + 绑定/电路名单随清（G1 双路）。 */
+export async function deleteEntry(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
+  const isDir = await then(vscode.workspace.fs.stat(uri)).then((s) => (s as any).type === 2, () => false);
   await then(vscode.workspace.fs.delete(uri, { useTrash: true, recursive: true }));
-  const root = projectRoot(context);
-  const deletedFull = pathRel(root, uri);
-  let changed = false;
-  if (wasDir) {
-    // G1（X3 与 D4 共源）：删除目录 ⇒ 整个前缀族群的值/前缀键/根表 circuits 清空（⛔ 留悬空）
-    await migratePrefix(context, deletedFull, null);
-    changed = true;
-  } else {
-    // 文件删除：全表层精确身份清（migrateFileRef(null)——含 circuits 与跨目录 ../ 引用，审查缺陷 #4）
-    await migrateFileRef(context, deletedFull, null);
-    changed = true;
-  }
-  void changed;
+  const deletedFull = pathRel(projectRoot(context), uri);
+  if (isDir) await migratePrefix(context, deletedFull, null);   // G1：前缀族群值/键/circuits 清
+  else await migrateFileRef(context, deletedFull, null);        // G1：跨表精确身份清（审查 #12）
 }
 
 export async function duplicateFile(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
@@ -393,40 +395,35 @@ async function hasDjsUnder(dir: vscode.Uri, depth = 8): Promise<boolean> {
   return false;
 }
 
+/** 导入对话框的域过滤器（X6 三分域：编译 v/sv/vh、沙盒 djs、通用三档）——命令层弹窗用。 */
+export function importFilters(exts: string[]): Record<string, string[]> {
+  if (exts.every((e) => e === 'djs')) return { '沙盒电路文件': ['djs'] };
+  if (exts.every((e) => e !== 'djs')) return { 'Verilog 源文件': exts };
+  return { 'Verilog / 电路文件': exts };
+}
+
 /**
- * 导入外部文件进工作区（旧 UI「导入文件…」）：原生多选 → 落右击目录（⛔ 同名覆盖，自动 (n)）
- * → `.djs` 触发「目录有部件就有表」。
- * X6 域设防：`exts` 由入口给（编译树 v/sv/vh、沙盒树 djs、explorer 通用默认三档）——
- * 　对话框过滤 + 拆选双保险：非本域文件不落盘，返回 skipped 个数让调用侧告知。
- * 返回 {written, skipped}（取消＝undefined）。
+ * fs.import 工具的 headless 机械体（统一调用层批次一）：把给定外部文件复制进目标目录。
+ * X6 域设防在机械体里（agent 调用无对话框可倚）：域外不落盘、计 skipped；`.djs` 触发落表。
+ * 对话框在命令层；取消/无源＝返回空账。返回 {written(根相对), skipped}。
  */
-export async function importFiles(
+export async function importFromUris(
   context: vscode.ExtensionContext,
-  dirUri?: vscode.Uri,
+  dirUri: vscode.Uri,
+  sources: vscode.Uri[],
   exts?: string[],
-): Promise<{ written: string[]; skipped: number } | undefined> {
+): Promise<{ written: string[]; skipped: number }> {
   const allowed = exts ?? ['v', 'sv', 'djs'];
-  const filters: Record<string, string[]> = {};
-  if (allowed.every((e) => e === 'djs')) filters['沙盒电路文件'] = ['djs'];
-  else if (allowed.every((e) => e !== 'djs')) filters['Verilog 源文件'] = allowed;
-  else filters['Verilog / 电路文件'] = allowed;
-  const picked = await vscode.window.showOpenDialog({
-    canSelectMany: true,
-    openLabel: '导入',
-    filters: filters as any,
-  });
-  if (!picked || !picked.length) return undefined;
   const root = projectRoot(context);
-  const dir = dirUri ?? root;
   const written: string[] = [];
   let skipped = 0;
-  for (const src of picked) {
+  for (const src of sources) {
     const base = src.path.split('/').filter(Boolean).pop() || 'imported.v';
     const ext = (base.includes('.') ? base.slice(base.lastIndexOf('.') + 1) : '').toLowerCase();
     if (!allowed.includes(ext)) { skipped++; continue; }   // 双保险：文件管理器放行也会拦这里
-    const final = await uniqueName(dir, base);
-    await then(vscode.workspace.fs.copy(src, vscode.Uri.joinPath(dir, final), { overwrite: false }));
-    written.push(pathRel(root, vscode.Uri.joinPath(dir, final)));
+    const final = await uniqueName(dirUri, base);
+    await then(vscode.workspace.fs.copy(src, vscode.Uri.joinPath(dirUri, final), { overwrite: false }));
+    written.push(pathRel(root, vscode.Uri.joinPath(dirUri, final)));
   }
   await ensureDirsMeta(context, written);
   return { written, skipped };

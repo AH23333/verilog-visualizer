@@ -15,7 +15,8 @@
     "ext:watch": "pnpm -C extension watch",
     "ext:check": "pnpm -C extension check",
     "ext:package": "pnpm build && pnpm -C extension webview:sync && pnpm -C extension package",
-    "studio:brand": "node studio/apply-brand.mjs"
+    "studio:brand": "node studio/apply-brand.mjs",
+    "api:doc": "vitest run tests/unit/extensionHost.test.ts -t api:doc"
   },
   "dependencies": {
     "@radix-ui/react-slot": "^1.3.3",

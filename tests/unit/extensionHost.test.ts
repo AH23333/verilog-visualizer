@@ -1181,16 +1181,17 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     expect(vscode.state.files.has('d:/p/lib/sub/b.djs')).toBe(false);
   });
 
-  it('X6：importFiles 域设防——跨界文件不落盘、skipped 当面告示', async () => {
+  it('X6：importFromUris 域设防——跨界文件不落盘、skipped 计数（fs.import 工具机械体）', async () => {
     await boot({ folders: ['D:/p'] });
-    vscode.state.openDialogResult = [
-      vscode.Uri.file('C:/tmp/want.v'),
-      vscode.Uri.file('C:/tmp/board.json'),            // ⛔ 域外（.json 不在编译域）
-    ];
-    const { importFiles } = await import('../../extension/src/sandboxFiles');
-    const out = await importFiles({} as never, vscode.Uri.file('D:/p/lib'), ['v', 'sv', 'vh']);
-    expect(out!.written).toEqual(['lib/want.v']);
-    expect(out!.skipped).toBe(1);
+    const { importFromUris } = await import('../../extension/src/sandboxFiles');
+    const out = await importFromUris(
+      { } as never,
+      vscode.Uri.file('D:/p/lib'),
+      [vscode.Uri.file('C:/tmp/want.v'), vscode.Uri.file('C:/tmp/board.json')],   // board.json ⛔ 域外
+      ['v', 'sv', 'vh'],
+    );
+    expect(out.written).toEqual(['lib/want.v']);
+    expect(out.skipped).toBe(1);
     expect(vscode.state.files.has('d:/p/lib/board.json')).toBe(false);
   });
 
@@ -2004,5 +2005,104 @@ describe('文件系统批次B（2026-10-17 审查后落）：G1 三路共源 + C
     expect(part.circuit).toBeUndefined();
     const item = sandbox.getTreeItem(main);
     expect((item as any).iconPath?.id).toBe('circuit-board');
+  });
+});
+
+describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + API 文档生成', () => {
+  const readMetaFile = (p: string) => {
+    const b = vscode.state.files.get(vscode.Uri.file(p).path.toLowerCase());
+    return b ? JSON.parse(new TextDecoder().decode(b)) : undefined;
+  };
+
+  it('registry∧契约 一一对齐（孤儿双查）：fs.* 十工具双侧在账', async () => {
+    await boot({ folders: ['D:/p'] });
+    const { listTools } = await import('../../extension/src/toolRegistry');
+    const contract = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/api/vv-api.defaults.json'), 'utf8'));
+    const regIds = listTools().map((t: any) => t.id);
+    for (const id of regIds) expect(contract.tools[id], `registry 独苗（契约缺账）: ${id}`).toBeTruthy();
+    const fsIds = Object.keys(contract.tools).filter((k) => k.startsWith('fs.'));
+    expect([...fsIds].sort()).toEqual([...regIds].sort());
+  });
+
+  it('闸① not-registered：未登记 id 拒（[API_NOT_REGISTERED] 机读码）', async () => {
+    await boot({ folders: ['D:/p'] });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.nope', {})).rejects.toThrow(/\[API_NOT_REGISTERED\]/);
+  });
+
+  it('闸② surface-denied：mcp 面全局关（surfacesGlobal.mcp=false）→ agent 现阶段进不来', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/main.djs': '{"cells":[]}' } });
+    const { executeTool } = await import('../../extension/src/toolRegistry');
+    await expect(executeTool(ctx(PROD) as never, { surface: 'mcp', subject: 'mcp:agent', interactive: false }, 'fs.copyPath', { uri: 'D:/p/main.djs' }))
+      .rejects.toThrow(/\[API_SURFACE_DENIED\]/);
+  });
+
+  it('闸③ not-granted：.vv/api.grants.json 绑空白名单 subject → 拒（fail-closed）；ui 未绑不受闸', async () => {
+    await boot({ folders: ['D:/g'], seed: {
+      'D:/g/.vv/api.grants.json': JSON.stringify({ subjects: { agent: 'empty' }, profiles: { empty: [] } }),
+      'D:/g/main.djs': '{"cells":[]}',
+    } });
+    await new Promise((r) => setTimeout(r, 5));          // grants 是 activate 异步一次性载入
+    const { executeTool } = await import('../../extension/src/toolRegistry');
+    await expect(executeTool(ctx(PROD) as never, { surface: 'ui', subject: 'agent', interactive: false }, 'fs.copyPath', { uri: 'D:/g/main.djs' }))
+      .rejects.toThrow(/\[API_NOT_GRANTED\]/);
+    await expect(executeTool(ctx(PROD) as never, { surface: 'ui', subject: 'ui', interactive: true }, 'fs.copyPath', { uri: 'D:/g/main.djs' })).resolves.toBeTruthy();
+  });
+
+  it('闸④ HITL：requiresApproval(fs.delete) 非交互 → 弹审批；拒绝=[API_NOT_APPROVED] ⛔ 动盘，批准=真删+绑定随清', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ bindings: { main: 'main.djs' } }),
+      'D:/p/main.djs': '{"cells":[]}',
+    } });
+    const { executeTool } = await import('../../extension/src/toolRegistry');
+    const agent = { surface: 'ui' as const, subject: 'agent', interactive: false };
+    vscode.state.modalChoice = undefined;
+    await expect(executeTool(ctx(PROD) as never, agent, 'fs.delete', { uri: 'D:/p/main.djs' })).rejects.toThrow(/\[API_NOT_APPROVED\]/);
+    expect(has('D:/p/main.djs')).toBe(true);             // ⛔ 未批准不得动盘
+    vscode.state.modalChoice = '允许';
+    await executeTool(ctx(PROD) as never, agent, 'fs.delete', { uri: 'D:/p/main.djs' });
+    expect(has('D:/p/main.djs')).toBe(false);
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({});
+  });
+
+  it('headless 全链：agent 形状的字符串实参走 fs.move——绑定随迁 + bindingsChanged 广播', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ bindings: { fsm: 'fsm.djs' } }),
+      'D:/p/fsm.djs': '{"cells":[]}',
+      'D:/p/gates/.keep': '',
+    } });
+    const { registerWebviewSink } = await import('../../extension/src/dispatch');
+    const pushes: any[] = [];
+    registerWebviewSink({ postMessage: (m: any) => { pushes.push(m); return Promise.resolve(true); } } as never);
+    const { executeTool } = await import('../../extension/src/toolRegistry');
+    const out = await executeTool(ctx(PROD) as never, { surface: 'ui', subject: 'agent', interactive: false }, 'fs.move', { src: 'D:/p/fsm.djs', destDir: 'D:/p/gates' }) as any;
+    expect(out.uri).toBe('D:/p/gates/fsm.djs');
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ fsm: 'gates/fsm.djs' });
+    expect(pushes.some((m) => m.op === 'bindingsChanged')).toBe(true);
+  });
+
+  it('审计落账：fs.* 过闸一行 JSONL（verdict=auto、tool/ref/subject 全域）', async () => {
+    await boot({ folders: ['D:/a'], seed: { 'D:/a/.vv/project.json': '{}', 'D:/a/main.djs': '{"cells":[]}' } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    await executeTool(ctx(PROD) as never, CALLER_UI, 'fs.copyPath', { uri: 'D:/a/main.djs' });
+    await new Promise((r) => setTimeout(r, 5));          // fire-and-forget 入缓冲
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+    const key = [...vscode.state.files.keys()].find((k) => k.includes('/.vv/audit/'));
+    expect(key).toBeTruthy();
+    const lines = new TextDecoder().decode(vscode.state.files.get(key!)!).trim().split('\n').map((l) => JSON.parse(l));
+    expect(lines.some((l: any) => l.tool === 'fs.copyPath' && l.verdict === 'auto' && l.subject === 'ui')).toBe(true);
+  });
+
+  it('api:doc：docs/API_REFERENCE.md 与 registry+契约 零漂移（漂移=再生成落盘+当场红）', async () => {
+    await boot({ folders: ['D:/p'] });
+    const { renderApiReference } = await import('../../extension/src/apiDoc');
+    const want = renderApiReference();
+    const docPath = path.join(ROOT, 'docs', 'API_REFERENCE.md');
+    const have = fs.existsSync(docPath) ? fs.readFileSync(docPath, 'utf8') : null;
+    if (have !== want) {
+      fs.writeFileSync(docPath, want);
+      throw new Error('API 文档已漂移：已再生成 docs/API_REFERENCE.md——复查内容后随代码一并提交（pnpm api:doc 同效）。');
+    }
+    expect(have).toBe(want);
   });
 });

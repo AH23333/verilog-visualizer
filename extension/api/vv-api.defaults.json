@@ -15,6 +15,16 @@
     "host.setDocBindings":     { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["rpc"], "ref": "setDocBindings", "since": "0.1.0", "description": "绑定链写+撞名/改名随迁；watcher 广播回灌＝同权即时生效" },
     "compile.auditBindings":   { "perm": "read",       "sideEffects": "none",         "surfaces": ["ui"], "ref": "verilogViz.auditBindings", "idempotent": true, "since": "0.1.0" },
     "compile.completeBindings":{ "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "verilogViz.completeBindings", "since": "0.1.0" },
-    "compile.compileAndShow":  { "perm": "process",    "sideEffects": "process",      "surfaces": ["ui"],  "ref": "verilogViz.compileAndShow", "idempotent": false, "since": "0.1.0" }
+    "compile.compileAndShow":  { "perm": "process",    "sideEffects": "process",      "surfaces": ["ui"],  "ref": "verilogViz.compileAndShow", "idempotent": false, "since": "0.1.0" },
+    "fs.rename":          { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.renameFile", "since": "0.2.0", "description": "重命名文件/目录；绑定随迁（G1）；输入消毒" },
+    "fs.move":            { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.moveTo", "since": "0.2.0", "description": "移动文件/目录；(n) 去重、自环拒、绑定随迁" },
+    "fs.delete":          { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.deleteFile", "requiresApproval": true, "since": "0.2.0", "description": "删除（回收站）；绑定/电路名单随清；非交互调用方须 HITL" },
+    "fs.duplicateFile":   { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.duplicateFile", "since": "0.2.0", "description": "(n) 副本；角色不随" },
+    "fs.duplicateFolder": { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.duplicateFolder", "since": "0.2.0", "description": "递归复制 x→x 副本 (n)；含 .djs 自动配表" },
+    "fs.import":          { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.importFiles", "since": "0.2.0", "description": "外部文件复制进目标目录：域过滤+(n)+落表；对话框在调用方" },
+    "fs.copyPath":        { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui"], "ref": "verilogViz.copyPath", "idempotent": true, "since": "0.2.0", "description": "绝对路径进剪贴板" },
+    "fs.revealInOS":      { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui"], "ref": "verilogViz.revealInOS", "idempotent": true, "since": "0.2.0", "description": "工作台 revealFileInOS 定位" },
+    "fs.createFile":      { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.newVerilogFile", "since": "0.2.0", "description": "新建 .v（模板）或 .djs（空画布+落表）；消毒+(n)；编辑器打开归调用方" },
+    "fs.createFolder":    { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.newSandboxFolder", "since": "0.2.0", "description": "段级消毒+递归建目录" }
   }
 }
