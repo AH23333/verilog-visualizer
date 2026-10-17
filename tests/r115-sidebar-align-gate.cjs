@@ -15,6 +15,8 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1159;
 const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
 const J = (o) => JSON.stringify(o);
 let pass = 0, fail = 0;
@@ -99,8 +101,8 @@ async function pickPanel(page, key, wantText) {
 
     // ---- [6] 编译侧仿真控制胶囊：注入 adder.v + full_adder.v → 编译 → 读容器 css ----
     const fsMod = require('fs');
-    const code = fsMod.readFileSync(path.join(ROOT, 'test_files', 'adder.v'), 'utf8');
-    const code2 = fsMod.readFileSync(path.join(ROOT, 'test_files', 'full_adder.v'), 'utf8');
+    const code = fsMod.readFileSync(fixture('adder.v'), 'utf8');
+    const code2 = fsMod.readFileSync(fixture('full_adder.v'), 'utf8');
     await page.evaluate(async (a) => {
       const { fileStore } = await import('/src/store/fileStore.ts');
       const nf = fileStore.createFile('adder.v'); fileStore.saveContent(nf.id, a.c);

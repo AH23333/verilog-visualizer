@@ -7,8 +7,10 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1563;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1563)); } catch { } const URL = `http://127.0.0.1:${PORT}/`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const rd = (f) => fs.readFileSync(path.join(ROOT, 'test_files', f), 'utf8');
+const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
 const freePort = (p) => { try { require('child_process').execSync(`powershell -Command "Get-NetTCPConnection -LocalPort ${p} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"`, { stdio: 'ignore' }); } catch { } };
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 let pass = 0, fail = 0;
 const ok = (n, d) => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
 const bad = (n, d) => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };

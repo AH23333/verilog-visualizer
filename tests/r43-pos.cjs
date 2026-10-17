@@ -5,10 +5,12 @@ const { spawn } = require('child_process');
 const path = require('path'); const fs = require('fs');
 const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1531; const URL = `http://localhost:${PORT}/`;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const rd = (f) => fs.readFileSync(path.join(ROOT, 'test_files', f), 'utf8');
+const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
 const dismiss = async (page) => { try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { } };
 
 // 把一组 {id -> {x,y}} 归一化到 [0,1] 方框内再比，消掉平移与整体缩放

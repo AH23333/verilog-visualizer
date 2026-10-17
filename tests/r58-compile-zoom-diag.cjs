@@ -10,8 +10,10 @@ const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1641; const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
-const rd = (f) => fs.readFileSync(path.join(ROOT, 'test_files', f), 'utf8');
+const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
 
 const CHAIN = `(p) => { const out = []; let n = p.el; let i = 0;
   while (n && i++ < 8) { const cs = getComputedStyle(n);

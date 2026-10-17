@@ -14,8 +14,10 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1651;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1651)); } catch { } const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
-const rd = (f) => fs.readFileSync(path.join(ROOT, 'test_files', f), 'utf8');
+const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
 const J = (o) => JSON.stringify(o);
 let pass = 0, fail = 0, unverified = 0;
 const ok = (n, d) => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };

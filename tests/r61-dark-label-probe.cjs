@@ -9,7 +9,9 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1649; const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
 const sleep = UI.sleep;
-const rd = (f) => require('fs').readFileSync(path.join(ROOT, 'test_files', f), 'utf8');
+const rd = (f) => require('fs').readFileSync(fixture(f), 'utf8');
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const J = (o) => JSON.stringify(o);
 
 const STAT = () => {

@@ -19,10 +19,12 @@ const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1751; const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
 const J = (o) => JSON.stringify(o);
 
-const SOURCE = fs.readFileSync(path.join(ROOT, 'test_files', 'r51_fsm.v'), 'utf8');
+const SOURCE = fs.readFileSync(fixture('r51_fsm.v'), 'utf8');
 console.log('[夹具] r51_fsm.v 前 6 行：', JSON.stringify(SOURCE.split('\n').slice(0, 6).join(' ⏎ ')));
 
 const RUN = (src) => `(async () => {

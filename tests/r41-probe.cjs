@@ -12,6 +12,8 @@ const path = require('path');
 const fs = require('fs');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1497;
 const URL = `http://localhost:${PORT}/`;
@@ -82,7 +84,7 @@ const canvasRead = (page, hook) => page.evaluate((h) => {
 
     const ids = {};
     for (const f of FILES) {
-      const content = fs.readFileSync(path.join(PROJECT_ROOT, 'test_files', f), 'utf8');
+      const content = fs.readFileSync(fixture(f), 'utf8');
       ids[f] = await page.evaluate(async (a) => {
         const { fileStore } = await import('/src/store/fileStore.ts');
         const nf = fileStore.createFile(a.name); fileStore.saveContent(nf.id, a.code); return nf.id;

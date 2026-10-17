@@ -23,6 +23,8 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1581;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1581)); } catch { } const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
 const J = (o) => JSON.stringify(o);
 let pass = 0, fail = 0, unverified = 0;
@@ -31,7 +33,7 @@ const bad = (n, d) => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}
 const skip = (n, d) => { unverified++; console.log(`  UNVERIFIED  ${n}（${d}）`); };
 
 const fx = (n, opt = {}) => {
-  let s = fs.readFileSync(path.join(ROOT, 'test_files', n), 'utf8');
+  let s = fs.readFileSync(fixture(n), 'utf8');
   if (opt.bom) s = '﻿' + s;
   return s;
 };

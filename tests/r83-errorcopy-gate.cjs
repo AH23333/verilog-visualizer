@@ -28,6 +28,8 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1583;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1583)); } catch { } const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
 const J = (o) => JSON.stringify(o);
 let pass = 0, fail = 0, unverified = 0;
@@ -84,7 +86,7 @@ const screenHas = (page, needles) => page.evaluate((list) => {
     await page.evaluate(async (src) => {
       const { fileStore } = await import('/src/store/fileStore.ts');
       fileStore.addFile('test_counter.v', src);
-    }, fs.readFileSync(path.join(ROOT, 'test_files', 'test_counter.v'), 'utf8'));
+    }, fs.readFileSync(fixture('test_counter.v'), 'utf8'));
     await sleep(1200);
     await page.locator('[title="test_counter.v"]').first().click({ force: true }).catch(() => { });
     await sleep(900);

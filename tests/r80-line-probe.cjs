@@ -14,11 +14,13 @@ const PW = require(path.join(ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1580; const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
 
 /** 从磁盘取真夹具（不用玩具输入） */
 const readFixture = (n, opts = {}) => {
-  let s = fs.readFileSync(path.join(ROOT, 'test_files', n), 'utf8');
+  let s = fs.readFileSync(fixture(n), 'utf8');
   if (opts.bom) s = '﻿' + s;
   return s;
 };

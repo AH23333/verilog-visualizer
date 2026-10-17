@@ -20,12 +20,14 @@ const { spawn } = require('child_process');
 const path = require('path'); const fs = require('fs');
 const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
+// 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
+const { fixture } = require('./fixtures.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1521;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1521)); } catch { } const URL = `http://localhost:${PORT}/`;
 const OUT = path.join(ROOT, '.tmpbuild');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const rd = (f) => fs.readFileSync(path.join(ROOT, 'test_files', f), 'utf8');
+const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
 let pass = 0, fail = 0;
 const ok = (n, d) => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
 const bad = (n, d) => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };
