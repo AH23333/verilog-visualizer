@@ -119,7 +119,7 @@ export async function dispatch(context: vscode.ExtensionContext, method: string,
   const toolId = toolIdForRpc(method);
   try {
     const out = await dispatchCore(context, method, args);
-    auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "rpc",
+    auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "ui", channel: "rpc",
       verdict: toolId && loadApiContract().tools[toolId].requiresApproval ? "approved" : "auto", ms: Date.now() - t0, args });
     return out;
   } catch (e) {
@@ -128,7 +128,7 @@ export async function dispatch(context: vscode.ExtensionContext, method: string,
       : msg.includes("[API_SURFACE_DENIED]") ? "surface-denied"
       : msg.includes("[API_NOT_GRANTED]") ? "not-granted"
       : msg.includes("[API_NOT_APPROVED]") ? "denied" : "error";
-    auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "rpc", verdict, ms: Date.now() - t0, args, note: msg.slice(0, 200) });
+    auditToolCall(context, { tool: toolId ?? undefined, ref: method, subject: "ui", channel: "rpc", verdict, ms: Date.now() - t0, args, note: msg.slice(0, 200) });
     throw e;
   }
 }

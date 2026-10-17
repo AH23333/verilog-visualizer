@@ -1322,7 +1322,11 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     expect(last.verdict).toBe('auto');
     expect(last.ref).toBe('getAllBindings');
     expect(last.tool).toBe('host.getAllBindings');
-    expect(last.subject).toBe('rpc');
+    // R154 起两颗槽分开：`subject`＝**身份**（闸 3 grants 按它放行）、`channel`＝**端点**（闸 2 按它放行）。
+    // 修前这条 RPC 账把通道名 "rpc" 塞进了 subject，而授权检查实际按 'ui' 算（dispatch 自己那句头注写着）
+    // ⇒ 拿这份账反推"谁能调用"必然推出错的结论。
+    expect(last.subject).toBe('ui');
+    expect(last.channel).toBe('rpc');
     expect(String(last.configHash)).toMatch(/^[0-9a-f]{64}$/);
     expect(last.traceId && last.ts && typeof last.ms === 'number').toBeTruthy();
   });

@@ -20,7 +20,10 @@ import { auditToolCall, type AuditVerdict } from './apiAudit';
 
 export type ToolSurface = 'ui' | 'rpc' | 'mcp' | 'cli';
 
-/** 调用方档案：审计 subject 与闸 3 的 key；interactive 决定审批弹窗归谁出。 */
+/** 调用方档案：`subject`＝身份（闸③ grants 的 key，也是审计账上那颗 `subject`）、
+ *  `surface`＝端点（闸② 按它放行，落账时写进 `channel`）、`interactive` 决定审批弹窗归谁出。
+ *  ⚠ 两颗⛔ 合成一颗：RPC 路径上端点是 `rpc` 而身份是「用户」（`ui`），
+ *  混起来＝审计账与授权闸两套口径（R154 之前 dispatch 就这么写）。 */
 export interface ToolCaller {
   surface: ToolSurface;
   subject: string;
@@ -83,7 +86,9 @@ export async function executeTool(
   const ct = contract.tools[id];
   const audit = (verdict: AuditVerdict, note?: string, knownId?: string): void => {
     const ref = knownId ? (contract.tools[knownId]?.ref ?? knownId) : id;
-    auditToolCall(context, { tool: knownId, ref, subject: caller.subject, verdict, ms: Date.now() - t0, args, note });
+    // `subject`＝身份（闸 3 按它放行）、`channel`＝端点（闸 2 按它放行）——两颗分开落账，
+    // ⛔ 再像 dispatch 旧壳那样把通道名塞进 subject（那条账会让 agent 把"谁能调用"推错）。
+    auditToolCall(context, { tool: knownId, ref, subject: caller.subject, channel: caller.surface, verdict, ms: Date.now() - t0, args, note });
   };
   const fail = (code: ToolError['code'], verdict: AuditVerdict, msg: string, note?: string): never => {
     audit(verdict, note);

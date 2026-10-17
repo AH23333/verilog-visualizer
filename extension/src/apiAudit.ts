@@ -18,6 +18,11 @@ export const AUDIT_VERDICTS = ['auto', 'approved', 'denied', 'error', 'surface-d
 export type AuditVerdict = typeof AUDIT_VERDICTS[number];
 export interface AuditLine {
   ts: string; traceId: string; tool: string | null; ref: string; subject: string;
+  /** 从哪一端点进来（rpc／ui／mcp／cli）——⚠ 与 `subject` 分两颗是 R154 定的：
+   *  `subject` 永远是**身份**（grants 按它放行），`channel` 才是**通道**。
+   *  修前那颗 `subject` 在 RPC 路径上被写成 `"rpc"`（通道），而授权检查却按 `"ui"`（身份）算——
+   *  同一个字段两处各说各话，agent 拿审计账反推"谁能调用"必然推错。 */
+  channel: string;
   verdict: AuditVerdict; ms: number; argsDigest: string; note?: string; configHash: string;
 }
 let pending: string[] = [];
@@ -70,13 +75,13 @@ function digestOf(args: unknown): string {
 }
 
 /** 记账入口（fire-and-forget：dispatch 不 await，写失败⛔ 影响调用结果——账丢了是账的损失）。 */
-export function auditToolCall(context: vscode.ExtensionContext, p: { tool?: string; ref: string; subject: string; verdict: AuditVerdict; ms: number; args: unknown; note?: string }): void {
+export function auditToolCall(context: vscode.ExtensionContext, p: { tool?: string; ref: string; subject: string; channel?: string; verdict: AuditVerdict; ms: number; args: unknown; note?: string }): void {
   void (async () => {
     try {
       if (!await vvReady(context)) return;
       const line: AuditLine = {
         ts: new Date().toISOString(), traceId: crypto.randomBytes(4).toString('hex'),
-        tool: p.tool ?? null, ref: p.ref, subject: p.subject, verdict: p.verdict,
+        tool: p.tool ?? null, ref: p.ref, subject: p.subject, channel: p.channel ?? p.subject, verdict: p.verdict,
         ms: Math.round(p.ms * 100) / 100, argsDigest: digestOf(p.args), ...(p.note ? { note: String(p.note).slice(0, 200) } : {}),
         configHash: configHash(),
       };
