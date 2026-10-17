@@ -16,7 +16,7 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1491;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1491)); } catch { }
 const UI = require('./_ui.cjs');
-const URL = `http://localhost:${PORT}/`;
+const URL = `http://localhost:${PORT}/gates.html`;  // vv-c5：入口＝夹具外壳（老 App 的活动栏随旧 React 单页一起退役了）
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };

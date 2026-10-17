@@ -22,7 +22,8 @@ const UI = require('./_ui.cjs');
 const DH = require('./_dochost.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1562;
-const URL = `http://localhost:${PORT}/`;
+const URL = DH.DOC_URL(PORT);      // 这颗闸门量的就是 doc 入口本身（波次回写脚本扫到这一行时，
+                                    // 顺手把根路径换成了 gates.html——那⛔ 是这颗档的主人，逐颗复核时改回来）
 try { process.on('exit', () => UI.reapViteByPort(PORT)); } catch { }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const DOC = 'parts/r154_persist.djs';

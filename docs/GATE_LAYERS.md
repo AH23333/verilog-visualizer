@@ -137,6 +137,7 @@ GREEN 名单（12 颗）：`r12-export` `r13-custom-gate` `r42-verify` `r48-veri
 
 ### ⑤-补 这一跑之后入册的一颗新证人
 
+
 `tests/r154-dochost-persist-gate.cjs`（**7 格全绿**，`tests/run-all.cjs` 的 `GATES` 现读 **74** 颗＝73+1）。
 它补的是这批迁移里最大的一块**覆盖真空**：`.djs` 成为工作区真文档后，
 "编辑 → 保存 → 刷新 → 重开不丢"这条用户承诺在自动化里一度⛔ 任何一层覆盖
@@ -147,6 +148,18 @@ GREEN 名单（12 颗）：`r12-export` `r13-custom-gate` `r42-verify` `r48-veri
 七格：挂载 / 点部件库真放置 / commit 走 `doc/edit` 且落盘正文含那颗 / 正文是 `{cells:[]}` 形状 /
 刷新重开还在 / **反向臂**（盘上正文换回空档 ⇒ 画布跟着变空，这颗专门防"同页内存冒充磁盘"的假绿）/ 无 pageerror。
 ⚠ 一颗假宿主⛔ 等于真宿主：`fs.delete`、watcher 自刷、真 Uri、回收站那几处仍归 `pnpm test:real` 与 X 层。
+
+### ⑤-补2 那三颗 `vite preview` 档的裁决（qc-paused / qc-preview / qc-realuser）
+
+它们⛔ 能像其余 32 颗那样一行换入口：跑的是 **dist 产物**，而 `gates.html` 有意⛔ 进构建输入
+（`src/gates/main.tsx` 文件头那句"⛔ 不进构建产物"），换过去当场 404。三档今天真正剩下的意图是两条：
+
+- **产物挂载/CSP 能跑** → 主人是 `r137-webview-csp-gate`（它本轮也红，见 ⑤ 的"逐颗"表；先定它，⛔ 让两条路各修各的）；
+- **生产构建上的「保存→刷新→重开」** → 这条⛔ 退役：假宿主那颗（`tests/_dochost.cjs`）用的是 `addInitScript`，
+  同一招在 `vite preview` 下同样成立，把 `r154-dochost-persist-gate` 的入口从 dev 换成 dist 就是它的**升级版**
+  （今天测的是源码，换过去测的是发出去的那份）。裁决＝**做**，排在 `r137` 定案之后，⛔ 之前先把这三档
+  从名册里静默删掉（今天它们＝三颗"地板已拆"的红，删掉＝丢覆盖）。
+
 
 
 

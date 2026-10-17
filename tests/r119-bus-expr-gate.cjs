@@ -6,7 +6,7 @@ const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1179;
-const URL = `http://localhost:${PORT}/`;
+const URL = `http://localhost:${PORT}/gates.html`;  // vv-c5：入口＝夹具外壳（老 App 的活动栏随旧 React 单页一起退役了）
 const UI = require('./_ui.cjs');
 const sleep = UI.sleep;
 const J = (o) => JSON.stringify(o);
