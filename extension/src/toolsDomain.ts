@@ -14,12 +14,11 @@ import * as vscode from 'vscode';
 import { registerTool, argUri } from './toolRegistry';
 import { broadcastBindingsChanged, projectRoot, vscodeFs } from './dispatch';
 import { ProjectStore, sanitizeRel } from './projectStore';
-import { stripVerilogExt, isVerilogPath } from './verilogDomain';
 import {
   getAllBindings, setBindingInDir, collectInstanceHits, completeFromHits,
   materializeBindings, togglePartRole, getCircuitsSet, pathRel, META_FILE,
 } from './sandboxFiles';
-import { closureOf } from './compilePanel';
+import { closureOf, scanDefs } from './compilePanel';
 import { loadApiContract } from './apiSurface';
 import { listTools } from './toolRegistry';
 
@@ -95,16 +94,20 @@ export function registerDomainTools(): void {
           names.has(`${dir}/${n}.djs`) ? `${dir}/${n}.djs` : names.has(`${n}.djs`) ? `${n}.djs` : null));
       } else {
         const job = await closureOf(ctx, uri);
-        // 键⛔ 用 `/\.sv?$/` 裁（那颗读反了：对 `adder.v` 原样返回）⇒ 同名查表对 .v 一颗撞不上。
-        const inJob = new Map(job.files.map((f) => [stripVerilogExt(f.name), f.name]));
         const inst = new Set<string>();
         for (const f of job.files) {
           const { parseVerilogInstances } = await import('./verilogParseLite');
           for (const i of parseVerilogInstances(f.content)) if (i !== job.topModule) inst.add(i);
         }
+        // 「谁定义了这个模块」问一颗主人 `scanDefs`（全工作区真扫描，与「写全配置」链同源）。
+        // 修前这里拿闭包 job.files 建"裸名→文件"表：闭包只含**已录入绑定**的文件，而本工具服务的
+        // 正是**未录入**实例 ⇒ 按构造永远命不中（一键落表对 .v 工程恒交回 0 颗＝"点了没反应"）。
+        const defs = await scanDefs();
         done.push(...await materializeBindings(ctx, docRel, [...inst], async (n) => {
-          const hit = inJob.get(n);
-          return hit && isVerilogPath(hit) && hit !== docRel ? hit : null;   // ⛔ 把自己录成部件
+          const def = defs.get(n);
+          if (!def) return null;
+          const hit = pathRel(projectRoot(ctx), def);
+          return hit === docRel ? null : hit;                              // ⛔ 把自己录成部件
         }));
       }
       if (done.length) broadcastBindingsChanged();

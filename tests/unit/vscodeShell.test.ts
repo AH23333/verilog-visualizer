@@ -11,8 +11,9 @@ import * as path from 'node:path';
 import { rewriteWebviewHtml, buildCsp } from '../../extension/src/html';
 import { ProjectStore, sanitizeRel, VERILOG_EXT } from '../../extension/src/projectStore';
 import {
-  isVerilogPath, isSandboxPath, isBindablePath, isBindingTargetValue, stripVerilogExt, watcherGlobs,
+  isVerilogPath, isSandboxPath, isBindablePath, isBindingTargetValue, stripVerilogExt, watcherGlobs, rootRel,
 } from '../../extension/src/verilogDomain';
+import * as vscode from 'vscode';
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DIST_HTML = path.join(ROOT, 'dist', 'index.html');
@@ -320,6 +321,7 @@ describe('域界一颗主人（片 C2：哪些文件算 Verilog / 算沙盒）',
     "findFiles('**/*.v'", "findFiles('**/*.djs'",
     '(v|sv)$/i.test(', '(v|sv|djs)$/i.test(', '(v|sv|djs|gate)$/i.test(',
     "!== '.v'", 'replace(/\\.sv?$',
+    '.slice(rootFs.length',                     // 根相对名⛔ 再有人按根串长度切（R153：那三份都交过坏值）
   ];
 
   it('extension/src 里除主人外⛔ 再有第二处写死的域判定（正件：主人的扫描真看得见＝这把尺⛔ 瞎）', () => {
@@ -361,5 +363,23 @@ describe('域界一颗主人（片 C2：哪些文件算 Verilog / 算沙盒）',
     expect(stripVerilogExt('defs.vh')).toBe('defs');
     expect(stripVerilogExt('parts/alu')).toBe('parts/alu');     // 无域扩展＝原样
     expect(watcherGlobs().slice().sort()).toEqual(['**/*.djs', '**/*.sv', '**/*.v', '**/*.vh']);
+  });
+});
+
+describe('根相对名一颗主人 rootRel（R153 深度自检：本仓曾有七份，三份按根串长度切）', () => {
+  const U = (p: string) => vscode.Uri.file(p);
+
+  it('根内／子目录／盘符大小写漂／中文段／根自己：一律交斜杠分隔的相对名', () => {
+    expect(rootRel(U('D:/p'), U('D:/p/top.v'))).toBe('top.v');
+    // 盘符大小写一漂正是那三份"按根串长度切"的死处（截出来的是一截尾巴或整颗绝对路径）
+    expect(rootRel(U('D:/p'), U('d:/p/lib/adder.v'))).toBe('lib/adder.v');
+    expect(rootRel(U('D:\\p'), U('D:\\p\\部件\\甲.djs'))).toBe('部件/甲.djs');
+    expect(rootRel(U('D:/p'), U('D:/p'))).toBe('');            // 根自己＝空相对名（钉住这颗选择）
+  });
+
+  it('根外的 Uri 交回**绝对路径**（⛔ 折成相对名混进目录表的键里）', () => {
+    const out = rootRel(U('D:/p'), U('D:/other/x.v'));
+    expect(/^[a-zA-Z]:\//.test(out)).toBe(true);
+    expect(out.endsWith('other/x.v')).toBe(true);
   });
 });

@@ -3,24 +3,16 @@ import { projectRoot, registerWebviewSink, unregisterWebviewSink } from './dispa
 import { vscodeFs } from './dispatch';
 import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 import { bindingsForFile, setBinding, META_FILE, openBindingConfig } from './sandboxFiles';
-import { closureOf } from './compilePanel';
+import { closureOf, scanDefs } from './compilePanel';
 import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
-import { ProjectStore, VERILOG_EXT } from './projectStore';
-import { isBindingTargetValue, isVerilogPath } from './verilogDomain';
+import { ProjectStore } from './projectStore';
+import { isBindingTargetValue, isVerilogPath, rootRel } from './verilogDomain';
 
 const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> =>
   new Promise<T>((res, rej) => t.then(res, (e) => rej(e)));
 
-function rel(root: vscode.Uri, uri: vscode.Uri): string {
-  const rootFs = root.fsPath.replace(/[\\/]+$/, '');
-  const fsPath = uri.fsPath.replace(/\\/g, '/');
-  const r = rootFs.replace(/\\/g, '/');
-  if (fsPath.startsWith(r)) {
-    const rest = fsPath.slice(r.length);
-    return rest.replace(/^\/+/, '').replace(/\\/g, '/');
-  }
-  return uri.fsPath.replace(/\\/g, '/');
-}
+// 根相对名转交一颗主人（R153 深度自检：本仓曾有六份各自实现，其中三份截前缀＝盘符大小写一漂就交坏值）
+function rel(root: vscode.Uri, uri: vscode.Uri): string { return rootRel(root, uri); }
 
 function basename(rel: string): string {
   const parts = rel.split('/');
@@ -98,18 +90,18 @@ export async function bindingDataFor(context: vscode.ExtensionContext, uri: vsco
       .filter((n, idx, arr) => arr.findIndex((x) => x === n) === idx)
       .filter((n) => n.toLowerCase() !== docRel.toLowerCase())
       .sort((a, b) => a.localeCompare(b));
-    const inJobSet = new Set(job.files.map((f) => f.name));
+    // 「自动同名」的一颗主人＝`scanDefs`（模块名 → **真定义它的文件**，全工作区扫，与「写全配置」同源）。
+    // 修前这里拿闭包 `job.files` 建索引：闭包只含**已录入绑定**的文件，而这一栏是给**未录入**实例看的
+    // ⇒ 按构造永远命不中（面板对每个未录入实例一直报"未绑定"，盘上明明有那颗实现文件看不见）。
+    const defRel = new Map<string, string>();
+    for (const [mod, defUri] of await scanDefs()) defRel.set(mod, rel(root, defUri));
     const instances: BindingInstance[] = [...tally].map(([name, count]) => {
       const recKey1 = `${docRel}::${name}`;
       const recRaw = recorded[recKey1] || recorded[name] || null;
       // recorded 值的合法性问一颗主人（原来这里把同一串正则写了两遍，而名单与编译侧已经分岔）
       const rec = recRaw && isBindingTargetValue(recRaw) ? recRaw : null;
-      let auto: string | null = null;
-      // 同名兜底的候选由**域界主人**生成（原来手写 `.v`/`.sv` 两颗 ⇒ 定义在 `.vh` 里的撞不上，
-      // 面板把它报成"未绑定"而闭包里明明有那颗文件＝又一面"录了没生效"的真通路）
-      for (const ext of VERILOG_EXT) {
-        if (inJobSet.has(`${name}.${ext}`)) { auto = `${name}.${ext}`; break; }
-      }
+      let auto: string | null = defRel.get(name) ?? null;
+      if (auto === docRel) auto = null;                     // ⛔ 把自己录成部件
       if (!auto) {
         if (sparts.includes(`${dir}/${name}.djs`)) auto = `${dir}/${name}.djs`;
         else if (sparts.includes(`${name}.djs`)) auto = `${name}.djs`;

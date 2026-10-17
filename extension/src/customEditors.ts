@@ -10,12 +10,12 @@
 // 真源语义（F1）：沙盒正文从 localStorage 迁到工作区真文件——打开=读盘，保存=宿主写盘
 // （webview ⛔ 参与写盘，只负责把最新 content 推上来），Explorer/git/侧边栏沙盒树看到的就是真文件。
 import * as vscode from 'vscode';
-import * as path from 'path';
 import { dispatch, projectRoot, registerWebviewSink, unregisterWebviewSink, broadcastBindingsChanged, vscodeFs } from './dispatch';
 import { clearActiveCanvas, setActiveCanvas } from './activeCanvas';
 import { ensureDirsMeta, getCircuitsSet, completeFromHits } from './sandboxFiles';
 import { setActiveSandboxDoc } from './trees';
 import { ProjectStore } from './projectStore';
+import { rootRel } from './verilogDomain';
 import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 
 export const DOC_VIEW_TYPE = 'verilogViz.doc';
@@ -35,10 +35,8 @@ async function readText(uri: vscode.Uri): Promise<string> {
   return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
 }
 
-function relName(root: vscode.Uri, uri: vscode.Uri): string {
-  const rel = path.relative(root.fsPath, uri.fsPath).replace(/\\/g, '/');
-  return rel.startsWith('..') ? uri.fsPath : rel;      // 工作区外的文档按绝对路径认（⛔ 混进相对名里）
-}
+// 根相对名转交一颗主人（工作区外的文档仍按绝对路径认，⛔ 混进相对名里——口径在 verilogDomain.rootRel）
+function relName(root: vscode.Uri, uri: vscode.Uri): string { return rootRel(root, uri); }
 
 export class VvCircuitDocument implements vscode.CustomDocument {
   /** 快照栈：undo 恢复上一版并把 webview 拉回去（custom editor 的 Ctrl+Z 免费档） */

@@ -1005,6 +1005,18 @@ describe('双容器六树的台架驱动（片 5-B）', () => {
     expect(meta.bindings.top).toBeUndefined();        // 顶层模块⛔ 进绑定表
   });
 
+  it('深度自检新增（R153）：未录入实例那一行亮得出「自动同名 → lib/adder.v」（修前恒 null）', async () => {
+    // 这颗臂测的是**那一半**：修前的索引建在闭包 job.files 上，而闭包只含"已录入绑定"的文件
+    // ⇒ 未录入实例按构造永远命不中，面板对每个这样的实例一直报"未绑定"（盘上有实现看不见）。
+    await boot({ folders: ['D:/p'], seed: SEED });
+    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/top.v'));
+    const panel = vscode.state.panels.find((p: any) => p.viewType === 'verilogViz.binding')!;
+    const data = panel.messageLog.find((m: any) => m.vvh === 'binding' && m.op === 'data')?.data;
+    const adder = data.instances.find((i: any) => i.name === 'adder');
+    expect(adder.recorded).toBe(null);                 // ⛔ 靠"已经录了"才算命中（那颗死查表的成因）
+    expect(adder.auto).toBe('lib/adder.v');            // 定义文件在**子目录**里也要看得见
+  });
+
   it('sibling role：circuits 名单里→circuit，其余→part（⛔ 再回到"全 circuit"把部件清空）', async () => {
     await boot({
       folders: ['D:/p'],
@@ -2259,6 +2271,20 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const r = await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.materialize', { doc: 'main.djs' }) as any;
     expect(r.done.length).toBe(1);
     expect(readMetaFile('D:/p/.verilogviz.json').bindings.half).toBe('half.djs');
+  });
+
+  it('深度自检新增（R153）：bindings.materialize 的 **.v 侧**真落表（修前按构造恒 0 颗＝点了没反应）', async () => {
+    await boot({
+      folders: ['D:/p'],
+      seed: {
+        'D:/p/top.v': 'module top;\n  adder u1();\nendmodule',
+        'D:/p/lib/adder.v': 'module adder;\nendmodule',      // ⛔ 任何表录它——本工具就是来录它的
+      },
+    });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const r = await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.materialize', { doc: 'top.v' }) as any;
+    expect(r.done).toEqual(['adder → adder.v']);             // 形状＝`名 → 末段名`（面板直接念它）
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ adder: 'lib/adder.v' });
   });
 
   it('批次二·circuits 族：list 空账 / toggle 翻转进名单 / 翻回', async () => {

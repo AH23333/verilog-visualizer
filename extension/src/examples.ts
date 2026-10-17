@@ -4,6 +4,7 @@ import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
 import { ensureDirMeta } from './sandboxFiles';
 import { uniqueName, sanitizeNameInput } from './naming';
+import { rootRel } from './verilogDomain';
 import { executeTool, CALLER_UI } from './toolRegistry';
 import { VERILOG_EXAMPLES } from '../../shared/examples';
 
@@ -11,10 +12,8 @@ const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): 
   new Promise<T>((res, rej) => t.then(res, (e) => rej(e)));
 
 /** root 相对posix路径（目录表定位用） */
-function relOfRoot(root: vscode.Uri, uri: vscode.Uri): string {
-  const rootFs = root.fsPath.replace(/[\\/]+$/, '');
-  return uri.fsPath.slice(rootFs.length + 1).replace(/\\/g, '/');
-}
+// 根相对名转交一颗主人（这颗原是"截前缀"的一份：盘符大小写一漂就交半截路径）
+function relOfRoot(root: vscode.Uri, uri: vscode.Uri): string { return rootRel(root, uri); }
 
 /** QuickPick 选示例 → 写入 examples/<名> → 开文本编辑器 → 自动编译出电路 */
 export async function openExamples(context: vscode.ExtensionContext, compileAndShow: (uri: vscode.Uri) => Promise<void>): Promise<void> {

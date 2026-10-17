@@ -50,6 +50,8 @@ TREES = os.path.join(EXT, "trees.ts")
 COMPILE = os.path.join(EXT, "compilePanel.ts")
 DOMAIN = os.path.join(EXT, "verilogDomain.ts")
 TOOLS = os.path.join(EXT, "toolsDomain.ts")
+PANEL = os.path.join(EXT, "bindingPanel.ts")
+PKG = os.path.join(REPO, "extension", "package.json")
 
 ARMS = [
     ("M0 对照件（⛔ 变异）", None, None, None, []),
@@ -79,10 +81,8 @@ ARMS = [
      "stripVerilogExt(path.basename(entry.fsPath));",
      "path.basename(entry.fsPath).replace(/\\.sv?$/, '');",
      ["兜底 topModule", "第二处写死的域判定"]),
-    ("M7 bindings.complete 查表键退回那颗读反的 .sv?", TOOLS,
-     "[stripVerilogExt(f.name), f.name]",
-     "[f.name.replace(/\\.sv?$/i, ''), f.name]",
-     ["第二处写死的域判定"]),
+    # （旧 M7「bindings.complete 查表键退回读反的 .sv?」退役：它锚的那行在深度自检里被 scanDefs
+    #   顶掉了。同一颗点的覆盖由 M13 接手——退役要留话，⛔ 让那一格从名册里静默消失；见文末 COVER）
     ("M8 主人的扫描只收第一颗扩展", DOMAIN,
      "  for (const ext of exts) {",
      "  for (const ext of exts.slice(0, 1)) {",
@@ -102,6 +102,71 @@ ARMS = [
      "  return [...VERILOG_EXT, ...SANDBOX_EXT].map((e) => `**/*.${e}`).concat(extra);",
      "  return [...VERILOG_EXT].map((e) => `**/*.${e}`).concat(extra);",
      ["三颗 watcher 在册", "主人口径逐颗现读"]),
+
+    # ── 深度自检批（R153 补）：新落的四颗证人各自要能红 ──
+    # M12 只动**键位**那一条（四条同文，锚点带上下文取恰一颗）：行为面⛔ 变，靠 manifest 尺判
+    ("M12 Ctrl+F5 的 when 退回两颗扩展（声明式域界漂回）", PKG,
+     '        "when": "resourceExtname =~ /\\\\.(v|sv|vh)$/"\n      },\n      {\n        "command": "verilogViz.sim.stepOnce",',
+     '        "when": "resourceExtname =~ /\\\\.(v|sv)$/"\n      },\n      {\n        "command": "verilogViz.sim.stepOnce",',
+     ["manifest 里那第五"]),
+    # M13/M14 退回"拿闭包 job.files 当同名索引"那颗死形状，顺带把读反的 .sv? 抄回来 ⇒ 禁项尺同响
+    ("M13 bindings.materialize 的 .v 侧退回闭包索引（那颗按构造恒 0 颗）", TOOLS,
+     "        const defs = await scanDefs();\n"
+     "        done.push(...await materializeBindings(ctx, docRel, [...inst], async (n) => {\n"
+     "          const def = defs.get(n);\n"
+     "          if (!def) return null;\n"
+     "          const hit = pathRel(projectRoot(ctx), def);\n"
+     "          return hit === docRel ? null : hit;                              // ⛔ 把自己录成部件",
+     "        const inJob = new Map(job.files.map((f) => [f.name.replace(/\\.sv?$/i, ''), f.name]));\n"
+     "        done.push(...await materializeBindings(ctx, docRel, [...inst], async (n) => {\n"
+     "          const hit = inJob.get(n);\n"
+     "          return hit && hit !== docRel ? hit : null;",
+     ["bindings.materialize 的 **.v 侧**", "第二处写死的域判定"]),
+    ("M14 绑定面板的自动同名退回闭包索引（那一栏恒 null）", PANEL,
+     "    const defRel = new Map<string, string>();\n    for (const [mod, defUri] of await scanDefs()) defRel.set(mod, rel(root, defUri));",
+     "    const defRel = new Map<string, string>();\n    for (const f of job.files) defRel.set(f.name.replace(/\\.sv?$/i, ''), f.name);",
+     ["未录入实例那一行亮得出", "第二处写死的域判定"]),
+    # M15 主人退回"按根串长度切"：形状臂里那两颗切不动的（根外／漂大小写）要响
+    ("M15 rootRel 退回按根串长度切（七份里那三份的死法）", DOMAIN,
+     "  const rel = path.relative(root.fsPath, uri.fsPath).replace(/\\\\/g, '/');\n"
+     "  return rel.startsWith('..') || path.isAbsolute(rel) ? uri.fsPath.replace(/\\\\/g, '/') : rel;",
+     "  const rootFs = root.fsPath.replace(/[\\\\/]+$/, '');\n"
+     "  return uri.fsPath.slice(rootFs.length + 1).replace(/\\\\/g, '/');",
+     ["根外的 Uri 交回"]),
+    # M16 去掉 '/' 归一：win32 上 path.relative 交的是反斜杠。rootRel 是**枢纽**，没有"只打一格"的窄变异
+    # ⇒ 射程 26 臂（读数逐颗确认都是 rootRel 的真消费者：绑定值/树路径/闭包名/键位）。
+    # 期望写成 26 颗全名的等式⛔ 子集判断：将来任何一臂漂色都要逼一次重读（名册 288/312 的口径）。
+    ("M16 rootRel 不归一分隔符（交回反斜杠）", DOMAIN,
+     "  const rel = path.relative(root.fsPath, uri.fsPath).replace(/\\\\/g, '/');\n"
+     "  return rel.startsWith('..') || path.isAbsolute(rel) ? uri.fsPath.replace(/\\\\/g, '/') : rel;",
+     "  const rel = path.relative(root.fsPath, uri.fsPath);\n"
+     "  return rel.startsWith('..') || path.isAbsolute(rel) ? uri.fsPath.replace(/\\\\/g, '/') : rel;",
+     ['根内／子目录／盘符大小写漂／中文段／根自己：一律交斜杠分隔的相对名',
+      '.v 绑定全链（桩收紧成员的证物）：面板里选到＝录上 ⇒ 编译闭包照记录走',
+      'F1/F3/G3：树内拖入目录——多选移动、域外拦下、绑定随迁、bindingsChanged 广播',
+      'G1 文件路（审查缺陷 #4）：跨目录表层的 `../` 引用随「移动到」随迁（旧实现只扫祖先链必漏）',
+      'R152 默认绑定权威：录入后同名旧档让位、绑定文件入闭包（⛔ 红字）',
+      'X6：importFromUris 域设防——跨界文件不落盘、skipped 计数（fs.import 工具机械体）',
+      'audit 命令：未录入的同名兜底当场点名，「写全配置」动作直接落表',
+      'bindParts 写「文档所在目录」的表（缺表即建；⛔ 污染根表）',
+      'headless 全链：agent 形状的字符串实参走 fs.move——绑定随迁 + bindingsChanged 广播',
+      'moveToFile 防自环与原地 no-op：目录⛔ 进自己子树；同目录"移动"⛔ 白跑 (n) 顺延',
+      'openBindingConfig：有表直开⛔ 覆盖（用户手编内容珍贵）、无表先建再开',
+      'sandboxParts：circuits 名单外的全部 .djs（缺省部件，与画布 refreshGates 同口径）',
+      'setDocBindings 落文档目录层：整表替换、值相对化，读回 round-trip 一致',
+      '依赖闭包：从入口出发拉到 adder 为止，⛔ 把全工作区文件都塞进编译单',
+      '保存闭包内的文件 ⇒ 自动重编译（autoRecompile 默认开）；闭包外⛔ 扰民',
+      '全层 BFS：孙层实例也进账（main→ctrl→adder 两层都点名）',
+      '删除清绑：删掉被绑定的部件文件 ⇒ 各层指向它的绑定同删（⛔ 留下解不开的悬空项）',
+      '协议落地②字段回环保留：手编 $schema/meta/私货在固化·改名·M7 任一写回后⛔ 被吞',
+      '固化自动绑定：自动命中的未录入实例写进目录表；已录入⛔ 覆写',
+      '宿主文档改名 ⇒ 前缀键同步迁移（⛔ 精控悬空在旧名上）；删除宿主 ⇒ 其前缀键同删',
+      '手编 `.verilogviz.json` 保存 ⇒ 编译面板即重算（⛔ 画布即时生效、编译要重按 F5 的两面）',
+      '深度自检新增（R153）：bindings.materialize 的 **.v 侧**真落表（修前按构造恒 0 颗＝点了没反应）',
+      '深度自检新增（R153）：未录入实例那一行亮得出「自动同名 → lib/adder.v」（修前恒 null）',
+      '编译侧录入即权威：绑定把 adder 指向 custom 文件 ⇒ 闭包用之，⛔ 另一颗同名旧文件',
+      '编译：前缀键只管那一层的例化（ctrl.v 层的 adder 换实现，顶层同名链路不动）',
+      '重命名迁移：部件改名各层绑定与 circuits 同步改指（⛔ 悬空旧路径）']),
 ]
 
 
@@ -120,12 +185,23 @@ def red_names(out):
     return got
 
 
+COVER = ["两块板上都亮", "X8 结案", "兜底 topModule", "第二处写死的域判定", "主人口径逐颗现读",
+         "manifest 里那第五", "未录入实例那一行亮得出", "bindings.materialize 的 **.v 侧**",
+         "根外的 Uri 交回", "根内／子目录"]
+
+
 def main():
     paths = {a[1] for a in ARMS if a[1]}
     snap = {p: open(p, "rb").read() for p in paths}
     bad, log = 0, []
+    # 名册尺（⛔ 让某颗新格从没红过）：本批每颗新证人至少要点名在一臂的期望里
+    covered = [k for (_, _, _, _, ks) in ARMS for k in ks]
+    holes = [c for c in COVER if not any(c in k for k in covered)]
     try:
         for nm, path, old, new, keys in ARMS:
+            # argv[1]＝只跑名字含这颗串的臂（名册尺照常按全表算，⛔ 借过滤藏掉缺格）
+            if len(sys.argv) > 1 and sys.argv[1] not in nm:
+                continue
             exp = names(keys)
             if old is not None:
                 cur = open(path, encoding="utf-8").read()
@@ -136,6 +212,9 @@ def main():
                 with io.open(path, "wb") as f:
                     f.write(blob)
             out, rc = run_vitest()
+            # 原始输出留档：红名集合对不上时先读自己的转储（⛔ 凭猜改谓词）
+            with io.open(os.path.join(HERE, "arm_last.txt"), "wb") as f:
+                f.write(out.encode("utf-8"))
             for p, blob in snap.items():          # 每臂跑完立刻还原（下一臂的锚点是原文）
                 with io.open(p, "wb") as f:
                     f.write(blob)
@@ -150,11 +229,14 @@ def main():
         same = all(open(p, "rb").read() == snap[p] for p in snap)
         log.append(f"== 还原核对：{len(snap)} 颗档与快照{'逐字节相同' if same else '⚠ 不同'}\n")
         bad += 0 if same else 1
+        log.append(f"== 名册尺：本批新证人 {len(COVER)} 颗，从没被任何臂点名的 = {holes}\n")
+        bad += len(holes)
     finally:
         for p, blob in snap.items():
             with io.open(p, "wb") as f:
                 f.write(blob)
-    txt = "\n".join(log) + f"\n汇总：不合格 {bad} / 共 {len(ARMS)} 臂 + 1 还原核对\n"
+    txt = "\n".join(log) + f"\n名册尺：本批新证人 {len(COVER)} 颗，从没被任何臂点名的 = {holes}\n" \
+        + f"汇总：不合格 {bad} / 共 {len(ARMS)} 臂 + 1 还原核对 + 名册尺 {len(holes)} 缺\n"
     with io.open(LOG, "wb") as f:
         f.write(txt.encode("utf-8"))
     print(txt)

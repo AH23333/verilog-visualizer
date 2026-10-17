@@ -10,7 +10,7 @@ import * as path from 'path';
 import { projectRoot } from './dispatch';
 import { bindingsForFile } from './sandboxFiles';
 import { parseVerilogModules, parseVerilogInstances, parseVerilogInstancesWithLines } from './verilogParseLite';
-import { findVerilogUris, isVerilogPath, stripVerilogExt } from './verilogDomain';
+import { findVerilogUris, isVerilogPath, rootRel, stripVerilogExt } from './verilogDomain';
 import { djsToVerilog } from './djsVerilog';
 
 /** 推给 webview 的编译单：files 全量给（yosys 要看依赖闭包），topModule 定根 */
@@ -44,7 +44,7 @@ export async function scanDefs(): Promise<Map<string, vscode.Uri>> {
   return map;
 }
 
-const toRel = (root: vscode.Uri, uri: vscode.Uri): string => path.relative(root.fsPath, uri.fsPath).replace(/\\/g, '/');
+const toRel = (root: vscode.Uri, uri: vscode.Uri): string => rootRel(root, uri);   // 根相对名一颗主人
 
 /**
  * 依赖闭包：从入口文件出发，例化了谁就把谁的**定义文件**拉进来，直到闭包（环守卫＝visited 集）。

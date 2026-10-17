@@ -11,6 +11,7 @@
 // 只剩一处能决定这件事，将来加 `.svh` 就改 `projectStore` 那一行，六处一起跟上。
 // ============================================================================
 import * as vscode from 'vscode';
+import * as path from 'path';
 import { VERILOG_EXT, SANDBOX_EXT, extOf } from './projectStore';
 
 /**
@@ -25,6 +26,19 @@ async function findByExts(exts: string[]): Promise<vscode.Uri[]> {
     for (const uri of found) if (!seen.has(uri.fsPath.toLowerCase())) seen.set(uri.fsPath.toLowerCase(), uri);
   }
   return [...seen.values()].sort((a, b) => a.fsPath.localeCompare(b.fsPath));
+}
+
+/**
+ * Uri → 项目根相对名（'/' 分隔）。R153 深度自检新增：**根相对名只许有一份实现**。
+ * 此前本仓写了七份，其中三份是"按根串长度切前缀"（`pathRel`／`examples.relOfRoot`／
+ * `extension.ts` 的 `rel`）——
+ * 盘符大小写一漂（`D:/p` ↔ `d:/p/lib/x.v`）就交出半截或整颗绝对路径；`path.relative`
+ * 在 win32 上对盘符大小写不敏感（现读过），且根外的 Uri 会给出 `..` 开头 ⇒ 这里折回绝对路径
+ * （与 `customEditors.relName` 同口径：工作区外的文档按绝对路径认，⛔ 混进相对名里）。
+ */
+export function rootRel(root: vscode.Uri, uri: vscode.Uri): string {
+  const rel = path.relative(root.fsPath, uri.fsPath).replace(/\\/g, '/');
+  return rel.startsWith('..') || path.isAbsolute(rel) ? uri.fsPath.replace(/\\/g, '/') : rel;
 }
 
 /** 编译域的全部源码文件（模块树/层次树/编译闭包扫描的唯一数据源） */

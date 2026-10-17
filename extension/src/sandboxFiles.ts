@@ -9,7 +9,7 @@
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
 import { uniqueName, uniqueFolderName, sanitizeNameInput } from './naming';
-import { findSandboxUris } from './verilogDomain';
+import { findSandboxUris, rootRel } from './verilogDomain';
 
 export const META_FILE = '.verilogviz.json';
 
@@ -246,11 +246,10 @@ export async function togglePartRole(context: vscode.ExtensionContext, uri: vsco
   await writeMeta(context, meta);
 }
 
-/** 根相对 posix 名（绑定链/目录表的定位键）——toolsDomain 等外层也要用，导出。 */
-export function pathRel(root: vscode.Uri, uri: vscode.Uri): string {
-  const rootFs = root.fsPath.replace(/[\\/]+$/, '');
-  return uri.fsPath.slice(rootFs.length + 1).replace(/\\/g, '/');
-}
+/** 根相对 posix 名（绑定链/目录表的定位键）——toolsDomain 等外层也要用，导出。
+ *  R153 深度自检：这颗原本自己按根串长度切前缀，盘符大小写一漂
+ *  （`D:/p` ↔ `d:/p/lib/x.v`）就交出半截或整颗绝对路径 ⇒ 转交主人 `rootRel`（path.relative 口径）。 */
+export function pathRel(root: vscode.Uri, uri: vscode.Uri): string { return rootRel(root, uri); }
 
 // naming.ts 的 uniqueName 顶掉本文件内部的 `(n)` 循环（X9 双轨合一）
 
@@ -706,6 +705,9 @@ async function collectTableDirs(dir: vscode.Uri, rootPathL: string, depth = 16, 
   for (const [name, type] of entries) {
     if (type !== 2 || name === 'node_modules' || name.startsWith('.')) continue;
     const child = vscode.Uri.joinPath(dir, name);
+    // ⚠ 第七份"按根串长度切"（R153 深度自检在册）：两侧都在调用方统一 toLowerCase＋去尾分隔符，
+    //    所以那颗盘符大小写的雷在这一条上不成形；改成 rootRel 要换递归签名的入参形状，
+    //    不在自检批里动热路。判它安全的尺＝rootPathL 与 child.fsPath 必须同源归一。
     acc.push(child.fsPath.slice(rootPathL.length).replace(/^[\\/]/, '').replace(/\\/g, '/'));
     await collectTableDirs(child, rootPathL, depth - 1, acc);
   }

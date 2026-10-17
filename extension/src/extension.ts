@@ -33,7 +33,7 @@ import { executeTool, CALLER_UI, onToolExecuted } from './toolRegistry';
 import { registerFilesystemTools } from './toolsFs';
 import { registerDomainTools } from './toolsDomain';
 import { ProjectStore, type FsLike } from './projectStore';
-import { watcherGlobs, isBindablePath } from './verilogDomain';
+import { watcherGlobs, isBindablePath, rootRel } from './verilogDomain';
 
 const VIEW_TYPE = 'verilogVisualizer';
 
@@ -64,10 +64,8 @@ export function activate(context: vscode.ExtensionContext) {
   };
 
   /** root 相对 posix 名（绑定链/目录表的定位键） */
-  const rel = (root: vscode.Uri, uri: vscode.Uri): string => {
-    const rootFs = root.fsPath.replace(/[\\/]+$/, '');
-    return uri.fsPath.slice(rootFs.length + 1).replace(/\\/g, '/');
-  };
+  // 根相对名转交一颗主人（这颗原是"截前缀"的一份：盘符大小写一漂就交半截路径）
+  const rel = (root: vscode.Uri, uri: vscode.Uri): string => rootRel(root, uri);
 
   /** 树刷新总闸：watcher 增删、refreshTrees 命令、新建命令都汇到这（六树一盘账） */
   const refreshAllTrees = () => {
