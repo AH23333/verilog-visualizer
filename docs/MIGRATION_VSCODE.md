@@ -210,6 +210,11 @@ R138 删掉 Tauri 之后，"与改前一致"这条基准⛔ 再有第二个宿�
 
 > ⚠ **R141 起这一节整节变成历史**：那颗自写启动器（`scripts/run-in-vscode.mjs` / `pnpm app`）与它的 9 格判据
 > 已删除（用户令：**「不要使用你自己编写的命令脚本，尽可能使用官方框架的运行命令」**）。
+> ⚠ **今天读这一句要分两半**（R154 现读补，⛔ 让一句历史话替现在的 package.json 说话）：
+> 那颗 `.mjs` 程序确实没了；`pnpm app` 后来以 **package.json 里的 npm script** 形状回来了（9214fc7，
+> 内容＝`pnpm build` + `pnpm -C extension build` + 基座官方 `scripts\code.bat --extensionDevelopmentPath`）。
+> 当时的界线是「删的是自写启动**程序**，留的是官方框架自己的生命周期命令」——`studio:run` / `app:check`
+> 那种包装⛔ 没回来。今天的有效清单在 `docs/GETTING_STARTED.md` §0 与 `studio/README.md` §1d。
 > 现在跑产品＝基座官方 `scripts\code.bat --user-data-dir=<独立目录> [<工程文件夹>]`；调本扩展＝官方
 > `--extensionDevelopmentPath`；打包＝官方 `npm run gulp vscode-win32-x64-min`。本节里"找 CLI／参数带引号"
 > 那两套实测教训仍然成立（官方脚本自己也要面对同一件事），只是**不再由我们代劳**。
