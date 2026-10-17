@@ -87,6 +87,30 @@ export async function run(): Promise<void> {
     assert.equal(mv.perm, 'file-write');
   });
 
+  await step('sys.selfCheck + sys.describeTool：给 agent 的 D1/D2 两档在真宿主也答得出话', async () => {
+    const out = await executeTool(ctx, CALLER_UI, 'sys.selfCheck', {
+      probe: { tool: 'fs.rename', args: {} },
+    }) as any;
+    assert.equal(out.verdict, 'ready', `自检说：${JSON.stringify(out.findings)}`);
+    assert.deepEqual(out.drift.registeredOffContract, [], 'registry 里有 handler 而契约没上账＝契约在说谎');
+    assert.equal(out.audit.ready, true, '真宿主这份工程已开户，审计通道该说 ready');
+    assert.ok(out.drift.pendingHandlers.length >= 3, `挂账（命令直调、未收编）颗数=${out.drift.pendingHandlers.length}`);
+    assert.deepEqual(out.probe.missingArgs, ['uri', 'newName'], '预演必须按同一把 schema.required 尺说缺哪颗实参');
+    assert.equal(out.probe.verdict, 'blocked');
+    const d = await executeTool(ctx, CALLER_UI, 'sys.describeTool', {
+      tool: 'host.importLegacyData', surface: 'rpc',
+    }) as any;
+    // ⚠ 问的是"画布那条线（rpc）能不能打这颗"，所以调用方自己仍用 ui 档——sys.* 刻意⛔ 挂 rpc 面
+    //（dispatch 只认 `host.` 那九颗，加了也到不了）。这一格同时验 `asked` 那颗实参真的被用上。
+    assert.equal(d.asked.surface, 'rpc');
+    assert.equal(d.asked.surfaceFallback, false);
+    assert.equal(d.card.title, '旧档一次性搬运');
+    assert.equal(d.gates.requiresApproval, true, '这颗契约上写着要审批，D1 得说出来');
+    assert.equal(d.gates.needsApproval, true, 'rpc 调用方非交互＝执行器要出 HITL 弹窗');
+    assert.equal(d.gates.verdict, 'ready', `预演说：${JSON.stringify(d.gates.blockers)}`);
+    assert.ok(Array.isArray(d.recent), 'D1 得带上这颗工具最近的账');
+  });
+
   await step('fs.createFile：真磁盘落盘 + 内容逐字', async () => {
     const r = await executeTool(ctx, CALLER_UI, 'fs.createFile', { name: 'adder.djs', kind: 'sandbox' }) as any;
     assert.ok(fs.existsSync(r.uri), `真盘缺文件: ${r.uri}`);

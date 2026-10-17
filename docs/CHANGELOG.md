@@ -53,10 +53,13 @@
   生成工具数 **24 → 35**（registry 收编 9 颗 RPC + 新增 2 颗诊断）。
 - `bin/C4/bench_c4_lock.py` **11 臂 0 不合格**（M9 只响新证人／M10 四把尺一起响＝新证人的正件方向）＋还原逐字节相同；
   `bin/C5/bench_c5_agent_tiers.py`（新台架）**6 臂 0 不合格**，名册尺 4 颗新证人 0 缺。
-- **真宿主（我们自己的二进制 `Verilog Visualizer.exe`）E2E 12 步全绿**（`pnpm test:real`，退出码 0）：
-  新加的那一步验的是真机里 `host.getAllBindings` 也走 `executeTool`、幽灵 method 真进账、
-  且调用方手里那颗 `traceId` 能在**盘上**账本里查到（409ms）；`registeredTools` 下界从 24 提到 **35**
-  ＝真宿主那条线也登记了 RPC 九颗（`realSuite` 过去⛔ 调 `registerRpcTools`——两处登记清单不一致）。
+- **真宿主（我们自己的二进制 `Verilog Visualizer.exe`）E2E 13 步全绿**（`pnpm test:real`，退出码 0）：
+  两步是新加的——① `host.getAllBindings` 在真机也走 `executeTool`，并验幽灵 method 真进账、
+  调用方手里那颗 `traceId` 能在**盘上**账本里查到（558ms）；② `sys.selfCheck`＋`sys.describeTool`
+  两档在真宿主答得出话（`verdict=ready`、漂移双查空、挂账≥3 而⛔ 算故障、probe 说缺哪两颗必填、
+  问 rpc 那条线时 `asked.surfaceFallback=false`）（6ms）。
+  `registeredTools` 下界从 24 提到 **35**＝真宿主那条线也登记了 RPC 九颗
+  （`realSuite` 过去⛔ 调 `registerRpcTools`——两处登记清单不一致）。
 - 第二次全量跑批（74 格）＝**GREEN 30 / RED 44 / ENVRED 0**（波次一前＝12/61）；净进 18 颗＝19 红转绿 − **2 绿转红**
   （`r42-verify` 单跑已复元＝22/0 ⇒ 跑批时序；`r48-verify` 的"导航打断 evaluate"至今⛔ 单跑定案）。
   红的 44 颗按**档自己的源码**归族、以及"单跑对照"推翻"跑批超载"假设那格，全写在 [GATE_LAYERS.md](./GATE_LAYERS.md) ⑤-补3。
