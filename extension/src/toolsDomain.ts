@@ -14,6 +14,7 @@ import * as vscode from 'vscode';
 import { registerTool, argUri } from './toolRegistry';
 import { broadcastBindingsChanged, projectRoot, vscodeFs } from './dispatch';
 import { ProjectStore, sanitizeRel } from './projectStore';
+import { stripVerilogExt, isVerilogPath } from './verilogDomain';
 import {
   getAllBindings, setBindingInDir, collectInstanceHits, completeFromHits,
   materializeBindings, togglePartRole, getCircuitsSet, pathRel, META_FILE,
@@ -94,7 +95,8 @@ export function registerDomainTools(): void {
           names.has(`${dir}/${n}.djs`) ? `${dir}/${n}.djs` : names.has(`${n}.djs`) ? `${n}.djs` : null));
       } else {
         const job = await closureOf(ctx, uri);
-        const inJob = new Map(job.files.map((f) => [f.name.replace(/\.sv?$/i, ''), f.name]));
+        // 键⛔ 用 `/\.sv?$/` 裁（那颗读反了：对 `adder.v` 原样返回）⇒ 同名查表对 .v 一颗撞不上。
+        const inJob = new Map(job.files.map((f) => [stripVerilogExt(f.name), f.name]));
         const inst = new Set<string>();
         for (const f of job.files) {
           const { parseVerilogInstances } = await import('./verilogParseLite');
@@ -102,7 +104,7 @@ export function registerDomainTools(): void {
         }
         done.push(...await materializeBindings(ctx, docRel, [...inst], async (n) => {
           const hit = inJob.get(n);
-          return hit && /\.(v|sv)$/i.test(hit) && hit !== docRel ? hit : null;   // ⛔ 把自己录成部件
+          return hit && isVerilogPath(hit) && hit !== docRel ? hit : null;   // ⛔ 把自己录成部件
         }));
       }
       if (done.length) broadcastBindingsChanged();

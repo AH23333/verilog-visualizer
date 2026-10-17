@@ -2,7 +2,7 @@
 // 统一调用层·单执行器（CONFIG_PROTOCOL §15 接口范式的 Tools 面，批次一：文件系统族）
 // **收编而非另起**：闸 1（契约 surfaces）/闸 3（档案 grants）/审计（apiAudit）全部复用
 // dispatch 同款——错误标签 [API_*]、verdict 七值、闸序 1→2(硬)→3→2(审批) 逐字一致，
-// 审计账本一锅（`.vv/audit/trace-*.jsonl`）。dispatch 的 6 颗 RPC 迁移是第二批；
+// 审计账本一锅（`.vv/audit/trace-*.jsonl`）。dispatch 那 9 颗 RPC 的迁移（闸已在跑，换执行器不改语义）是第二批；
 // 本执行器先服务树命令（ui 面）与未来 agent（mcp/agent 面——契约 surfacesGlobal.mcp 现在=false，
 // 放开 agent 调用＝改契约一行，这正是统一层的杠杆点）。
 //

@@ -23,7 +23,7 @@ import { getHost, hostFire, type HostConfig } from '../lib/host/host';
 import { notifyReady } from '../lib/host/vscodeHost';
 import { exportSVG, exportCircuitJSON, exportNetlistVerilog } from '../lib/exportUtils';
 import { collectToFiles, stripBoundInlineJson, setBindingPolicy } from '../lib/gateSystem';
-import { collectLegacyItems, markLegacyMigrated } from './legacyMigration';
+import { collectLegacyItems, markLegacyMigrated, dismissLegacyMigration } from './legacyMigration';
 import { useVscodeTheme } from '../hooks/useVscodeTheme';
 
 const DEFAULT_SPEED_MS = 10;
@@ -146,7 +146,8 @@ export default function CanvasApp() {
   const handleMigrateLegacy = useCallback(async () => {
     try {
       const written = await (await getHost()).importLegacyData(legacyItems);
-      markLegacyMigrated();
+      // 墓碑按**真落盘的那批**的名字分半颗封（⛔ 拿请求当结果：一颗都没落时⛔ 封档）
+      markLegacyMigrated(written);
       setLegacyItems([]);
       flash(`已把 ${written.length} 个旧档落成工作区文件（重名的自动加了编号）。`);
     } catch (e) {
@@ -433,7 +434,7 @@ export default function CanvasApp() {
             background: 'var(--vscode-button-background, var(--accent))',
             color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600, fontSize: 'var(--fs-sm)',
           }}>迁移到工作区</button>
-          <button onClick={() => { markLegacyMigrated(); setLegacyItems([]); }} style={{
+          <button onClick={() => { dismissLegacyMigration(); setLegacyItems([]); }} style={{
             padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
             background: 'var(--vscode-button-secondaryBackground, transparent)',
             color: 'var(--vscode-button-secondaryForeground, var(--text-secondary))', fontSize: 'var(--fs-sm)',

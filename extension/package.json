@@ -570,7 +570,7 @@
       "editor/title": [
         {
           "command": "verilogViz.compileAndShow",
-          "when": "resourceExtname =~ /\\.(v|sv)$/",
+          "when": "resourceExtname =~ /\\.(v|sv|vh)$/",
           "group": "navigation@1"
         },
         {
@@ -592,7 +592,7 @@
       "explorer/context": [
         {
           "command": "verilogViz.compileAndShow",
-          "when": "resourceExtname =~ /\\.(v|sv)$/",
+          "when": "resourceExtname =~ /\\.(v|sv|vh)$/",
           "group": "verilogViz@1"
         },
         {
@@ -616,7 +616,7 @@
         },
         {
           "command": "verilogViz.openBindingConfig",
-          "when": "resourceExtname =~ /\\.(v|sv)$/",
+          "when": "resourceExtname =~ /\\.(v|sv|vh)$/",
           "group": "verilogViz@3"
         },
         {
@@ -756,7 +756,7 @@
       {
         "command": "verilogViz.compileAndShow",
         "key": "ctrl+f5",
-        "when": "resourceExtname =~ /\\.(v|sv)$/"
+        "when": "resourceExtname =~ /\\.(v|sv|vh)$/"
       },
       {
         "command": "verilogViz.sim.stepOnce",

@@ -265,6 +265,30 @@ describe('侧边栏双容器六视图（片 5-B 编译/沙盒分家；R152 起�
     expect((editor as any).revealed[0].startLine).toBe(0);
   });
 
+  it('片 C2（X8 同根）：`.sv`/`.vh` 里定义的模块在『模块』『层次结构』两块板上都亮（修前只认 .v）', async () => {
+    await boot({
+      folders: ['D:/p'],
+      seed: {
+        'D:/p/top.sv': 'module topsv;\n  invh i();\nendmodule',
+        'D:/p/defs.vh': 'module invh;\nendmodule',
+        'D:/p/plain.v': 'module plain;\nendmodule',
+      },
+    });
+    // ① 模块树三颗域文件全上榜（修前＝top.sv/defs.vh 整颗隐身，用户看到的是"文件在树里、模块不在"）
+    const mods = vscode.state.treeProviders['verilogViz.modules'];
+    const files = await mods.getChildren();
+    expect(files.map((n: any) => n.label).sort()).toEqual(['defs.vh', 'plain.v', 'top.sv']);
+
+    // ② 层次树的根接受 `.sv`（修前＝门槛写死 extname==='.v'，打开 .sv 只给提示节点）
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file('D:/p/top.sv'));
+    vscode.state.activeEditor = { document: doc, viewColumn: 1, revealRange: () => { } };
+    const root = await vscode.state.treeProviders['verilogViz.hierarchy'].getChildren();
+    expect(root.map((n: any) => n.label)).toEqual(['invh']);
+    // ③ 定义在 `.vh` 里也找得到（修前＝定义索引只扫 *.v ⇒ 这一格报「未找到定义」）
+    expect(root[0].desc).toBe('defs.vh');
+    expect(root[0].uri).toBeTruthy();
+  });
+
   it('层次树：活动 .v 的实例 → 定义文件（真扫描，⛔ 只会猜 `模块名.v`）→ 递归展开；互相例化⛔ 死循环', async () => {
     await boot({
       folders: ['D:/p'],
@@ -276,8 +300,10 @@ describe('侧边栏双容器六视图（片 5-B 编译/沙盒分家；R152 起�
     });
     const hierarchy = vscode.state.treeProviders['verilogViz.hierarchy'];
 
-    // 没开 .v ⇒ 提示节点，⛔ 报错
-    expect((await hierarchy.getChildren())[0].label).toContain('打开一个 .v');
+    // 没开源码文件 ⇒ 提示节点，⛔ 报错（片 C2：那颗门槛由域界主人给答案，提示语把三域都念出来）
+    const hint = (await hierarchy.getChildren())[0].label as string;
+    expect(hint).toContain('Verilog 源码文件');
+    for (const ext of ['.v', '.sv', '.vh']) expect(hint).toContain(ext);
 
     // 假装用户打开了 top.v（活动编辑器是层次树的根）
     const topUri = vscode.Uri.file('D:/p/top.v');
@@ -759,6 +785,39 @@ describe('verilogViz.compileAndShow（片 5-A3：.v 归原生编辑器，画布�
     await boot({ appRoot: 'C:/elsewhere', folders: ['D:/p'], seed: SEED });
     await vscode.commands.executeCommand('verilogViz.compileAndShow');
     expect(vscode.state.infoMessages.join('|')).toContain('先打开一个');
+  });
+
+  it('X8 结案（片 C2）：`.vh` 能当编译入口，且绑定表指到 `.vh` 的定义被采纳（修前两道门各写死 v|sv）', async () => {
+    await boot({
+      appRoot: 'C:/elsewhere', folders: ['D:/p'],
+      seed: {
+        [`${EXT_DIR}/../dist/index.html`]: RAW_DOC,
+        'D:/p/top.vh': 'module toph;\n  hdr h1();\nendmodule',
+        'D:/p/defs.vh': 'module hdr;\nendmodule',
+        'D:/p/.verilogviz.json': JSON.stringify({ bindings: { hdr: 'defs.vh' } }),
+      },
+    });
+    await vscode.commands.executeCommand('verilogViz.compileAndShow', vscode.Uri.file('D:/p/top.vh'));
+    await new Promise((r) => setTimeout(r, 0));
+    const push = vscode.state.panels[0].messageLog.find((m: any) => m.vvh === 'push' && m.op === 'compile');
+    expect(push).toBeTruthy();                                  // 修前：门槛把 .vh 挡回，这里根本没有推单
+    expect(push.files.map((f: any) => f.name).sort()).toEqual(['defs.vh', 'top.vh']);
+    expect(push.topModule).toBe('toph');
+    expect(push.bindingErrors).toBeUndefined();                 // 修前：.vh 目标落进"不支持的绑定目标"
+  });
+
+  it('入口文件里⛔ 有模块定义时，兜底 topModule 是**去扩展名**的名字（那颗读反的 .sv? 曾交回 `x.vh`）', async () => {
+    await boot({
+      appRoot: 'C:/elsewhere', folders: ['D:/p'],
+      seed: {
+        [`${EXT_DIR}/../dist/index.html`]: RAW_DOC,
+        'D:/p/hdr_only.vh': '`define W 8',                     // 纯头文件：没有 module
+      },
+    });
+    await vscode.commands.executeCommand('verilogViz.compileAndShow', vscode.Uri.file('D:/p/hdr_only.vh'));
+    await new Promise((r) => setTimeout(r, 0));
+    const push = vscode.state.panels[0].messageLog.find((m: any) => m.vvh === 'push' && m.op === 'compile');
+    expect(push.topModule).toBe('hdr_only');                    // ⛔ 'hdr_only.vh'（yosys 会报找不到顶层）
   });
 
   it('保存闭包内的文件 ⇒ 自动重编译（autoRecompile 默认开）；闭包外⛔ 扰民', async () => {

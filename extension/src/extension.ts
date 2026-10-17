@@ -5,7 +5,8 @@
  *   · **编译画布 Panel**（`verilogVisualizer`）——空态引导，收 compilePanel 推来的编译单；
  *   · **`.djs` custom editor**（`verilogViz.doc`，./customEditors.ts）——交互电路文档；
  *   · **侧边栏三板块**（./trees.ts）+ 命令/菜单/设置全部 `contributes`（package.json）；
- *   · webview 不再装旧 React 应用：RPC 面收到 6 颗（./dispatch.ts），文件管理归原生 Explorer。
+ *   · webview 不再装旧 React 应用：RPC 面收到 9 颗（./dispatch.ts，颗数由 vscodeShell 的对账锁钉住），
+ *     文件管理归原生 Explorer。
  */
 import * as vscode from 'vscode';
 import { broadcastConfigChanged, broadcastBindingsChanged, dispatch, projectRoot, registerWebviewSink, unregisterWebviewSink } from './dispatch';
@@ -32,6 +33,7 @@ import { executeTool, CALLER_UI, onToolExecuted } from './toolRegistry';
 import { registerFilesystemTools } from './toolsFs';
 import { registerDomainTools } from './toolsDomain';
 import { ProjectStore, type FsLike } from './projectStore';
+import { watcherGlobs, isBindablePath } from './verilogDomain';
 
 const VIEW_TYPE = 'verilogVisualizer';
 
@@ -214,9 +216,9 @@ export function activate(context: vscode.ExtensionContext) {
     //   ⛔ 再出现"表看不见、行为却正常"的暗魔法。
     vscode.commands.registerCommand('verilogViz.bindParts', async (arg: any) => {
       const uri = menuUri(arg) ?? getActiveSandboxDocUri();
-      if (!uri) { void vscode.window.showInformationMessage('先在文件（.djs 或 .v/.sv）上右键。'); return; }
-      if (!/\.(v|sv|djs)$/i.test(uri.fsPath)) {
-        void vscode.window.showInformationMessage('只能在 .v/.sv/.djs 文件上打开部件绑定。');
+      if (!uri) { void vscode.window.showInformationMessage('先在文件（.djs 或 .v/.sv/.vh）上右键。'); return; }
+      if (!isBindablePath(uri.fsPath)) {
+        void vscode.window.showInformationMessage('只能在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上打开部件绑定。');
         return;
       }
       await openBindingPanel(context, uri);
@@ -238,7 +240,7 @@ export function activate(context: vscode.ExtensionContext) {
     // 带直达动作：［写全配置］一键落表（等同 complete 命令），［打开配置］直开该层文件。
     vscode.commands.registerCommand('verilogViz.auditBindings', async (arg: any) => {
       const uri = menuUri(arg) ?? getActiveSandboxDocUri() ?? vscode.window.activeTextEditor?.document.uri;
-      if (!uri || !/\.(v|sv|djs)$/i.test(uri.fsPath)) { void vscode.window.showInformationMessage('先在 .v/.sv/.djs 文件上右键。'); return; }
+      if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。'); return; }
       const docRel = rel(projectRoot(context), uri);
       const hits = await collectInstanceHits(context, docRel);
       if (!hits.length) { void vscode.window.showInformationMessage(`「${docRel}」的绑定配置是完整的：全部子部件实例都有记录（或本就无实例）。`); return; }
@@ -257,7 +259,7 @@ export function activate(context: vscode.ExtensionContext) {
     //（画布上的实时提示条走 doc 消息通道回宿主；这颗命令＝不打开画布也能用，与核查同落表逻辑）。
     vscode.commands.registerCommand('verilogViz.completeBindings', async (arg: any) => {
       const uri = menuUri(arg) ?? getActiveSandboxDocUri() ?? vscode.window.activeTextEditor?.document.uri;
-      if (!uri || !/\.(v|sv|djs)$/i.test(uri.fsPath)) { void vscode.window.showInformationMessage('先在 .v/.sv/.djs 文件上右键。'); return; }
+      if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。'); return; }
       const docRel = rel(projectRoot(context), uri);
       const hits = await collectInstanceHits(context, docRel);
       const written = await completeFromHits(context, docRel, hits);
@@ -340,7 +342,8 @@ export function activate(context: vscode.ExtensionContext) {
   //   ② 打开/切换文件夹 ⇒ 项目根换了，三棵树的数据源整体换轨
   //   ③ 活动编辑器变化 ⇒ 层次树的根跟随当前 .v 文件
   // X2（2026-10-17）：`**/*.v` 一颗挡不住 .sv——改名/新建 .sv 不自动刷新的窟窿补上三域各自一颗。
-  for (const glob of ['**/*.v', '**/*.sv', '**/*.vh', '**/*.djs', '**/.verilogviz.json']) {
+  // 片 C2 起这一排 glob 由 `verilogDomain` 从两颗域界**生成**（在这里再列一遍扩展名＝第三份主人）。
+  for (const glob of [...watcherGlobs(), '**/.verilogviz.json']) {
     const watcher = vscode.workspace.createFileSystemWatcher(glob);
     watcher.onDidCreate(refreshAllTrees);                // 新文件/新目录立刻进树（标题按钮建的也走这条）
     watcher.onDidChange(() => { moduleTree.refresh(); hierarchyTree.refresh(); if (glob.includes('verilogviz')) broadcastBindingsChanged(); });

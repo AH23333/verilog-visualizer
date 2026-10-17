@@ -9,6 +9,7 @@
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
 import { uniqueName, uniqueFolderName, sanitizeNameInput } from './naming';
+import { findSandboxUris } from './verilogDomain';
 
 export const META_FILE = '.verilogviz.json';
 
@@ -493,7 +494,7 @@ export async function collectInstanceHits(context: vscode.ExtensionContext, docR
   let budget = 300;
   if (/\.djs$/i.test(docRel)) {
     const [uris, circuits] = await Promise.all([
-      vscode.workspace.findFiles('**/*.djs', '**/node_modules/**'),
+      findSandboxUris(),
       getCircuitsSet(context),
     ]);
     const files = uris.map((u) => pathRel(root, u));
@@ -723,7 +724,7 @@ export async function normalizeBindingsDisk(context: vscode.ExtensionContext): P
   const files: string[] = [];
   const renamed = new Map<string, string>();               // old root-rel → new root-rel
   // —— 1. 盘名裁尾 ——
-  const djs = await vscode.workspace.findFiles('**/*.djs', '**/node_modules/**');
+  const djs = await findSandboxUris();
   for (const u of djs) {
     if (!/(\.djs){2,}$/i.test(u.path)) continue;
     const parent = vscode.Uri.joinPath(u, '..');

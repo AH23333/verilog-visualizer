@@ -7,6 +7,42 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R153：两模式文件系统的两颗主人缺陷（2026-10-17）
+
+> 起点＝用户令「从文件系统开始修复」。深度核对两模式 FS 的读写缝时抓到两颗**数据/功能丢失级**
+> 缺陷：一颗吞用户旧档（迁移），一颗让 `.sv`/`.vh` 在半数入口隐身（域界）。修法都是"一颗主人"。
+
+### Fixed
+- **旧档迁移丢 `.djs`（X16）**：`src/canvas/legacyMigration.ts` 把 sandboxStore 落盘的
+  `Record<id, SandboxFile>` 当**数组**迭代 ⇒ TypeError 被 `catch { ignore }` 吞成静默，
+  沙盒那半颗**一颗都没迁过**；而那颗唯一墓碑在 `.v` 迁移成功后把两半一起封死 ⇒ 数据永久留在
+  localStorage。修：两种形状都收 + **两半颗各用自己的墓碑**（老键只管 `.v`，新键管 `.djs` ⇒
+  被 bug 坑过的用户下次开画布自动重新被 Offer，⛔ 要用户找设置）。证人 12 格 + 13 臂台架
+  `bin/C1/bench_c1_migration.py`（红名集合等式）。
+- **`.sv`/`.vh` 半数入口隐身（X17，X8 同根）**：「哪些文件算 Verilog」在扩展里写了六遍、
+  三处答案不一致——模块树/层次树定义索引/编译 `scanDefs` 各自 `**/*.v`、层次树门槛
+  `extname !== '.v'`、编译入口与 Ctrl+F5/资源管理器右键菜单 `(v|sv)`、绑定目标 `(v|sv)`、
+  剥扩展名两处 `/\.sv?$/`（**读反**：只剥 `.sv`，对 `.v` 原样返回 ⇒ topModule 兜底交回
+  `x.v`、`bindings.complete` 对 `.v` 工程**零补全**）。修：新档 `extension/src/verilogDomain.ts`
+  做**唯一主人**（VERILOG_EXT/SANDBOX_EXT 住 `projectStore`），十处消费点全部改问它；
+  manifest 的 3 条菜单 when + Ctrl+F5 键位也吃同一颗名单。证人 +6 格（`.sv`/`.vh` 上两块板、
+  `.vh` 编译入口、静态禁项尺、manifest 名单尺、域判定口径尺）+ 12 臂台架
+  `bin/C2/bench_c2_domain.py`。
+
+### Changed
+- 契约颗数注释对账：dispatch/host/toolRegistry/trees/extension 五处头注的「6 颗/16 颗 RPC」
+  全部改为现读事实（RPC 面＝9 颗，由 vscodeShell 对账锁双向钉死）；`projectStore.ts` 头注里
+  已删除的 `src/store/fileStore.ts` 幽灵与「沙盒仍以 localStorage 为运行时主人」的过期口径清除。
+- `docs/PROJECT_DEEP_REVIEW_2026-10-05.md` 卷六十四、`docs/FILESYSTEM_CHECKLIST.md` v3
+  （X16–X19 落账）。
+
+### 挂账
+- **X18**：旧档迁移不带 `role`/`partBindings`（迁出的 `.djs` 全按缺省部件语义，文件级显式绑定
+  丢失）——需要迁移批内 id→落盘名映射再写 `.verilogviz.json`，单独立批。
+- **X19**：`sandboxFiles.hasDjsUnder` 名实不符（判据收 `.v|djs`，纯源码目录也会配出一张空绑定
+  表）——是"目录有部件才配表"的语义裁决点，等用户裁。
+
+---
 ## [未发布 Unreleased] — R141：⛔ 自写启动脚本——跑起来只用官方框架的命令（2026-10-14）
 
 > 触发逐字：**「不要使用你自己编写的命令脚本，尽可能使用官方框架的运行命令」**。

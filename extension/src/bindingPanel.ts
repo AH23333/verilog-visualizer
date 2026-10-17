@@ -5,7 +5,8 @@ import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 import { bindingsForFile, setBinding, META_FILE, openBindingConfig } from './sandboxFiles';
 import { closureOf } from './compilePanel';
 import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
-import { ProjectStore } from './projectStore';
+import { ProjectStore, VERILOG_EXT } from './projectStore';
+import { isBindingTargetValue, isVerilogPath } from './verilogDomain';
 
 const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> =>
   new Promise<T>((res, rej) => t.then(res, (e) => rej(e)));
@@ -101,12 +102,18 @@ export async function bindingDataFor(context: vscode.ExtensionContext, uri: vsco
     const instances: BindingInstance[] = [...tally].map(([name, count]) => {
       const recKey1 = `${docRel}::${name}`;
       const recRaw = recorded[recKey1] || recorded[name] || null;
-      const rec = recRaw && /\.(v|sv|djs|gate)$/i.test(recRaw) ? recRaw : (recRaw && /\.(v|sv|djs|gate)$/i.test(String(recRaw)) ? recRaw : null);
+      // recorded 值的合法性问一颗主人（原来这里把同一串正则写了两遍，而名单与编译侧已经分岔）
+      const rec = recRaw && isBindingTargetValue(recRaw) ? recRaw : null;
       let auto: string | null = null;
-      if (inJobSet.has(`${name}.v`)) auto = `${name}.v`;
-      else if (inJobSet.has(`${name}.sv`)) auto = `${name}.sv`;
-      else if (sparts.includes(`${dir}/${name}.djs`)) auto = `${dir}/${name}.djs`;
-      else if (sparts.includes(`${name}.djs`)) auto = `${name}.djs`;
+      // 同名兜底的候选由**域界主人**生成（原来手写 `.v`/`.sv` 两颗 ⇒ 定义在 `.vh` 里的撞不上，
+      // 面板把它报成"未绑定"而闭包里明明有那颗文件＝又一面"录了没生效"的真通路）
+      for (const ext of VERILOG_EXT) {
+        if (inJobSet.has(`${name}.${ext}`)) { auto = `${name}.${ext}`; break; }
+      }
+      if (!auto) {
+        if (sparts.includes(`${dir}/${name}.djs`)) auto = `${dir}/${name}.djs`;
+        else if (sparts.includes(`${name}.djs`)) auto = `${name}.djs`;
+      }
       return { name, count, auto, recorded: recRaw && !auto && !rec ? recRaw : (rec || null) };
     });
     return {
@@ -188,14 +195,14 @@ export async function openBindingPanel(context: vscode.ExtensionContext, uri: vs
     }
     if (msg.op === 'save') {
       const changes = msg.changes || msg.bindings || {};
-      // 写前校验：.v/.sv 目标必须真的定义了该模块（真机惨案：实例 counter 记到 r50_counter.v，
+      // 写前校验：编译域目标（.v/.sv/.vh，一颗主人给名单）必须真的定义了该模块（真机惨案：实例 counter 记到 r50_counter.v，
       // 该文件定义的其实是 r50_counter——"绑定完成"却注定 [BINDING_UNRESOLVED_RECORD]。
       // 零件清单只是文件名维度，语义校验只能在这里把关——改错时把该文件内实际定义一并报出来。
       const errors: string[] = [];
       for (const [name, part] of Object.entries(changes)) {
         if (!name) continue;
         const v = part as string | null;
-        if (v && /\.(v|sv)$/i.test(v.trim())) {
+        if (v && isVerilogPath(v.trim())) {
           let mods: string[] | null = null;
           try {
             mods = parseVerilogModules(new TextDecoder().decode(

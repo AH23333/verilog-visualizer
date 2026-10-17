@@ -18,7 +18,7 @@
 |---|---|---|---|---|
 | A1 | 容器归属 | ✅ | 编译容器：文件/模块/层次结构；沙盒：文件/部件/层次结构 | [x] |
 | A2 | 项目根 | ✅ dispatch.ts:40 | 根=工作区第一文件夹，树路径=根相对 posix | [x] |
-| A3 | 文件域分野 | ✅ projectStore.ts:30,153 | 编译树=`.v/.sv/.vh`；沙盒树=`.djs`；文件分域、目录全量上报（空目录也亮） | [x] |
+| A3 | 文件域分野 | ✅ projectStore.ts（VERILOG_EXT/SANDBOX_EXT；R153 起由 verilogDomain.ts 一颗主人分发） | 编译树=`.v/.sv/.vh`；沙盒树=`.djs`；文件分域、目录全量上报（空目录也亮） | [x] |
 | A4 | 数据来源/watcher | ✅ 编码完（X2 批次A） | 五域 watcher：v/sv/vh/djs/.verilogviz.json（extension.ts:301） | 编码完✓轮 |
 | A5 | 排序 | ✅ trees.ts childrenOfLayer | 目录前/文件后，localeCompare（文件 numeric） | [x] |
 | A6 | 图标 | ✅ 资源 uri 派生 | 文件符主题 icon；目录主题文件夹 icon | [x] |
@@ -42,7 +42,7 @@
 ## C. 右键·文件菜单（两树各自）
 | # | 功能 | 现状 (证据) | 目标行为 | 完成 |
 |---|---|---|---|---|
-| C1 | 打开·编译域 | ✅ | compileAndShow 进画布（.vh 入口行为 X8 待测） | [ ] |
+| C1 | 打开·编译域 | ✅ | compileAndShow 进画布（**X8 结案 R153**：`.vh` 入口此前被入口门与 Ctrl+F5 的 `(v|sv)` 挡回；编码+臂绿，真机点验欠） | [ ] |
 | C2 | 打开·沙盒域 | ✅ | openDoc → 画布 | [ ] |
 | C3 | 重命名·文件 | ✅ sandboxFiles.ts:268-314 | 改名+逐层迁移绑定值、`宿主::实例` 键、根表 circuits | [ ] |
 | C4 | 创建副本 | ✅ uniqueName (n) | 同目录 `(n)` 序号；.djs 副本=部件（角色不随）；**复制后要刷树（X5）** | [ ] |
@@ -126,6 +126,10 @@
 | #13 | CodeFilesTree 空态崩 | hint 节点走 uriOfRel(undefined) TypeError | getTreeItem 无 name 早退 | ✅ 闭（审查批次B） |
 | #14 | moveToFile 原地白跑 | 同目录"移动"会 (n) 顺延改名 | destRel===srcDir 短路 no-op | ✅ 闭（审查批次B） |
 | #15 | 表扫深度不一 | collectTableDirs=8 vs A12 口径 16 | 默认深度统一 16 | ✅ 闭（审查批次B） |
+| X16 | 旧档迁移丢 `.djs` | collectLegacyItems 把 Record 当数组迭代 ⇒ TypeError 被 catch 吞；单一墓碑连坐两半 | 两形状都收 + 两半颗各自墓碑（老键只管 .v ⇒ 被坑用户自动重 Offer） | ✅ 闭（R153 片C1） |
+| X17 | `.sv`/`.vh` 半数入口隐身 | 域判定六处写死且不一致（模块树/层次树/scanDefs/门槛/编译入口/剥扩展名读反 + manifest when/键位） | verilogDomain.ts 一颗主人；十处消费点改问它；静态禁项尺在岗 | ✅ 闭（R153 片C2＝X8 同根） |
+| X18 | 迁移不带 role/partBindings | 迁出的 `.djs` 全按缺省部件语义，文件级显式绑定丢失 | 批内 id→落盘名映射再写各目录 `.verilogviz.json` | ⏳ 挂账 |
+| X19 | hasDjsUnder 名实不符 | 判据收 `.v\|djs` ⇒ 纯源码目录也配出一张空绑定表 | 「目录有部件才配表」的语义裁决点（.v 算不算"有部件"） | ⏳ 挂账待裁 |
 
 ---
 
@@ -143,9 +147,22 @@
 5. **C10 口径微调**：剪贴板放**绝对路径**（终端/资源管理器粘贴的通用语义），根相对在告示里同亮——原表「两者进剪贴板」双行粘贴反而不实用；有异议改回即可（一行）。
 6. **遗留**：X8 .vh 编译入口待车载测试；F5 挂账；真机点验单待用户执行。
 
+**补记 v3（2026-10-17，R153 片C1/C2）**
+1. **X8 与 X17 同根同闭**：X8 不是"入口行为待测"一颗孤格——「哪些文件算编译域」在扩展里写了六遍
+   且三处答案不一致（.v/.sv/.vh 的表 vs 六处 `*.v`/`(v|sv)` 手写，含剥扩展名那颗**读反的**
+   `/\.sv?$/`）。R153 起域判定只有一颗主人（`extension/src/verilogDomain.ts`，域界住
+   `projectStore` 的 VERILOG_EXT/SANDBOX_EXT），十处消费点全部改问它；静态禁项尺
+   （vscodeShell「域界一颗主人」组）钉「除主人外⛔ 再出现调用形状的域判定」。
+2. **X16 迁移两半颗各用自己的墓碑**：老键 `verilog-viz-legacy-migrated` 语义收窄到只管 `.v`
+   （⇒ 被 bug 坑过的用户沙盒档自动重新被 Offer，⛔ 重复落盘 .v）；新键管 `.djs`。
+3. 新挂账 X18（迁移不带 role/partBindings）、X19（hasDjsUnder 名实不符＝语义裁决点）。
+4. 台架：`bin/C1/bench_c1_migration.py`（13 臂）与 `bin/C2/bench_c2_domain.py`（12 臂），
+   判据＝红名集合等式；vitest 238/238、root tsc+vite build、extension tsc/esbuild 全绿。
+
 **验收规程**：每条目标行动=完成后留言 `条目 ✅ + 日期 + 真机点验过程一句`；⛔ 一次性混勾。
 
 | 修订记录 | 日期 | 内容 |
 |---|---|---|
 | v1 | 2026-10-17 | 依深度核对起表（X 类并入，验收纪律定） |
 | v2 | 2026-10-17 | 批次B 落地：G1 三路共源/C9-C11/D4-D5/D7/F1-F4-F6/H1；审查补账 #10-#15；Q1-Q5 默认裁决在册；X8/F5 挂账 |
+| v3 | 2026-10-17 | R153：X8+X17 同根闭（域界一颗主人）；X16 迁移丢 .djs 闭；新挂账 X18/X19；A3/C1 证据改名引用（行号会漂） |

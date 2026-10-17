@@ -2,14 +2,17 @@
 // 这是用户裁决「把模块、层次结构整合进 VS Code 壳侧边栏」的落地层。
 //
 // 数据源：
-//  · 模块树     —— 工作区 **/*.v 扫描 → definedModules（verilogParseLite，主仓同款正则），文件→模块两级
+//  · 模块树     —— 工作区**编译域**文件（.v/.sv/.vh，由一颗主人 `verilogDomain` 给名单）
+//    → definedModules（verilogParseLite，主仓同款正则），文件→模块两级
 //  · 层次树     —— 活动编辑器（.v）的实例清单 → 定义文件扫描 → 逐层递归展开（链上已出现过的实例⛔ 再展开＝环守卫）
-//  · 沙盒文件树 —— ProjectStore.listSandboxTree()（片 4-C1 的第 16 颗 RPC 同源）
+//  · 沙盒文件树 —— ProjectStore.listSandboxTree()（宿主进程内直读：片 5 起这份表⛔ 再走 RPC，
+//    前端要正文时由 custom editor 的 init 推 siblings，两侧共用同一把 walk）
 // 刷新时机：.v/.djs 增删改 + 工作区切换 + 活动编辑器变化（extension.ts 的监听）+ 命令 verilogVisualizer.refreshTrees。
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { parseVerilogModules, parseVerilogInstances } from './verilogParseLite';
 import { ProjectStore } from './projectStore';
+import { findVerilogUris, isVerilogPath } from './verilogDomain';
 
 type Node = {
   label: string;
@@ -80,8 +83,7 @@ export class ModuleTree implements vscode.TreeDataProvider<Node> {
         }));
       } catch { return []; }
     }
-    const files = (await vscode.workspace.findFiles('**/*.v', '**/node_modules/**'))
-      .sort((a, b) => a.fsPath.localeCompare(b.fsPath));
+    const files = await findVerilogUris();          // 域界由 verilogDomain 给（⛔ 在这里写死 *.v）
     const root = vscode.workspace.workspaceFolders?.[0]?.uri;
     const out: Node[] = [];
     for (const uri of files) {
@@ -120,8 +122,8 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
   async getChildren(el?: Node): Promise<Node[]> {
     if (!el) {
       const editor = vscode.window.activeTextEditor;
-      if (!editor || path.extname(editor.document.fileName) !== '.v') {
-        return [{ label: '打开一个 .v 文件以查看层次结构', desc: '', kind: 'hint' }];
+      if (!editor || !isVerilogPath(editor.document.fileName)) {
+        return [{ label: '打开一个 Verilog 源码文件（.v/.sv/.vh）以查看层次结构', desc: '', kind: 'hint' }];
       }
       return this._instancesOf(editor.document.uri, '');
     }
@@ -149,11 +151,11 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
       });
   }
 
-  /** 全工作区扫一遍 .v 建模块名→文件的索引（refresh 作废；`getChildren` 异步，正好每次展开前确保就绪） */
+  /** 全工作区扫一遍**编译域**文件建模块名→文件的索引（refresh 作废；`getChildren` 异步，正好每次展开前确保就绪） */
   private async rebuildDefIndex(): Promise<void> {
     if (this._defMap) return;
     const map = new Map<string, vscode.Uri>();
-    for (const uri of await vscode.workspace.findFiles('**/*.v', '**/node_modules/**')) {
+    for (const uri of await findVerilogUris()) {
       try {
         for (const mod of parseVerilogModules(await readText(uri))) if (!map.has(mod)) map.set(mod, uri);
       } catch { /* 读不到的文件跳过 */ }

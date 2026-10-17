@@ -9,7 +9,10 @@ import { describe, it, expect } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { rewriteWebviewHtml, buildCsp } from '../../extension/src/html';
-import { ProjectStore, sanitizeRel } from '../../extension/src/projectStore';
+import { ProjectStore, sanitizeRel, VERILOG_EXT } from '../../extension/src/projectStore';
+import {
+  isVerilogPath, isSandboxPath, isBindablePath, isBindingTargetValue, stripVerilogExt, watcherGlobs,
+} from '../../extension/src/verilogDomain';
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DIST_HTML = path.join(ROOT, 'dist', 'index.html');
@@ -306,5 +309,57 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
     const wireAt = extensionSrc.indexOf('function wirePanel');
     expect(wireAt).toBeGreaterThan(-1);
     expect(extensionSrc.indexOf('onDidDispose')).toBeGreaterThan(wireAt);
+  });
+});
+
+describe('域界一颗主人（片 C2：哪些文件算 Verilog / 算沙盒）', () => {
+  const MASTER = ['projectStore.ts', 'verilogDomain.ts'];
+  // ⚠ 只 ban「调用形状」：旧正则作为**历史对照**写在注释里（compilePanel/verilogDomain 各一句），
+  //   禁项串被证人自己抄一份＝把尺撞在自己的文档上（名册 308 同族）。调用点必带 `.test(`/`findFiles('`。
+  const BANNED = [
+    "findFiles('**/*.v'", "findFiles('**/*.djs'",
+    '(v|sv)$/i.test(', '(v|sv|djs)$/i.test(', '(v|sv|djs|gate)$/i.test(',
+    "!== '.v'", 'replace(/\\.sv?$',
+  ];
+
+  it('extension/src 里除主人外⛔ 再有第二处写死的域判定（正件：主人的扫描真看得见＝这把尺⛔ 瞎）', () => {
+    const dir = path.join(ROOT, 'extension/src');
+    const files = fs.readdirSync(dir).filter((f) => f.endsWith('.ts') && !MASTER.includes(f));
+    expect(files.length).toBeGreaterThan(10);                 // 射程空＝恒绿的假尺
+    for (const f of files) {
+      const src = fs.readFileSync(path.join(dir, f), 'utf8');
+      // ⚠ 形状的教训：`expect(msg, value)` ⛔ 是 vitest 的签名——那颗 msg 会被当成**被测值**，
+      //   于是这把尺永远红（第一跑就是这样，报的还是字典序第一颗文件，看着像"那儿有主人"）。
+      const hit = BANNED.filter((b) => src.includes(b));
+      expect(`${f} → ${hit.join(' | ')}`).toBe(`${f} → `);
+    }
+    expect(fs.readFileSync(path.join(dir, 'verilogDomain.ts'), 'utf8').includes('findFiles(')).toBe(true);
+  });
+
+  it('manifest 里那第五、第六处域判定也吃同一颗名单：resourceExtname 的每条 when/keybinding 都含三域', () => {
+    // 域界还会藏在声明式产物里：`contributes.menus` 的 when 与 `keybindings` 的 when。
+    // 修前那里写的是 `/\.(v|sv)$/` ⇒ `.vh` 在资源管理器里没有右键项、Ctrl+F5 也没反应
+    // （代码侧的门修好了，菜单这侧照旧隐身＝用户看到的还是"不支持 .vh"）。
+    const raw = fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8');
+    const clauses = raw.split('\n').filter((l) => l.includes('resourceExtname =~'));
+    expect(clauses.length).toBe(4);                      // 正件：射程非空（现读 3 条菜单 + 1 条键位）
+    for (const c of clauses) expect(['v', 'sv', 'vh'].filter((e) => !c.includes(`|${e}`))).toEqual([]);
+  });
+
+  it('主人口径逐颗现读：三域判定、fsPath 形状、剥扩展名（那颗读反的 .sv? 就是这颗钉的）', () => {
+    expect(VERILOG_EXT).toEqual(['v', 'sv', 'vh']);
+    expect(isVerilogPath('D:\\p\\lib\\alu.SV')).toBe(true);    // Windows 反斜杠 + 大写扩展都得认
+    expect(isVerilogPath('defs.vh')).toBe(true);
+    expect(isVerilogPath('a.djs')).toBe(false);
+    expect(isSandboxPath('parts/画布.djs')).toBe(true);
+    expect(isBindablePath('defs.vh')).toBe(true);
+    expect(isBindablePath('parts/画布.djs')).toBe(true);         // 沙盒那一半也得测（⛔ 只验编译域＝这颗门瞎一半）
+    expect(isBindablePath('notes.txt')).toBe(false);
+    expect(isBindingTargetValue('legacy.gate')).toBe(true);     // 表里的旧 .gate 值⛔ 判废
+    expect(stripVerilogExt('adder.v')).toBe('adder');           // 旧 `/\.sv?$/` 对 .v 原样返回＝静默零补全的根
+    expect(stripVerilogExt('adder.sv')).toBe('adder');
+    expect(stripVerilogExt('defs.vh')).toBe('defs');
+    expect(stripVerilogExt('parts/alu')).toBe('parts/alu');     // 无域扩展＝原样
+    expect(watcherGlobs().slice().sort()).toEqual(['**/*.djs', '**/*.sv', '**/*.v', '**/*.vh']);
   });
 });

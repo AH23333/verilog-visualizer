@@ -1400,3 +1400,73 @@ HEAD 02b56e3 经 `git stash -u` 实测 171/171+tsc 0——**移交良好、WIP �
 5. **死代码 + 覆盖缺口**：`renameFile/deleteFile` 弹框壳成死导出（删除，逻辑已在命令层+机械体）；import 命令级链路（对话框→工具→告示）在薄壳化时丢了覆盖 ⇒ 补回，且当场抓到**桩 fidelity 缺口**：stub 的 `copy` 对不存在源静默 no-op（旧格子只断言返回值所以从没暴露）——真宿主会 throw→error verdict，属测试桩债（记此，批次二修桩）。
 
 流程验证：api:doc 漂移自愈按设计工作（改 fs.rename 描述→doc 再生成落盘+当轮红→次轮绿）。全绿 212/212 + 双 build。
+
+# 卷六十四 · 文件系统深度核对：两颗"主人级"缺陷（R153 片C1/C2）（2026-10-17）
+
+> 承卷六十三。用户令「尽可能梳理项目，从文件系统开始修复，还需要整合统一的 API 层」。
+> 本卷先做两模式 FS 读写缝的全面核对，再修核对抓到的缺陷。修法口号：**一颗主人**。
+
+## 一、核对结论（两模式的真源现状）
+- **编译域（.v/.sv/.vh）**：真源＝磁盘工作区。两颗原生树（`ProjectStore.listTree`）、绑定
+  `.verilogviz.json` 目录链、watcher 五域——但「哪些文件算 Verilog」**写了六遍、三处答案不一致**
+  （详见 X17）。这颗规则没有一个主人 ⇒ X8（.vh 编译入口）挂账的根因不是一颗格子，是一个形状。
+- **沙盒域（.djs）**：真源＝磁盘文档（doc 模式：打开=读盘、保存=宿主写盘、revert 重推；
+  `customEditors.ts` F1 语义在册）。localStorage `sandboxStore` 在产品路径只剩两个身份：
+  ①旧档**迁移源**（`legacyMigration.ts`）②gates.html 浏览器闸门夹具（⛔ 不进构建产物）。
+  doc 模式的部件源合并 `sandboxStore.list()` 那一路（DocApp.makePartSource）仍会读到
+  localStorage 的 part ⇒ 会话内"保存为部件"的落盘链要查（挂账待核，未立格）。
+- **API 层**：契约 36 工具（surfaces 含 rpc 的 9 颗 = dispatch 的 9 case，对账锁双向钉死）；
+  树命令走 `executeTool`（fs.* 十工具）。dispatch RPC 尚未走 executeTool（卷六十二遗留①，
+  闸已同序）。
+
+## 二、片C1：旧档迁移丢 `.djs`（X16，数据丢失级）
+- **根因**：`collectLegacyItems` 把 sandboxStore 落盘的 `Record<id, SandboxFile>` 当数组
+  `for...of` ⇒ TypeError 被那记 `catch { ignore }` 吞 ⇒ 沙盒半颗 0 迁移；唯一墓碑又由
+  `.v` 半颗的成功迁移落档 ⇒ 永久封死。**老用户的 `.djs` 全库躺在 localStorage 里认不得**。
+- **修**：`entriesOf` 两种形状都收（Record=主形状，数组=旧档兜底）；**两半颗各用自己的墓碑**
+  ——老键语义收窄到 `.v`（⇒ 被坑过的用户下次开画布自动重新被 Offer 自己的 `.djs`，程序自愈，
+  ⛔ 要用户找设置）；`markLegacyMigrated(落盘名[])` 按**真落盘的那批**分半颗封；
+  `dismissLegacyMigration()`（不再提示）才两半一起封。kind:'gate'（编译格式）仍⛔ 落成
+  画布打不开的 `.djs`。
+- **证人**：`tests/unit/legacyMigration.test.ts` 12 格（此前这一层零覆盖）＋
+  `bin/C1/bench_c1_migration.py` 13 臂（红名集合等式；M2 第一版是**恒等变异**——
+  `Object.values(数组)` 照给原值，被读数否掉，名册 350 同族再记一笔）。
+
+## 三、片C2：域界一颗主人（X17，X8 同根）
+- **现状读数**：域判定六处写死、三处答案——①模块树 `**/*.v`（trees.ts）②层次树定义索引
+  `**/*.v` ③层次树门槛 `extname !== '.v'` ④编译入口+Ctrl+F5+资源管理器右键 `(v|sv)`（含
+  manifest 3 条 when + 1 条键位）⑤绑定目标 `(v|sv)` ⑥剥扩展名两处 `/\.sv?$/`——**读反**：
+  只剥 `.sv`（连 `.s` 都剥），对 `.v` 原样返回 ⇒ topModule 兜底交回 `x.v`、
+  `bindings.complete` 对 `.v` 工程**零补全**（同名查表键带着 `.v`）。
+- **修**：新档 `extension/src/verilogDomain.ts`（findVerilogUris/findSandboxUris/isVerilogPath/
+  isSandboxPath/isBindablePath/isBindingTargetValue/stripVerilogExt/watcherGlobs），域界住
+  `projectStore`（VERILOG_EXT/SANDBOX_EXT 已是 export）；十处消费点改问它；manifest 的
+  when/键位名单补 `.vh`。**花括号 glob 故意⛔ 用**：真宿主方言未验，宁可三趟文件索引扫描。
+- **行为后果**（可点验）：`.sv`/`.vh` 进『模块』『层次结构』两块板；`.vh` 能当编译入口、能被
+  绑定表指认、Ctrl+F5 在 `.vh` 上有反应、资源管理器右键出现命令；`.vh` 的保存触发重编译。
+- **证人**：+6 格（C2 行为臂两颗、X8 编译臂、topModule 兜底臂、静态禁项尺、manifest 名单尺、
+  口径尺）＋ `bin/C2/bench_c2_domain.py` 12 臂。**M9 的射程现读 7 颗红**＝沙盒侧那道门有
+  六个行为消费者（benches 的期望按读数改，理由在臂注）。
+
+## 四、验证读数（本卷收口）
+- vitest **238/238**（基线 220 + 迁移 12 + C2 六）；root `pnpm build`（tsc+vite）✓；
+  extension tsc ✓ + esbuild ✓；两份台架 0 不合格 + 快照逐字节还原核对。
+- **tsc 抓到我自己的一颗真形状错**：`markLegacyMigrated` 收对象而宿主交回名字串——vitest
+  不查型，只有 build 抓得到（vitest 全绿≠型安全，本卷第三次记）。
+- 注释面颗数对账：RPC 面＝**9**（dispatch case ↔ 契约 rpc 投影，锁在 vscodeShell.test）；
+  五处「6 颗/16 颗」过期头注改口；`projectStore.ts` 的 fileStore 幽灵引用与
+  「沙盒仍以 localStorage 为运行时主人」过期口径清除。
+
+## 五、遗留与移交
+- **X18**（迁移不带 role/partBindings）——部件身份与文件级显式绑定在迁移里丢失，需要批内
+  id→落盘名映射再写目录表，单独立批。
+- **X19**（`hasDjsUnder` 判据收 `.v|djs`，纯源码目录也配空绑定表）——语义裁决点，等用户裁：
+  纯 `.v` 目录要不要一张 `.verilogviz.json`。
+- **他的两件事**：①真机点验单（`.vh` 编译/右键/Ctrl+F5、迁移提示条重新出现并把 `.djs` 迁上来、
+  模块/层次两块板看 `.sv`）；②**工作树里 18 颗 `test_files/*.v` 是他拖拽实测搬进
+  `test_files/examples/` 的**（未提交，非损坏）——但 20+ 颗 Playwright 闸门按
+  `test_files/<名>.v` 顶格读，闸门下一跑会 ENOENT：要么把这批搬动 commit 进 examples/（改闸门
+  路径），要么搬回顶层，等他一句话。
+- push 仍⛔ 未授权（本地领先远端 29 笔）。
+
+*（卷六十四完 · 两颗主人级缺陷闭账 X8/X16/X17；新挂账 X18/X19；「一颗主人」在域界上落地）*

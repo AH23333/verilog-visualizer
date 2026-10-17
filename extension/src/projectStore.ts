@@ -9,8 +9,10 @@
  * 三条与 Rust 版一致的形状（改了任何一条，两个宿主的文件行为就会分岔）：
  *  1. `sanitizeRel` 拒绝对对路径与 `..` 段（防穿越）；
  *  2. 目录树**按扩展名分两颗**：Verilog 那份只上报 `.v/.sv/.vh`（`listTree`），沙盒 `.djs` 走 `listSandboxTree`
- *     ——合并不了：前端 `fileStore.refresh()` 会把 Verilog 那颗表的每一颗都当源码解析；
- *     名字都是**相对项目根、用 '/' 分隔**（R140 片 4-C1 起 `.djs` 开始有了磁盘这份，沙盒那侧仍以 localStorage 为运行时主人）；
+ *     ——两半⛔ 合成一颗表：编译域那份的每一颗都会被当**源码**读（模块树/层次树/`scanDefs` 逐文件
+ *     `parseVerilogModules`），电路 JSON 混进去＝一片垃圾模块名；
+ *     名字都是**相对项目根、用 '/' 分隔**（片 4-C1 起 `.djs` 的运行时主人就是盘上那份文档，
+ *     localStorage 只剩"旧档迁移源"一个身份——见 `src/canvas/legacyMigration.ts`）；
  *  3. 配置文件缺失＝抛错（前端 `projectConfigStore` 靠这颗抛错走默认值分支），⛔ 返回空串。
  */
 
@@ -28,9 +30,14 @@ export interface FsLike {
   readDir(path: string): Promise<Array<{ name: string; type: 'file' | 'dir' | 'link' }>>;
 }
 
-const VERILOG_EXT = ['v', 'sv', 'vh'];
-/** 沙盒电路文档的扩展名（片 4-C1：`.djs` 开始成为工作区里的真文件） */
-const SANDBOX_EXT = ['djs'];
+/**
+ * 两颗表的域界。⚠ 这是"哪些扩展算哪个域"的**唯一一处**声明：编译侧的扫描/watcher/门槛全都
+ * 经 `verilogDomain.ts` 问这两行要答案（各写死一份只含 `.v` 的 glob＝`.sv`/`.vh` 在『模块』
+ * 『层次结构』两块板里隐身，验收表 X8 那一族的根）。
+ */
+export const VERILOG_EXT = ['v', 'sv', 'vh'];
+/** 沙盒电路文档的扩展名（片 4-C1 起 `.djs` 是工作区里的真文档，运行时主人就是盘上那份） */
+export const SANDBOX_EXT = ['djs'];
 export const CONFIG_FILE = 'verilog-viz.config.json';
 
 /**
@@ -60,7 +67,8 @@ const baseName = (rel: string) => {
   const i = rel.lastIndexOf('/');
   return i < 0 ? rel : rel.slice(i + 1);
 };
-const extOf = (rel: string) => {
+/** 名字（'/' 分隔的相对名 **或** 已归一分隔符的 fsPath）→ 小写扩展名，无扩展回空串 */
+export const extOf = (rel: string) => {
   const b = baseName(rel);
   const i = b.lastIndexOf('.');
   return i < 0 ? '' : b.slice(i + 1).toLowerCase();
@@ -171,9 +179,9 @@ export class ProjectStore {
 
   /**
    * 沙盒电路文件（`.djs`）的那份表——**与 Verilog 那份分开**上报。
-   * 分开的理由⛔ 是"分类好看"：`src/store/fileStore.ts` 的 `refresh()` 会把 `listProjectTree`
-   * 回的**每一颗**都当 Verilog 源码读进并 `parseVerilogModules`，还有一条"磁盘上没了就从状态里删"的分支
-   * ⇒ `.djs` 混进那颗表＝电路 JSON 被当 Verilog 导入（模块名一片垃圾）＋沙盒列表被那边牵动。
+   * 分开的理由⛔ 是"分类好看"：编译域那份表的**每一颗**都会被当 Verilog 源码读
+   * （`trees.ts` 的模块树/层次树与 `compilePanel.scanDefs` 逐文件 `parseVerilogModules`）
+   * ⇒ `.djs` 混进去＝电路 JSON 被当源码导入（一片垃圾模块名），而沙盒侧要的正是那份 JSON 正文。
    */
   async listSandboxTree() { return this.collect(SANDBOX_EXT); }
 

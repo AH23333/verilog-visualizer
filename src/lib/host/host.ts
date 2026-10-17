@@ -4,7 +4,8 @@
  * ── 为什么要有这一层 ──────────────────────────────────────────────
  * 电路画布（digitaljs/joint）与全部 React 渲染代码在 VS Code webview 里跑，换宿主⛔ 要重写它们。
  * 真正要换的只有"谁提供配置、另存对话框、Problems/Output 通道"。
- * 片 5（全面原生）后接口从 18 颗收到 **6 颗**：文件管理归原生 Explorer、配置归
+ * 片 5（全面原生）后接口从 18 颗收到 **9 颗**（＝宿主 dispatch 的 RPC 面，两侧由 vscodeShell 的
+ * 对账锁钉成同一份）：文件管理归原生 Explorer、配置归
  * contributes.configuration、剪贴板归编辑器——旧 React UI 的那批 RPC 随退役一起删了
  * （找回旧接口：`git log` 到"弃旧 UI"之前的提交）。
  *   · `vscodeHost`   Webview 里经 `postMessage` 走 Extension Host（**唯一主宿主**）
@@ -48,7 +49,7 @@ export class HostUnsupported extends Error {
 }
 
 /**
- * 统一调用层的接口面（片 5：6 颗）。
+ * 统一调用层的接口面（片 5 起 9 颗，与宿主 dispatch 的 case 表同账）。
  * 所有方法都是"尽力而为"：失败要么抛 `HostUnsupported`，要么抛宿主原始错误，
  * 由调用方决定吞掉还是提示。
  */

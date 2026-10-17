@@ -1,4 +1,4 @@
-// `.v` 的编译查看（片 5-A3）：`.v` 的主人是**原生文本编辑器**；画布是派生视图——
+// 编译域文件（`.v/.sv/.vh`）的编译查看（片 5-A3）：源码文件的主人是**原生文本编辑器**；画布是派生视图——
 // 标题按钮/Ctrl+F5 → 依赖闭包（工作区扫描 + **绑定表权威覆盖**）→ 推给画布 Panel。
 // 保存自动重编译：面板开着且保存的文件在闭包里 → 同一入口重算重推。
 //
@@ -10,6 +10,7 @@ import * as path from 'path';
 import { projectRoot } from './dispatch';
 import { bindingsForFile } from './sandboxFiles';
 import { parseVerilogModules, parseVerilogInstances, parseVerilogInstancesWithLines } from './verilogParseLite';
+import { findVerilogUris, isVerilogPath, stripVerilogExt } from './verilogDomain';
 import { djsToVerilog } from './djsVerilog';
 
 /** 推给 webview 的编译单：files 全量给（yosys 要看依赖闭包），topModule 定根 */
@@ -31,11 +32,11 @@ async function readText(uri: vscode.Uri): Promise<string> {
   return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
 }
 
-/** 工作区全部 .v 的 模块名→定义文件 索引（每次现扫；`.v` 是用户正在编辑的东西，⛔ 缓存陈旧定义）。
+/** 工作区全部**编译域**文件（.v/.sv/.vh）的 模块名→定义文件 索引（每次现扫；源码是用户正在编辑的东西，⛔ 缓存陈旧定义）。
  *  bindParts/materialize 的「自动同名」预览也吃它（一个主人一份扫描）。 */
 export async function scanDefs(): Promise<Map<string, vscode.Uri>> {
   const map = new Map<string, vscode.Uri>();
-  for (const uri of await vscode.workspace.findFiles('**/*.v', '**/node_modules/**')) {
+  for (const uri of await findVerilogUris()) {
     try {
       for (const mod of parseVerilogModules(await readText(uri))) if (!map.has(mod)) map.set(mod, uri);
     } catch { /* 读不到的文件跳过 */ }
@@ -93,7 +94,7 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
         anchors.push(anchorOf(inst));
         continue;
       }
-      if (/\.(v|sv)$/i.test(ov)) {
+      if (isVerilogPath(ov)) {
         const def = vscode.Uri.joinPath(root, ...ov.split('/'));
         try {
           const defText = await readText(def);
@@ -129,12 +130,12 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
         if (conv.errors.length) { bindingErrors.push(...conv.errors.map((e) => `（${ov}）${e}`)); anchors.push(...conv.errors.map(() => anchorOf(inst))); continue; }
         queue.push({ name: genName, content: conv.verilog, ownerRel: ov });
       } else {
-        bindingErrors.push(`[SCHEMA_INVALID] 模块「${inst}」绑定为「${ov}」：不支持的绑定目标（只认 .v/.sv 定义或 .djs/.gate 部件）`);
+        bindingErrors.push(`[SCHEMA_INVALID] 模块「${inst}」绑定为「${ov}」：不支持的绑定目标（只认编译域 .v/.sv/.vh 定义或 .djs/.gate 部件）`);
         anchors.push(anchorOf(inst));
       }
     }
   }
-  const topModule = cfg0.get<string>('compile.topModule') || parseVerilogModules(entryText)[0] || path.basename(entry.fsPath).replace(/\.sv?$/, '');
+  const topModule = cfg0.get<string>('compile.topModule') || parseVerilogModules(entryText)[0] || stripVerilogExt(path.basename(entry.fsPath));
   return {
     files: [...files.values()], topModule, entryName: entryRel,
     ...(bindingErrors.length ? { bindingErrors, bindingAnchors: anchors } : {}),
@@ -176,8 +177,9 @@ export async function compileAndShow(context: vscode.ExtensionContext, argUri: v
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
     if (tab?.input instanceof vscode.TabInputText) uri = tab.input.uri;
   }
-  if (!uri || !/\.(v|sv)$/i.test(uri.fsPath)) {
-    void vscode.window.showInformationMessage('先打开一个 .v / .sv 文件，再编译查看电路。');
+  if (!uri || !isVerilogPath(uri.fsPath)) {
+    // X8 结案（片 C2）：这道门从前写死 `/\.(v|sv)$/`，`.vh` 右键"编译查看"被当场挡回＝挂账的根因。
+    void vscode.window.showInformationMessage('先打开一个 Verilog 源码文件（.v/.sv/.vh），再编译查看电路。');
     return;
   }
   const job = await closureOf(context, uri);
@@ -187,12 +189,12 @@ export async function compileAndShow(context: vscode.ExtensionContext, argUri: v
   reportBindingErrors(job, false);
 }
 
-/** `.v`/`.djs` 保存钩子：面板开着 + 设置允许 + 文件在（或就是）上一次闭包 → 重算重推。
+/** **编译域**（.v/.sv/.vh）保存钩子：面板开着 + 设置允许 + 文件在（或就是）上一次闭包 → 重算重推。
  *  R144：`.verilogviz.json` 的保存也算触发源——手编绑定表 ⇔ 画布即时生效（bindingsChanged），
  *  编译侧必须同权（⛔ "改画布生效、编译要重按 F5"的两面）；global 表改动与是否在闭包无关，直接重算。 */
 export async function recompileOnSave(context: vscode.ExtensionContext, doc: vscode.TextDocument, ensurePanel: EnsurePanel): Promise<void> {
   const isMetaFile = doc.uri.path.endsWith('.verilogviz.json');
-  if (!isMetaFile && !/\.(v|sv)$/i.test(doc.uri.fsPath)) return;
+  if (!isMetaFile && !isVerilogPath(doc.uri.fsPath)) return;
   if (!(vscode.workspace.getConfiguration('verilogViz').get<boolean>('compile.autoRecompile') ?? true)) return;
   if (!lastJob) return;
   const key = toRel(projectRoot(context), doc.uri).toLowerCase();

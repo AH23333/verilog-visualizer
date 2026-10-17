@@ -1,6 +1,10 @@
 // dispatch：webview → 宿主能力的唯一路由。
-// 片5（全面原生）起只剩 6 颗：文件 CRUD/配置文件/剪贴板那 12 颗随旧 React UI 一起退役——
-// 文件管理归原生 Explorer，配置归 contributes.configuration，画布要的文件内容由宿主**推**（compile/doc init）。
+// RPC 面**现读 9 颗**（getConfig/saveExportFile/publishProblems/appendOutput/copyToSandbox/
+// importLegacyData/getAllBindings/setDocBindings/jumpToSource）：文件 CRUD/配置文件/剪贴板那批
+// 随旧 React UI 一起退役——文件管理归原生 Explorer 与我们的两颗树，配置归
+// contributes.configuration，画布要的文件内容由宿主**推**（compile/doc init）。
+// ⚠ 颗数是**对账锁**的结果不是抄的：vscodeShell.test 钉「vv-api.defaults 的 rpc 投影 == 本文件
+// 的 case 表」双向（漏登/幽灵都红），所以这里写死的数字改一行代码就会点红台账。
 // Panel（verilogVisualizer）与 custom editor（verilogViz.doc）两条装载线共用这一份。
 import * as vscode from 'vscode';
 import type { FsLike } from './projectStore';
