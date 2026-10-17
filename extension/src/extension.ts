@@ -29,13 +29,12 @@ import { initProject } from './vvProject';
 import { flushAudit } from './apiAudit';
 import { parseVerilogInstances } from './verilogParseLite';
 import { ProjectStore, type FsLike } from './projectStore';
-import { VvFilesWebviewProvider } from './filesWebview';
 
 const VIEW_TYPE = 'verilogVisualizer';
 
 let currentPanel: vscode.WebviewPanel | undefined;
 
-/** `workspace.fs` 的各方法回的是 `Thenable`（不是 Promise）⇒ 必须 await 一次再回 */
+  /** `workspace.fs` 的各方法回的是 `Thenable`（不是 Promise）⇒ 必须 await 一次再回 */
 const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> =>
   new Promise<T>((res, rej) => t.then(res, (e) => rej(e)));
 
@@ -44,27 +43,16 @@ export function activate(context: vscode.ExtensionContext) {
   const moduleTree = new ModuleTree();
   const hierarchyTree = new HierarchyTree();
   const sandboxTree = new SandboxTree(storeFactory);
-  const codeFilesTree = new CodeFilesTree();
+  const codeFilesTree = new CodeFilesTree(storeFactory);
   const sandboxPartsTree = new SandboxPartsTree(storeFactory, () => getCircuitsSet(context));
   const sandboxHierarchyTree = new SandboxHierarchyTree();
-  // R148 原位 webview 化：两颗「文件」视图（codeFiles/sandboxFiles）改用 WebviewView——
-  // 空白/文件夹/文件行三级右键全部真实可用（webview/context 通道，平台内唯一通路；
-  // 重构前本就是 webview 自绘树，此形态＝对等回归）。用户否掉"另起新区"的方案，不并排新视图。
-  const filesViewCode = new VvFilesWebviewProvider('code', context, (rel) => {
-    void vscode.commands.executeCommand('verilogViz.openFile', vscode.Uri.joinPath(projectRoot(context), ...rel.split('/')));
-  });
-  const filesViewSandbox = new VvFilesWebviewProvider('sandbox', context, (rel) => {
-    void vscode.commands.executeCommand('verilogViz.openDoc', vscode.Uri.joinPath(projectRoot(context), ...rel.split('/')));
-  });
 
   const ensurePanel: EnsurePanel = (ctx) => openPanel(ctx);
 
-  /** view/item/context 的实参形状（真宿主：带 resourceUri 的项传 Uri，否则传整个 TreeItem）——两种都接住。
-   *  R147：webview/context 的命令实参＝data-vscode-context 的 JSON（{vvPath:...}）⇒ 也接住折成 Uri。 */
+  /** view/item/context 的实参形状（真宿主：带 resourceUri 的项传 Uri，否则传整个 TreeItem）——两种都接住。 */
   const menuUri = (arg: any): vscode.Uri | undefined => {
     if (arg?.fsPath) return arg;
     if (arg?.resourceUri) return arg.resourceUri;
-    if (typeof arg?.vvPath === 'string' && arg.vvPath) return vscode.Uri.joinPath(projectRoot(context), ...arg.vvPath.split('/'));
     return undefined;
   };
 
@@ -74,11 +62,10 @@ export function activate(context: vscode.ExtensionContext) {
     return uri.fsPath.slice(rootFs.length + 1).replace(/\\/g, '/');
   };
 
-  /** 树刷新总闸：watcher 增删、refreshTrees 命令、三颗新建命令都汇到这（六树一盘账 + 两颗 webview 文件视图） */
+  /** 树刷新总闸：watcher 增删、refreshTrees 命令、新建命令都汇到这（六树一盘账） */
   const refreshAllTrees = () => {
     moduleTree.refresh(); hierarchyTree.refresh(); sandboxTree.refresh();
     codeFilesTree.refresh(); sandboxPartsTree.refresh();
-    void filesViewCode.render(); void filesViewSandbox.render();
   };
 
   // 活动栏**双容器**（用户裁决：编译与沙盒分家，各自 文件/模块(部件)/层次结构 三视图）：
@@ -89,14 +76,11 @@ export function activate(context: vscode.ExtensionContext) {
   //   workbench.actions.treeView.<id>.collapseAll，受 treeView.<id>.enableCollapseAll 上下文键门控）。
   const treeViewOf = (id: string, provider: vscode.TreeDataProvider<any>) =>
     vscode.window.createTreeView(id, { treeDataProvider: provider, showCollapseAll: true });
-  // R147：两颗「文件 · 右键可用」webview view（空白/行右键全菜单——TreeView 做不到的那份，见 filesWebview 头注）
-  const vvViewOf = (id: string, provider: vscode.WebviewViewProvider) =>
-    vscode.window.registerWebviewViewProvider(id, provider, { webviewOptions: { retainContextWhenHidden: true } });
   context.subscriptions.push(
-    vvViewOf('verilogViz.codeFiles', filesViewCode),
+    treeViewOf('verilogViz.codeFiles', codeFilesTree),
     treeViewOf('verilogViz.modules', moduleTree),
     treeViewOf('verilogViz.hierarchy', hierarchyTree),
-    vvViewOf('verilogViz.sandboxFiles', filesViewSandbox),
+    treeViewOf('verilogViz.sandboxFiles', sandboxTree),
     treeViewOf('verilogViz.sandboxParts', sandboxPartsTree),
     treeViewOf('verilogViz.sandboxHierarchy', sandboxHierarchyTree),
     // 沙盒层次树的数据源：活动 .djs 文档的子电路实例（customEditors init/edit 时上报）

@@ -43,7 +43,7 @@
         {
           "id": "verilogViz.codeFiles",
           "name": "文件",
-          "type": "webview",
+          "type": "tree",
           "icon": "$(files)"
         },
         {
@@ -59,7 +59,7 @@
         {
           "id": "verilogViz.sandboxFiles",
           "name": "文件",
-          "type": "webview",
+          "type": "tree",
           "icon": "$(files)"
         },
         {
@@ -346,8 +346,144 @@
           "command": "verilogViz.auditBindings",
           "when": "view == verilogViz.modules && viewItem == moduleFile",
           "group": "5_binding@4"
+        },
+        {
+          "command": "verilogViz.compileAndShow",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "verilog@1"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "5_binding@1"
+        },
+        {
+          "command": "verilogViz.auditBindings",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "5_binding@2"
+        },
+        {
+          "command": "verilogViz.completeBindings",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "5_binding@3"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "5_binding@4"
+        },
+        {
+          "command": "verilogViz.renameFile",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "verilogViz.duplicateFile",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "view == verilogViz.codeFiles && viewItem == codeFile",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "verilogViz.newVerilogFile",
+          "when": "view == verilogViz.codeFiles && viewItem == codeDir",
+          "group": "1_new@1"
+        },
+        {
+          "command": "verilogViz.newSandboxFolder",
+          "when": "view == verilogViz.codeFiles && viewItem == codeDir",
+          "group": "1_new@2"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "view == verilogViz.codeFiles && viewItem == codeDir",
+          "group": "1_new@3"
+        },
+        {
+          "command": "verilogViz.duplicateFolder",
+          "when": "view == verilogViz.codeFiles && viewItem == codeDir",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "view == verilogViz.codeFiles && viewItem == codeDir",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.openDoc",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "verilog@1"
+        },
+        {
+          "command": "verilogViz.bindParts",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "5_binding@1"
+        },
+        {
+          "command": "verilogViz.auditBindings",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "5_binding@2"
+        },
+        {
+          "command": "verilogViz.completeBindings",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "5_binding@3"
+        },
+        {
+          "command": "verilogViz.openBindingConfig",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "5_binding@4"
+        },
+        {
+          "command": "verilogViz.togglePartRole",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "3_role@1"
+        },
+        {
+          "command": "verilogViz.renameFile",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "verilogViz.duplicateFile",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxFile",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "verilogViz.newSandboxFile",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
+          "group": "1_new@1"
+        },
+        {
+          "command": "verilogViz.newSandboxFolder",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
+          "group": "1_new@2"
+        },
+        {
+          "command": "verilogViz.importFiles",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
+          "group": "1_new@3"
+        },
+        {
+          "command": "verilogViz.duplicateFolder",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "verilogViz.deleteFile",
+          "when": "view == verilogViz.sandboxFiles && viewItem == sandboxDir",
+          "group": "2_edit@2"
         }
       ],
+
       "editor/title": [
         {
           "command": "verilogViz.compileAndShow",
@@ -530,193 +666,6 @@
         {
           "command": "verilogViz.togglePartRole",
           "when": "false"
-        }
-      ],
-      "webview/context": [
-        {
-          "command": "verilogViz.newVerilogFile",
-          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
-          "group": "1_new@1"
-        },
-        {
-          "command": "verilogViz.newSandboxFolder",
-          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
-          "group": "1_new@2"
-        },
-        {
-          "command": "verilogViz.importFiles",
-          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
-          "group": "1_new@3"
-        },
-        {
-          "command": "verilogViz.openBindingConfig",
-          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
-          "group": "5_binding@1"
-        },
-        {
-          "command": "verilogVisualizer.refreshTrees",
-          "when": "webviewId == 'verilogViz.codeFiles' && !vvKind",
-          "group": "9_refresh@1"
-        },
-        {
-          "command": "verilogViz.compileAndShow",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
-          "group": "open@1"
-        },
-        {
-          "command": "verilogViz.renameFile",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
-          "group": "2_edit@1"
-        },
-        {
-          "command": "verilogViz.duplicateFile",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
-          "group": "2_edit@2"
-        },
-        {
-          "command": "verilogViz.deleteFile",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
-          "group": "2_edit@3"
-        },
-        {
-          "command": "verilogViz.bindParts",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
-          "group": "5_binding@1"
-        },
-        {
-          "command": "verilogViz.auditBindings",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
-          "group": "5_binding@2"
-        },
-        {
-          "command": "verilogViz.completeBindings",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
-          "group": "5_binding@3"
-        },
-        {
-          "command": "verilogViz.openBindingConfig",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'",
-          "group": "5_binding@4"
-        },
-        {
-          "command": "verilogViz.newVerilogFile",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
-          "group": "1_new@1"
-        },
-        {
-          "command": "verilogViz.newSandboxFolder",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
-          "group": "1_new@2"
-        },
-        {
-          "command": "verilogViz.duplicateFolder",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
-          "group": "2_edit@1"
-        },
-        {
-          "command": "verilogViz.deleteFile",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
-          "group": "2_edit@2"
-        },
-        {
-          "command": "verilogViz.importFiles",
-          "when": "webviewId == 'verilogViz.codeFiles' && vvKind == 'dir'",
-          "group": "1_new@3"
-        },
-        {
-          "command": "verilogViz.newSandboxFile",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
-          "group": "1_new@1"
-        },
-        {
-          "command": "verilogViz.newSandboxFolder",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
-          "group": "1_new@2"
-        },
-        {
-          "command": "verilogViz.importFiles",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
-          "group": "1_new@3"
-        },
-        {
-          "command": "verilogViz.openBindingConfig",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
-          "group": "5_binding@1"
-        },
-        {
-          "command": "verilogVisualizer.refreshTrees",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && !vvKind",
-          "group": "9_refresh@1"
-        },
-        {
-          "command": "verilogViz.openDoc",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "open@1"
-        },
-        {
-          "command": "verilogViz.renameFile",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "2_edit@1"
-        },
-        {
-          "command": "verilogViz.duplicateFile",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "2_edit@2"
-        },
-        {
-          "command": "verilogViz.deleteFile",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "2_edit@3"
-        },
-        {
-          "command": "verilogViz.togglePartRole",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "3_role@1"
-        },
-        {
-          "command": "verilogViz.bindParts",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "5_binding@1"
-        },
-        {
-          "command": "verilogViz.auditBindings",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "5_binding@2"
-        },
-        {
-          "command": "verilogViz.completeBindings",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "5_binding@3"
-        },
-        {
-          "command": "verilogViz.openBindingConfig",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'file'",
-          "group": "5_binding@4"
-        },
-        {
-          "command": "verilogViz.newSandboxFile",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
-          "group": "1_new@1"
-        },
-        {
-          "command": "verilogViz.newSandboxFolder",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
-          "group": "1_new@2"
-        },
-        {
-          "command": "verilogViz.duplicateFolder",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
-          "group": "2_edit@1"
-        },
-        {
-          "command": "verilogViz.deleteFile",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
-          "group": "2_edit@2"
-        },
-        {
-          "command": "verilogViz.importFiles",
-          "when": "webviewId == 'verilogViz.sandboxFiles' && vvKind == 'dir'",
-          "group": "1_new@3"
         }
       ]
     },

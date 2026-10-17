@@ -16,8 +16,10 @@ type Node = {
   desc: string;
   /** 关联文件：文件节点＝它自己；模块/实例节点＝定义所在文件（给点击跳转用） */
   uri?: vscode.Uri | null;
-  /** 沙盒树的目录节点（'/' 相对项目根） */
+  /** 目录树节点的目录（'/' 相对项目根） */
   dir?: string;
+  /** 文件树节点的相对路径（'/' 相对项目根；childrenOfLayer 产出的文件叶子专用） */
+  name?: string;
   /** 层次树的展开链（'/' 分隔的模块名）：链上出现过的实例⛔ 再展开＝环守卫（A⇄B 互相例化别死循环） */
   chain?: string;
   kind?: 'file' | 'module' | 'instance' | 'hint';
@@ -158,28 +160,70 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
   }
 }
 
-/* ============ 编译模式：文件（代码容器「文件」视图） ============ */
-/** 工作区 .v/.sv 文件列表（右键：编译/重命名/副本/删除/部件绑定）。 */
+/* ============ 编译模式：文件（代码容器「文件」视图，R152 原生树化） ============ */
+/**
+ * 文件视图 = **完整资源管理器**（用户裁决 2026-10-17 单刀：树型视图的展开/图标/右键全用
+ * workbench 原生渲染，⛔ webview 自绘——「与 VS Code 资源管理器不符」的原罪）。
+ * 数据源 ProjectStore（folders 单独成账、空目录也上报）⇒ 真实层级嵌套；
+ * 分域靠扩展名：本树 = .v/.sv/.vh（编译域），沙盒树 = .djs（部件域），同一工作区两个视角。
+ */
+type FileTree = { files: Array<{ name: string; size?: number }>; folders?: string[] };
+
+/** folders(全量平铺) + files → 某一层的子节点（目录在前、localeCompare；只给直属孩子）。 */
+function childrenOfLayer(
+  tree: FileTree, dir: string, opts: { sizes: boolean },
+): Node[] {
+  const prefix = dir ? `${dir}/` : '';
+  const inLayer = (rel: string) => rel.startsWith(prefix) && !rel.slice(prefix.length).includes('/');
+  const dirs = (tree.folders || []).filter(inLayer)
+    .map((rel) => rel.slice(prefix.length))
+    .sort((a, b) => a.localeCompare(b))
+    .map((rel): Node => ({ label: rel, desc: '', dir: prefix + rel, collapsible: vscode.TreeItemCollapsibleState.Collapsed }));
+  const files = tree.files.filter((f) => inLayer(f.name))
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+    .map((f): Node => ({
+      label: f.name.slice(prefix.length),
+      desc: opts.sizes ? `${Math.round((f.size ?? 0) / 102.4) / 10} KB` : '',
+      uri: null,
+      dir: undefined,
+      name: f.name,
+    }));
+  return [...dirs, ...files];
+}
+
+/** 文件树/沙盒树共用的目录项 resourceUri：右键命令（menuUri）与「在此新建」的命脉。 */
+function uriOfRel(rel: string): vscode.Uri {
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri;
+  return vscode.Uri.joinPath(root ?? vscode.Uri.file('.'), ...rel.split('/'));
+}
+
+function dirItemOf(n: Node, contextValue: string): vscode.TreeItem {
+  const item = makeItem(n);
+  item.resourceUri = uriOfRel(n.dir!);          // 目录右键（menuUri）取它
+  item.contextValue = contextValue;
+  return item;
+}
+
 export class CodeFilesTree implements vscode.TreeDataProvider<Node> {
   private _change = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._change.event;
+  constructor(private readonly _store: () => ProjectStore) { }
   refresh(): void { this._change.fire(); }
 
   getTreeItem(n: Node): vscode.TreeItem {
-    const item = makeItem(n, n.uri ? {
-      command: 'verilogViz.openFile', title: '打开文件', arguments: [n.uri],
-    } : undefined);
-    item.contextValue = n.uri ? 'codeFile' : undefined;
+    if (n.dir !== undefined) return dirItemOf(n, 'codeDir');
+    const uri = uriOfRel(n.name!);
+    const item = makeItem(n, { command: 'verilogViz.openFile', title: '打开文件', arguments: [uri] });
+    item.resourceUri = uri;
+    item.contextValue = 'codeFile';
     return item;
   }
-  async getChildren(): Promise<Node[]> {
-    const files = (await vscode.workspace.findFiles('**/*.{v,sv}', '**/node_modules/**'))
-      .sort((a, b) => a.fsPath.localeCompare(b.fsPath));
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
-    return files.map((uri) => {
-      const rel = root ? path.relative(root.fsPath, uri.fsPath).replace(/\\/g, '/') : uri.fsPath;
-      return { label: path.basename(uri.fsPath), desc: rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '', uri, kind: 'file' as const };
-    });
+
+  async getChildren(el?: Node): Promise<Node[]> {
+    let tree;
+    try { tree = await this._store().listTree(); }
+    catch { return [{ label: '项目目录还没就绪（先打开一个文件夹）', desc: '', kind: 'hint' as const }]; }
+    return childrenOfLayer(tree, el?.dir ?? '', { sizes: true });
   }
 }
 
@@ -280,12 +324,14 @@ export class SandboxTree implements vscode.TreeDataProvider<Node> {
   refresh(): void { this._change.fire(); }
 
   getTreeItem(n: Node): vscode.TreeItem {
-    const item = makeItem(n, n.uri ? {
+    if (n.dir !== undefined) return dirItemOf(n, 'sandboxDir');
+    const uri = n.uri ?? (n.name ? uriOfRel(n.name) : undefined);   // childrenOfLayer 产的叶子带 name，不带 uri
+    const item = makeItem(n, uri ? {
       // ⛔ 用 openFile（文本）：`.djs` 的主人是电路画布 custom editor——树点与双击同进画布
-      command: 'vscode.openWith', title: '打开电路画布', arguments: [n.uri, 'verilogViz.doc'],
+      command: 'vscode.openWith', title: '打开电路画布', arguments: [uri, 'verilogViz.doc'],
     } : undefined);
     // 右键菜单（view/item/context）按节点种类分流：文件=重命名/删除/副本/部件角色；目录=重命名/删除
-    item.contextValue = n.dir !== undefined ? 'sandboxDir' : n.uri ? 'sandboxFile' : undefined;
+    item.contextValue = uri ? 'sandboxFile' : undefined;
     return item;
   }
 
@@ -293,34 +339,6 @@ export class SandboxTree implements vscode.TreeDataProvider<Node> {
     let tree;
     try { tree = await this._store().listSandboxTree(); }
     catch { return [{ label: '沙盒目录尚未创建', desc: '进沙盒保存一个电路即可', kind: 'hint' }]; }
-    if (el?.dir) {
-      // 文件夹展开：按前缀过滤（ProjectTree 的 name 相对项目根、'/' 分隔）
-      const prefix = el.dir + '/';
-      return [
-        ...tree.folders.filter((f) => f.startsWith(prefix)).map((f) => ({
-          label: f.slice(prefix.length), desc: '', dir: f,
-          collapsible: vscode.TreeItemCollapsibleState.Collapsed,
-        })),
-        ...tree.files.filter((f) => f.name.startsWith(prefix)).map((f) => ({
-          label: f.name.slice(prefix.length), desc: Math.round(f.size / 102.4) / 10 + ' KB',
-          uri: this._uri(f.name),
-        })),
-      ];
-    }
-    return [
-      ...tree.folders.map((f) => ({
-        label: f, desc: '', dir: f,
-        collapsible: vscode.TreeItemCollapsibleState.Collapsed,
-      })),
-      ...tree.files.filter((f) => !f.name.includes('/')).map((f) => ({
-        label: f.name, desc: Math.round(f.size / 102.4) / 10 + ' KB',
-        uri: this._uri(f.name),
-      })),
-    ];
-  }
-
-  private _uri(name: string): vscode.Uri {
-    const root = vscode.workspace.workspaceFolders?.[0]?.uri;
-    return vscode.Uri.joinPath(root ?? vscode.Uri.file('.'), name);
+    return childrenOfLayer(tree, el?.dir ?? '', { sizes: true });
   }
 }

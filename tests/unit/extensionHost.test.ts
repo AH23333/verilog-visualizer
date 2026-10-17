@@ -217,13 +217,14 @@ describe('面板释放与命令：两条装载路共用同一个主人', () => {
 
 const RAW_DOC = '<!doctype html><html><head><meta charset="UTF-8"></head><body></body></html>';
 
-describe('侧边栏双容器六视图（片 5-B 编译/沙盒分家；R148 起「文件」×2＝原位 webview，空白/行右键真实可用）', () => {
-  it('四颗原生树 + 两颗原位 webview「文件」视图在 activate 期注册，id 与 manifest 对上（R148：⛔ 另起并排新区——用户两次否掉，原位替换）', async () => {
+describe('侧边栏双容器六视图（片 5-B 编译/沙盒分家；R152 起「文件」×2 回归原生树＝真资源管理器形态）', () => {
+  it('六棵原生树在 activate 期注册，id 与 manifest 对上（R152：webview 文件视图退役——展开/图标/右键全走 workbench 原生）', async () => {
     await boot();
     expect(Object.keys(vscode.state.treeProviders).sort()).toEqual([
-      'verilogViz.hierarchy', 'verilogViz.modules', 'verilogViz.sandboxHierarchy', 'verilogViz.sandboxParts',
+      'verilogViz.codeFiles', 'verilogViz.hierarchy', 'verilogViz.modules',
+      'verilogViz.sandboxFiles', 'verilogViz.sandboxHierarchy', 'verilogViz.sandboxParts',
     ]);
-    expect(Object.keys(vscode.state.webviewViews).sort()).toEqual(['verilogViz.codeFiles', 'verilogViz.sandboxFiles']);
+    expect(Object.keys(vscode.state.webviewViews)).toEqual([]);   // R152：两颗 webview「文件」⛔ 再冒头
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
     expect(manifest.contributes.viewsContainers?.activitybar?.map((c: any) => c.id).sort())
       .toEqual(['verilogVizCode', 'verilogVizSandbox']);
@@ -233,12 +234,9 @@ describe('侧边栏双容器六视图（片 5-B 编译/沙盒分家；R148 起�
     expect(manifest.contributes.views?.verilogVizSandbox?.map((v: any) => v.id)).toEqual([
       'verilogViz.sandboxFiles', 'verilogViz.sandboxParts', 'verilogViz.sandboxHierarchy',
     ]);
-    // 「文件」两颗在 manifest 里以 type webview 声明（原生树⛔ 再冒充）
-    expect(manifest.contributes.views?.verilogVizCode?.find((v: any) => v.id === 'verilogViz.codeFiles')?.type).toBe('webview');
-    expect(manifest.contributes.views?.verilogVizSandbox?.find((v: any) => v.id === 'verilogViz.sandboxFiles')?.type).toBe('webview');
-    // ⛔ 并排"右键可用"新区回潮（用户裁决：原位的文件视图本身就得能右键）
-    const allViews = Object.values(manifest.contributes.views).flat() as any[];
-    expect(allViews.some((v) => String(v.name).includes('右键可用'))).toBe(false);
+    // 「文件」两颗在 manifest 里以 type tree 声明（⛔ 再走 webview 自绘回潮——「与 Explorer 不符」原罪）
+    expect(manifest.contributes.views?.verilogVizCode?.find((v: any) => v.id === 'verilogViz.codeFiles')?.type).toBe('tree');
+    expect(manifest.contributes.views?.verilogVizSandbox?.find((v: any) => v.id === 'verilogViz.sandboxFiles')?.type).toBe('tree');
   });
 
   it('模块树：文件→模块两级，空文件⛔ 上榜，点击滚到 `module <名>` 行', async () => {
@@ -840,21 +838,50 @@ describe('双容器六树的台架驱动（片 5-B）', () => {
     'D:/p/parts/adder.djs': '{"cells":[]}',
   };
 
-  it('codeFiles（webview）：列表含 .v/.sv ⛔ 收 .djs；行/空白右键两档菜单在册；⛔ 虚拟动作节点回潮', async () => {
+  it('codeFiles（原生树）：目录层级报告 + 分域（⛔ 收 .djs）；右键菜单全部住在 view/item/context', async () => {
     await boot({ folders: ['D:/p'], seed: { ...SEED, 'D:/p/x.djs': '{}' } });
-    await new Promise((r) => setTimeout(r, 0));
-    const html = String(vscode.state.webviewViews['verilogViz.codeFiles'].view.webview.html || '');
-    expect(html).toContain('top.v');
-    expect(html).toContain('adder.v');
-    expect(html).toContain('vvPath":"lib/adder.v"');                 // lib/adder.v；
-    expect(html.includes('x.djs')).toBe(false);                      // ⛔ 收 .djs
-    expect(html).toContain('data-vscode-context');
+    const tree = vscode.state.treeProviders['verilogViz.codeFiles'];
+    const root = (await tree.getChildren()) as any[];
+    // 顶层 = lib/top.v 必在；目录**全量上报**（真资源管理器形态：空目录/只有 .djs 的目录也亮——
+    // 这是用户裁决的「完整文件系统」，分域只管文件）；⛔ .djs 文件本身上榜
+    const rootLabels = root.map((n) => n.label);
+    expect(['lib', 'parts', 'top.v'].every((k) => rootLabels.includes(k))).toBe(true);
+    expect(rootLabels.filter((k) => k === 'main.djs' || k === 'x.djs')).toEqual([]);
+    const lib = root[0];
+    const kids = (await tree.getChildren(lib)) as any[];
+    expect(kids.map((n) => n.label)).toEqual(['adder.v']);
+    const item = await tree.getTreeItem(kids[0]);
+    expect(item.contextValue).toBe('codeFile');
+    expect(String(item.resourceUri!.fsPath).toLowerCase()).toContain('lib\\adder.v');
+    const libItem = await tree.getTreeItem(lib);
+    expect(libItem.contextValue).toBe('codeDir');
+    expect(String(libItem.resourceUri!.fsPath).toLowerCase()).toContain('\\lib');
     const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
-    const wm = manifest.contributes.menus['webview/context'];
-    expect(wm.some((m: any) => m.when === "webviewId == 'verilogViz.codeFiles' && !vvKind" && m.command === 'verilogViz.importFiles')).toBe(true);   // 空白=根菜单
-    expect(wm.some((m: any) => m.when === "webviewId == 'verilogViz.codeFiles' && vvKind == 'file'" && m.command === 'verilogViz.compileAndShow')).toBe(true);       // 行=项菜单
-    expect(manifest.contributes.menus['view/item/context'].some((m: any) => String(m.when).includes('vvRoot'))).toBe(false);       // ⛔ 回潮
+    const vic = manifest.contributes.menus['view/item/context'];
+    // 文件行：编译/重命名/副本/删除/绑定全家
+    for (const cmd of ['verilogViz.compileAndShow', 'verilogViz.renameFile', 'verilogViz.duplicateFile', 'verilogViz.deleteFile', 'verilogViz.bindParts', 'verilogViz.openBindingConfig'])
+      expect(vic.some((m: any) => m.when === 'view == verilogViz.codeFiles && viewItem == codeFile' && m.command === cmd)).toBe(true);
+    // 目录行：在此新建两族 + 导入 + 复制/删除
+    for (const cmd of ['verilogViz.newVerilogFile', 'verilogViz.newSandboxFolder', 'verilogViz.importFiles', 'verilogViz.duplicateFolder', 'verilogViz.deleteFile'])
+      expect(vic.some((m: any) => m.when === 'view == verilogViz.codeFiles && viewItem == codeDir' && m.command === cmd)).toBe(true);
+    expect(manifest.contributes.menus['webview/context']).toBeUndefined();     // R152：webview 通道整档退场
     expect(manifest.contributes.menus['explorer/context'].some((m: any) => String(m.when).includes('!resourceScheme'))).toBe(true); // 空白族在
+  });
+
+  it('sandboxFiles（原生树）：层级 + 点击进画布编辑器（openWith）；目录项挂 resourceUri 供「在此新建」', async () => {
+    await boot({ folders: ['D:/p'], seed: { ...SEED, 'D:/p/gates/and.djs': '{"cells":[]}' } });
+    const tree = vscode.state.treeProviders['verilogViz.sandboxFiles'];
+    const root = (await tree.getChildren()) as any[];
+    expect(root.map((n) => [n.label, n.dir !== undefined ? 'dir' : 'file']).filter((x) => x[0] === 'gates' || x[0] === 'main.djs' || x[0] === 'parts'))
+      .toEqual([['gates', 'dir'], ['parts', 'dir'], ['main.djs', 'file']]);
+    const f = (await tree.getChildren(root.find((n: any) => n.label === 'gates'))) as any[];
+    expect(f.map((n) => n.label)).toEqual(['and.djs']);
+    const item = await tree.getTreeItem(f[0]);
+    expect(item.contextValue).toBe('sandboxFile');
+    expect(item.command?.command).toBe('vscode.openWith');                    // 点树项 = 进画布，⛔ openFile 文本
+    const dirItem = await tree.getTreeItem(root.find((n: any) => n.label === 'gates'));
+    expect(dirItem.contextValue).toBe('sandboxDir');
+    expect(dirItem.resourceUri).toBeTruthy();                                 // 「在此新建」的命脉（menuUri 取它）
   });
 
   it('sandboxParts：circuits 名单外的全部 .djs（缺省部件，与画布 refreshGates 同口径）', async () => {
@@ -937,24 +964,20 @@ describe('树右键菜单与视图标题按钮、Verilog 高亮（真机"全无"
 
   it('view/item/context 的 when 全是单条件且键名是 viewItem（基座 treeView.ts:1806 的真键名；写成 contextValue＝真机右键全无）', () => {
     const entries = manifest.contributes.menus?.['view/item/context'] ?? [];
-    const wmCount0 = (manifest.contributes.menus?.['webview/context'] ?? []).length;
-    // R148 口径：菜单总量⛔ 缩水（视图迁移是搬家不是裁剪）——原生+webview 两轨合计 ≥50
-    expect(entries.length + wmCount0).toBeGreaterThanOrEqual(50);
+    // R152 口径：webview/context 整档退役，view/item/context 全量收回（菜单搬家不是裁剪）
+    // ——HEAD 原生 17 + 文件树文件/目录两态新菜单 27 ＝ 44；再砍任何一条都算倒退
+    expect(entries.length).toBeGreaterThanOrEqual(44);
+    expect(manifest.contributes.menus?.['webview/context']).toBeUndefined();
     for (const m of entries) expect(String(m.when)).toMatch(/^view == [\w.]+ && viewItem == \w+$/);
     // 回归钉子：⛔ 再让 contextValue 这个想当然的键名回来（它永假＝菜单永远不亮）
     expect(entries.some((m: any) => String(m.when).includes('contextValue'))).toBe(false);
-    // 原生侧五种树项都有菜单：模块文件/模块/层次实例/部件文件/沙盒层次实例
-    // （R148：codeFile/sandboxFile/sandboxDir 的家搬到 webview/context——「文件」视图原位 webview 化，行级键 vvKind 三档由那颗格钉）
+    // 原生侧七种树项都有菜单：模块文件/模块/层次实例/部件文件/沙盒层次实例/文件树文件/文件树目录
     const kinds = new Set(entries.map((m: any) => String(m.when).split('viewItem == ')[1]));
-    for (const k of ['sandboxFile', 'module', 'moduleFile', 'hierarchyItem', 'sandboxHierarchyItem'])
+    for (const k of ['sandboxFile', 'sandboxDir', 'codeFile', 'codeDir', 'module', 'moduleFile', 'hierarchyItem', 'sandboxHierarchyItem'])
       expect(kinds.has(k)).toBe(true);
-    expect(kinds.has('codeFile') || kinds.has('sandboxDir')).toBe(false);           // ⛔ 双轨残留：原生家拆净，右键走 webview
-    const wm = manifest.contributes.menus?.['webview/context'] ?? [];
-    for (const vid of ['verilogViz.codeFiles', 'verilogViz.sandboxFiles']) {
-      expect(wm.some((m: any) => String(m.when).includes(`webviewId == '${vid}'`) && String(m.when).includes('!vvKind'))).toBe(true);            // 空白=根菜单
-      expect(wm.some((m: any) => String(m.when).includes(`webviewId == '${vid}'`) && String(m.when).includes("vvKind == 'file'"))).toBe(true);  // 文件行
-      expect(wm.some((m: any) => String(m.when).includes(`webviewId == '${vid}'`) && String(m.when).includes("vvKind == 'dir'"))).toBe(true);   // 目录行
-    }
+    // 两颗文件树按视图分家（同名暗号交叉时靠 view == 圈死管辖；⛔ 无 view 限定的裸 viewItem）
+    expect(entries.some((m: any) => String(m.when).includes('viewItem == codeFile') && !String(m.when).includes('verilogViz.codeFiles'))).toBe(false);
+    expect(entries.some((m: any) => String(m.when).includes('viewItem == sandboxDir') && !String(m.when).includes('verilogViz.sandboxFiles'))).toBe(false);
   });
 
   it('视图标题按钮组：新建/刷新六视图全配，命令带 codicon 图标（⛔ 无图标＝埋进 … 溢出菜单看不见）', () => {
@@ -991,15 +1014,18 @@ describe('树右键菜单与视图标题按钮、Verilog 高亮（真机"全无"
       expect(grammar).toContain(scope);
   });
 
-  it('四颗原生树都走 createTreeView 且 showCollapseAll: true（基座折叠钮开关）；「文件」×2 走 webview（R148 原位替换：空白右键＝平台唯一真口子在 webview/context）', async () => {
+  it('六棵树全走 createTreeView 且 showCollapseAll: true（基座折叠钮开关）；R152：禁止任何 webview 型视图回潮', async () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule' } });
-    expect([...vscode.state.treeViews].sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+    expect([...vscode.state.treeViews].map((t) => ({ id: t.id, showCollapseAll: t.showCollapseAll })).sort((a, b) => a.id.localeCompare(b.id))).toEqual([
+      { id: 'verilogViz.codeFiles', showCollapseAll: true },
       { id: 'verilogViz.hierarchy', showCollapseAll: true },
       { id: 'verilogViz.modules', showCollapseAll: true },
+      { id: 'verilogViz.sandboxFiles', showCollapseAll: true },
       { id: 'verilogViz.sandboxHierarchy', showCollapseAll: true },
       { id: 'verilogViz.sandboxParts', showCollapseAll: true },
     ]);
-    expect(vscode.state.treeViews.some((t: any) => t.id === 'verilogViz.codeFiles' || t.id === 'verilogViz.sandboxFiles')).toBe(false);   // ⛔ 双注册
+    expect(vscode.state.webviewViews['verilogViz.codeFiles']).toBeUndefined();    // R148 webview 形态退役（用户裁决 2026-10-17）
+    expect(vscode.state.webviewViews['verilogViz.sandboxFiles']).toBeUndefined();
   });
 
   it('六树的 contextValue 与 when 的暗号对上；提示节点⛔ 冒充可右键项（菜单会把 TreeItem 当 Uri 传进命令）', async () => {
@@ -1585,55 +1611,22 @@ describe('R146/R147 绑定完整性（配置不齐＝可见、可一键写全、
     expect(vscode.state.errorMessages.some((m: string) => m.includes('未录入绑定配置'))).toBe(false);
   });
 
-  it('webview 文件视图：激活即装载 html，行带 data-vscode-context、空白区右键走根菜单集', async () => {
-    await boot({ folders: ['D:/p'], seed: { 'D:/p/lib/x.v': 'module x; endmodule', 'D:/p/top.djs': '{"cells":[]}' } });
-    const code = vscode.state.webviewViews['verilogViz.codeFiles'];
-    const sand = vscode.state.webviewViews['verilogViz.sandboxFiles'];
-    await new Promise((r) => setTimeout(r, 0));
-    expect(code.view.webview.html).toContain('data-vscode-context');
-    expect(code.view.webview.html).toContain('lib/x');
-    expect(sand.view.webview.html).toContain('top.djs');
-    const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8'));
-    const wm = manifest.contributes.menus['webview/context'];
-    // 空白＝不带 vvKind（根菜单），行＝带 vvKind——两档必须在册
-    expect(wm.some((m: any) => m.when.includes("!vvKind") && m.command === 'verilogViz.importFiles')).toBe(true);
-    expect(wm.some((m: any) => m.when.includes("vvKind == 'file'") && m.command === 'verilogViz.completeBindings')).toBe(true);
-  });
-
-  it('文件视图内联脚本＝纯 JS 编译闸（R150 教训：模板串混一个 TS as 断言整个脚本罢工＝左键全断，tsc 看不见字符串内部）', async () => {
-    const vm = await import('node:vm');
+  it('R152 退役底账：filesWebview 模块⛔ 再有实体；watcher 增删 ⇒ 六树刷新总闸汇报无死链', async () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule', 'D:/p/a.djs': '{"cells":[]}' } });
+    let threw = false;
+    const ghost = ['../../extension/src/', 'filesWebview'].join('');
+    try { await import(/* webpackIgnore: true */ ghost); } catch { threw = true; }
+    expect(threw).toBe(true);                                                     // 模块已删（meeting 即回归钉）
+    // watcher：新建 .v ⇒ codeFiles 树立刻张榜
+    const code = vscode.state.treeProviders['verilogViz.codeFiles'];
+    expect((await code.getChildren()).length).toBe(1);
     await new Promise((r) => setTimeout(r, 0));
-    for (const id of ['verilogViz.codeFiles', 'verilogViz.sandboxFiles']) {
-      const html = String(vscode.state.webviewViews[id].view.webview.html || '');
-      const head = html.indexOf("script nonce=");
-      const close = html.indexOf("script>", head + 20);
-      expect(html.length).toBeGreaterThan(200);                              // 视图真装载了
-      expect(head).toBeGreaterThan(-1);                                       // 有内联脚本
-      const js = html.slice(html.indexOf('>', head) + 1, html.lastIndexOf('<', close));   // 切到 `</script>` 的尖括左缘
-      expect(() => new vm.Script(js)).not.toThrow();                          // 语法不过＝浏览器整段罢工
-      // R150b 升级：⛔ 只查语法——反引号撕串事故里"截断的半句"恰好自洽可编译（双重假绿）。
-      // 内容完整性＝脚本必须带着左键/折叠的骨头来见人。
-      expect(js).toContain('acquireVsCodeApi');
-      expect(js).toContain('applyFold');
-      expect(js).toContain('postMessage');
-    }
-  });
-
-  it('文件视图左键开文件端到端（code→文本编辑器；sandbox→custom editor openWith doc）', async () => {
-    await boot({
-      appRoot: 'C:/elsewhere', folders: ['D:/p'],
-      seed: { 'D:/p/top.v': 'module top; endmodule', 'D:/p/a.djs': '{"cells":[]}', [`${EXT_DIR}/../dist/index.html`]: RAW_DOC, [`${EXT_DIR}/../dist/doc.html`]: RAW_DOC },
-    });
+    await vscode.workspace.fs.writeFile(vscode.Uri.file('D:/p/lib/newblk.v'), new TextEncoder().encode('module newblk; endmodule'));
     await new Promise((r) => setTimeout(r, 0));
-    const fire = (wv: any, msg: any) => Promise.all((wv.webview._msg || []).map((fn: any) => fn(msg)));
-    await fire(vscode.state.webviewViews['verilogViz.codeFiles'].view, { vvh: 'files', op: 'open', path: 'top.v' });
-    expect(vscode.state.editors.some((e: any) => String(e.document?.uri?.path || e.document?.uri || '').includes('top.v')
-      || String(vscode.state.openWithCalls.flat().join('|')).includes('top.v'))).toBe(true);
-    await fire(vscode.state.webviewViews['verilogViz.sandboxFiles'].view, { vvh: 'files', op: 'open', path: 'a.djs' });
-    await new Promise((r) => setTimeout(r, 0));
-    const ow = vscode.state.openWithCalls.map((c) => c.join('|').toLowerCase());
-    expect(ow.some((c) => c.endsWith('/a.djs|verilogviz.doc'))).toBe(true);   // 左键真的路由进画布编辑器（盘符大小写两处宿主形状不一，判低形）
+    const root2 = (await code.getChildren()) as any[];
+    expect(root2.map((n: any) => n.label)).toEqual(['lib', 'top.v']);
+    const kids = (await code.getChildren(root2[0])) as any[];
+    expect(kids.map((n: any) => n.label)).toEqual(['newblk.v']);
   });
 
   it('画布「写全配置」按钮：宿主落表＋回执 bindingsWritten，webview 端 ⛔ remount 也⛔ 吞在编辑', async () => {
