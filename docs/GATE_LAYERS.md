@@ -165,10 +165,11 @@ GREEN 名单（12 颗）：`r12-export` `r13-custom-gate` `r42-verify` `r48-veri
 
 ## ⑥ 挂账
 
-- **X18**：`src/canvas/legacyMigration.ts` 迁移时只带走 `name` + 正文，**丢了 `role:'part'` 与
-  `partBindings`**（旧 `.djs` 里的部件身份与文件级绑定）。工作区形态里"部件身份"归目录绑定表，
-  所以补法是按半颗分别落表：迁完把 `role:'part'` 的那些名字录进所在目录的 `.verilogviz.json`，
-  `partBindings` 的键值逐个改名后落表。这颗属于"完善系统"，不属于闸门。
+- ~~**X18**：`src/canvas/legacyMigration.ts` 迁移时只带走 `name` + 正文，**丢了 `role:'part'` 与
+  `partBindings`**~~ → **已闭（R154，两半各配证人）**：迁移现在交出 `key/role/bindings` 三颗，
+  宿主按**同一颗批内 key** 连到落盘名并逐颗写进所在目录的 `.verilogviz.json`（解不到＝只记 Output，
+  ⛔ 落一条悬空绑定）。证人＝`extensionHost.test` 的「X18 两半接得上」＋`legacyMigration.test.ts` 名册，
+  台架＝`bin/C4` 之外另加的 seam 臂（见 CHANGELOG R154）。
 - `.vh`/`.sv` 那半颗（X8/X17 的续集）：编译入口已三通，`examples/` 里仍⛔ 一颗 `.sv/.vh` 样例，
   所以域判定的正件靠 X 层的合成夹具——真机点验时要看两块板（模块/层次）真的列得出来。
 - 6 颗"只剩死代码"的幽灵引用清理（第 ④ 节），一次提交带过。
