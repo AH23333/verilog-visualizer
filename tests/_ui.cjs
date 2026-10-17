@@ -609,7 +609,124 @@ async function dragWireBetween(page, from, to) {
   return { ok: true };
 }
 
+/* ================= 编译画布的宿主替身（片 C4，R153 之后）=================
+ * 旧的编译侧闸门往浏览器里 `import('/src/store/fileStore.ts')` 塞文件再读 `status==='compiled'`。
+ * 那颗 store 随"旧 React 应用退役"整颗删了，而编译**本来就跑在 webview 里**
+ * （`src/canvas/useHostCompile.ts` 的 `compile(job)` 直接吃推送单，yosys-wasm 在本地算）
+ * ⇒ 正解是用宿主那份消息形状喂它，⛔ 把旧主人复活一次只为了让老闸门继续绿。
+ * 判定一律读屏幕（画布有没有图、告示条文字），⛔ 读内部 store 状态——用户看得见的就是这个。 */
+
+/** 推一份编译单（形状正本＝extension/src/compilePanel.ts 的 CompileJob）。 */
+async function pushCompile(page, job) {
+  await page.evaluate((m) => window.postMessage(m, '*'), {
+    vvh: 'push', op: 'compile',
+    files: job.files, topModule: job.topModule || '', entryName: job.entryName || 'circuit',
+    ...(job.bindingErrors ? { bindingErrors: job.bindingErrors } : {}),
+    ...(job.bindingAnchors ? { bindingAnchors: job.bindingAnchors } : {}),
+  });
+}
+
+/** 屏幕读数：画布上非连线器件数 + 编译模式器件的 celltype 清单 + 告示条文字。 */
+async function canvasReadout(page) {
+  return page.evaluate(() => {
+    const p = window.__djsDebug && window.__djsDebug.getPaper ? window.__djsDebug.getPaper() : null;
+    const cells = p ? p.model.getCells().filter((c) => c.get('type') !== 'link') : [];
+    return {
+      cells: cells.length,
+      celltypes: cells.map((c) => String(c.get('type'))).sort(),
+      notice: (document.querySelector('[data-canvas-notice]') || {}).textContent || '',
+    };
+  });
+}
+
+/** 「复制到沙盒」的宿主替身：点真按钮 → 真 `collectToFiles` → 真 RPC，截获宿主本该落盘的那批字节。
+ *
+ * 为什么能这么截：`getHost()` 的宿主探测**每次现读** `window.acquireVsCodeApi`
+ * （`src/lib/host/host.ts` 文件头形状 1；`r12-export` 的 [F] 三格早就用同一招验 vscode 分支），
+ * 所以点击前注入桩、点击后卸桩即可。⛔ 复活已删的浏览器沙盒主人来让老锚点继续绿。
+ *
+ * ⚠ 落盘名算法照抄宿主（`extension/src/dispatch.ts` 的 copyToSandbox 分支：webview 交来的名字
+ *   **不带后缀**，宿主统一补 `.djs`——双后缀会让部件解析按名匹配错位）。 */
+async function installHostStub(page) {
+  await page.evaluate(() => {
+    window.__vvReq = [];
+    window.acquireVsCodeApi = () => ({
+      postMessage: (m) => {
+        if (!m || m.vvh !== 'req' || !m.id) return;
+        window.__vvReq.push({ method: m.method, args: m.args });
+        let data = null;
+        if (m.method === 'copyToSandbox' || m.method === 'importLegacyData') {
+          const items = (m.args && (m.args.files || m.args.items)) || [];
+          data = items.map((f) => (/\.[A-Za-z0-9]+$/.test(f.name) ? f.name : `${f.name}.djs`));
+        } else if (m.method === 'getAllBindings') data = {};
+        setTimeout(() => window.dispatchEvent(new MessageEvent('message', {
+          data: { vvh: 'res', id: m.id, ok: true, data },
+        })), 0);
+      },
+      getState: () => undefined,
+      setState: () => { },
+    });
+  });
+}
+
+async function uninstallHostStub(page) {
+  await page.evaluate(() => { delete window.acquireVsCodeApi; });
+}
+
+/** 点真「复制到沙盒」并交回宿主载荷。锚点是按钮**文字**：那颗的 title 早就改成说明文案了
+ *  （`src/canvas/CanvasToolbar.tsx` 的 `title="把当前电路落成工作区里的一颗新 .djs…"`），
+ *  老夹具的 `button[title*="复制到沙盒"]` 是死锚点——红的是夹具不是产品。 */
+async function copyToSandboxCapture(page, { tries = 60, napMs = 300 } = {}) {
+  await installHostStub(page);
+  await page.locator('button:has-text("复制到沙盒")').first().click();
+  let req = null, methods = [];
+  for (let i = 0; i < tries && !req; i++) {
+    const seen = await page.evaluate(() => ({
+      req: (window.__vvReq || []).find((x) => x.method === 'copyToSandbox') || null,
+      methods: (window.__vvReq || []).map((x) => x.method),
+    }));
+    methods = seen.methods; req = seen.req;
+    if (!req) await sleep(napMs);
+  }
+  const notice = await page.evaluate(() => (document.querySelector('[data-canvas-notice]') || {}).textContent || '');
+  await uninstallHostStub(page);
+  return { ok: !!req, files: req ? req.args.files : [], methods, notice };
+}
+
+/** 把宿主载荷落成沙盒夹具形状（`src/store/sandboxStore.ts` 的 `Record<id, SandboxFile>`）。
+ *  第 0 颗＝主电路（⛔ role:'part'）——这个约定与宿主那份逐字同源：`dispatch.ts` 只给
+ *  `written.length > 1` 的条目录绑定表，理由写在那儿（主电路改名与实例 celltype 无关，录进表＝死条目）。 */
+async function seedSandboxStore(page, files) {
+  await page.evaluate((list) => {
+    const rec = {};
+    list.forEach((f, i) => {
+      const id = `sb_gate${i}`;
+      rec[id] = {
+        id,
+        name: /\.[A-Za-z0-9]+$/.test(f.name) ? f.name : `${f.name}.djs`,
+        graphJson: f.content,
+        updatedAt: 1700000000000 + i,
+        ...(i === 0 ? {} : { role: 'part' }),
+      };
+    });
+    localStorage.setItem('verilog-viz-sandbox-files', JSON.stringify(rec));
+    localStorage.setItem('verilog-viz-sandbox-active', 'sb_gate0');
+  }, files);
+}
+
+/** 等编译真出图（或等出告示）。返回 {status:'compiled'|'notice'|'timeout', cells, notice}。 */
+async function waitCompiled(page, { minCells = 1, tries = 90, napMs = 700 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    const r = await canvasReadout(page);
+    if (r.cells >= minCells) return { ...r, status: 'compiled' };
+    if (r.notice.trim()) return { ...r, status: 'notice' };
+    await sleep(napMs);
+  }
+  return { ...(await canvasReadout(page)), status: 'timeout' };
+}
+
 module.exports = { sleep, expandAllGroups, ensurePalette, boot, freePort, enterSandbox, newSandboxFile, backToSandbox,
   cellRect, cellFill, cellBoxes, clickGate, waitForPorts, portPoints, dragWire, menuClick, menuSet, toastText,
   blankCanvasPoint, busDialog, ensureFreshDist, setSandboxToggle, isEnglishSentence, setMessageLiterals,
-  clickZoomInto, portPointOf, dragWireBetween, reapViteByPort };
+  clickZoomInto, portPointOf, dragWireBetween, reapViteByPort, pushCompile, canvasReadout, waitCompiled,
+  installHostStub, uninstallHostStub, copyToSandboxCapture, seedSandboxStore };

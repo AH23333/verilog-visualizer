@@ -16,15 +16,32 @@
 //  [8] 绑定迁移：跨文件绑定的每个模块都在沙盒落成 part 文件且可解析
 //  [9] 行为级 + BOM 文件能编译；缺模块走 MissingModules（绑定弹窗）而不是裸异常
 //  [10] 全程无 pageerror、无 <rect> height NaN
+//
+// ── 分层（R154 重锚）───────────────────────────────────────────────────────
+// 这一支原本把「复制到沙盒」当**浏览器内**动作：点按钮 → 写 localStorage 的沙盒库 → 就地读回。
+// 片 5（全面原生）后那颗动作归**宿主**：CanvasApp.handleCopyToSandbox =
+// `collectToFiles` + `stripBoundInlineJson` → `host.copyToSandbox`，落盘是工作区真 `.djs`；
+// `browserHost.copyToSandbox` 按契约直接 reject（host.ts 文件头形状 2：⛔ 返回空结果把失败装成成功）。
+// ⇒ 老锚点 `button[title*="复制到沙盒"]` 和 `localStorage['verilog-viz-sandbox-files']` 双双失效，
+//   正解是按层拆开重锚，⛔ 把已删的浏览器主人复活一次只为了让老闸门继续绿：
+//   L1 编译画布（index.html + 宿主推送单仿真）……… [A] [B] [C] [4a] [6] [6b] [9a]
+//   L2 「复制到沙盒」真按钮 → 宿主 RPC 载荷（acquireVsCodeApi 桩）… [P] [1] [2] [3a] [5a]
+//   L3 沙盒真渲染（gates.html 的 SandboxCanvas）…………… [3b] [4b] [4c] [5b] [2b] [7]
+//   L4 同页纯 lib 直调 …………………………… [8] [9b] [10]
+//  L2↔L3 之间唯一的替身是"宿主把那批字节写进工作区"这一步（宿主侧另有 extensionHost 的证人）；
+//  载荷本身出自真点击、真 `collectToFiles`，夹具⛔ 自己算一遍。
 const { spawn } = require('child_process');
 const path = require('path'); const fs = require('fs');
 const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
+const { pushCompile, waitCompiled: waitCompiledUI, copyToSandboxCapture, seedSandboxStore, boot } = require('./_ui.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1521;
-try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1521)); } catch { } const URL = `http://localhost:${PORT}/`;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1521)); } catch { }
+const URL_MAIN = `http://localhost:${PORT}/`;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 const OUT = path.join(ROOT, '.tmpbuild');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
@@ -33,29 +50,21 @@ const ok = (n, d) => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`
 const bad = (n, d) => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };
 
 const dismiss = async (page) => { try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { } };
-const addFiles = async (page, names) => {
-  const ids = {};
-  for (const f of names) {
-    ids[f] = await page.evaluate(async (a) => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const nf = fileStore.createFile(a.n); fileStore.saveContent(nf.id, a.c); return nf.id;
-    }, { n: f, c: rd(f) });
-  }
-  return ids;
+// ---- L1 入口：宿主推送单（形状正本＝extension/src/compilePanel.ts 的 CompileJob）----
+let JOB = null;
+const startDesign = async (page, names) => {
+  // ⛔ 用 `boot()`：那颗等 `button[data-activity]`，而这枚活动栏只活在 gates.html 的夹具外壳里
+  //（index.html 是残体 CanvasApp，没有活动栏）。编译画布这一层照旧 goto + 稳定等待。
+  await page.goto(URL_MAIN, { waitUntil: 'domcontentloaded' }); await sleep(1500);
+  await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
+  JOB = { files: names.map((n) => ({ name: n, content: rd(n) })), topModule: names[0].replace(/\.v$/, ''), entryName: names[0] };
+  await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200); await dismiss(page);
+  return JOB;
 };
-const bind = async (page, ids, rows) => {
-  for (const [file, mod, src] of rows) {
-    await page.evaluate(async (a) => { const { fileStore } = await import('/src/store/fileStore.ts'); fileStore.setModuleBinding(a.f, a.m, a.s); }, { f: ids[file], m: mod, s: ids[src] });
-  }
-};
-const waitCompiled = async (page, id) => {
-  for (let i = 0; i < 90; i++) {
-    await sleep(700);
-    const st = await page.evaluate(async (x) => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getById(x); return { done: !!(f && f.status === 'compiled' && f.circuitJson), status: f && f.status, err: f && f.errorMessage, missing: f && f.missingModules }; }, id);
-    if (st.done) return st;
-    if (st.status === 'error') return st;
-  }
-  return { done: false, status: 'timeout' };
+const runCompile = async (page) => {
+  await pushCompile(page, JOB);
+  const r = await waitCompiledUI(page);
+  return { done: r.status === 'compiled', status: r.status, cells: r.cells, notice: r.notice };
 };
 const paperOf = (page, hook) => hook === '__djsDebug'
   ? page.evaluate(() => { const p = window.__djsDebug && window.__djsDebug.getPaper && window.__djsDebug.getPaper(); return p ? p.model.getCells().filter((c) => c.get('type') === 'Subcircuit').map((c) => String(c.get('celltype'))) : []; })
@@ -77,7 +86,7 @@ const waitSettled = async (page, maxMs = 3000) => {
   return r;
 };
 
-const zoomAt = (page, hook, idx) => page.evaluate(async (a) => {  const p = a.hook === '__djsDebug' ? (window.__djsDebug && window.__djsDebug.getPaper && window.__djsDebug.getPaper()) : window[a.hook];
+const zoomAt = (page, hook, idx) => page.evaluate(async (a) => { const p = a.hook === '__djsDebug' ? (window.__djsDebug && window.__djsDebug.getPaper && window.__djsDebug.getPaper()) : window[a.hook];
   if (!p) return null;
   const subs = p.model.getCells().filter((c) => c.get('type') === 'Subcircuit');
   const s = subs[a.idx]; if (!s) return null;
@@ -104,11 +113,46 @@ const readInner = (page) => page.evaluate(() => {
   };
 });
 
+// ---- L2 读数：把宿主本该落盘的那批字节按老判据拆开数（内容级，不涉及渲染）----
+const inspect = (files) => files.map((f, i) => {
+  let cells = []; try { cells = JSON.parse(f.content || '{}').cells || []; } catch { /* 交下面按 0 节点判红 */ }
+  const isWire = (c) => !!c.isLink || !!(c.source && c.target && c.source.id && c.target.id);
+  const nodes = cells.filter((c) => !isWire(c)); const links = cells.filter(isWire);
+  const seen = new Map(); let stacked = 0;
+  for (const n of nodes) {
+    const k = `${Math.round(n.position ? n.position.x : -1)},${Math.round(n.position ? n.position.y : -1)}`;
+    seen.set(k, (seen.get(k) || 0) + 1); if (seen.get(k) > 1) stacked++;
+  }
+  const ioNodes = nodes.filter((n) => n.type === 'Input' || n.type === 'Output');
+  return {
+    name: f.name, main: i === 0, nodes: nodes.length, links: links.length,
+    noPos: nodes.filter((n) => !n.position).length, stacked,
+    io: ioNodes.length,
+    widget: nodes.filter((n) => ['NumEntry', 'NumDisplay', 'Button', 'Lamp', 'Clock', 'Display7'].includes(n.type)).map((n) => `${n.type}:${n.net || n.label || ''}`),
+    bgNoGroups: nodes.filter((n) => ['BusGroup', 'BusUngroup'].includes(n.type) && !Array.isArray(n.groups)).length,
+    subs: nodes.filter((n) => n.type === 'Subcircuit').length,
+    orderMissing: ioNodes.filter((n) => n.order == null).length,
+  };
+});
+
+// ---- L3 入口：在沙盒库里按名挑一颗当活动文件，再进 gates.html 真渲染 ----
+const openInSandbox = async (page, name) => {
+  const id = await page.evaluate((n) => {
+    const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
+    const f = Object.values(files).find((x) => x.name === n || x.name === `${n}.djs`);
+    return f ? f.id : null;
+  }, name);
+  if (!id) return false;
+  await page.evaluate((i) => localStorage.setItem('verilog-viz-sandbox-active', i), id);
+  await boot(page, URL_GATE, { settle: 2400 });
+  return true;
+};
+
 (async () => {
   let server, browser;
   try {
     server = spawn(process.execPath, [require('path').join(__dirname, '..', 'node_modules/vite/bin/vite.js'), '--port', String(PORT), '--strictPort'], { windowsHide: true, cwd: ROOT, stdio: 'pipe' });
-    const dl = Date.now() + 30000; while (Date.now() < dl) { try { const r = await fetch(URL); if (r.ok) break; } catch { } await sleep(500); }
+    const dl = Date.now() + 30000; while (Date.now() < dl) { try { const r = await fetch(URL_MAIN); if (r.ok) break; } catch { } await sleep(500); }
     browser = await PW.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
     const perr = []; const cerr = [];
@@ -116,20 +160,12 @@ const readInner = (page) => page.evaluate(() => {
     page.on('console', (m) => { if (m.type() === 'error') cerr.push((m.text() || '').slice(0, 160)); });
 
     // ================= 设计 A：multiplier 3 层 =================
-    await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
-    await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200); await dismiss(page);
-    const idA = await addFiles(page, ['multiplier.v', 'adder.v', 'full_adder.v']);
-    await bind(page, idA, [['multiplier.v', 'adder', 'adder.v'], ['adder.v', 'full_adder', 'full_adder.v']]);
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
-    await page.locator('[title="multiplier.v"]').first().click({ force: true }); await sleep(800);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    const cA = await waitCompiled(page, idA['multiplier.v']);
-    cA.done ? ok('[A] 编译通过', `status=${cA.status}`) : bad('[A] 编译失败', JSON.stringify(cA));
+    await startDesign(page, ['multiplier.v', 'adder.v', 'full_adder.v']);
+    const cA = await runCompile(page);
+    cA.done ? ok('[A] 编译通过', `画布器件 ${cA.cells} 颗`) : bad('[A] 编译失败', JSON.stringify(cA));
     await sleep(2500);
 
     // [4][5] 编译模式展开 adder（基准读数）
-    const subsA = await paperOf(page, '__djsDebug');
     let base = null;
     const zp0 = await zoomAt(page, '__djsDebug', 0);
     if (zp0) {
@@ -143,27 +179,14 @@ const readInner = (page) => page.evaluate(() => {
       ? ok('[4a] 编译模式展开图完整（连线全渲染、无跳过）', `devs=${base.devs} links=${base.links} conns=${base.conns}`)
       : bad('[4a] 编译模式展开图不完整', JSON.stringify(base));
 
-    // 复制到沙盒
-    await page.locator('button[title*="复制到沙盒"]').first().click(); await sleep(5000);
-    const parts = await page.evaluate(() => {
-      const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
-      return Object.values(files).map((f) => {
-        let cells = []; try { cells = JSON.parse(f.graphJson || '{}').cells || []; } catch { }
-        const isWire = (c) => c.isLink || (c.source && c.target && c.source.id && c.target.id);
-        const nodes = cells.filter((c) => !isWire(c)); const links = cells.filter(isWire);
-        const seen = new Map(); let stacked = 0;
-        for (const n of nodes) { const k = `${Math.round(n.position ? n.position.x : -1)},${Math.round(n.position ? n.position.y : -1)}`; seen.set(k, (seen.get(k) || 0) + 1); if (seen.get(k) > 1) stacked++; }
-        const io = nodes.filter((n) => n.type === 'Input' || n.type === n.type && ['Input', 'Output'].includes(n.type));
-        const widget = nodes.filter((n) => ['NumEntry', 'NumDisplay', 'Button', 'Lamp', 'Clock', 'Display7'].includes(n.type)).map((n) => `${n.type}:${n.net || n.label || ''}`);
-        const bg = nodes.filter((n) => n.type === 'BusGroup' || n.type === 'BusUngroup');
-        const bgNoGroups = bg.filter((n) => !Array.isArray(n.groups)).length;
-        const subs = nodes.filter((n) => n.type === 'Subcircuit');
-        const orderMissing = nodes.filter((n) => ['Input', 'Output'].includes(n.type) && n.order == null).length;
-        return { name: f.name, role: f.role || '', nodes: nodes.length, links: links.length, noPos: nodes.filter((n) => !n.position).length, stacked, io: io.length, widget, bgNoGroups, subs: subs.length, orderMissing };
-      });
-    });
-    console.log('  沙盒文件:', JSON.stringify(parts, null, 1));
-    const partFiles = parts.filter((p) => p.role === 'part');
+    // ---- L2 复制到沙盒：真按钮 + 宿主桩，交回的是宿主本该写进工作区的字节 ----
+    const cap = await copyToSandboxCapture(page);
+    const parts = inspect(cap.files);
+    const partFiles = parts.filter((p) => !p.main);
+    console.log('  宿主载荷:', JSON.stringify({ methods: cap.methods, files: parts.map((p) => `${p.name}:${p.nodes}节点/${p.links}线`) }, null, 1));
+    (cap.ok && cap.methods.filter((m) => m === 'copyToSandbox').length === 1 && partFiles.length >= 2 && /已复制到沙盒/.test(cap.notice))
+      ? ok('[P] 点真按钮就是一次 copyToSandbox RPC，载荷含主电路 + ≥2 颗子部件', `告示="${cap.notice.slice(0, 46)}"`)
+      : bad('[P] 复制到沙盒没走宿主 RPC（或载荷/告示不对）', JSON.stringify({ ok: cap.ok, methods: cap.methods, notice: cap.notice, 颗数: cap.files.length }));
     (partFiles.length >= 2 && partFiles.every((p) => p.noPos === 0 && p.stacked === 0))
       ? ok('[1] 每个 part 文件都有真实坐标、无叠放', partFiles.map((p) => `${p.name}:${p.nodes}节点/${p.links}线`).join(' '))
       : bad('[1] part 文件仍堆叠/缺坐标', JSON.stringify(partFiles.map((p) => ({ n: p.name, noPos: p.noPos, stacked: p.stacked }))));
@@ -175,15 +198,13 @@ const readInner = (page) => page.evaluate(() => {
     (partFiles.every((p) => p.orderMissing === 0))
       ? ok('[5a] 部件文件保留 order（引脚顺序）') : bad('[5a] order 丢失（引脚会按字母序重排）', JSON.stringify(partFiles.map((p) => ({ n: p.name, orderMissing: p.orderMissing }))));
 
-    // 打开 adder.djs：[3] 同名多实例 + [4b] 沙盒展开对账 + [7] 放大
-    await page.evaluate(() => {
-      const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
-      const f = Object.values(files).find((x) => x.name === 'multiplier/adder.djs');
-      if (f) localStorage.setItem('verilog-viz-sandbox-active', f.id);
-    });
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200);
-    if (!(await page.evaluate(() => !!document.querySelector('[data-sandbox-wrapper]')))) { await page.locator('button[data-activity="sandbox"]').first().click(); await sleep(1500); }
-    await sleep(1500);
+    // ---- L3 打开 adder.djs：[3] 同名多实例 + [4b] 沙盒展开对账 + [7] 放大 ----
+    // L3 的沙盒画布（gates.html 的 SandboxCanvas）读的还是 localStorage 那份库，
+    // 所以把 L2 截到的宿主载荷原样播种进去——字节没经过夹具二次加工（内容级判据已在 L2 数过）。
+    await seedSandboxStore(page, cap.files);
+    (await openInSandbox(page, 'multiplier/adder'))
+      ? ok('[3a0] 部件 adder 在活动文件位上（沙盒能打开复制出来的部件）')
+      : bad('[3a0] 沙盒库里没有 multiplier/adder 这颗部件', JSON.stringify(parts.map((p) => p.name)));
     const innerOk = await page.evaluate(() => {
       const p = window.__sandboxPaper; if (!p) return null;
       const subs = p.model.getCells().filter((c) => c.get('type') === 'Subcircuit');
@@ -247,14 +268,9 @@ const readInner = (page) => page.evaluate(() => {
     await page.keyboard.press('Escape'); await sleep(500);
 
     // 同模块对照：打开复制出来的顶层画布，展开它的 adder 实例，与编译模式基准比数
-    await page.evaluate(() => {
-      const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
-      const f = Object.values(files).find((x) => x.name === 'multiplier/multiplier_sandbox.djs');
-      if (f) localStorage.setItem('verilog-viz-sandbox-active', f.id);
-    });
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200);
-    if (!(await page.evaluate(() => !!document.querySelector('[data-sandbox-wrapper]')))) { await page.locator('button[data-activity="sandbox"]').first().click(); await sleep(1500); }
-    await sleep(1500);
+    (await openInSandbox(page, 'multiplier/multiplier_sandbox'))
+      ? ok('[4c0] 主电路在顶层画布位上（宿主载荷第 0 颗＝主电路，dispatch 也照这一条挑子部件）')
+      : bad('[4c0] 沙盒库里没有 multiplier/multiplier_sandbox', JSON.stringify(parts.map((p) => p.name)));
     const z2 = await zoomAt(page, '__sandboxPaper', 0);
     let sbTop = null;
     if (z2) {
@@ -283,15 +299,9 @@ const readInner = (page) => page.evaluate(() => {
     await page.keyboard.press('Escape'); await sleep(500);
 
     // ================= 设计 B：alu_core（编译模式 3 层展开）=================
-    await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200); await dismiss(page);
-    const idB = await addFiles(page, ['alu_core.v', 'adder.v', 'full_adder.v', 'multiplier.v']);
-    await bind(page, idB, [['alu_core.v', 'adder', 'adder.v'], ['alu_core.v', 'multiplier', 'multiplier.v'], ['adder.v', 'full_adder', 'full_adder.v'], ['multiplier.v', 'adder', 'adder.v']]);
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
-    await page.locator('[title="alu_core.v"]').first().click({ force: true }); await sleep(800);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    const cB = await waitCompiled(page, idB['alu_core.v']);
-    cB.done ? ok('[B] alu_core 编译通过') : bad('[B] alu_core 编译失败', JSON.stringify(cB));
+    await startDesign(page, ['alu_core.v', 'adder.v', 'full_adder.v', 'multiplier.v']);
+    const cB = await runCompile(page);
+    cB.done ? ok('[B] alu_core 编译通过', `画布器件 ${cB.cells} 颗`) : bad('[B] alu_core 编译失败', JSON.stringify(cB));
     await sleep(2500);
     const subsB = await paperOf(page, '__djsDebug');
     let deep = null;
@@ -332,18 +342,15 @@ const readInner = (page) => page.evaluate(() => {
     await page.screenshot({ path: path.join(OUT, 'r42-deep-expand.png') });
     await page.keyboard.press('Escape'); await sleep(500);
 
-    // [8] 绑定迁移：设计 C（行为级 counter，跨文件绑定）
-    await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200); await dismiss(page);
-    const idC = await addFiles(page, ['fsm_controller.v', 'test_counter_behavioral.v']);
-    await bind(page, idC, [['fsm_controller.v', 'counter', 'test_counter_behavioral.v']]);
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
-    await page.locator('[title="fsm_controller.v"]').first().click({ force: true }); await sleep(800);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    const cC = await waitCompiled(page, idC['fsm_controller.v']);
-    (cC.done) ? ok('[9a] 行为级 + BOM 文件 + 跨文件绑定：编译通过') : bad('[9a] 编译失败', JSON.stringify(cC));
+    // ================= 设计 C：行为级 + 跨文件绑定 =================
+    await startDesign(page, ['fsm_controller.v', 'test_counter_behavioral.v']);
+    const cC = await runCompile(page);
+    (cC.done) ? ok('[9a] 行为级 + BOM 文件 + 跨文件定义：编译通过', `画布器件 ${cC.cells} 颗`) : bad('[9a] 编译失败', JSON.stringify(cC));
     await sleep(2000);
-    await page.locator('button[title*="复制到沙盒"]').first().click(); await sleep(4500);
+    const capC = await copyToSandboxCapture(page);
+    // [8] 绑定迁移：宿主载荷逐颗落成部件文件后，同名解析必须拿得到自足 cells 树。
+    // 解析这一颗仍读 localStorage 沙盒库（gates/doc 那条夹具通道），所以先把载荷播种进去。
+    await seedSandboxStore(page, capC.files);
     const bound = await page.evaluate(async () => {
       const gs = await import('/src/lib/gateSystem.ts');
       const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
