@@ -14,6 +14,7 @@ import * as vscode from 'vscode';
 import { executeTool, CALLER_UI } from '../toolRegistry';
 import { registerFilesystemTools } from '../toolsFs';
 import { registerDomainTools } from '../toolsDomain';
+import { registerRpcTools } from '../dispatch';
 import { flushAudit } from '../apiAudit';
 
 interface StepResult { step: string; ok: boolean; ms: number; error?: string }
@@ -43,6 +44,7 @@ export async function run(): Promise<void> {
   try {
     registerFilesystemTools();
     registerDomainTools();
+    registerRpcTools();     // 与 activate 那条线同一份清单（按 id 幂等：activate 已登记过＝空转）
     const wsUri = vscode.workspace.workspaceFolders?.[0]?.uri;
     assert.ok(wsUri, '真机测试需要工作区（启动器传入临时工程）');
     const root = wsUri.fsPath;
@@ -56,8 +58,26 @@ export async function run(): Promise<void> {
 
   await step('sys.getStatus：真宿主工程根', async () => {
     const st = await executeTool(ctx, CALLER_UI, 'sys.getStatus', {}) as any;
-    assert.ok(st.registeredTools >= 24, `registeredTools=${st.registeredTools}`);
+    // 35＝批次一 10 + 批次二 14 + 阶段三收编的 RPC 9 + 诊断新 2。这颗数⛔ 靠"存在"，它证明的是
+    // **真宿主这一条装载线也登记了 `host.*` 那九颗**（漏登记时这里是 26，而 webview 侧照样能用⇒看不见）。
+    assert.ok(st.registeredTools >= 35, `registeredTools=${st.registeredTools}`);
     assert.ok(st.projectRoot.toLowerCase().includes('vv-real-e2e'), st.projectRoot);
+  });
+
+  await step('host.getAllBindings：RPC 那颗在真宿主也走 executeTool（含幽灵 method 进账＋traceId 对得上）', async () => {
+    const RPC = { surface: 'rpc', subject: 'ui', interactive: false } as const;
+    const out = await executeTool(ctx, RPC, 'host.getAllBindings', {}) as any;
+    assert.equal(typeof out, 'object', `回的不是绑定表：${JSON.stringify(out)}`);
+    let caught: any = null;
+    try { await executeTool(ctx, RPC, 'host.noSuchTool', {}); } catch (e) { caught = e; }
+    assert.ok(caught && /\[API_NOT_REGISTERED\]/.test(String(caught.message)), `幽灵 method 的拒单形状不对：${caught && caught.message}`);
+    assert.ok(/^[0-9a-f]{8}$/.test(String(caught.traceId)), `调用方手里那串形状不对：${caught.traceId}`);
+    await new Promise((r) => setTimeout(r, 30));          // 审计是 fire-and-forget：等它进缓冲再催落盘
+    await flushAudit(ctx);
+    const day = new Date().toISOString().slice(0, 10);
+    const raw = fs.readFileSync(path.join(root, '.vv', 'audit', `trace-${day}.jsonl`), 'utf8');
+    assert.ok(raw.includes(caught.traceId), `账上找不到调用方那串 ${caught.traceId}＝号在落账侧现算，两界永远对不上`);
+    assert.ok(raw.includes('"verdict":"not-registered"'), '幽灵 method 那行⛔ 进账＝§9.5「每次调用必进账，含被拒」破了');
   });
 
   await step('sys.listTools：discoverTools 权威 schema', async () => {
