@@ -7,6 +7,57 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R154：验证系统自己的诚信（2026-10-18 夜·用户令代管）
+
+> 起点＝用户令「先完善系统→深度检验→统一 API 层，构建与文档同步，一切为后续 agent 系统考虑」。
+> 这一批的产品功能改动很少，做的是**把"看起来在检、其实恒过"的三处拆出来**——
+> 因为它们决定后面每一条读数能不能信。
+
+### Fixed
+- **API 契约对账锁里五处恒真断言**（`tests/unit/vscodeShell.test.ts:282/290/296/297/299`）：
+  那五行都是 `expect('文案' + 布尔).toBeTruthy()`——字符串拼布尔恒为非空串 ⇒ ①工具 id 词表、
+  ③ui 投影、④perm/sideEffects 词表、④surfaces 去重**从未判过任何东西**，整段"锁"只剩 ② 在真跑。
+  现读两条"如果它活着会说什么"都不成立：① 的命名空间表还停在上一代域名（契约里 20 颗属于
+  `fs./res./sys./circuits.`），③「ui 投影全在命令面板」27 颗里 13 颗的 ref 是 registry 侧 handler 名。
+  改：不合格名单收进数组判 `toEqual([])`（红名直接报是哪几颗）＋补两颗反向钉
+  （命名空间集合等式、registry 有 handler 而契约未上账）。
+  证人：`bin/C4/bench_c4_lock.py` 九臂 0 不合格——M1~M5 五种野值各开一火（⚠ 一颗 it 里有四格，
+  光比红名证不了哪格响 ⇒ 每臂另钉 needle：转储里必须见到注入的那颗野值本身），
+  M6~M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零红＝旧尺子确实是瞎的。
+- **`sys.readAudit` 的 `date` 实参会把调用方的笔误伪装成事实**：schema 写着 `YYYYMMDD（缺省今天）`，
+  照它交进来就拼成 `trace-20261017.jsonl` ⇒ `exists:false`，而那句读数长得**完全像**"今天没人调用过"
+  （落盘正本用的是带连字符的 `toISOString().slice(0,10)`）。改：schema 说清口径 + handler 把
+  8 位纯数字归一（对外实参＝系统边界）；三处漂字的文件名一起改对（源码注释 / 文档头 / 工具描述）。
+  证人：`extensionHost` 一颗成对判据（两种写法必须交回同一份读数）+ `bin/C4/bench_c4_audit_date.py`
+  两臂 0 不合格（摘掉归一 ⇒ 只红那一颗）。
+- **API 文档的"挂账清单"颗数改现算**：`docs/API_REFERENCE.md` 上一版手写「dispatch 的 6 颗 webview RPC」
+  而契约 rpc 面现读 **9** 颗 ⇒ 生成器不再手打数字，一律从契约×registry 现算
+  （rpc 无 handler 9 颗 / 命令直调 3 颗 / 反向 0 颗，名单一起出）。verdict 也收成一颗主人
+  （`apiAudit.AUDIT_VERDICTS`，类型由它派生）。
+
+### Tests
+- **r42 分层重锚**：片 5 后「复制到沙盒」归 `host.copyToSandbox`（`browserHost` 按契约直接 reject）、
+  旧浏览器 `fileStore` 已整颗删除 ⇒ 老夹具两把锚点（那颗按钮的 title 与 localStorage 沙盒库）双双失效。
+  按层拆开重锚：W 编译画布（宿主推送单仿真）/ H 真按钮→宿主 RPC 载荷（点击前注入
+  `acquireVsCodeApi` 桩——`getHost()` 每次现读，`r12-export` [F] 同族用法）/ S 沙盒真渲染
+  （`gates.html`）/ 同页纯 lib。读数 **22 PASS / 0 FAIL**，且在 `tests/run-all.cjs` 里读到
+  `GREEN pass=22 fail=0 exit=0`（两条路对上）。新增三颗证人：[P] 点一次＝一次 copyToSandbox、
+  [3a0]/[4c0] 把"沙盒里打不开这颗部件"从"画错了"里分出来。
+- 新档 **`docs/GATE_LAYERS.md`**＝闸门分层账：五层各自的主人/驱动配方/判定读什么，
+  加 73 颗名册现读（提到已删 fileStore 23 颗、真会炸 17 颗、只剩死预热或注释 6 颗）与入口分工。
+  ⚠ 更正上一轮的「24 of 73」＝把 `tests/**` 全树 47 处引用与 GATES 清单混了。
+
+### In progress（⛔ 算已修，状态写在这里）
+- **X18 旧档迁移丢部件身份**：宿主半颗已落（`importLegacyData` 认 `items[].key/role/bindings`，
+  逐条走 `setBindingInDir` 单层合并 ⛔ 整表替换，解不到只记 Output）；
+  **webview 半颗还没发**（`collectLegacyItems` 仍只交 `{name, content}`）⇒ 现在行为与修前一致，
+  只是"宿主肯收"。行为臂已先落在 `extensionHost.test.ts`（含悬空绑定负件）。
+- **假宿主一层**（`tests/_dochost.cjs`：9 颗 RPC + `{vvh:'doc'}` init/revert⇄ready/edit，
+  文件表跨 reload 存活 ⇒「编辑→保存→刷新→重开」第一次能在浏览器里真判）：通路**还没打过现场**，
+  探针 `bin/C5/probe_dochost.cjs` 的三问读数出来前⛔ 写进任何闸门。
+- 闸门波次回写脚本（`bin/C5/patch_gate_entry_wave1.py`，DRY 读数 31 颗候选）待跑批收尾后应用。
+
+---
 ## [未发布 Unreleased] — R153：两模式文件系统的两颗主人缺陷（2026-10-17）
 
 > 起点＝用户令「从文件系统开始修复」。深度核对两模式 FS 的读写缝时抓到两颗**数据/功能丢失级**
