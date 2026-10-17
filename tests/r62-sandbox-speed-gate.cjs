@@ -15,6 +15,9 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1653;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1653)); } catch { } const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// R155 fileStore 削皮：编译那一侧＝宿主推送单（index.html），沙盒那一侧＝gates.html 的 SandboxCanvas
+const { pushCompile } = UI;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
@@ -94,25 +97,19 @@ async function runPair(page, tag, hook, sel, slowVal, fastVal) {
     const perr = []; page.on('pageerror', (e) => perr.push(String(e).slice(0, 180)));
     await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
-    await page.evaluate(() => import('/src/store/fileStore.ts').then(() => 1).catch(() => 0));
+    // 暖机：吃掉 vite 的"发现新依赖 ⇒ 整页 reload"（原来蹭的是已退役的 fileStore）
+    await page.evaluate(() => import('/src/lib/verilog.ts').then(() => 1).catch(() => 0));
     await sleep(1200);
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
 
     // ===== 编译模式（同一颗 setSimInterval，两处入口都要真生效）=====
-    const ids = {};
-    for (const f of ['multiplier.v', 'adder.v', 'full_adder.v']) {
-      ids[f] = await page.evaluate(async (a) => {
-        const { fileStore } = await import('/src/store/fileStore.ts');
-        const nf = fileStore.createFile(a.n); fileStore.saveContent(nf.id, a.c); return nf.id;
-      }, { n: f, c: rd(f) });
-    }
-    await page.evaluate(async (a) => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      fileStore.setModuleBinding(a.mul, 'adder', a.add); fileStore.setModuleBinding(a.add, 'full_adder', a.fa);
-    }, { mul: ids['multiplier.v'], add: ids['adder.v'], fa: ids['full_adder.v'] });
-    await page.locator('[title="multiplier.v"]').first().click({ force: true }); await sleep(700);
-    await page.keyboard.press('F5');
+    // 真路径：3 文件闭包 + 顶层 multiplier。旧 fileStore 的 createFile/setModuleBinding 与
+    // 「点文件行 + F5」随旧 React UI 退役 ⇒ 编译单由宿主形状推送（src/canvas/useHostCompile.ts）。
+    await pushCompile(page, {
+      files: ['multiplier.v', 'adder.v', 'full_adder.v'].map((n) => ({ name: n, content: rd(n) })),
+      topModule: 'multiplier', entryName: 'multiplier.v',
+    });
     let cReady = false;
     for (let i = 0; i < 40; i++) {
       await sleep(600);
@@ -135,6 +132,8 @@ async function runPair(page, tag, hook, sel, slowVal, fastVal) {
     else await runPair(page, '编译', '__r62CompileCircuit', CSel, '0', '1');   // 0⇒200ms，1⇒5ms
 
     // ===== 沙盒模式（他第 10 条）=====
+    // 沙盒画布住在 gates.html：index.html 只剩编译画布残体（没有活动栏/沙盒外壳）
+    await UI.boot(page, URL_GATE, { settle: 2000 });
     await UI.enterSandbox(page);
     await UI.clickGate(page, 'Clock');
     await UI.clickGate(page, 'Lamp');

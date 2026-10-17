@@ -5,9 +5,14 @@ const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
+// R155 fileStore 削皮：编译＝index.html + 宿主推送单；沙盒那一层的画布在 gates.html，
+// 「复制到沙盒」的宿主载荷由真按钮交出后播种进沙盒库（分层照 tests/r42-verify.cjs）。
+// 主题：旧 `themeStore` 随旧 UI 退役，唯一真源是 body 的 vscode-dark class（useVscodeTheme.ts:1）。
+const { pushCompile, waitCompiled, copyToSandboxCapture, seedSandboxStore } = require('./_ui.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1539;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1539)); } catch { } const URL = `http://localhost:${PORT}/`;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 const OUT = path.join(ROOT, '.tmpbuild');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
@@ -32,6 +37,21 @@ const textAudit = (page) => page.evaluate(() => {
 });
 
 
+// 主题旋钮（本档自带，⛔ 复活已退役的 themeStore）：照 VS Code 壳的做法改 body class，
+// useVscodeTheme 的 MutationObserver 会把它同步到 documentElement[data-theme] 并让 React 重渲染。
+const setTheme = async (page, want) => {
+  await page.evaluate((w) => {
+    document.body.classList.toggle('vscode-dark', w === 'dark');
+    document.body.classList.toggle('vscode-light', w !== 'dark');
+  }, want);
+  for (let i = 0; i < 20; i++) {
+    const got = await page.evaluate(() => document.documentElement.getAttribute('data-theme'));
+    if (got === want) return true;
+    await sleep(200);
+  }
+  return false;
+};
+
 // 上一次跑残留的 vite 子进程会占住端口（npx 派生的 node 不随 kill() 退出），
 // 于是 --strictPort 起不来、page.goto 超时 —— 表现为「0 PASS / 1 FAIL」的假红。
 const freePort = (p) => {
@@ -53,16 +73,15 @@ const freePort = (p) => {
     await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
     await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200); await dismiss(page);
-    for (const f of ['adder.v', 'full_adder.v']) {
-      await page.evaluate(async (a) => { const { fileStore } = await import('/src/store/fileStore.ts'); const nf = fileStore.createFile(a.n); fileStore.saveContent(nf.id, a.c); }, { n: f, c: rd(f) });
-    }
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
-    await page.locator('[title="adder.v"]').first().click({ force: true }); await sleep(700);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    for (let i = 0; i < 60; i++) { await sleep(700); const done = await page.evaluate(async () => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getAll()[0]; return !!(f && f.status === 'compiled' && f.circuitJson); }); if (done) break; }
+    const JOB = { files: ['adder.v', 'full_adder.v'].map((n) => ({ name: n, content: rd(n) })), topModule: 'adder', entryName: 'adder.v' };
+    await pushCompile(page, JOB);
+    const comp1 = await waitCompiled(page, { minCells: 3 });
+    console.log('  [前置] 编译推送读数:', JSON.stringify({ status: comp1.status, cells: comp1.cells, notice: comp1.notice }));
     await sleep(3000);
 
     // ===== [8] 深色主题文字 =====
+    // index.html 的 body 没有宿主注入的 vscode-dark class ⇒ 先按宿主形状设成深色（[8a] 判的就是深色）
+    await setTheme(page, 'dark');
     console.log('  theme =', await page.evaluate(() => document.documentElement.getAttribute('data-theme')));
     const t1 = await textAudit(page);
     console.log('  编译画布:', JSON.stringify(t1));
@@ -71,8 +90,11 @@ const freePort = (p) => {
       : bad('[8a] 深色主题仍有黑字', JSON.stringify(t1));
     await page.screenshot({ path: path.join(OUT, 'r43e-dark-compile.png') });
 
-    // 沙盒侧
-    await page.locator('button[title*="复制到沙盒"]').first().click(); await sleep(6000);
+    // 沙盒侧（gates.html 的 SandboxCanvas）：先截宿主载荷播种，再进沙盒量文字
+    const cap = await copyToSandboxCapture(page);
+    await seedSandboxStore(page, cap.files);
+    await page.goto(URL_GATE, { waitUntil: 'domcontentloaded' }); await sleep(2600);
+    await sleep(4000);
     const t2 = await textAudit(page);
     console.log('  沙盒画布:', JSON.stringify(t2));
     (t2 && t2.darkTexts === 0 && t2.lightTexts > 5)
@@ -81,19 +103,23 @@ const freePort = (p) => {
     await page.screenshot({ path: path.join(OUT, 'r43e-dark-sandbox.png') });
 
     // 切浅色再切回，确认两套都成立
-    await page.evaluate(async () => { const { themeStore } = await import('/src/store/themeStore.ts'); themeStore.set && themeStore.set('light'); });
+    // 旧 `themeStore` 随旧 React UI 退役：主题唯一真源是 body 的 vscode-dark class
+    //（src/hooks/useVscodeTheme.ts 读它并写 documentElement[data-theme]，MutationObserver 跟随）。
+    // 真机里那两颗 class 由 VS Code 壳注入；index.html 的裸 body 没有 ⇒ 由夹具按宿主形状设一次。
+    await setTheme(page, 'light');
     await sleep(1200);
     const t3 = await textAudit(page);
     (t3 && t3.lightTexts === 0 && t3.darkTexts > 5) ? ok('[8c] 浅色主题：文字为黑（未被反向改坏）', `dark=${t3.darkTexts}`) : bad('[8c] 浅色主题文字异常', JSON.stringify(t3));
-    await page.evaluate(async () => { const { themeStore } = await import('/src/store/themeStore.ts'); themeStore.set && themeStore.set('dark'); });
+    await setTheme(page, 'dark');
     await sleep(1000);
 
     // ===== [9] 右键拖动 vs 右键点击 =====
-    // 回编译模式：circuitJson 是会话级不落盘 ⇒ 重载后必须重新编译才有画布
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2500); await dismiss(page);
-    await page.locator('[title="adder.v"]').first().click({ force: true }); await sleep(1200);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    for (let i = 0; i < 60; i++) { await sleep(700); const done = await page.evaluate(async () => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getAll()[0]; return !!(f && f.status === 'compiled' && f.circuitJson); }); if (done) break; }
+    // 回编译模式：circuitJson 是会话级不落盘 ⇒ 换页后必须重新推一次编译单才有画布
+    await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500); await dismiss(page);
+    await setTheme(page, 'dark');
+    await pushCompile(page, JOB);
+    const comp2 = await waitCompiled(page, { minCells: 3 });
+    console.log('  [9 前置] 编译推送读数:', JSON.stringify({ status: comp2.status, cells: comp2.cells }));
     await sleep(3000);
     if (!(await page.evaluate(() => !!document.querySelector('.joint-paper')))) { bad('[9] 前置：编译后仍无画布'); throw new Error('no paper'); }
     const box = await page.evaluate(() => { const el = document.querySelector('.joint-paper'); const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });

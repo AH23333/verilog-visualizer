@@ -17,7 +17,14 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1498;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1498)); } catch { }
 const UI = require('./_ui.cjs');
+// R155 fileStore 削皮（参照 tests/r42-verify.cjs 的分层）：
+//   L1 编译画布＝index.html + 宿主推送单（src/canvas/useHostCompile.ts 是唯一编译入口）
+//   L2 「复制到沙盒」＝真按钮 + 宿主桩，交回宿主本该落盘的那批字节（copyToSandboxCapture）
+//   L3 沙盒真渲染＝gates.html 的 SandboxCanvas（读 localStorage 那份**还活着**的沙盒库）
+// 旧的 fileStore.createFile / getById(status==='compiled') / circuitJson 那一层随旧 React UI 一起退役了。
+const { pushCompile, waitCompiled, copyToSandboxCapture, seedSandboxStore } = UI;
 const URL = `http://localhost:${PORT}/`;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
@@ -120,19 +127,20 @@ endmodule
     await clearKeys(page); await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
 
-    const fileId = await page.evaluate((code) => (async () => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const f = fileStore.createFile('adder_top.v'); fileStore.saveContent(f.id, code); return f.id;
-    })(), VERILOG);
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200);
-    try { await page.locator('button:has-text("Skip")').click({ timeout: 1500 }); } catch {}
-    await page.locator('[title="adder_top.v"]').first().click(); await sleep(1200);
-    await page.locator('button[title^="编译"]').first().click();
-    let compiled = false;
-    for (let i = 0; i < 40; i++) { await sleep(500); compiled = await page.evaluate(async (id) => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getById(id); return !!(f && f.status === 'compiled' && f.circuitJson); }, fileId); if (compiled) break; }
-    if (!compiled) { await page.evaluate(async (code) => { const { compileVerilog } = await import('/src/lib/verilog.ts'); const { fileStore } = await import('/src/store/fileStore.ts'); const r = await compileVerilog([{ name: 'adder_top.v', content: code }]); const f = fileStore.getAll().find(x => x.name === 'adder_top.v'); if (f) fileStore.updateFile(f.id, { circuitJson: r.circuitJson, status: 'compiled' }); }, VERILOG); }
-    compiled ? ok('[0] 编译成功（含嵌套子模块）') : bad('[0] 编译失败');
-    await page.locator('button[title*="复制到沙盒"]').first().click(); await sleep(2500);
+    // ===== L1 编译：推一份宿主形状的编译单（旧 fileStore + 『编译』按钮已退役）=====
+    await pushCompile(page, { files: [{ name: 'adder_top.v', content: VERILOG }], topModule: 'top', entryName: 'adder_top.v' });
+    const comp = await waitCompiled(page, { minCells: 3 });
+    const compiled = comp.status === 'compiled';
+    compiled ? ok('[0] 编译成功（含嵌套子模块）', `画布器件 ${comp.cells} 颗`) : bad('[0] 编译失败', JSON.stringify(comp));
+    if (!await page.evaluate(() => !!document.querySelector('.joint-paper'))) { bad('[0b] 编译后画布没挂上'); throw new Error('no paper'); }
+
+    // ===== L2 复制到沙盒：真按钮 → 真 collectToFiles → 宿主 RPC 载荷 =====
+    const cap = await copyToSandboxCapture(page);
+    // L3 的沙盒画布（gates.html 的 SandboxCanvas）读的就是 localStorage 那份库：
+    // 把宿主本该落盘的那批字节原样播种进去（夹具⛔ 自己算一遍内容）。
+    await seedSandboxStore(page, cap.files);
+    await page.goto(URL_GATE, { waitUntil: 'domcontentloaded' }); await sleep(2400);
+    await ensureSandbox(page); await sleep(600);
 
     // ===== [1] 文件夹组织 + 递归可编辑部件 + 绑定式存储 =====
     const mig = await page.evaluate(() => {

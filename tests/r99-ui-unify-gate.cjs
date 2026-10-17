@@ -15,6 +15,10 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1608;
 const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// R155 fileStore 削皮：①～④ 量的是沙盒画布＝gates.html 的 SandboxCanvas；⑥ 那条要真编译，
+// 编译住在 index.html（CanvasApp 残体 + 宿主推送单），复制到沙盒走真按钮 + 宿主桩截载荷。
+const { pushCompile, waitCompiled, copyToSandboxCapture, seedSandboxStore } = UI;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 const sleep = UI.sleep;
 const J = (o) => { try { return JSON.stringify(o); } catch { return String(o); } };
 let pass = 0, fail = 0;
@@ -40,7 +44,7 @@ const menuClick = async (page, label) => {
     while (Date.now() < dl) { try { if ((await fetch(URL)).ok) break; } catch { } await sleep(500); }
     browser = await PLAYWRIGHT.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await browser.newPage({ viewport: { width: 1600, height: 1000 } });
-    await UI.boot(page, URL);
+    await UI.boot(page, URL_GATE, { settle: 2200 });
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
     await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
     await UI.newSandboxFile(page);
@@ -173,46 +177,22 @@ const menuClick = async (page, label) => {
       '  assign y = (a & b) | (~c);',
       'endmodule',
     ].join(String.fromCharCode(10));
-    await page.evaluate((v) => (async () => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const f = fileStore.createFile('r99_rebind.v'); fileStore.saveContent(f.id, v); return f.id;
-    })(), verilog);
-    // ⚠ 开文件用弹性循环：reload 后的视图不定（.djs 活动文件会把视图带进沙盒），
-    //   沙盒判定＝[data-sandbox-paper-host] 在场；在沙盒就点沙盒活动按钮退出，
-    //   回电路后点「文件」面板＋文件行；最多 3 轮。
-    for (let round = 0; round < 3; round++) {
-      if ((await page.locator('button[title^="编译"]').count()) > 0) break;
-      const inSandbox = await page.evaluate(() => !!document.querySelector('[data-sandbox-paper-host]'));
-      if (inSandbox) {
-        await page.locator('button[data-activity="sandbox"]').first().click();
-        await sleep(700);
-        continue;
-      }
-      const fb = page.locator('button[data-activity="files"]');
-      if (await fb.count()) { await fb.first().click(); await sleep(500); }
-      const row = page.getByText('r99_rebind.v').first();
-      if ((await row.count()) > 0) { try { await row.click({ timeout: 3000 }); await sleep(800); } catch { } }
-    }
-    await page.locator('button[title^="编译"]').first().click();
-    let compiled = false;
-    for (let i = 0; i < 40; i++) { await sleep(500); compiled = await page.evaluate(() => (async () => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const f = fileStore.getAll().find((x) => x.name === 'r99_rebind.v');
-      return !!(f && f.status === 'compiled' && f.circuitJson);
-    })()); if (compiled) break; }
-    const devDump = await page.evaluate(() => (async () => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const f = fileStore.getAll().find((x) => x.name === 'r99_rebind.v');
-      const cj = f && f.circuitJson;
-      if (!cj) return '(no circuitJson)';
-      const devArr = Array.isArray(cj.devices) ? cj.devices : Object.values(cj.devices || {});
-      return devArr.map((d) => d.type);
-    })());
-    console.log('[5pre] 编译器件:', JSON.stringify(devDump));
+    // 编译那一层在 index.html（旧 fileStore.createFile + 点文件行 + 『编译』那颗已随旧 React UI 退役）
+    await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2400);
+    await pushCompile(page, { files: [{ name: 'r99_rebind.v', content: verilog }], topModule: 'top', entryName: 'r99_rebind.v' });
+    const comp = await waitCompiled(page, { minCells: 2 });
+    const compiled = comp.status === 'compiled';
+    // 器件清单改从**屏幕那张画布**读（旧读数取自 fileStore.circuitJson，那颗 store 已不存在）
+    const devDump = await page.evaluate(() => {
+      const p = window.__djsDebug && window.__djsDebug.getPaper && window.__djsDebug.getPaper();
+      return p ? p.model.getElements().map((e) => String(e.get('type'))) : '(no paper)';
+    });
+    console.log('[5pre] 编译器件:', JSON.stringify(devDump), ' 编译读数:', JSON.stringify(comp));
     if (!compiled) { console.log('★编译没成，绑定对话框这格今天没判'); } else {
-      await page.locator('button[title*="复制到沙盒"]').first().click();
-      await sleep(1500);
-      // 复制到沙盒会**自动**切进沙盒并打开新文件——别再点沙盒按钮（点了反而退回电路视图）
+      // 「复制到沙盒」＝真按钮 + 宿主桩；沙盒画布在 gates.html，把宿主载荷播种进去再打开
+      const cap = await copyToSandboxCapture(page);
+      await seedSandboxStore(page, cap.files);
+      await page.goto(URL_GATE, { waitUntil: 'domcontentloaded' }); await sleep(2400);
       let sub = null;
       for (let i = 0; i < 20 && !sub; i++) {
         await sleep(500);

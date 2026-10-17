@@ -13,6 +13,11 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1497;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1497)); } catch { }
 const URL = `http://localhost:${PORT}/`;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
+// R155 fileStore 削皮（分层照 tests/r42-verify.cjs / r37）：
+//   L1 编译＝index.html + 宿主推送单；L2 「复制到沙盒」＝真按钮 + 宿主桩截载荷；
+//   L3 沙盒真渲染＝gates.html 的 SandboxCanvas（localStorage 那份沙盒库还活着，照旧读它）。
+const { pushCompile, waitCompiled, copyToSandboxCapture, seedSandboxStore } = require('./_ui.cjs');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
@@ -83,18 +88,17 @@ endmodule
     await clearKeys(page); await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
 
-    const fileId = await page.evaluate((code) => (async () => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const f = fileStore.createFile('adder_top.v'); fileStore.saveContent(f.id, code); return f.id;
-    })(), VERILOG);
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200);
-    try { await page.locator('button:has-text("Skip")').click({ timeout: 1500 }); } catch {}
-    await page.locator('[title="adder_top.v"]').first().click(); await sleep(1000);
-    await page.locator('button[title^="编译"]').first().click();
-    let compiled = false;
-    for (let i = 0; i < 40; i++) { await sleep(500); compiled = await page.evaluate(async (id) => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getById(id); return !!(f && f.status === 'compiled' && f.circuitJson); }, fileId); if (compiled) break; }
-    if (!compiled) { await page.evaluate(async (code) => { const { compileVerilog } = await import('/src/lib/verilog.ts'); const { fileStore } = await import('/src/store/fileStore.ts'); const r = await compileVerilog([{ name: 'adder_top.v', content: code }]); const f = fileStore.getAll().find(x => x.name === 'adder_top.v'); if (f) fileStore.updateFile(f.id, { circuitJson: r.circuitJson, status: 'compiled' }); }, VERILOG); }
-    await page.locator('button[title*="复制到沙盒"]').first().click(); await sleep(2500);
+    // ===== L1 编译：推一份宿主形状的编译单 =====
+    await pushCompile(page, { files: [{ name: 'adder_top.v', content: VERILOG }], topModule: 'top', entryName: 'adder_top.v' });
+    const comp = await waitCompiled(page, { minCells: 3 });
+    comp.status === 'compiled' ? ok('[0] 编译成功（含嵌套子模块）', `画布器件 ${comp.cells} 颗`) : bad('[0] 编译失败', JSON.stringify(comp));
+    // ===== L2 复制到沙盒：真按钮 + 宿主桩 =====
+    const cap = await copyToSandboxCapture(page);
+    if (!cap.ok) bad('[0c] 复制到沙盒没走宿主 RPC', JSON.stringify(cap.methods));
+    // ===== L3 沙盒：把宿主载荷播种进沙盒库，再到 gates.html 真渲染 =====
+    await seedSandboxStore(page, cap.files);
+    await page.goto(URL_GATE, { waitUntil: 'domcontentloaded' }); await sleep(2400);
+    await ensureSandbox(page); await sleep(600);
 
     const m1 = await page.evaluate(() => {
       const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');

@@ -21,7 +21,10 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1802;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(PORT)); } catch { }
 const URL = `http://localhost:${PORT}/`;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 const UI = require('./_ui.cjs');
+// R155 fileStore 削皮：编译＝index.html + 宿主推送单；沙盒＝gates.html 的 SandboxCanvas
+const { pushCompile, waitCompiled } = UI;
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
@@ -174,29 +177,17 @@ async function suite(page, tag, mode) {
     const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
     page.on('pageerror', (e) => errors.push(String(e).slice(0, 160)));
 
-    // ================= 编译模式（先在台上，⛔ 从沙盒往回切：那三个面板按钮只换左栏、
-    // 留在沙盒模式——App.tsx:1136 的注释就是这条，回不去就别硬试）=================
-    await UI.boot(page, URL);
+    // ================= 编译模式（index.html = CanvasApp 残体 + 宿主推送单）=================
+    // ⛔ 用 UI.boot（它等 `button[data-activity]`，那颗只活在 gates.html 的外壳里）——
+    //   旧 App 的"同一页切活动栏"没了，两模式现在分属两张页面。
+    await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
-    for (const f of ['adder.v', 'full_adder.v']) {
-      await page.evaluate(async (a) => {
-        const { fileStore } = await import('/src/store/fileStore.ts');
-        const nf = fileStore.createFile(a.n); fileStore.saveContent(nf.id, a.c);
-      }, { n: f, c: rd(f) });
-    }
-    await page.evaluate(async () => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const add = fileStore.getAll().find((x) => x.name === 'adder.v');
-      const fa = fileStore.getAll().find((x) => x.name === 'full_adder.v');
-      if (add && fa) fileStore.setModuleBinding(add.id, 'full_adder', fa.id);
+    await pushCompile(page, {
+      files: [{ name: 'adder.v', content: rd('adder.v') }, { name: 'full_adder.v', content: rd('full_adder.v') }],
+      topModule: 'adder', entryName: 'adder.v',
     });
-    // store 写完不会让 React 那份清单重扫（R84 夹具课）⇒ 重载一次，顺带验落盘
-    await page.reload({ waitUntil: 'domcontentloaded' });
-    await sleep(2500);
-    try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
-    await page.locator('[title="adder.v"]').first().click({ force: true });
-    await sleep(600);
-    await page.keyboard.press('F5');
+    const comp = await waitCompiled(page, { minCells: 3 });
+    console.log('  [前置] 编译推送读数:', J({ status: comp.status, cells: comp.cells, notice: comp.notice }));
     let ready = false;
     for (let i = 0; i < 40; i++) {
       await sleep(600);
@@ -235,7 +226,8 @@ async function suite(page, tag, mode) {
       }
     }
 
-    // ================= 沙盒模式（总线换成 SandboxCanvas 那份源）=================
+    // ================= 沙盒模式（总线换成 SandboxCanvas 那份源；画布住在 gates.html）=================
+    await UI.boot(page, URL_GATE, { settle: 2200 });
     await UI.newSandboxFile(page);
     await page.waitForFunction(() => !!(window).__sandboxPaper && !!(window).__sandboxPaper.model, null, { timeout: 15000 });
     await UI.clickGate(page, 'And'); await sleep(300);

@@ -13,6 +13,11 @@ const { fixture } = require('./fixtures.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1551;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1551)); } catch { } const URL = `http://localhost:${PORT}/`;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
+// R155 fileStore 削皮：[11]～[14] 量的是沙盒（gates.html 的 SandboxCanvas + 那份**还活着**的
+// sandboxStore/gateSystem），[15] 量的是编译画布（index.html + 宿主推送单）。
+// 旧 fileStore.createFile + 点『编译』那颗随旧 React UI 一起退役了。
+const { pushCompile, waitCompiled } = require('./_ui.cjs');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
 let pass = 0, fail = 0;
@@ -59,11 +64,14 @@ const freePort = (p) => {
     browser = await PW.chromium.launch({ executablePath: EDGE, headless: true });
     const page = await browser.newPage({ viewport: { width: 1600, height: 950 } });
     const perr = []; page.on('pageerror', (e) => perr.push(String(e).slice(0, 200)));
-    await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
+    await page.goto(URL_GATE, { waitUntil: 'domcontentloaded' }); await sleep(2500);
     await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
 
     // 造两个部件文件 + 一个空画布文件
+    // ⚠ 这一批必须写在**外壳挂载之前**、再 reload 一次：真机里部件是宿主先落进工作区的，
+    //   进入沙盒时已存在；而 gates.html 那颗「沙盒」活动按钮是无副作用的（GateHarness 恒在沙盒），
+    //   旧 App 那种"点活动栏 ⇒ 面板重挂 ⇒ 重扫清单"的时序在新外壳里没有了 ⇒ 挂载后再写 store
+    //   会让 [11a] 读到空清单（现场 2026-10-18：AA/BB/CC 全 false、按钮数 13）。
     await page.evaluate(async (a) => {
       const gs = await import('/src/lib/gateSystem.ts');
       gs.savePartFile('AA', a.aa, 'R44');
@@ -75,6 +83,7 @@ const freePort = (p) => {
       sandboxStore.save(f.id, JSON.stringify({ cells: [] }));
       sandboxStore.setActiveId(f.id);
     }, { aa: partAA, bb: partBB });
+    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
     await page.locator('button[data-activity="sandbox"]').first().click(); await sleep(2000);
 
     // ===== [11] 清单来源 =====
@@ -224,15 +233,14 @@ const freePort = (p) => {
     (hasSlider && iv1 === 120) ? ok('[14] 沙盒 SPEED 滑条改的是引擎步进间隔', `${iv0}→${iv1}ms`) : bad('[14] 沙盒调速未生效', JSON.stringify({ iv0, iv1, hasSlider }));
 
     // ===== [15] 编译模式自动线名 =====
-    await page.evaluate(async (a) => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const nf = fileStore.createFile('adder.v'); fileStore.saveContent(nf.id, a.c);
-      const nf2 = fileStore.createFile('full_adder.v'); fileStore.saveContent(nf2.id, a.c2);
-    }, { c: rd('adder.v'), c2: rd('full_adder.v') });
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200); await dismiss(page);
-    await page.locator('[title="adder.v"]').first().click({ force: true }); await sleep(900);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    for (let i = 0; i < 60; i++) { await sleep(700); const done = await page.evaluate(async () => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getAll()[0]; return !!(f && f.status === 'compiled' && f.circuitJson); }); if (done) break; }
+    // 编译画布在 index.html：推宿主编译单（真 yosys-wasm），旧 fileStore 那一层已退役
+    await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2400); await dismiss(page);
+    await pushCompile(page, {
+      files: [{ name: 'adder.v', content: rd('adder.v') }, { name: 'full_adder.v', content: rd('full_adder.v') }],
+      topModule: 'adder', entryName: 'adder.v',
+    });
+    const comp = await waitCompiled(page, { minCells: 3 });
+    console.log('  [15 前置] 编译推送读数:', JSON.stringify({ status: comp.status, cells: comp.cells, notice: comp.notice }));
     await sleep(3000);
     const waveLabels = await page.evaluate(() => {
       const paper = document.querySelector('.joint-paper'); if (!paper) return null;

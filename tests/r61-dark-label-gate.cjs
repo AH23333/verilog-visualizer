@@ -14,6 +14,9 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1651;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1651)); } catch { } const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// R155 fileStore 削皮：编译＝宿主推送单（index.html），沙盒画布＝gates.html 的 SandboxCanvas。
+const { pushCompile } = UI;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
@@ -49,10 +52,18 @@ const curTheme = (page) => page.evaluate(() => {
   const el = document.querySelector('[data-theme]');
   return el ? el.getAttribute('data-theme') : null;
 });
+// 主题旋钮：真源是 body 的 vscode-dark class（src/hooks/useVscodeTheme.ts:1「themeStore 已随旧 UI
+// 退役」+ MutationObserver 跟随），那颗 class 在真机里由 VS Code 壳注入。
+// 旧夹具走的是 `button[data-activity="主题"]` —— 那颗只活在 gates.html 的外壳里，
+// 编译画布（index.html = CanvasApp 残体）没有活动栏 ⇒ 两页统一改成直接拨 body class。
 async function setTheme(page, want) {
   if (await curTheme(page) === want) return true;
   for (let k = 0; k < 2; k++) {
-    await page.locator('button[data-activity="主题"]').first().click(); await sleep(900);
+    await page.evaluate((w) => {
+      document.body.classList.toggle('vscode-dark', w === 'dark');
+      document.body.classList.toggle('vscode-light', w !== 'dark');
+    }, want);
+    await sleep(900);
     if (await curTheme(page) === want) return true;
   }
   return false;
@@ -87,25 +98,18 @@ async function judge(page, name, want, minText) {
     const perr = []; page.on('pageerror', (e) => perr.push(String(e).slice(0, 180)));
     await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
-    await page.evaluate(() => import('/src/store/fileStore.ts').then(() => 1).catch(() => 0));
+    // 暖机：吃掉 vite 的"发现新依赖 ⇒ 整页 reload"（原来蹭的是已退役的 fileStore，改蹭真在的编译入口）
+    await page.evaluate(() => import('/src/lib/verilog.ts').then(() => 1).catch(() => 0));
     await sleep(1200);
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
 
-    // 真路径：三层设计 + 跨文件绑定（玩具夹具的单层设计在这条链上会被拒编译）
-    const ids = {};
-    for (const f of ['multiplier.v', 'adder.v', 'full_adder.v']) {
-      ids[f] = await page.evaluate(async (a) => {
-        const { fileStore } = await import('/src/store/fileStore.ts');
-        const nf = fileStore.createFile(a.n); fileStore.saveContent(nf.id, a.c); return nf.id;
-      }, { n: f, c: rd(f) });
-    }
-    await page.evaluate(async (a) => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      fileStore.setModuleBinding(a.mul, 'adder', a.add); fileStore.setModuleBinding(a.add, 'full_adder', a.fa);
-    }, { mul: ids['multiplier.v'], add: ids['adder.v'], fa: ids['full_adder.v'] });
-    await page.locator('[title="multiplier.v"]').first().click({ force: true }); await sleep(700);
-    await page.keyboard.press('F5');
+    // 真路径：三层设计（multiplier → adder → full_adder）。旧 fileStore 的 createFile/
+    // setModuleBinding + 「点文件行 + F5」随旧 React UI 退役：闭包与顶层现在由宿主推送单一次给全。
+    await pushCompile(page, {
+      files: ['multiplier.v', 'adder.v', 'full_adder.v'].map((n) => ({ name: n, content: rd(n) })),
+      topModule: 'multiplier', entryName: 'multiplier.v',
+    });
     let ready = false;
     for (let i = 0; i < 40; i++) {
       await sleep(600);
@@ -154,7 +158,8 @@ async function judge(page, name, want, minText) {
       await page.keyboard.press('Escape'); await sleep(400);
     }
 
-    // 沙盒主画布
+    // 沙盒主画布（住在 gates.html：index.html 只剩编译画布残体，没有沙盒外壳）
+    await UI.boot(page, URL_GATE, { settle: 2000 });
     await UI.enterSandbox(page);
     for (const t of ['And', 'Input', 'Output']) await UI.clickGate(page, t);
     await page.evaluate(() => { window.__probePaper = window.__sandboxPaper; });

@@ -63,6 +63,27 @@
 - 第二次全量跑批（74 格）＝**GREEN 30 / RED 44 / ENVRED 0**（波次一前＝12/61）；净进 18 颗＝19 红转绿 − **2 绿转红**
   （`r42-verify` 单跑已复元＝22/0 ⇒ 跑批时序；`r48-verify` 的"导航打断 evaluate"至今⛔ 单跑定案）。
   红的 44 颗按**档自己的源码**归族、以及"单跑对照"推翻"跑批超载"假设那格，全写在 [GATE_LAYERS.md](./GATE_LAYERS.md) ⑤-补3。
+
+### 同夜的尾巴（波次二 + 一颗产品缺陷 + 第三次跑批）
+- **闸门波次二：17 颗编译侧档削皮**（`tests/r37 r40 r43e r44 r46 r50 r57 r61 r62 r83 r85 r92 r99 r115 r135-svg r135-part selfaudit2`）：
+  播种从"往浏览器 `import('/src/store/fileStore.ts')` 塞文件 + 轮询 `status==='compiled'`"换成真路径
+  ——`pushCompile`（宿主那份 `{vvh:'push',op:'compile'}` 推送单）+ `waitCompiled`/`canvasReadout`（**读屏幕**）。
+   只死这一颗平面：`localStorage['verilog-viz-sandbox-files']`（`src/store/sandboxStore.ts`）仍是活的真主人，
+  沙盒侧断言一颗没跟着改。削皮中顺手拔掉了一种坏形状：旧档在"编译没成"时会**直接调 `compileVerilog` 把结果写回 store 冒充成功**。
+  独立核对（⛔ 拿子代理汇报当事实）：17 颗里 `fileStore` 字样现读 **0 处**；`r115`/`r50` 的 diff 逐行读过（计数器与
+  `[setup]` 判据都还在，只是换了判定对象）；两颗注释里写的"现场 2026-10-19"是**未来日期**，已按现读改回 2026-10-18。
+- **X24 修：Ctrl+F 部件搜索整颗没主人**（`8c114a7`）——`PartSearchDialog` 还在、两颗源还在往
+  `partSearchRegistry` 注册，但**没有任何一处 JSX 挂载过它**，keydown 也没有 `^f` 分支
+  ⇒ 编译模式与沙盒模式里 Ctrl+F 都是"按了没反应"（旧 React 壳退役时把挂载点一起带走了，R135 交付的功能被静默砍掉）。
+  现在两台画布各自挂回（沙盒＝`SandboxCanvas`，编译＝`CanvasApp` 加一条只认 Ctrl/Cmd+F 的 effect，输入框里⛔ 抢键）。
+  证人 `r135-part-search-gate`：修前 **0 pass / 2 fail / 7 unverified** ⇒ 修后 **8 pass / 0 fail / 1 unverified**
+  （剩那格反向对照需要已退役的「代码」视图按钮，⛔ 拿假对照充绿）。
+- **第三次全量跑批（74 格）＝GREEN 54 / RED 20 / ENVRED 0**（波次一前 12，波次一后 30）。
+  差集＝**24 红转绿、0 绿转红**，其中 17＝波次二削皮、1＝r42（四层版第一次在跑批里绿）、
+  ⚠ **6 颗本轮没动而自己绿了**（r21 r48 r76 r118 r120 r121）＝flaky 嫌疑，已单列进 ⑤-补4 与波次三，
+  ⛔ 把"自己好了"记进收益。
+- 波次二留下 **16 格 UNVERIFIED**（r92 4／r83 5／r115 6／r135-part 1），逐颗三选一登记在任务 #74；
+  其中"全局一份设置"那一格已核实＝R150 路标③ 的**既定裁定**（`settingsStore.ts:1-6`），⛔ 再当缺陷挂着。
 - 跑批波次一之后的第二批（74 颗）仍在跑；已知红族＝17 颗编译侧档往浏览器 `import('/src/store/fileStore.ts')` 塞文件
   （该模块已随旧 React UI 退役＝404 早退），波次二逐颗换 `tests/_ui.cjs` 的 `pushCompile/waitCompiled`。
   > **补记（同夜 R155，⛔ 静默改上面那句）**：那一批已跑完＝GREEN 30 / RED 44，

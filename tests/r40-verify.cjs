@@ -9,10 +9,14 @@ const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const UI = require('./_ui.cjs');   // clickZoomInto：放大镜这一族的落点 owner
+// R155 fileStore 削皮（分层照 tests/r42-verify.cjs）：编译走宿主推送单（index.html 的
+// useHostCompile），「复制到沙盒」走真按钮 + 宿主桩截载荷，沙盒那一层在 gates.html 真渲染。
+const { pushCompile, waitCompiled, copyToSandboxCapture, seedSandboxStore } = UI;
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1494;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1494)); } catch { }
 const URL = `http://localhost:${PORT}/`;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
@@ -55,15 +59,11 @@ endmodule
     await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2200);
     await clearKeys(page); await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    const fileId = await page.evaluate((code) => (async () => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const f = fileStore.createFile('adder_top.v'); fileStore.saveContent(f.id, code); return f.id;
-    })(), VERILOG);
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200);
-    try { await page.locator('button:has-text("Skip")').click({ timeout: 1500 }); } catch {}
-    await page.locator('[title="adder_top.v"]').first().click(); await sleep(1000);
-    await page.locator('button[title^="编译"]').first().click();
-    for (let i = 0; i < 40; i++) { await sleep(500); const c = await page.evaluate(async (id) => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getById(id); return !!(f && f.status === 'compiled' && f.circuitJson); }, fileId); if (c) break; }
+    await pushCompile(page, { files: [{ name: 'adder_top.v', content: VERILOG }], topModule: 'top', entryName: 'adder_top.v' });
+    const comp = await waitCompiled(page, { minCells: 3 });
+    if (comp.status !== 'compiled') console.log('  [前置读数] 编译没出图:', JSON.stringify(comp));
+    try { await page.waitForFunction(() => !!document.querySelector('.joint-paper'), null, { timeout: 25000 }); } catch { }
+    await sleep(1500);
 
     // ===== [4] 编译模式子部件快捷展开图（只读预览）=====
     // ⚠ 落点**不许缓存**，也**不许换成 locator.click**（两种读数的解释都写在
@@ -123,7 +123,13 @@ endmodule
     }
 
     // ===== [1][2][3] 复制到沙盒 → 子部件布局/线路/只读 =====
-    await page.locator('button[title*="复制到沙盒"]').first().click(); await sleep(3000);
+    // 真按钮 + 宿主桩：交回的是宿主本该写进工作区的那批字节（老锚点 button[title*="复制到沙盒"] 已随
+    // 工具条改造失效，那颗的 title 现在是说明文案 ⇒ 按按钮文字定位）。
+    const cap = await copyToSandboxCapture(page);
+    if (!cap.ok) bad('[0c] 复制到沙盒没走宿主 RPC', JSON.stringify(cap.methods));
+    await seedSandboxStore(page, cap.files);
+    await page.goto(URL_GATE, { waitUntil: 'domcontentloaded' }); await sleep(2400);
+    await ensureSandbox(page); await sleep(600);
     const layout = await page.evaluate(() => {
       const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
       const out = {};

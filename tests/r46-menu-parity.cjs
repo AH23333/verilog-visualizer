@@ -11,6 +11,10 @@ const rd = (f) => fs.readFileSync(fixture(f), 'utf8');
 const freePort = (p) => { try { require('child_process').execSync(`powershell -Command "Get-NetTCPConnection -LocalPort ${p} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }"`, { stdio: 'ignore' }); } catch { } };
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
+// R155 fileStore 削皮：编译菜单那一侧＝index.html + 宿主推送单；沙盒菜单那一侧＝gates.html
+// 的 SandboxCanvas（两颗画布现在分属两张页面，旧 App 的"同一页切活动栏"没有了）。
+const { pushCompile, waitCompiled, boot, newSandboxFile } = require('./_ui.cjs');
+const URL_GATE = `http://127.0.0.1:${PORT}/gates.html`;
 let pass = 0, fail = 0;
 const ok = (n, d) => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
 const bad = (n, d) => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };
@@ -41,13 +45,10 @@ const rightClickAt = async (page, x, y) => {
     await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
     await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
-    for (const f of ['adder.v', 'full_adder.v']) {
-      await page.evaluate(async (a) => { const { fileStore } = await import('/src/store/fileStore.ts'); const nf = fileStore.createFile(a.n); fileStore.saveContent(nf.id, a.c); }, { n: f, c: rd(f) });
-    }
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
-    await page.locator('[title="adder.v"]').first().click({ force: true }); await sleep(900);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    for (let i = 0; i < 60; i++) { await sleep(700); const done = await page.evaluate(async () => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getAll()[0]; return !!(f && f.status === 'compiled' && f.circuitJson); }); if (done) break; }
+    const JOB = { files: ['adder.v', 'full_adder.v'].map((n) => ({ name: n, content: rd(n) })), topModule: 'adder', entryName: 'adder.v' };
+    await pushCompile(page, JOB);
+    const comp = await waitCompiled(page, { minCells: 3 });
+    console.log('  [前置] 编译推送读数:', JSON.stringify({ status: comp.status, cells: comp.cells, notice: comp.notice }));
     await sleep(3000);
 
     // ---- 编译模式画布菜单 ----
@@ -72,13 +73,10 @@ const rightClickAt = async (page, x, y) => {
     await page.keyboard.press('Escape'); await sleep(400);
 
     // ---- 沙盒模式画布菜单（先建一个文件，空状态没有画布）----
-    await page.evaluate(() => {
-      const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
-      const f = Object.values(files).find((x) => /\.djs$/.test(x.name)) || null; void f;
-    });
-    await page.locator('button[data-activity="sandbox"]').first().click(); await sleep(1500);
+    // 沙盒画住在 gates.html（index.html 只剩编译画布残体，没有活动栏）：换页即"进沙盒"。
+    await boot(page, URL_GATE, { settle: 2200 });
     // R102：沙盒「新建文件」＝弹窗命名（与编译模式一致），直接点会留下遮罩 ⇒ 走共用夹具
-    try { await require('./_ui.cjs').newSandboxFile(page); } catch { }
+    await newSandboxFile(page);
     await sleep(1800);
     const sbox = await page.evaluate(() => {
       const host = document.querySelector('[data-sandbox-paper-host]') || document.querySelector('[data-sandbox-wrapper]');

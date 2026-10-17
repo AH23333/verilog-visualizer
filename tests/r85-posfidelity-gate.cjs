@@ -27,6 +27,11 @@ const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1585;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1585)); } catch { } const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// R155 fileStore 削皮（分层照 tests/r42-verify.cjs）：
+//   A/C 量在编译画布＝index.html + 宿主推送单；B/D 量在沙盒画布＝gates.html 的 SandboxCanvas，
+//   中间那颗「复制到沙盒」走真按钮 + 宿主桩截载荷，再把字节播种进沙盒库（localStorage 那份还活着）。
+const { pushCompile, waitCompiled, copyToSandboxCapture, seedSandboxStore, boot } = UI;
+const URL_GATE = `http://localhost:${PORT}/gates.html`;
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
@@ -85,35 +90,21 @@ function compare(a, b) {
     // curl 各端点都是亚秒级、r57 用默认 30s 一直绿 ⇒ 夹具超时过紧，不是产品回归。
     page.setDefaultTimeout(45000);
     page.on('pageerror', (e) => perr.push(String(e).slice(0, 160)));
-    await UI.boot(page, URL);
+    // ⛔ UI.boot 的那颗 marker（button[data-activity]）只活在 gates.html 的外壳里；
+    // 编译画布这一层（index.html = CanvasApp 残体）照 r42 的 L1 走 goto + 稳定等待。
+    await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
     await dismiss(page);
     await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
-    await UI.boot(page, URL, { reload: true }); await dismiss(page);
+    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
 
-    const ids = {};
-    for (const f of ['multiplier.v', 'adder.v', 'full_adder.v']) {
-      ids[f] = await page.evaluate(async (a) => {
-        const { fileStore } = await import('/src/store/fileStore.ts');
-        const nf = fileStore.createFile(a.n); fileStore.saveContent(nf.id, a.c); return nf.id;
-      }, { n: f, c: rd(f) });
-    }
-    for (const [file, mod, src] of [['multiplier.v', 'adder', 'adder.v'], ['adder.v', 'full_adder', 'full_adder.v']]) {
-      await page.evaluate(async (a) => {
-        const { fileStore } = await import('/src/store/fileStore.ts');
-        fileStore.setModuleBinding(a.f, a.m, a.s);
-      }, { f: ids[file], m: mod, s: ids[src] });
-    }
-    await UI.boot(page, URL, { reload: true }); await dismiss(page);
-    await page.locator('[title="multiplier.v"]').first().click({ force: true }); await sleep(800);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    for (let i = 0; i < 90; i++) {
-      await sleep(700);
-      const done = await page.evaluate(async (x) => {
-        const { fileStore } = await import('/src/store/fileStore.ts');
-        const f = fileStore.getById(x); return !!(f && f.status === 'compiled' && f.circuitJson);
-      }, ids['multiplier.v']);
-      if (done) break;
-    }
+    // 真路径：3 文件闭包 + 顶层 multiplier（旧 fileStore.createFile/setModuleBinding 与
+    // 「点文件行 + 编译按钮」随旧 React UI 退役 ⇒ 宿主形状的编译单一次给全，yosys-wasm 真编译）
+    await pushCompile(page, {
+      files: ['multiplier.v', 'adder.v', 'full_adder.v'].map((n) => ({ name: n, content: rd(n) })),
+      topModule: 'multiplier', entryName: 'multiplier.v',
+    });
+    const comp = await waitCompiled(page, { minCells: 45, tries: 90 });
+    console.log('  [前置] 编译推送读数:', J({ status: comp.status, cells: comp.cells, notice: comp.notice }));
     await sleep(3500);
 
     const readPaper = (hook) => page.evaluate((h) => {
@@ -151,14 +142,18 @@ function compare(a, b) {
     await page.keyboard.press('Escape'); await sleep(600);
 
     // 复制到沙盒 ⇒ B（顶层）与 D（adder 部件文件画布）
-    await page.locator('button[title*="复制到沙盒"]').first().click(); await sleep(5000);
+    // 真按钮 → 真 collectToFiles → 宿主 RPC 载荷（老锚点 button[title*="复制到沙盒"] 已失效），
+    // 再把宿主本该落盘的那批字节原样播种进沙盒库；B/D 量在 gates.html 的沙盒画布上。
+    const cap = await copyToSandboxCapture(page);
+    if (!cap.ok) bad('[0c] 复制到沙盒没走宿主 RPC', J(cap.methods));
+    await seedSandboxStore(page, cap.files);
     const openSandboxFile = async (name) => {
       await page.evaluate((n) => {
         const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
         const f = Object.values(files).find((x) => x.name === n);
         if (f) localStorage.setItem('verilog-viz-sandbox-active', f.id);
       }, name);
-      await UI.boot(page, URL, { reload: true }); await sleep(1200);
+      await boot(page, URL_GATE, { settle: 2200 });
       if (!(await page.evaluate(() => !!document.querySelector('[data-sandbox-wrapper]')))) {
         await page.locator('button[data-activity="sandbox"]').first().click(); await sleep(1500);
       }

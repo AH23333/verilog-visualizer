@@ -11,6 +11,9 @@ const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules/playwright-core'));
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
+// R155 fileStore 削皮：编译这一侧的入口只剩宿主推送单（src/canvas/useHostCompile.ts 吃
+// {vvh:'push',op:'compile'}），共用夹具负责推与等出图；⛔ 复活已删的浏览器 fileStore。
+const { pushCompile, waitCompiled } = require('./_ui.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1590;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1590)); } catch { } const URL = `http://localhost:${PORT}/`;
@@ -69,18 +72,17 @@ const SIGS = () => {
     await page.evaluate(() => { Object.keys(localStorage).filter((k) => k.startsWith('verilog-viz-')).forEach((k) => localStorage.removeItem(k)); });
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2200); await dismiss(page);
 
-    await page.evaluate(async (a) => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      const nf = fileStore.createFile('r50_counter.v'); fileStore.saveContent(nf.id, a.c);
-    }, { c: rd('r50_counter.v') });
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2300); await dismiss(page);
-    await page.locator('[title="r50_counter.v"]').first().click({ force: true }); await sleep(700);
-    await page.locator('button[title^="编译"], button[title^="Compile"]').first().click();
-    for (let i = 0; i < 60; i++) {
-      await sleep(700);
-      const done = await page.evaluate(async () => { const { fileStore } = await import('/src/store/fileStore.ts'); const f = fileStore.getAll()[0]; return !!(f && f.status === 'compiled' && f.circuitJson); });
-      if (done) break;
-    }
+    // 真编译路径：推一份宿主形状的编译单（旧 fileStore.createFile + 点『编译』那颗已随旧 UI 退役）
+    await pushCompile(page, {
+      files: [{ name: 'r50_counter.v', content: rd('r50_counter.v') }],
+      topModule: 'r50_counter', entryName: 'r50_counter.v',
+    });
+    const comp = await waitCompiled(page);
+    if (comp.status !== 'compiled') console.log('  [前置读数] 编译没出图:', JSON.stringify(comp));
+    // 冷启动那一族：vite 首次 transform 依赖时会"发现新依赖 ⇒ 整页 reload"，把刚挂上的画布打回
+    // 空白（实测 2026-10-18 首跑：waitCompiled 报了 compiled，紧接着 .joint-paper 又不在了）。
+    // 这里只做**有界的等待**，判据本身照旧由下面那条 bad('前置：编译后没有画布') 说话。
+    try { await page.waitForFunction(() => !!document.querySelector('.joint-paper'), null, { timeout: 25000 }); } catch { }
     await sleep(2500);
     if (!(await page.evaluate(() => !!document.querySelector('.joint-paper')))) { bad('前置：编译后没有画布'); throw new Error('no paper'); }
 

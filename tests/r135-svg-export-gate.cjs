@@ -25,6 +25,8 @@ const PORT = 1801;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(PORT)); } catch { }
 const URL = `http://localhost:${PORT}/`;
 const UI = require('./_ui.cjs');
+// R155 fileStore 削皮：编译＝index.html + 宿主推送单（这一档只量编译画布那一层）
+const { pushCompile } = UI;
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
 const sleep = UI.sleep;
@@ -190,27 +192,20 @@ function framed(vb, cb) {
     await page.goto(URL, { waitUntil: 'domcontentloaded' });
     await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
-    await page.evaluate(() => import('/src/store/fileStore.ts'));
+    // 暖机：吃掉 vite 的"发现新依赖 ⇒ 整页 reload"（原来蹭的是已退役的 /src/store/fileStore.ts）
+    await page.evaluate(() => import('/src/lib/verilog.ts').then(() => 1).catch(() => 0));
     await sleep(1000);
     await page.reload({ waitUntil: 'domcontentloaded' });
     await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
 
-    // 三层设计（r61 同款真路径）：乘法器 → adder → full_adder，图上器件多、网络名齐
-    const ids = {};
-    for (const f of ['multiplier.v', 'adder.v', 'full_adder.v']) {
-      ids[f] = await page.evaluate(async (a) => {
-        const { fileStore } = await import('/src/store/fileStore.ts');
-        const nf = fileStore.createFile(a.n); fileStore.saveContent(nf.id, a.c); return nf.id;
-      }, { n: f, c: rd(f) });
-    }
-    await page.evaluate(async (a) => {
-      const { fileStore } = await import('/src/store/fileStore.ts');
-      fileStore.setModuleBinding(a.mul, 'adder', a.add); fileStore.setModuleBinding(a.add, 'full_adder', a.fa);
-    }, { mul: ids['multiplier.v'], add: ids['adder.v'], fa: ids['full_adder.v'] });
-    await page.locator('[title="multiplier.v"]').first().click({ force: true });
-    await sleep(700);
-    await page.keyboard.press('F5');
+    // 三层设计（r61 同款真路径）：乘法器 → adder → full_adder，图上器件多、网络名齐。
+    // R155 fileStore 削皮：旧 fileStore.createFile/setModuleBinding + 「点文件行 + F5」随旧 React UI
+    // 退役 ⇒ 闭包与顶层由宿主形状的编译单一次给全（src/canvas/useHostCompile.ts 真跑 yosys-wasm）。
+    await pushCompile(page, {
+      files: ['multiplier.v', 'adder.v', 'full_adder.v'].map((n) => ({ name: n, content: rd(n) })),
+      topModule: 'multiplier', entryName: 'multiplier.v',
+    });
     let ready = false;
     for (let i = 0; i < 40; i++) {
       await sleep(600);
@@ -221,6 +216,13 @@ function framed(vb, cb) {
       if (ready) break;
     }
     if (!ready) { console.log('FATAL 编译主画布没出图 —— 后面全是空话，不作数'); bad('[0] 闸门跑完了（没有中途抛错）', '编译没出图'); throw new Error('no paper'); }
+    // 宿主形状补齐：真 webview 的 body 永远带 vscode-dark / vscode-light（VS Code 壳注入），
+    // index.html 在浏览器直开时那颗 class 缺失 ⇒ useVscodeTheme 报 light，而 index.css 的兜底
+    // 调色板是暗色（`--canvas-bg: var(--vscode-editor-background, #0d0d13)`）⇒ 屏幕上近黑的字压在
+    // 近黑的底上 —— [3] 那格量的是"文字与底色亮度差"，先按宿主形状把主题摆对，量到的才是用户看的那套。
+    await page.evaluate(() => { document.body.classList.add('vscode-dark'); });
+    await sleep(1500);
+    console.log('  [现场] data-theme=', await page.evaluate(() => document.documentElement.getAttribute('data-theme')));
     await sleep(1200);
     const live = await page.evaluate(LIVE);
     // 现场：导出按钮的真实文案（菜单一改这就是第一手读数）＋容器里 svg 的排布
