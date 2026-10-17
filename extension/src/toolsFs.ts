@@ -23,12 +23,13 @@ export function registerFilesystemTools(): void {
   registered = true;
 
   registerTool({
-    id: 'fs.rename', title: '重命名', description: '重命名文件或目录；绑定值/`宿主::`前缀键/根表 circuits 随迁（G1）。输入经单段消毒（`../` 无法逃出工作区）。',
+    id: 'fs.rename', title: '重命名', description: '重命名文件或目录；绑定值/`宿主::`前缀键/根表 circuits 随迁（G1）。输入经单段消毒（`../` 无法逃出工作区）。名字无效/与现名相同/目标被占用 ⇒ 报错（⛔ 静默 ok:false）。',
     schema: { type: 'object', properties: { uri: { type: 'string', description: '目标文件/目录（fsPath 或 file: uri）' }, newName: { type: 'string', description: '新名字（单段）' } }, required: ['uri', 'newName'] },
     handler: async (ctx, a) => {
       const ok = await renameEntry(ctx, argUri(a.uri), String(a.newName ?? ''));
-      if (ok) broadcastBindingsChanged();
-      return { ok };
+      if (!ok) throw new Error('重命名未执行：名字无效（消毒后为空/与现名相同）或目标被占用（详情见错误告示）');
+      broadcastBindingsChanged();
+      return { ok: true };
     },
   });
 
@@ -78,7 +79,9 @@ export function registerFilesystemTools(): void {
     },
     handler: async (ctx, a) => {
       const sources = (Array.isArray(a.sources) ? a.sources : []).map((s) => argUri(s));
-      const r = await importFromUris(ctx, argUri(a.destDir), sources, a.exts ? String(a.exts).split(',') : undefined);
+      // exts 双形态收货：JSON 数组（agent 正形态）或 csv 串（容错）
+      const exts = Array.isArray(a.exts) ? a.exts.map(String) : (a.exts ? String(a.exts).split(',') : undefined);
+      const r = await importFromUris(ctx, argUri(a.destDir), sources, exts);
       if (r.written.length) broadcastBindingsChanged();
       return r;
     },

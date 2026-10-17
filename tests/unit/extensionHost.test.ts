@@ -2065,6 +2065,39 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({});
   });
 
+  it('自检·HITL 防伪造：自报 interactive:true 的非 ui 身份⛔ 绕过审批（豁免=三条件齐验）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/main.djs': '{"cells":[]}' } });
+    const { executeTool } = await import('../../extension/src/toolRegistry');
+    const forger = { surface: 'ui' as const, subject: 'agent', interactive: true };   // 伪造交互
+    vscode.state.modalChoice = undefined;
+    await expect(executeTool(ctx(PROD) as never, forger, 'fs.delete', { uri: 'D:/p/main.djs' })).rejects.toThrow(/\[API_NOT_APPROVED\]/);
+    expect(has('D:/p/main.djs')).toBe(true);             // ⛔ 伪造身份不得动盘
+  });
+
+  it('自检·空 uri 实参当场拒（argUri 守卫；⛔ Uri.file(\'\') 双界形状不可靠）', async () => {
+    await boot({ folders: ['D:/p'] });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.copyPath', {})).rejects.toThrow(/uri 实参为空/);
+  });
+
+  it('自检·import 命令级链路回归：对话框 → fs.import 工具 → 落盘+告示（薄壳化后覆盖补回）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'C:/tmp/want.v': 'module want; endmodule',       // 源必须在桩的内存盘真存在（copy 非它 ⛔ 静默 no-op）
+      'C:/tmp/board.json': '{}',
+    } });
+    vscode.state.openDialogResult = [vscode.Uri.file('C:/tmp/want.v'), vscode.Uri.file('C:/tmp/board.json')];
+    await vscode.commands.executeCommand('verilogViz.importFiles');
+    expect(has('D:/p/want.v')).toBe(true);
+    expect(has('D:/p/board.json')).toBe(false);
+    expect(vscode.state.infoMessages.some((m: string) => m.includes('已导入 1 个文件') && m.includes('1 个非本域文件已跳过'))).toBe(true);
+  });
+
+  it('自检·fs.rename 失败语义：同名/无效名=显式报错（verdict=error），⛔ 静默 ok:false 骗 agent', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/fsm.djs': '{"cells":[]}' } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.rename', { uri: 'D:/p/fsm.djs', newName: 'fsm.djs' })).rejects.toThrow(/重命名未执行/);
+  });
+
   it('headless 全链：agent 形状的字符串实参走 fs.move——绑定随迁 + bindingsChanged 广播', async () => {
     await boot({ folders: ['D:/p'], seed: {
       'D:/p/.verilogviz.json': JSON.stringify({ bindings: { fsm: 'fsm.djs' } }),

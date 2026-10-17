@@ -257,14 +257,8 @@ export async function openDoc(uri: vscode.Uri): Promise<void> {
   await vscode.commands.executeCommand('vscode.openWith', uri, 'verilogViz.doc');
 }
 
-export async function renameFile(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
-  const name = uri.path.split('/').pop() || uri.fsPath;
-  const next = await vscode.window.showInputBox({ prompt: '重命名', value: name });
-  if (!next || next === name) return;
-  await renameEntry(context, uri, next);
-}
-
-/** fs.rename 工具的 headless 机械体（统一调用层批次一）：消毒 + performRename。返回 ok（失败已当面告示）。 */
+/** fs.rename 工具的 headless 机械体（统一调用层批次一）：消毒 + performRename。返回 ok（失败已当面告示）。
+ *  （原 renameFile 弹框壳已上移 extension.ts 命令层——UI+executeTool 薄壳纪律。） */
 export async function renameEntry(context: vscode.ExtensionContext, uri: vscode.Uri, newName: string): Promise<boolean> {
   const name = uri.path.split('/').pop() || uri.fsPath;
   // G7：输入框直连盘上路径，裸收 `../` 能把文件改名出工作区——单段消毒
@@ -341,20 +335,8 @@ export async function describeDeletion(_context: vscode.ExtensionContext, uri: v
   return { isDir, files: isDir ? await countFilesUnder(uri) : 1 };
 }
 
-export async function deleteFile(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
-  const name = uri.path.split('/').pop() || uri.fsPath;
-  const { isDir, files } = await describeDeletion(context, uri);
-  // X7/G6：目录删除的确认要亮出规模（子的规模 + 绑定记录将同葬的警告——不让人盲删）
-  const pick = isDir
-    ? await vscode.window.showWarningMessage(
-      `删除目录「${name}」？其中含 ${files} 个文件；指向目录内文件的部件记录与绑定将一并清除。`,
-      { modal: true }, '删除')
-    : await vscode.window.showWarningMessage(`删除「${name}」？`, { modal: true }, '删除');
-  if (pick !== '删除') return;
-  await deleteEntry(context, uri);
-}
-
-/** fs.delete 工具的 headless 机械体（统一调用层批次一）：回收站删除 + 绑定/电路名单随清（G1 双路）。 */
+/** fs.delete 工具的 headless 机械体（统一调用层批次一）：回收站删除 + 绑定/电路名单随清（G1 双路）。
+ *  （原 deleteFile 弹框壳已上移 extension.ts 命令层——确认弹窗在 UI，⛔ 工具层二次弹。） */
 export async function deleteEntry(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
   const isDir = await then(vscode.workspace.fs.stat(uri)).then((s) => (s as any).type === 2, () => false);
   await then(vscode.workspace.fs.delete(uri, { useTrash: true, recursive: true }));

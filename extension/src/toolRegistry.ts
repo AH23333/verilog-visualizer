@@ -101,7 +101,11 @@ export async function executeTool(
     return fail('NOT_GRANTED', 'not-granted', `[API_NOT_GRANTED] ${id}：调用方档案（${caller.subject}）未获授权（改 .vv/api.grants.json）`);
   }
   let approved = false;
-  if (ct.requiresApproval && !caller.interactive) {
+  // 审批豁免只给**扩展自己的 UI**（三条件全满足）——树命令的确认弹窗已在命令层出过，⛔ 二次弹。
+  // 自检加固（卷六十二补记）：豁免⛔ 只看 caller 自报的 interactive——那可被伪造；三条件齐验 +
+  // 传输层纪律（批次二：MCP/LangGraph 接线时 subject/surface 由传输固化，业务代码⛔ 自造身份）。
+  const isOwnUi = caller.surface === 'ui' && caller.subject === 'ui' && caller.interactive === true;
+  if (ct.requiresApproval && !isOwnUi) {
     const pick = await vscode.window.showWarningMessage(
       `API 工具「${id}」要求确认后执行（调用方 ${caller.subject}）。${ct.description ?? def.description}`,
       { modal: true } as any, '允许');
@@ -123,10 +127,12 @@ export async function executeTool(
 
 /** 实参宽容：uri 实参可能以 string（agent/JSON）或 vscode.Uri（进程内调用）抵达。
  *  ⚠ scheme 判定只认 `file://` 前缀——宽正则会把 Windows 盘符 `D:\p` 误判成 scheme（`D:` 命中），
- *    然后栽在宿主/桩的 `Uri.parse` 上（批次一实测连环 18 红，全被命令层 .catch 吞成静默）。 */
+ *    然后栽在宿主/桩的 `Uri.parse` 上（批次一实测连环 18 红，全被命令层 .catch 吞成静默）。
+ *  ⚠ 空实参当场抛（自检补）：`Uri.file('')` 在宿主/桩两界的形状都不可靠，缺路径＝调用方 bug，⛔ 静默吞。 */
 export function argUri(v: unknown): vscode.Uri {
   if (v && typeof v === 'object' && 'fsPath' in (v as any)) return v as vscode.Uri;
-  const s = String(v ?? '');
+  const s = String(v ?? '').trim();
+  if (!s) throw new Error('uri 实参为空（工具调用缺必填路径）');
   if (/^file:\/\//i.test(s)) {
     let p = s.replace(/^file:\/\//i, '');
     try { p = decodeURIComponent(p); } catch { /* 编码坏＝原样 */ }

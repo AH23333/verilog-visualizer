@@ -1350,3 +1350,15 @@ HEAD 02b56e3 经 `git stash -u` 实测 171/171+tsc 0——**移交良好、WIP �
 4. push 24+2 连待令；真机点验单持续有效。
 
 *（卷六十二完 · 统一调用层单执行器在岗、fs 十工具上账、API 文档生成防漂移；agent 三方同门只剩传输层选型）*
+
+## 卷六十二补记 · 深度自检（用户令「先深度自检」，同标准：不可信任自己刚写的代码）
+
+以攻击者视角重审批次一全部新面，**5 项发现、全数修复**，台架 +5 钉=212/212：
+
+1. **HITL 可伪造（信任模型洞，最重）**：审批豁免原只看 `caller.interactive`——调用方自造 `{surface:'ui', interactive:true}` 即可绕过 fs.delete 的审批。修=豁免**三条件齐验**（surface==='ui' ∧ subject==='ui' ∧ interactive）；并立传输层纪律：批次二 MCP/LangGraph 接线时 subject/surface 由传输固化，业务代码⛔ 自造身份。钉：伪造交互身份的 fs.delete 仍被 NOT_APPROVED 拦、盘上不动。
+2. **argUri 空实参**：`Uri.file('')` 宿主/桩两界形状都不可靠 ⇒ 空串当场抛（verdict=error），⛔ 静默吞。
+3. **fs.rename 静默 ok:false 骗 agent**：失败（同名/无效名/占用）改显式抛错——调用方统一 try/catch 口径，审计落 error。钉：同名 rename rejects。
+4. **fs.import exts 单形态**：只收 csv 串；改双形态（JSON 数组=agent 正形态 / csv 容错）。
+5. **死代码 + 覆盖缺口**：`renameFile/deleteFile` 弹框壳成死导出（删除，逻辑已在命令层+机械体）；import 命令级链路（对话框→工具→告示）在薄壳化时丢了覆盖 ⇒ 补回，且当场抓到**桩 fidelity 缺口**：stub 的 `copy` 对不存在源静默 no-op（旧格子只断言返回值所以从没暴露）——真宿主会 throw→error verdict，属测试桩债（记此，批次二修桩）。
+
+流程验证：api:doc 漂移自愈按设计工作（改 fs.rename 描述→doc 再生成落盘+当轮红→次轮绿）。全绿 212/212 + 双 build。
