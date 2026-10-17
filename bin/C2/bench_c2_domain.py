@@ -212,14 +212,16 @@ def main():
                 with io.open(path, "wb") as f:
                     f.write(blob)
             out, rc = run_vitest()
-            # 原始输出留档：红名集合对不上时先读自己的转储（⛔ 凭猜改谓词）
-            with io.open(os.path.join(HERE, "arm_last.txt"), "wb") as f:
-                f.write(out.encode("utf-8"))
             for p, blob in snap.items():          # 每臂跑完立刻还原（下一臂的锚点是原文）
                 with io.open(p, "wb") as f:
                     f.write(blob)
             got = red_names(out)
             ok = got == exp
+            if not ok:
+                # 只有不合格臂才留原始转储（红名对不上时先读自己的输出，⛔ 凭猜改谓词）；
+                # ⛔ 每臂都写＝655 行仪器噪声进版本库（上一笔我刚误提交过一颗）
+                with io.open(os.path.join(HERE, "arm_bad.txt"), "wb") as f:
+                    f.write(out.encode("utf-8"))
             bad += 0 if ok else 1
             passed = re.search(r"Tests.*?(\d+) passed", out)
             log.append(f"== {'OK ' if ok else 'BAD'} {nm}\n"
