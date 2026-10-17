@@ -446,6 +446,36 @@ describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
     expect(esc).not.toMatch(/\.\./);
   });
 
+  it('X18：旧档迁移把部件身份一起带走——role:part 落本层目录表、partBindings 按批内 key 连到落盘名（解不到＝只记 Output，⛔ 落一条悬空绑定）', async () => {
+    // 修前的形状：`collectLegacyItems` 只交 {name, content}，旧沙盒档里的 `role:'part'` 与
+    // `partBindings`（文件级绑定，值＝批内文件 id）整批丢掉 ⇒ 迁完那些部件退化成普通画布档，
+    // 曾经显式录入的实现关系也无声变成"看同名兜底"。这一族正是 R152「配置里录了才算」的反面。
+    await boot({ folders: ['D:/p'] });
+    vscode.state.modalChoice = '允许';
+    const res = await rpc(vscode.state.panels[0], 'importLegacyData', {
+      items: [
+        { name: 'parts/adder', content: '{"cells":[1]}', key: 'sb_a', role: 'part' },
+        { name: 'parts/full_adder', content: '{"cells":[2]}', key: 'sb_f', role: 'part' },
+        { name: 'top', content: '{"cells":[3]}', key: 'sb_t', bindings: { adder: 'sb_a' } },
+        { name: 'orphan', content: '{"cells":[4]}', key: 'sb_o', bindings: { ghost: 'sb_missing' } },
+      ],
+    });
+    expect(res.ok).toBe(true);
+    expect(res.data).toEqual(['parts/adder.djs', 'parts/full_adder.djs', 'top.djs', 'orphan.djs']);
+    const readText = (abs: string) => new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file(abs).path.toLowerCase())!);
+    const partsTable = JSON.parse(readText('D:/p/parts/.verilogviz.json'));
+    // 两颗部件各自把"我就是 adder 这个实现"录进**所在目录**的表（值按层目录相对化，与 copyToSandbox 同源）
+    expect(partsTable.bindings).toEqual({ adder: 'adder.djs', full_adder: 'full_adder.djs' });
+    const rootTable = JSON.parse(readText('D:/p/.verilogviz.json'));
+    // 顶层档那条显式绑定跟着搬：值＝批内那颗的**落盘名**（重名被改过也连得上，⛔ 认旧 id）
+    expect(rootTable.bindings.adder).toBe('parts/adder.djs');
+    // 负件：解不到的绑定 id⛔ 进表（进了就是永远解不开的悬空项），但必须在 Output 里说一句话
+    expect(rootTable.bindings.ghost).toBeUndefined();
+    expect(partsTable.bindings.ghost).toBeUndefined();
+    const log = String(vscode.state.outputText || '');
+    expect(log).toContain('ghost');
+  });
+
   it('协议④端点闸：幽灵 method=NOT_REGISTERED；apiSurface 反查与 surfaces 判定与账一致', async () => {
     await boot();
     const ghost = await rpc(vscode.state.panels[0], 'notOnAnyLedger', {});

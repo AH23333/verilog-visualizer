@@ -1506,3 +1506,65 @@ HEAD 02b56e3 经 `git stash -u` 实测 171/171+tsc 0——**移交良好、WIP �
 - 下一刀不变＝卷六十二遗留①（dispatch 9 颗 RPC 走 executeTool）；挂账 X18/X19 待办/待裁。
 
 *（卷六十四补记完 · R153 两腿经攻击性复查：五处发现全数修掉，两颗"按构造命不中"的功能恢复可用）*
+
+## 卷六十五 · R154（用户令：全部听我的、代管电脑、按 完善系统→深度检验→API 层 顺序推进）
+
+这批的落点不在产品功能，而在**验证系统自己的诚信**：三处"看起来在检、其实恒过"当场被拆出来。
+
+### 一、r42 分层重锚（迁移后编译侧闸门的第一颗样板）
+片 5 后「复制到沙盒」归 `host.copyToSandbox`，`browserHost` 按契约直接 reject ⇒ 老夹具两把锚点一起死：
+`button[title*="复制到沙盒"]`（那颗的 title 早已换成说明文案，只剩文字是这颗）与
+`localStorage['verilog-viz-sandbox-files']`（沙盒真身已是工作区文件）。
+正解⛔ 复活已删主人，而是按层拆：**W** 编译画布（`pushCompile` 仿真宿主推送单）／
+**H** 真按钮→宿主 RPC 载荷（点击前注入 `acquireVsCodeApi` 桩，`getHost()` 每次现读＝host.ts 文件头形状 1，
+`r12-export` [F] 早就用同一招）／**S** 沙盒真渲染（`gates.html` 的 SandboxCanvas）／**L4** 同页纯 lib。
+读数：单跑 22 PASS / 0 FAIL（`.tmpbuild/r42_R154.log`），**同一份在 `tests/run-all.cjs` 里读到
+`GREEN pass=22 fail=0 exit=0`**＝两条路对上了。比迁移前多三颗证人：[P] 钉"点一次＝一次 copyToSandbox、
+载荷含主电路 + ≥2 颗子部件"，[3a0]/[4c0] 把"沙盒里打不开这颗部件"从"画错了"里分出来。
+
+### 二、契约对账锁里五处恒真断言（这颗是本轮最重的发现）
+`tests/unit/vscodeShell.test.ts:282/290/296/297/299` 全写成 `expect('文案' + 布尔).toBeTruthy()`：
+字符串拼布尔恒为非空串 ⇒ ①id 词表、③ui 投影、④perm/sideEffects 词表、④surfaces 去重
+**从未判过任何东西**，整段"锁"只有 ② 在真跑，且它已经绿了不止一批。
+两颗"如果它活着会说什么"现读都不成立：① 的命名空间表还停在 `circuit|project|...`，契约里 20 颗
+属于 `fs./res./sys./circuits.` ⇒ 恒红；③「ui 投影全在命令面板」27 颗里 13 颗的 ref 是 registry 侧
+handler 名 ⇒ 恒红（⚠ 这条不是数据坏了，是**判据本身写错**——写活了会把好数据判死）。
+改法＝不合格的名字收进数组判 `toEqual([])`（红名直接报是哪几颗）＋补两颗反向钉：
+命名空间集合等式（⛔ 词表由被检对象自己放宽）、「registry 有 handler 而契约没登记」。
+台架 `bin/C4/bench_c4_lock.py` 九臂 0 不合格：M1–M5 五种野值各开一火（⚠ 一颗 it 里有四格，
+光比红名证不了是哪格响的 ⇒ 每臂另钉 needle：转储里必须见到我注入的那颗野值本身），
+M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零红＝**旧尺子确实是瞎的**（这颗正件
+比"改完全绿"硬，后者只证明它不响）。
+
+### 三、闸门名册现读（`bin/C4/probe_gate_urls.cjs`，一颗⛔ 浏览器判定都不掺）
+`GATES` 73 颗、清单缺件 0；提到已删 `store/fileStore.ts` 的 23 颗，其中**真会炸** 17 颗
+（既有 `const { fileStore } = await import(...)` 又有点号成员调用），**只剩死代码** 6 颗
+（5 颗是 `.then(()=>1).catch(()=>0)` 的 vite 依赖预热，1 颗是注释里点了已删文件的行号）。
+入口分工：已走 `gates.html` 8 颗；走根路径（＝今天的 CanvasApp，⛔ 活动栏⛔ 沙盒库）58 颗；
+⛔ 浏览器 4 颗；显式 `index.html` 1 颗（r137 的 CSP 那格，它量的就是产物入口）。
+签名尺（`enterSandbox|newSandboxFile|__sandboxPaper|verilog-viz-sandbox|clickActivity|activity-btn`
+对 `fileStore|__djsDebug|waitCompiled|compileVerilog|编译`）：沙盒侧 51、编译侧 34、两边都读不到 0，
+对账 58 ✓。⚠ 更正上一轮我说的「24 of 73」——那是把 `tests/**` 全树（47 处引用）和 `GATES` 清单混了。
+分层账与红因族谱另档 `docs/GATE_LAYERS.md`（跑批读数只在那一节回填，⛔ 两处各写一份数字）。
+
+### 四、阶段一还欠的两件（本轮开工）
+- **X18**（部件身份随迁移）：`collectLegacyItems` 只交 `{name, content}`，旧 `.djs` 档的
+  `role:'part'` 与 `partBindings`（值＝批内文件 id）整批丢掉 ⇒ 迁完部件退化成普通画布档，
+  显式录入的实现关系无声变"看同名兜底"——正是 R152「配置里录了才算」的反面。
+  设计（归我定）：逐颗带一颗 `key`（旧 id）+ `role` + `bindings`，宿主按 `key→落盘名` 连表，
+  落表走 `setBindingInDir`（单层合并）⛔ `setDocBindings`（整表替换会抹掉用户已有条目），
+  解不到的只记 Output。测试臂先落在 `extensionHost.test.ts`（含负件：悬空绑定⛔ 进表）。
+  ⚠ 那颗 webview 侧走 `getAllBindings` 再写回的路子已否决：它回的是**链合并**结果，
+  写回单层＝把父层条目复制进子层，属于语义腐败。
+- **假宿主一层**（`tests/_dochost.cjs`）：`{vvh:'req'}` 九颗 RPC + `{vvh:'doc'}` init/revert⇄ready/edit
+  都照 `dispatch.ts`/`customEditors.ts` 的形状实现，文件表落 `localStorage['vv-fake-fs']` 跨 reload 存活
+  ⇒「编辑→保存→刷新→重开」第一次能在浏览器里真判。⛔ 它是产品替身，只在 `tests/` 下用；
+  通不通由 `bin/C5/probe_dochost.cjs` 先打现场（三问读数），读数不成立就登记未验证、⛔ 写进闸门。
+
+### 五、纪律自审（这批我自己踩到／躲开的）
+- 踩到：往 `docs/FILESYSTEM_CHECKLIST.md` 插新段时把邻行的表头两行一起替换掉了 ⇒
+  靠 `git diff` 数「删除行数==0」当场抓回（"只改文档也要读整份 diff"这一条第二次救我）。
+- 躲开：跑批进行中⛔ 动 `src/**`、`tests/*.cjs`、`_ui.cjs`（vite 每次请求现读源码，
+  中途改码会让后面那颗闸门的读数不可复现）；只写新档（`bin/C4`、`bin/C5`、`tests/_dochost.cjs`）与 docs。
+- 躲开：`page.evaluate` 里读 `localStorage` 在 `about:blank` 上必 SecurityError ⇒ 入口先导航再清档。
+
