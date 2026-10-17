@@ -85,7 +85,6 @@ async function pressRelease(page, m) {
     const perr = []; page.on('pageerror', (e) => perr.push(String(e).slice(0, 200)));
     await page.goto(URL, { waitUntil: 'domcontentloaded' }); await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2500 }); } catch { }
-    await page.evaluate(() => import('/src/store/fileStore.ts').then(() => 1).catch(() => 0));
     await sleep(1000);
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2500);
     try { await page.locator('button:has-text("跳过"), button:has-text("Skip")').first().click({ timeout: 2000 }); } catch { }

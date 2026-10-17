@@ -5,6 +5,9 @@
 // 显示什么、侧边栏拖放的落点文件夹，全建立在"文件名里的 `/` 之前就是文件夹"这一条上
 // （两个模式的文件树都没有维护 `folder` 字段）。
 // 现场读数（2026-10-06 批次 R90 之前，两种拼法各自手写共 **15 处**）：
+//   ⚠ 上面那份名单是**当日读数**，不是今天的指针：`src/store/fileStore.ts` 与 `src/components/Sidebar.tsx`
+//     已随"旧 React 单页退役"整颗删除（R153/R154 的迁移），照这两个名字去 grep 会查无此档。
+//     本闸门今天的射程＝它自己扫出来的那批（⛔ 拿这份历史名单当期望值，名册 299 同一课）。
 //   拼法甲 `slice(0, …lastIndexOf('/')…)` 9 处：src/store/sandboxStore.ts:272/290/305、
 //     src/lib/gateSystem.ts:39、src/components/SandboxCanvas.tsx:565/1283/2964/3045/3121
 //   拼法乙 `split('/').slice(0,-1).join('/')` 6 处：src/store/fileStore.ts:255/282/309/399/427、
