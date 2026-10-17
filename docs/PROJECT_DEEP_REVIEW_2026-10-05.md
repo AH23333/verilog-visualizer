@@ -1266,3 +1266,33 @@ HEAD 02b56e3 经 `git stash -u` 实测 171/171+tsc 0——**移交良好、WIP �
 - localStorage 旧部残点（SandboxCanvas `verilog-viz-sandbox-w` 侧栏宽 + `verilog-viz-import-clipboard` 剪贴板暂存）：侧栏宽属 UI 会话态非配置语义——保留；import-clipboard 流程已走审批链，其残留 key 列下轮清理。
 
 *（卷五十九完 · QC 四雷整修+两刀落袋：审计通道全线在岗、grants 闸③备装、设置面尸骨清干净；17 连 push 待令）*
+
+---
+
+# 卷六十 · 用户验收五连投诉：绑定链三修 + 文件系统原生树化整刀（2026-10-17）
+
+> 承卷五十九。用户真机验收报五连投诉：①`verilogViz.bindParts` 报 "Webview is disposed"；②绑定完成后仍 `[BINDING_UNRESOLVED_RECORD]`（counter 键到 r50_counter.v 假成功绑定）；③诊断全锚入口文件第 1 行而不锚部件例化行；④⑤两模式「文件」区域必须是完整资源管理器（可新建文件夹、样式符合 Explorer、作为两模式入口）。①②③一根线（绑定报错链），④⑤一根线（文件系统形态）——分两提交落袋（现 21 连 push 待令）。
+
+## 一、绑定链三修（de87cc7，Wave 1）
+1. **诊断锚点**：`CompileJob.bindingAnchors` 逐条平行数组（⛔ 平行不变量=每条 bindingErrors 配一条锚点）；`verilogParseLite.parseVerilogInstancesWithLines`（注释等长掩码防行号漂移，1-based）；compilePanel closureOf 每 push 配对记锚＋UNRESOLVED_RECORD 文案补「该文件内定义的是：…」（报错不说人话那一族）；useHostCompile 消费锚点→ProblemItem 真实 file/line→publishProblems 落 Problems 真行（`dispatch.ts:195` `p.line ?? 1` 语义已兼容）。
+2. **假成功绑定拦下（写前校验）**：bindingPanel save 落表前校验目标：.v/.sv 须真的定义该模块、.djs/.gate 须存在——违规整批 saveError 拒写（⛔ 再往表里塞注定解不到的记录），前端红块展示原因、data/saved 时清空（真机惨案=counter 键到 r50_counter.v，模块名根本对不上）。
+3. **面板生命周期加固**：bindingPanel `livePanel()` 探尸（读 webview.html 探位）+ `pushSafe()` 收拢一切触碰（复用/notify/ready 全路过）——“运行命令 verilogViz.bindParts 错误: Webview is disposed”根除。
+- **自查假锚雷**：首刀把 `anchorOf` 定义在 for 循环外、闭包引用循环内 `inst`——句法过而全 suite ReferenceError（4 格红）——**块作用域闭包陷阱**：外层函数看不见 for 头里声明的变量；改参数化 `anchorOf(inst)` 归位。调试链留存：4 格红线全同根，非四雷。
+- 判据：专 suite 108/108（诊断四格+校验三格新钉）+ 全链 186/186 + tsc×2 + build ✓。
+
+## 二、文件系统原生树化（3cc619f，Wave 2；R148 webview 形态退役，R151 上位裁决）
+- **trees.ts**：CodeFilesTree 层级化（storeFactory→ProjectStore.listTree；目录**全量上报**＝真资源管理器语义、.v/.sv 文件分域）；`childrenOfLayer` 嵌套助手（目录在前、只给直属孩子、localeCompare）；SandboxTree 同款收编；`dirItemOf` 目录节点统一挂 resourceUri（「在此新建」族 menuUri 的命脉）+ SandboxTree 文件叶子自 `n.name` 解 uri（childrenOfLayer 产物无 uri 字段，自称命门）。
+- **package.json**：双 demo views `type: webview→tree`；`webview/context` 整档退役；新 view/item/context 27 条（codeFile×8/codeDir×5/sandboxFile×9/sandboxDir×5），when 全部单条件 `view == X && viewItem == Y`。
+- **extension.ts**：vvViewOf/VvFilesWebviewProvider 谢幕，六树全走 `createTreeView(showCollapseAll:true)`；refreshAllTrees 去 webview 化；menuUri 的 `{vvPath}` 死分支拆净。
+- **filesWebview.ts 删除**。
+- **台架改账**：六树注册账、codeFiles/sandboxFiles 结构+菜单在册、webview/context 反在册（`toBeUndefined`）、filesWebview 幽灵 import 钉、watcher 增删⇒树实时张榜；菜单总量阈值 R152 口径=44（HEAD 原生 17 + 文件树新 27）。
+- **踩坑登记（同雷三响，勿再犯）**：package.json 手术一刀曾把 parse 玩炸四轮——总根源=注入吞掉 view/item/context 数组尾 `],` 再叠加**V8 对「对象成员末尾残逗号」的报错文案是 "Expected double-quoted property name"**（语义与症状严重误导，排查绕了数组闭包/字符串跨行/BOM 三个假方向）。解法：从 `git cat-file` 纯净 HEAD 文本起步、node 单脚本三刀+每刀 JSON.parse 断言+锚注入后末成员去残留逗号。**教训：VS Code manifest 大改一律「node 文本手术 + 每刀断言」，⛔ PowerShell 缓冲区索引码刀（off-by-one 连响两次）**。
+- 判据：专 suite 107/107 + 全量 185/185 + tsc×2 0 + vite build ✓ + extension esbuild ✓。
+
+## 三、未闭
+1. r44/r62 幽灵 fileStore 迁移与 simSpeed/wireStyle 浏览器闸补岗（卷五十九§3 债，闸门卫生专项）。
+2. 分支 A（MCP server+`.vscode/mcp.json`）/ 分支 B（`.vv/agent/` LangGraph）立项拍板（协议§10/§13.3 材料齐）。
+3. push 21 连待用户一句话。
+4. 真机点验（两 Wave 落地后肉眼过）：Problems 跳行准头、绑定面板重开不尸解、两「文件」树右键与 Explorer 手感一致。
+
+*（卷六十完 · 绑定报错链三雷根除、假成功绑定拦下、文件系统归真资源管理器形态；agent 21 连未推）*
