@@ -71,8 +71,12 @@ export interface ProjectHost {
      返回落盘名（沙盒树经 watcher 自刷）。片 5-B2：子部件化回到这一颗。 */
   copyToSandbox(files: Array<{ name: string; content: string }>): Promise<string[]>;
 
-  /* 旧版 localStorage 档 → 工作区真文件（一次性迁移，B1）：宿主按名落盘，返回落盘名。 */
-  importLegacyData(items: Array<{ name: string; content: string }>): Promise<string[]>;
+  /* 旧版 localStorage 档 → 工作区真文件（一次性迁移，B1）：宿主按名落盘，返回落盘名。
+     X18：条目除 `name`/`content` 外还可以带**身份**三颗——`key`（旧档批内 id，只当这批的连接键）、
+     `role:'part'`（这颗是部件）、`bindings`（celltype → 同批里那颗部件的旧 id）。宿主拿它们落所在目录的
+     绑定表（`setBindingInDir` 单层合并）；⛔ 在这里就把 id 换成名字——重名会带 (n)、消毒会改字，
+     只有宿主知道每颗最后落成了什么名。 */
+  importLegacyData(items: Array<{ name: string; content: string; key?: string; role?: 'part'; bindings?: Record<string, string> }>): Promise<string[]>;
 
   /* 绑定关系（R137 目录级）：celltype→部件文件，落**各目录**的 `.verilogviz.json` bindings 段
      （仿 .vscode/settings.json 层级：文档目录 → … → 项目根逐级合并，近层覆盖；值相对本层目录）。

@@ -128,7 +128,7 @@
 | #15 | 表扫深度不一 | collectTableDirs=8 vs A12 口径 16 | 默认深度统一 16 | ✅ 闭（审查批次B） |
 | X16 | 旧档迁移丢 `.djs` | collectLegacyItems 把 Record 当数组迭代 ⇒ TypeError 被 catch 吞；单一墓碑连坐两半 | 两形状都收 + 两半颗各自墓碑（老键只管 .v ⇒ 被坑用户自动重 Offer） | ✅ 闭（R153 片C1） |
 | X17 | `.sv`/`.vh` 半数入口隐身 | 域判定六处写死且不一致（模块树/层次树/scanDefs/门槛/编译入口/剥扩展名读反 + manifest when/键位） | verilogDomain.ts 一颗主人；十处消费点改问它；静态禁项尺在岗 | ✅ 闭（R153 片C2＝X8 同根） |
-| X18 | 迁移不带 role/partBindings | 迁出的 `.djs` 全按缺省部件语义，文件级显式绑定丢失 | 批内 id→落盘名映射再写各目录 `.verilogviz.json` | ⏳ 挂账 |
+| X18 | 迁移不带 role/partBindings | 迁出的 `.djs` 全按缺省部件语义，文件级显式绑定丢失＝"看同名谁像就绑谁" | 批内 id→落盘名映射再写各目录 `.verilogviz.json`（走 `setBindingInDir` 单层合并，⛔ `setDocBindings` 整表替换会抹用户手编条目） | ✅ 闭（R154）：前端 `collectLegacyItems` 交 key/role/bindings，宿主按 key 连落盘名；证人三颗＝`legacyMigration.test.ts`「X18 正件」+ `extensionHost.test.ts`「X18：旧档迁移把部件身份一起带走」+「X18 两半接得上」（接缝臂，由台架 M4 撞出来才补的）；台架 `bin/C5/bench_c5_x18.py` 五臂 0 不合格 |
 | X19 | hasDjsUnder 名实不符 | 判据收 `.v\|djs` ⇒ 纯源码目录也配出一张空绑定表 | 「目录有部件才配表」的语义裁决点（.v 算不算"有部件"） | ⏳ 挂账待裁 |
 | X20 | 「自动同名」按构造命不中 | 面板与 bindings.materialize 的 .v 侧拿**闭包 job.files** 建同名索引，而闭包只含"已录入绑定"的文件 ⇒ 未录入实例恒 null／一键落表恒 0 颗（＝"点了没反应"） | 两处改问 `scanDefs`（模块名→真定义它的文件，与「写全配置」同一颗主人） | ✅ 闭（R153 深度自检） |
 | X21 | 根相对名七份实现 | 六份各自写＋一份在 `collectTableDirs`（那条两侧同源小写，暂判安全并已注因）；其中三份"按根串长度切" ⇒ 盘符大小写一漂就交半截或整颗绝对路径 | `verilogDomain.rootRel` 一颗主人（path.relative 口径＋根外折回绝对路径），六份转交；形状臂＋禁项尺在岗 | ✅ 闭（R153 深度自检） |
@@ -196,3 +196,4 @@
 | v2 | 2026-10-17 | 批次B 落地：G1 三路共源/C9-C11/D4-D5/D7/F1-F4-F6/H1；审查补账 #10-#15；Q1-Q5 默认裁决在册；X8/F5 挂账 |
 | v3 | 2026-10-17 | R153：X8+X17 同根闭（域界一颗主人）；X16 迁移丢 .djs 闭；新挂账 X18/X19；A3/C1 证据改名引用（行号会漂） |
 | v4 | 2026-10-17 | R153 深度自检：X20（自动同名按构造命不中）／X21（根相对名七份）落账并闭；台架 12→16 臂＋名册尺；vitest 242/242 |
+| v5 | 2026-10-18 | R154：X18 闭（两半 + 接缝臂 + `bin/C5/bench_c5_x18.py` 五臂 0 不合格）；新增「真机点验单 P1-P8」；全量跑批读数 73 格＝GREEN 12 / RED 61（族谱四支＋逐颗四颗）写进 `docs/GATE_LAYERS.md` 第⑤节；vitest 250/250、`pnpm build` ✓ |

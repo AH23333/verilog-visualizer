@@ -1,0 +1,45 @@
+## Objective
+- 原战役（绑定系统 M1–M7 + 配置协议 v0.3.1 + 用户验收五连投诉修复）已全部落袋并提交。现用户反馈**「文件系统依然漏洞百出」**，要求：**先产出两模式（编译/沙盒）文件系统的完整功能清单**（文件/文件夹的左右键、拖拽等所有功能），**经用户把关后再按清单一一对照完善**——此刻正等用户裁决清单。
+- 其他待拍板事项：push（现 21 连未推）、分支 A/B 选型（协议§10）、闸门卫生专项 vs 分支 A 先行。
+
+## Important Details
+- **仓库/分支**：`D:/Visual Studio Code/Something/verilog-visualizer`，分支 `agent`，HEAD `76a0dd6`，21 笔本地提交未推。工作树干净（仅用户自己的真机遗物 `test_files/.verilogviz.json`、`1.djs`、`2.djs`、`alu_top/` 未跟踪，不许动）。
+- **提交链**：`de87cc7`（Wave 1 绑定链三修）→ `3cc619f`（Wave 2 文件系统原生树化）→ `76a0dd6`（账本卷六十）。
+- **清单现状（已交给用户待裁决的 v1，编号 A1–H3）**：A=容器/数据源（A1 容器归属、A2 项目根=workspaceFolders[0]（dispatch.ts:40）、A3 文件分域 .v/.sv/.vh vs .djs 但**目录全量上报**、A4 ProjectStore+watcher、A5 排序无钉子、A6 图标、A7 viewsWelcome、A8/A9 折叠钮与展开态、A10 KB 角标）；B=左键（B1 编译域文本打开、B2 沙盒域 openWith 画布、B3 目录展开、B5 双击语义=平台单击即触发 command 的裁决点）；C=右键文件（C1 compileAndShow、C2 openDoc、C3 rename 已迁文件级绑定、C4 副本 (n)、C5 回收站+确认+清绑定、C6 togglePartRole、C7 bindParts、C9「移动到…」⛔缺失、C10 复制路径⛔、C11 磁盘显示⛔）；D=右键目录（D1/D2 在此新建 ✅、D4/D5 **目录删除/改名的批量绑定迁移为空** ⚠️ 最大语义缺口）、E=空白/标题栏（E1 原生 TreeView 平台无空白右键=R148 官方结论在册、E2/E3 标题钮 ✅、E6 导入**域内过滤缺失** ⚠️、E7 explorer/context）；F=拖拽（**TreeDragAndDropController 全仓零实现**（grep无果）：F1 树内文件⇒目录移动+迁移、F3 域限制、F4 OS 拖入（DataTransferFile ≥1.83）、F5 拖入画布生成部件=可选增强、F6 多选拖拽）；G=G1 绑定表迁移（文件级✓目录级⛔）、G3 广播链 bindingsChanged、G5 useTrash、G6/G7/G8；H=H1 circuits 图标角标（裁决点）。
+- **实现事实（已核实）**：`ProjectStore.listTree()` 按扩展名分域（projectStore.ts:30 `VERILOG_EXT=['v','sv','vh']`，listSandboxTree=.djs）；目录不设防（collect 全量上报——测试证实 parts 目录在 codeFiles 顶层上榜）；renameFile（sandboxFiles.ts:268）逐层扫迁移（值+`宿主::`前缀键+根表 circuits）；沙盒树文件点击=`vscode.openWith doc`。
+- **命令/工具陷阱（持续有效）**：PowerShell 中文 mojibake（用 Read/grep 工具验证）；`wc/grep/head/tail` 不可用；bash `&&` 换 `;`；`extension/esbuild.js` 是 **CWD 相对**（必须在 `extension/` 目录内跑，根目录跑报 `Could not resolve "src/extension.ts"`）；`npx esbuild` 不带 --external:vscode 会 exit 1；账本等中文文件一律用 **edit 工具**改（PowerShell 重定向会编码损坏）。
+- **package.json 手术教训（账本在册，勿再犯）**：V8 对**对象成员末尾残逗号**的报错文案是 `Expected double-quoted property name`（严重误导）；改 manifest 一律「node 文本手术 + 每刀 JSON.parse 断言」（纯净文本来自 `cmd /c "git show HEAD:... > 临时文件"` 避免 PowerShell 管道编码损坏；PowerShell 行号索引刀 off-by-one 连响两次）；JSON 末成员不得带尾逗号、注入时数组收尾 `      ],` 必须保留。
+- **r44/r62 预存在红闸**：FATAL import 幽灵 `/src/store/fileStore.ts`（模块早已不存在），债=simSpeed 滑条/wireStyle 无在岗浏览器闸——闸门卫生专项候选。
+- **§10 分支**：A=MCP server(stdio)+`.vscode/mcp.json`（mcp:true 子集、⑧⑨闸复用）；B=`.vv/agent/` LangGraph（立项必答清单在§13.3）。材料齐，等拍板。
+
+## Work State
+### Completed
+- **Wave 1（de87cc7）五连投诉①②③**：`anchorOf(inst)` 参数化修复闭包逃逸（块作用域陷阱：for 循环外定义、内层 inst 不可见）；bindingAnchors 平行数组用了 `parseVerilogInstancesWithLines`（注释等长掩码防行号漂移）锚的问题诊断已锚到具体行；UNRESOLVED_RECORD 文案补「该文件内定义的是：…」；bindingPanel livePanel()/pushSafe() 探尸；写前校验（.v/.sv 目标须真定义该模块、.djs/.gate 须存在）+ BindingApp 红块展示。
+- **Wave 2（3cc619f）文件系统原生树化**：trees.ts 重写（`childrenOfLayer` 共享嵌套助手、CodeFilesTree 层级化+storeFactory、SandboxTree 收编、`dirItemOf` 目录节点挂 resourceUri、SandboxTree 文件叶子从 `n.name` 解 uri）；package.json（views type webview→tree ×2、webview/context 整档退役、view/item/context 新 27 条 codeFile×8/codeDir×5/sandboxFile×9/sandboxDir×5，when 全单条件）；extension.ts（vvViewOf 谢幕、六树 createTreeView+showCollapseAll、refreshAllTrees 去 webview 化、menuUri vvPath 死分支拆净）；**filesWebview.ts 删除**。
+- **测试台架改账（107 格全绿）**：六树注册账（treeProviders 6 个+webviewViews 空）、codeFiles/sandboxFiles 结构+菜单在册、`kinds` 含 codeFile/codeDir/sandboxDir、菜单总量阈值 R152 口径 `≥44`（HEAD 原生 17+新 27）、filesWebview 幽灵 import 钉（动态 import 用字符串拼接绕 TS2307）、watcher 增删⇒树实时张榜；路径断言 toLowerCase+反斜杠口径。
+- **验证全绿**：tsc×2 exit 0 · vitest 185/185 · vite build ✓ · extension esbuild ✓（CWD 陷阱）。
+- **账本卷六十**（76a0dd6）：docs/PROJECT_DEEP_REVIEW_2026-10-05.md 追加 30 行（含 package.json 手术教训在册、未闭清单）。
+- **功能清单 v1 已产出**：A1–H3 全表 + 4 个裁决点（B5 单击语义、F5 拖入画布、C9/目录迁移与 F6 多选、H1 circuits 角标），等待用户把关。
+
+### Active
+- 等待用户对功能清单 v1 的裁决反馈；按用户指示「经过我把关后再根据清单一一对照完善」——⛔ 未获裁决前不动实现。
+
+### Blocked
+- 无硬阻塞；push、分支 A/B、闸门卫生专项顺序均等用户拍板；清单裁决点是主动等件。
+
+## Next Move
+1. 收到用户清单裁决后，按编号逐条对照补齐（建议次序：C 类先——C9/C10/C11 即得使用感；D4/D5 目录级批量迁移（与 G1/G2 同源修复）；F 类拖拽控制器（F1/F3/F4，迁移语义复用 G1）；E6 导入域过滤；裁决点勾选项（B5/F5/H1/F6）视用户勾选再做；每条带测试钉，全程 tsc×2+vitest+双 build 验证）。
+2. 若用户另有三拍板（push 21 连 / 分支 A / 闸门卫生专项），按其指令执行。
+
+## Relevant Files
+- `extension/src/trees.ts`：Wave 2 主改完成（childrenOfLayer/dirItemOf/uriOfRel/CodeFilesTree/SandboxTree）；清单 F 类拖拽控制器将加在此（每棵文件树一个 TreeDragAndDropController）。
+- `extension/src/sandboxFiles.ts`：renameFile(:268)/deleteFile/duplicateFile/duplicateFolder/importFiles(:?)/togglePartRole/openDoc/openBindingConfig 业务层；D4/D5/F1 的目录级批量迁移与 C9「移动到…」在此扩展。
+- `extension/src/examples.ts`：新建三族命令（newVerilogFile/newSandboxFile/newSandboxFolder，均支持 dirUri）。
+- `extension/src/dispatch.ts`：projectRoot(:40)=workspaceFolders[0]、dispatch RPC 面；G3 广播链 broadcastBindingsChanged 在此。
+- `extension/src/projectStore.ts`：VERILOG_EXT(:30)/listTree/listSandboxTree（分域+目录全量上报依据）。
+- `extension/package.json`：views/menus 已完成 R152 重写；清单新增菜单条目继续落此（node 手术纪律：每刀 JSON.parse 断言）。
+- `tests/unit/extensionHost.test.ts`：台架全程对照清单逐条加钉（树结构/菜单在册/迁移语义/拖拽控制器）。
+- `docs/PROJECT_DEEP_REVIEW_2026-10-05.md`：账本（卷六十已入），下卷记清单战役。
+- `extension/src/filesWebview.ts`：已删除，⛔ 复活。
+- `tests/r44-verify.cjs`/`tests/r62-sandbox-speed-gate.cjs`：预存在死锚，闸门卫生专项对象。
+- `docs/CONFIG_PROTOCOL.md` §10/§13.3：分支 A/B 立项材料。

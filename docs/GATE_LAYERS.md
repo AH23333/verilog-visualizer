@@ -96,10 +96,45 @@
  · W+S（6）：r57-zoom-anchor-gate r61-dark-label-gate r62-sandbox-speed-gate r85-posfidelity-gate
    r135-svg-export-gate r135-part-search-gate
 
-## ⑤ 本轮全量跑批读数
+## ⑤ 本轮全量跑批读数（`node tests/run-all.cjs`，2026-10-18 03:46–04:12 UTC+8）
 
-（跑批 = `node tests/run-all.cjs`，逐颗三态判定 GREEN / RED / NOVERDICT / ENVRED；
-读数与归责在跑完后回填本节的表，⛔ 用第 ④ 节的静态推断冒充跑批结果。）
+三态汇总：**73 格 ＝ GREEN 12 / RED 61 / ENVRED 0 / NOVERDICT 0**。
+原始逐格输出在 `.tmpbuild/gates/`，父档汇总 `.tmpbuild/RUNALL_R154.log`；族谱由
+`bin/C4/probe_gate_urls.cjs` 的入口分工 + 这份日志的第一条 FATAL/FAIL 行归族（脚本现读，⛔ 手点）。
+
+GREEN 名单（12 颗）：`r12-export` `r13-custom-gate` `r42-verify` `r48-verify` `r49-parity`
+`r56-conflict-gate` `r60-part-binding-gate` `r68-fanin-gate` `r90-single-owner-gate`
+`r91-palette-coverage-gate` `r122-persist-gate` `r123-cycle-gate`。
+⚠ 这 12 颗里只有 5 颗（r12/r13/r60/r68/r122/r123 那一族）本来就是走 `gates.html` 的夹具档，
+`r42` 是本轮重锚的那颗——**其余红⛔ 是产品坏，而是"主人搬家后闸门还站在旧门口"**（下面四族）。
+
+| 族 | 颗数 | 第一条读数形状 | 归责 | 下一步（每族一颗配方，⛔ 逐颗另写） |
+|---|---|---|---|---|
+| **C 等锚点超时** | 25 | `FATAL TimeoutError: page.waitForFunction: Timeout 30000ms` | 夹具 | 入口 `/` → `/gates.html`（`bin/C5/patch_gate_entry_wave1.py`，DRY 现读 31 颗候选，其中含本族 20 颗）；本族里 `qc-paused`/`qc-preview`/`qc-realuser` 三颗跑的是 **dist**，⛔ 换 gates.html（产物里没那颗入口）——它们要的是"生产构建 + 保存重开"，落点＝假宿主 + `doc.html`（见 ⑥） |
+| **D 点不到锚点** | 13 | `FATAL locator.click: Timeout 30000ms` | 夹具 | 同一入口问题的另一半：换完入口后仍红的，就是它自己的私有死锚点（r30 那颗 `button.activity-btn[title=…]` 是已删活动栏的形状），逐颗改走 `tests/_ui.cjs` 的共用锚点 |
+| **A fileStore 404** | 10 | `FATAL … Failed to fetch dynamically imported module: /src/store/fileStore.ts` | 夹具 | 编译侧改 `pushCompile` 仿真宿主推送单（r42 的 L1 就是样板）；为"造出绑定式子部件"而塞 `.v` 的那 6 颗（名册见 ④）改走 H 截载荷 + S 播种 |
+| **B 活动栏⛔ 这一页** | 9 | `FATAL Error: newSandboxFile: 等不到活动栏「沙盒」按钮；当前可见的 data-activity = [(空)]` | 夹具 | 最干净的一族：那颗诊断句已经自报家门——换入口即可（`_ui.cjs` 无需改动） |
+| **其它（逐颗）** | 4 | 各不重叠 | 见下 | |
+
+四颗"其它"各自都要单独定案，⛔ 混进族谱里一键处理：
+
+- `r87-esc-shape-gate`：`只扫到 10 处（下界 13）` + 点名册四颗文件已随旧 React 单页删除——
+  **夹具烂⛔ 产品坏**（现读 `SandboxCanvas` 的 Esc 监听仍在，挂在
+  `src/components/SandboxCanvas.tsx:2259`、卸于 `:2330`）。名册要按今天的扫描现读重写（工单已开）。
+- `r114-const-fold-gate`：`ENOENT: no such file or directory` 且 `pass=11 fail=1`——
+  11 格真绿、唯读文件那一格红，⛔ 是产品常量折叠坏；要先看它开的是哪颗档（多半是被搬走的夹具）。
+- `r137-webview-csp-gate`：`[0] CSP 之下应用挂载 — 没挂载 ⇒ 整页判据作废`（`pass=5 fail=2 fatal=1`）。
+  ⚠ **这颗要当回事**：它判的是"构建产物在真 CSP 里挂不挂得上"，而产品今天真发的就是那颗产物。
+  红因两种可能：R153 之后 `dist` 的入口形状变了（旧探针找的是退役单页的标记），
+  或者挂载在 CSP 下真坏了。下一批第一件事＝在 pristine HEAD 与本档各跑一次分清归责（记忆里的
+  「闸门变红先跑 pristine」）。
+- `r35-verify`：日志里 `pass=0 fail=0` 而抓不到 FATAL/FAIL 行——**跑批自己那把"取第一条判定行"的尺瞎了**，
+  不等于这格没判定。要么它打的是别的字样（判据行格式漂了），要么它静默退出。这颗先取原始档
+  `.tmpbuild/gates/r35-verify.log` 定性，再决定归族。
+
+> 口径提醒（写给自己）：以上 61 颗红里，**目前没有一颗被证实是产品缺陷**；同样，⛔ 有 61 颗"安全"。
+> 每换一次入口/锚点都要重跑那颗闸门拿新读数，⛔ 用这张族谱替读数背书。
+
 
 ## ⑥ 挂账
 

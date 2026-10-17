@@ -383,7 +383,7 @@ describe('侧边栏双容器六视图（片 5-B 编译/沙盒分家；R152 起�
   });
 });
 
-describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
+describe('RPC 九颗（片 5 收面后 Panel 侧的真通道形状；颗数由下面「两张表逐字相同」那格钉死，⛔ 靠标题数）', () => {
   it('getConfig：compile/sandbox 全量 + editorFontSize 跟随原生设置', async () => {
     await boot({ folders: ['D:/p'] });
     vscode.state.configValues['editor.fontSize'] = 15;
@@ -453,11 +453,13 @@ describe('RPC 六颗（片 5 收面后 Panel 侧的真通道形状）', () => {
     await boot({ folders: ['D:/p'] });
     vscode.state.modalChoice = '允许';
     const res = await rpc(vscode.state.panels[0], 'importLegacyData', {
+      // 名字逐字照前端真交的形状：`collectLegacyItems` 给沙盒那半颗统一补过 `.djs`
+      //（宿主对**无扩展名**的条目补的是 `.v`——那是源码那半颗的路径，⛔ 拿它当部件档的写法）
       items: [
-        { name: 'parts/adder', content: '{"cells":[1]}', key: 'sb_a', role: 'part' },
-        { name: 'parts/full_adder', content: '{"cells":[2]}', key: 'sb_f', role: 'part' },
-        { name: 'top', content: '{"cells":[3]}', key: 'sb_t', bindings: { adder: 'sb_a' } },
-        { name: 'orphan', content: '{"cells":[4]}', key: 'sb_o', bindings: { ghost: 'sb_missing' } },
+        { name: 'parts/adder.djs', content: '{"cells":[1]}', key: 'sb_a', role: 'part' },
+        { name: 'parts/full_adder.djs', content: '{"cells":[2]}', key: 'sb_f', role: 'part' },
+        { name: 'top.djs', content: '{"cells":[3]}', key: 'sb_t', bindings: { adder: 'sb_a' } },
+        { name: 'orphan.djs', content: '{"cells":[4]}', key: 'sb_o', bindings: { ghost: 'sb_missing' } },
       ],
     });
     expect(res.ok).toBe(true);
@@ -2161,6 +2163,42 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     // 成对判据（⛔ 只判"归一后读得到"）：两种写法必须交回**同一份**读数
     const bare = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.readAudit', { date: day.replace(/-/g, '') }) as any;
     expect(bare).toEqual(hyphen);
+  });
+
+  it('X18 两半接得上：collectLegacyItems 交出去的身份，宿主按**同一颗 key** 连到落盘名（⛔ 只判两半各自绿）', async () => {
+    // 上面两颗臂各测一半：U 层测"收得出身份"，X 层测"宿主会落表"——那颗手搓的 items 从没经过
+    // 前端，所以两半的**接缝**（key 的拼法、role 的字面值、bindings 的值到底是 id 还是名字）
+    // ⓐ 没人测。这一颗把前端真收出来的那批直接喂宿主：接缝漂了必须在这里红。
+    // （发现方式＝台架 M4：把前端退回只交 {name,content}，只有 U 臂红、X 臂照旧绿。）
+    const m = new Map<string, string>();
+    (globalThis as any).localStorage = {
+      getItem: (k: string) => (m.has(k) ? m.get(k)! : null),
+      setItem: (k: string, v: string) => m.set(k, v),
+      removeItem: (k: string) => m.delete(k),
+    };
+    try {
+      m.set('verilog-viz-sandbox-files', JSON.stringify({
+        pa: { id: 'pa', name: 'parts/adder', graphJson: '{"cells":[1]}', role: 'part', updatedAt: 1 },
+        pf: { id: 'pf', name: 'parts/full_adder', graphJson: '{"cells":[2]}', role: 'part', updatedAt: 2 },
+        top: { id: 'top', name: 'ctrl', graphJson: '{"cells":[3]}', updatedAt: 3, partBindings: { adder: 'pa' } },
+      }));
+      const { collectLegacyItems } = await import('../../src/canvas/legacyMigration');
+      const items = collectLegacyItems();
+      expect(items.map((i) => i.name)).toEqual(['parts/adder.djs', 'parts/full_adder.djs', 'ctrl.djs']);
+
+      await boot({ folders: ['D:/p2'] });
+      vscode.state.modalChoice = '允许';
+      const res = await rpc(vscode.state.panels[0], 'importLegacyData', { items });
+      expect(res.ok).toBe(true);
+      const readText = (abs: string) => new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file(abs).path.toLowerCase())!);
+      const partsTable = JSON.parse(readText('D:/p2/parts/.verilogviz.json'));
+      expect(partsTable.bindings).toEqual({ adder: 'adder.djs', full_adder: 'full_adder.djs' });
+      const rootTable = JSON.parse(readText('D:/p2/.verilogviz.json'));
+      // ctrl.djs 那条"我要用 parts/adder"跨档连到了那颗部件的**落盘名**——接缝的两端都是真的
+      expect(rootTable.bindings.adder).toBe('parts/adder.djs');
+    } finally {
+      delete (globalThis as any).localStorage;
+    }
   });
 
   it('闸② surface-denied：mcp 面全局关（surfacesGlobal.mcp=false）→ agent 现阶段进不来', async () => {

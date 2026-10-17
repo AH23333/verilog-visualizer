@@ -22,6 +22,23 @@ export const LEGACY_TOMBSTONE_V = 'verilog-viz-legacy-migrated';
 /** `.djs` 那半颗的墓碑（独立一颗＝老键被 bug 连坐写过，⛔ 再拿它当沙盒档已迁的依据） */
 export const LEGACY_TOMBSTONE_DJS = 'verilog-viz-legacy-migrated-djs';
 
+/**
+ * 一条搬运项。`name`/`content` 是宿主唯一**必须**看的两颗；其余三颗是 X18 补的**身份**，
+ * 宿主（`extension/src/dispatch.ts` 的 importLegacyData）拿它们去落所在目录的绑定表：
+ *  · `key`＝旧档里的文件 id，只在**这一批内**当连接键用（⛔ 路径语义，消毒/重名都伤不到它）；
+ *  · `role:'part'`＝旧沙盒档里的"这颗是可编辑部件"；
+ *  · `bindings`＝celltype → **被绑定部件的旧 id**（旧 sandboxStore 的 `partBindings`，
+ *    值存的就是 id；⛔ 在这里就换成名字——重名与消毒会让名字连错档）。
+ * 修前三颗都交不出去 ⇒ 部件身份与显式绑定整批丢掉，迁完退化成"看同名谁像就绑谁"。
+ */
+export interface LegacyItem {
+  name: string;
+  content: string;
+  key?: string;
+  role?: 'part';
+  bindings?: Record<string, string>;
+}
+
 const LEGACY_FILES_KEY = 'verilog-viz-files';           // 旧 fileStore（.v 源码库，存的是**数组**）
 const LEGACY_SANDBOX_KEY = 'verilog-viz-sandbox-files'; // 旧 sandboxStore（.djs 电路库，存的是 **Record<id,文件>**）
 
@@ -38,9 +55,19 @@ function entriesOf(raw: string | null): any[] {
   return [];
 }
 
-export function collectLegacyItems(): Array<{ name: string; content: string }> {
+/** 旧 `partBindings` 的值是文件 id；只收字符串值（非对象/混进脏数据就当没有，⛔ 抛） */
+function legacyBindingsOf(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [celltype, v] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof v === 'string' && v) out[celltype] = v;
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+export function collectLegacyItems(): LegacyItem[] {
   if (typeof localStorage === 'undefined') return [];
-  const out: Array<{ name: string; content: string }> = [];
+  const out: LegacyItem[] = [];
   if (!localStorage.getItem(LEGACY_TOMBSTONE_V)) {
     for (const f of entriesOf(localStorage.getItem(LEGACY_FILES_KEY))) {
       if (f?.name && typeof f?.content === 'string') out.push({ name: String(f.name), content: f.content });
@@ -51,7 +78,13 @@ export function collectLegacyItems(): Array<{ name: string; content: string }> {
       // 只迁画布档（graphJson）。kind:'gate' 那种存的是**编译格式** circuitJson，落成 `.djs`
       // 画布打不开（loadCells 要的是 {cells:[]}）⇒ 宁可留在旧档里也⛔ 往工作区丢一颗开不了的档。
       const content = typeof s?.graphJson === 'string' ? s.graphJson : typeof s?.content === 'string' ? s.content : null;
-      if (s?.name && content) out.push({ name: String(s.name).replace(/\.djs$/i, '') + '.djs', content });
+      if (!s?.name || !content) continue;
+      const item: LegacyItem = { name: String(s.name).replace(/\.djs$/i, '') + '.djs', content };
+      if (s.id != null && s.id !== '') item.key = String(s.id);
+      if (s.role === 'part') item.role = 'part';
+      const bindings = legacyBindingsOf(s.partBindings);
+      if (bindings) item.bindings = bindings;
+      out.push(item);
     }
   }
   return out;

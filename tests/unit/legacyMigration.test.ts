@@ -56,9 +56,11 @@ describe('旧档收集：两半颗的形状都得收', () => {
         'm3b2y': { id: 'm3b2y', name: 'parts/画布乙', graphJson: '{"cells":[2]}', updatedAt: 2 },
       }),
     });
+    // ⚠ 期望里带 `key` 是 X18 的形状：旧档的 `id` 现在是这批的连接键（宿主用它把 partBindings 的
+    // 值连到落盘名），所以必须原样交出去。⛔ 为了这条好看而⛔ 交身份——那正是修前的样子。
     expect(collectLegacyItems()).toEqual([
-      { name: '画布甲.djs', content: '{"cells":[1]}' },
-      { name: 'parts/画布乙.djs', content: '{"cells":[2]}' },   // 无扩展名补 .djs；目录段原样留（宿主按名建目录）
+      { name: '画布甲.djs', content: '{"cells":[1]}', key: 'm3a1x' },
+      { name: 'parts/画布乙.djs', content: '{"cells":[2]}', key: 'm3b2y' },   // 无扩展名补 .djs；目录段原样留（宿主按名建目录）
     ]);
   });
 
@@ -79,7 +81,35 @@ describe('旧档收集：两半颗的形状都得收', () => {
         g2: { id: 'g2', name: '画布.djs', graphJson: '{"cells":[]}', updatedAt: 2 },
       }),
     });
-    expect(collectLegacyItems()).toEqual([{ name: '画布.djs', content: '{"cells":[]}' }]);
+    expect(collectLegacyItems()).toEqual([{ name: '画布.djs', content: '{"cells":[]}', key: 'g2' }]);
+  });
+
+  it('X18 正件：旧档里的部件身份与文件级绑定**跟着搬**（修前这两样整批丢掉＝迁完没人知道谁是部件）', () => {
+    withStore({
+      [SANDBOX_KEY]: JSON.stringify({
+        pA: { id: 'pA', name: 'parts/adder', graphJson: '{"cells":[1]}', role: 'part', updatedAt: 1 },
+        pB: { id: 'pB', name: 'parts/full_adder', graphJson: '{"cells":[2]}', role: 'part', updatedAt: 2 },
+        top: {
+          id: 'top', name: 'ctrl', graphJson: '{"cells":[3]}', updatedAt: 3,
+          // 旧 sandboxStore 的 partBindings：值＝**批内文件 id**（⛔ 名字——重名/消毒会连错档）
+          partBindings: { adder: 'pA', full_adder: 'pB' },
+        },
+      }),
+    });
+    const items = collectLegacyItems();
+    expect(items.find((i) => i.name === 'parts/adder.djs')?.role).toBe('part');
+    expect(items.find((i) => i.name === 'parts/full_adder.djs')?.role).toBe('part');
+    expect(items.find((i) => i.name === 'ctrl.djs')?.bindings).toEqual({ adder: 'pA', full_adder: 'pB' });
+    // 负件一：普通画布档⛔ 被顺手标成部件（role 只搬旧档真写了 'part' 的那些）
+    expect(items.find((i) => i.name === 'ctrl.djs')?.role).toBeUndefined();
+    // 负件二：partBindings 里的脏值（非字符串/null）⛔ 进载荷——宿主拿它连不到档＝落一条悬空绑定
+    withStore({
+      [SANDBOX_KEY]: JSON.stringify({
+        x1: { id: 'x1', name: 'a', graphJson: '{}', role: 'part', updatedAt: 1 },
+        y1: { id: 'y1', name: 'b', graphJson: '{}', updatedAt: 2, partBindings: { good: 'x1', bad: null, nested: { z: 1 } } },
+      }),
+    });
+    expect(collectLegacyItems().find((i) => i.name === 'b.djs')?.bindings).toEqual({ good: 'x1' });
   });
 
   it('档坏了／缺键／装了非对象＝回空数组，⛔ 抛（提示条⛔ 因为一颗坏档就整条消失）', () => {

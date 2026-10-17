@@ -47,11 +47,39 @@
   加 73 颗名册现读（提到已删 fileStore 23 颗、真会炸 17 颗、只剩死预热或注释 6 颗）与入口分工。
   ⚠ 更正上一轮的「24 of 73」＝把 `tests/**` 全树 47 处引用与 GATES 清单混了。
 
+- **X18 旧档迁移丢部件身份**（本批闭）：`collectLegacyItems` 只交 `{name, content}`，旧 `.djs` 档的
+  `role:'part'` 与 `partBindings`（值＝批内文件 id）整批丢掉 ⇒ 迁完部件退化成普通画布档，
+  显式录入的实现关系无声变成"看同名兜底"——正是 R152「配置里录了才算」的反面。
+  修：前端逐颗带 `key`（旧 id）/`role`/`bindings`，宿主按「同批 key→落盘名」连表，
+  落表走 `setBindingInDir`（单层**合并一条**）⛔ `setDocBindings`（整表替换＝抹掉用户手编过的其它绑定），
+  解不到的只记 Output。
+  ⚠ 一度打算走的另一条已**否决**并写进代码注释：webview 侧 `getAllBindings(doc)` 读回来再写回——
+  那颗读的是**链合并**结果，写进单层目录＝把父层条目复制进子层＝语义腐败。
+  证人：三颗（U 层「X18 正件」／X 层「role:part 落本层目录表…」／**接缝臂**「X18 两半接得上」）
+  ＋台架 `bin/C5/bench_c5_x18.py` 五臂 0 不合格。
+  ⚠ 那颗**接缝臂是台架撞出来的**：M4 把前端退回只交 `{name,content}`，只有 U 层臂红、宿主臂照旧绿——
+  因为宿主臂的 items 是我手搓的，两半从没一起测过（两颗各自绿＝⛔ 证明接得上）。
+- **`r137` 那格红要当回事**（本轮跑批读数，⚠ 未定案）：`[0] CSP 之下应用挂载 — 没挂载 ⇒ 整页判据作废`，
+  它判的是**今天真发的那颗产物**在 CSP 下挂不挂。两种归责（旧探针找退役单页的标记 ／ 挂载真坏）
+  还没分开，归责前⛔ 写"产品没问题"也⛔ 写"产品坏了"。
+
+### Readings（本批收口）
+- 全量跑批 `node tests/run-all.cjs`：**73 格＝GREEN 12 / RED 61 / ENVRED 0 / NOVERDICT 0**；
+  红因四族（等锚点 25／点不到锚点 13／fileStore 404 10／活动栏不在这一页 9）＋逐颗 4 颗，
+  族谱与下一步配方在 `docs/GATE_LAYERS.md` 第⑤节。⚠ 这 61 颗红里**目前没有一颗被证实是产品缺陷**，
+  同样也⛔ 有 61 颗算"安全"——每换一次入口都要重跑那颗闸门拿新读数。
+- `pnpm test` **250 passed / 250**（9 颗测试档全过）。颗数按 git 现读对账：上一笔提交里 `it()` 共 248 颗，
+  本批 +2 ＝ `legacyMigration`「X18 正件」与 `extensionHost`「X18 两半接得上」
+  （另在本批更早的提交里已进 X18 宿主臂与 sys.readAudit 臂）。
+  ⚠ 而 R153 收口时登记的 **242** 与今天 248 之间那 6 颗，逐颗来历我这轮⛔ 对上——
+  留作未核对项，⛔ 拿"总数变了"当故事讲。
+- `pnpm build`（tsc + vite）✓——而且正是 tsc 抓到我新写那行里的 TS6133（`id` 解构而⛔ 读），
+  vitest 250 颗全绿照旧放行＝"全绿≠型安全"这条第三次应验。
+- `pnpm -C extension check` ✓；`pnpm api:doc` 第一跑按契约当场红并回写、第二跑 1 passed（漂移闸在位）；
+  台架三支各 0 不合格：`bin/C4/bench_c4_lock.py` 九臂、`bin/C5/bench_c5_x18.py` 五臂、
+  `bin/C4/bench_c4_audit_date.py` 两臂，全部与快照逐字节还原。
+
 ### In progress（⛔ 算已修，状态写在这里）
-- **X18 旧档迁移丢部件身份**：宿主半颗已落（`importLegacyData` 认 `items[].key/role/bindings`，
-  逐条走 `setBindingInDir` 单层合并 ⛔ 整表替换，解不到只记 Output）；
-  **webview 半颗还没发**（`collectLegacyItems` 仍只交 `{name, content}`）⇒ 现在行为与修前一致，
-  只是"宿主肯收"。行为臂已先落在 `extensionHost.test.ts`（含悬空绑定负件）。
 - **假宿主一层**（`tests/_dochost.cjs`：9 颗 RPC + `{vvh:'doc'}` init/revert⇄ready/edit，
   文件表跨 reload 存活 ⇒「编辑→保存→刷新→重开」第一次能在浏览器里真判）：通路**还没打过现场**，
   探针 `bin/C5/probe_dochost.cjs` 的三问读数出来前⛔ 写进任何闸门。

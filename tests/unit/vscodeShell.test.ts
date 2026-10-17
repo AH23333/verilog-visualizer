@@ -303,7 +303,7 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
       + fs.readFileSync(path.join(ROOT, 'extension/src/toolsFs.ts'), 'utf8');
     const handlerIds = new Set([...handlerSrc.matchAll(/^\s*id: '([^']+)'/gm)].map((m) => m[1]));
     expect(tools.filter(({ t }) => t.surfaces.includes('ui'))
-      .filter(({ id, t }) => !cmdIds.has(t.ref) && !handlerIds.has(t.ref))
+      .filter(({ t }) => !cmdIds.has(t.ref) && !handlerIds.has(t.ref))
       .map(({ id, t }) => `${id}→${t.ref}`)).toEqual([]);
     //    反方向同样钉住：registry 里有一颗 handler 而契约没登记＝契约在说谎（另一面）
     expect([...handlerIds].filter((h) => !tools.some(({ id }) => id === h)).sort()).toEqual([]);

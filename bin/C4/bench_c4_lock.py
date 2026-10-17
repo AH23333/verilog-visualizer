@@ -66,7 +66,7 @@ LIVE_1 = ("    expect(tools.map(({ id }) => id).filter((id) => !idRe.test(id))).
           "    expect([...new Set(tools.map(({ id }) => id.split('.')[0]))].sort()).toEqual(NS);\n")
 DEAD_1 = "    for (const { id } of tools) expect(`[${id}] ` + idRe.test(id)).toBeTruthy();\n"
 LIVE_3 = ("    expect(tools.filter(({ t }) => t.surfaces.includes('ui'))\n"
-          "      .filter(({ id, t }) => !cmdIds.has(t.ref) && !handlerIds.has(t.ref))\n"
+          "      .filter(({ t }) => !cmdIds.has(t.ref) && !handlerIds.has(t.ref))\n"
           "      .map(({ id, t }) => `${id}→${t.ref}`)).toEqual([]);\n")
 DEAD_3 = ("    for (const { id, t } of tools.filter(({ t }) => t.surfaces.includes('ui')))\n"
           "      expect(`${id}→${t.ref} 在 commands: ` + cmdIds.has(t.ref)).toBeTruthy();\n")
