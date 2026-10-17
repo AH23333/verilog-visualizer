@@ -89,6 +89,12 @@
 | **W+S**（塞 `.v` 只为造出绑定式子部件） | r57-zoom-anchor-gate r61-dark-label-gate r62-sandbox-speed-gate r85-posfidelity-gate r135-svg-export-gate r135-part-search-gate | `createFile` + `setModuleBinding(...)` ⇒ 量的是子部件展开后的画布 | 编译走 W；子部件改由 H 截载荷 + S 播种（r42 L2→L3 那一段就是这条路） |
 
 颗数对账：11 + 6 = 17。⛔ 把这张表读成"17 颗都红"——红不红以本轮跑批读数为准（第 ⑤ 节）。
+分类用的是机械尺而非目测：那颗档里出现 `setModuleBinding` ⇒ 归「W+S」（它塞 `.v` 只是造出绑定式
+子部件，量的仍是画布），否则归「W」。两族名单（现读，按那颗尺重跑一遍可复现）：
+ · W（11）：r37-verify r40-verify r43e-verify r44-verify r46-menu-parity r50-ui-sim
+   r83-errorcopy-gate r92-routing-gate r99-ui-unify-gate r115-sidebar-align-gate selfaudit2-sandbox
+ · W+S（6）：r57-zoom-anchor-gate r61-dark-label-gate r62-sandbox-speed-gate r85-posfidelity-gate
+   r135-svg-export-gate r135-part-search-gate
 
 ## ⑤ 本轮全量跑批读数
 
