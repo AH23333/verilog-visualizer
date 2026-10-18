@@ -92,6 +92,9 @@ interface Props {
      */
     onFixBindings?(hits: Array<{ ctx: string; name: string; file: string }>): void;
   };
+  /** R160（问题S）：部件源换代计数——DocApp 收到宿主 siblings/bindingsChanged 时 bump，
+   *  画布据此重取 gates 清单（新建/删除/改名 .djs 后⛔ 再要求重开页）。 */
+  gatesEpoch?: number;
 }
 
 /**
@@ -102,7 +105,7 @@ interface Props {
 // loadCells 已抽至 src/lib/sandboxLoad.ts（R35）：文件装载 / 示例插入 /
 // 粘贴复制电路三个消费方共用一条实现，并支持 id 重映射与位置偏移。
 
-function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, onToggleSidebar, onExitSandbox, doc }: Props) {
+function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, onToggleSidebar, onExitSandbox, doc, gatesEpoch }: Props) {
   const circuitRef = useRef<any>(null);
   const paperRef = useRef<any>(null);
   const selectionRef = useRef<Set<string>>(new Set());
@@ -1510,6 +1513,12 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       if (f) setActiveFile(f);
     }
   }, [refreshList, refreshGates, refreshFolders]);
+
+  // R160（问题S）：部件源换代（宿主推 siblings / bindingsChanged）→ 重取 gates 清单
+  useEffect(() => {
+    if (gatesEpoch === undefined) return;
+    refreshGates();
+  }, [gatesEpoch, refreshGates]);
 
   // (Grid) Repaint the mesh on theme / settings change WITHOUT rebuilding the paper.
   useEffect(() => {

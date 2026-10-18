@@ -56,6 +56,8 @@ export default function DocApp() {
   const bindMapRef = useRef<Map<string, string>>(new Map());
   // R137：bindingsChanged 重灌时需要部件源的另一半——siblings 也留一份镜像
   const siblingsRef = useRef<Sibling[]>([]);
+  // R160（问题S）：部件源换代计数——宿主推 siblings 后踢 SandboxCanvas 重取 gates 清单
+  const [gatesEpoch, setGatesEpoch] = useState(0);
   const handleBind = useCallback((celltype: string, partName: string) => {
     bindMapRef.current.set(celltype, partName);
     // 落盘持久化：fire-and-forget；宿主按文档目录写 .verilogviz.json（watcher 会广播回来）
@@ -105,6 +107,14 @@ export default function DocApp() {
       } | undefined;
       if (!d) return;
       if (d.vvh === 'doc') {
+        // R160（问题S）：宿主 .djs 增删改后推最新部件源——重挂源并踢画布重取 gates 清单
+        if (d.op === 'siblings') {
+          const siblings = Array.isArray(d.siblings) ? d.siblings : [];
+          siblingsRef.current = siblings;
+          setPartFileSource(makePartSource(siblings, bindMapRef.current));
+          setGatesEpoch((n) => n + 1);
+          return;
+        }
         if (d.op === 'init' || d.op === 'revert') {
           // 部件解析源必须在画布装载前挂好（loadCells 解析实例时就要能查到定义）
           const siblings = Array.isArray(d.siblings) ? d.siblings : [];
@@ -133,6 +143,7 @@ export default function DocApp() {
           bindMapRef.current.clear();
           for (const [k, v] of Object.entries(saved || {})) bindMapRef.current.set(k, v);
           setPartFileSource(makePartSource(siblingsRef.current, bindMapRef.current));
+          setGatesEpoch((n) => n + 1);   // R160：circuits 名单变了＝role 可能翻面，gates 清单跟着重取
           // M6 收敛：伪 activeFile.partBindings（＝gateSystem.activePartBindings 供给源，
           // SandboxCanvas effect 消费）必须与链同步——此前只刷 map/源，手编后
           // resolvePartRef 的 -1 显式优先与审计 covered 判定吃的还是 init 旧表（过期单例）。
@@ -172,6 +183,7 @@ export default function DocApp() {
   return (
     <SandboxCanvas
       theme={theme}
+      gatesEpoch={gatesEpoch}
       doc={{
         name: doc.name, initialJson: doc.content,
         initialBindings: doc.initialBindings, onCommit: handleCommit, onBind: handleBind,

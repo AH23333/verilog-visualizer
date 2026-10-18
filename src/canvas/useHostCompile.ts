@@ -58,6 +58,9 @@ export function useHostCompile() {
       setProblems(parsed);
       hostFire('Failed to publish problems', (h) => h.publishProblems(parsed));
       setYosysLog((prev) => prev + '\n' + bindingErrors.map((m) => `[Error] ${m}`).join('\n') + '\n');
+      // R160（批1问题N）：编译拦下＝画布⛔ 再挂上一轮的旧图（真机实锤：broken.v 报错，
+      //   画布仍显 top.v 的电路＝"这破图是 broken.v 的？"误导）。与 catch 支同形清台。
+      setCircuitJson(null); setSrcFileMap({}); setNetlistVerilog(null);
       setCompiling(false);
       return;
     }
@@ -83,6 +86,7 @@ export function useHostCompile() {
       hostFire('Failed to publish problems', (h) => h.publishProblems(parsed));
       setYosysLog((prev) => prev + '\n' + log);
       hostFire('Failed to append output', (h) => h.appendOutput(log));
+      setCircuitJson(null); setSrcFileMap({}); setNetlistVerilog(null);   // R160 问题N：同上，拦下即清台
       setCompiling(false);
       return;
     }
@@ -105,6 +109,9 @@ export function useHostCompile() {
         hostFire('Failed to publish problems', (h) => h.publishProblems(parsed));
       } else {
         setProblems([]);
+        // R160（批1问题K）：⛔ 只清本地 state——上送空清单才会踢宿主 diag().clear()，
+        //   否则上一轮编译的错误永远挂在 Problems（真机实锤：画布已出新图，面板仍挂旧错）。
+        hostFire('Failed to publish problems', (h) => h.publishProblems([]));
       }
       setCompiling(false);
     } catch (err: any) {
