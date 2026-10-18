@@ -283,8 +283,8 @@ async function dispatchCore(context: vscode.ExtensionContext, method: string, ar
         written.push(name);
         if (it.key) keyToWritten.set(String(it.key), name);
       }
-      // 落表走 `setBindingInDir`（单层**合并一条**）⛔ `setDocBindings`（那是整表替换——
-      // 迁移是往用户已有的表里加条目，整表替换＝抹掉他手编过的其它绑定）。
+      // 落表走 `setBindingInDir`（单层**合并一条**）⛔ `setDocBindings`（那是画布折叠视图的
+      // 专用入口——v0.4 后只覆本档条目，但语义仍比"加一条"重；迁移是往用户已有的表里加条目）。
       // 旧档的部件语义只存在于 `.djs` 那半颗（`.v` 侧的 role/bindings 一律忽略）。
       const dangling: string[] = [];
       for (const [i, it] of items.entries()) {
@@ -298,7 +298,10 @@ async function dispatchCore(context: vscode.ExtensionContext, method: string, ar
         for (const [celltype, boundKey] of Object.entries(it.bindings || {})) {
           const target = keyToWritten.get(String(boundKey));
           if (!target) { dangling.push(`${mine} 的「${celltype}」`); continue; }   // ⛔ 落一条永远解不开的悬空绑定
-          await setBindingInDir(context, dirRel, celltype, target);
+          // R158（协议 §5 v0.4）：旧档的 partBindings 是**那颗文档**的绑定——产前缀键（宿主段相对本层），
+          // ⛔ 裸键＝把单文档的旧关系升成目录链全局规则（两域同名串味的写侧族）。部件身份那条（上）留裸：它本就是全局实现身份。
+          const base = mine.split('/').pop()!;
+          await setBindingInDir(context, dirRel, `${base}::${celltype}`, target);
         }
       }
       if (dangling.length) {
@@ -425,7 +428,7 @@ const RPC_SCHEMAS: Record<RpcMethod, { title: string; schema: ToolSchema }> = {
       type: 'object',
       properties: {
         docName: { type: 'string', description: '根相对文档路径；表落在它的目录层' },
-        bindings: { type: 'object', description: '⚠ 整表替换那颗目录的 bindings（手编条目会没）；单条改动走宿主内直调 setBindingInDir' },
+        bindings: { type: 'object', description: '只覆写**本文档**的条目（v0.4：别档前缀键⛔ 落本表、手编条目一颗不碰；本档一律产前缀键）' },
       },
     },
   },

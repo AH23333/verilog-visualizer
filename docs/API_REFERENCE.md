@@ -646,7 +646,7 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
     },
     "bindings": {
       "type": "object",
-      "description": "⚠ 整表替换那颗目录的 bindings（手编条目会没）；单条改动走宿主内直调 setBindingInDir"
+      "description": "只覆写**本文档**的条目（v0.4：别档前缀键⛔ 落本表、手编条目一颗不碰；本档一律产前缀键）"
     }
   }
 }

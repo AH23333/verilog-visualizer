@@ -179,16 +179,35 @@ function resolveLayerValue(dir: string, value: string): string {
   return out.join('/');
 }
 
-/** 兼容旧 RPC 形状：docName 的目录表整表替换 bindings（map 值＝根相对 → 相对化写入）。 */
+/** 画布 RPC（兼容旧形状）：**只覆写本文档的条目**（R158/协议 §5 v0.4——⛔ 整表替换）。
+ *  入站 map＝画布手里的折叠视图（裸键＋根相对前缀键）：别档前缀键⛔ 落本层表（修前画布
+ *  一次放置把整张折叠表原样拍回目录＝两域内容互拍的污染主源）；本档条目一律产前缀键。 */
 export async function setDocBindings(context: vscode.ExtensionContext, docName: string, bindings: Record<string, string>): Promise<void> {
   const root = projectRoot(context);
   const docRel = docName ? (pathRel(root, vscode.Uri.joinPath(root, docName)) || docName) : '';
+  if (!docRel) return;                                       // ⛔ 无名文档＝没资格写表（旧形状里这颗静默建根表是事故）
   const dir = docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '';
+  const base = relFrom(dir, docRel);                         // 宿主段（相对本层）
   const meta = (await readMetaAt(context, dir)) || { circuits: [], bindings: {} };
-  const next: Record<string, string> = {};
+  const incoming = new Map<string, string>();                // 实例名 → 值（根相对，待相对化）
   for (const [k, v] of Object.entries(bindings || {})) {
+    if (!k) continue;
     const full = normalizePartName(String(v || ''));
-    if (full) next[k] = dir && full.startsWith(`${dir}/`) ? full.slice(dir.length + 1) : relFrom(dir, full);
+    if (!full) continue;
+    if (k.includes('::')) {
+      if (k.slice(0, k.lastIndexOf('::')) !== docRel) continue;   // 别档的前缀键＝折叠视图的过路客，⛔ 进本表
+      incoming.set(k.slice(k.lastIndexOf('::') + 2), full);
+    } else incoming.set(k, full);                            // 裸入站＝本档现生效绑定 → 固化成前缀键
+  }
+  const next: Record<string, string> = {};
+  for (const [k, v] of Object.entries(meta.bindings || {})) {
+    const host = k.includes('::') ? k.slice(0, k.lastIndexOf('::')) : '';
+    const inst = k.includes('::') ? k.slice(k.lastIndexOf('::') + 2) : k;
+    if (host === base && incoming.has(inst)) continue;       // 只顶被重写的本档条目
+    next[k] = String(v);
+  }
+  for (const [inst, full] of incoming) {
+    next[`${base}::${inst}`] = dir && full.startsWith(`${dir}/`) ? full.slice(dir.length + 1) : relFrom(dir, full);
   }
   meta.bindings = next;
   await writeMeta(context, meta, dir);
@@ -450,7 +469,8 @@ export async function materializeBindings(
     if (recorded[name] || recorded[`${docRel}::${name}`]) continue;   // 已录入（裸或本层前缀精控）⇒ ⛔ 覆写
     const hit = await resolver(name);
     if (!hit) continue;                                      // 自动也解不到＝没什么可固化
-    await setBindingInDir(context, dir, name, hit);
+    // R158（协议 §5 v0.4）：固化产**前缀键**（宿主段相对本层）——裸键＝全局规则，⛔ 机器发明
+    await setBindingInDir(context, dir, `${relFrom(dir, docRel)}::${name}`, hit);
     done.push(`${name} → ${hit.replace(/^.*\//, '')}`);
   }
   void root;
@@ -485,17 +505,12 @@ export async function completeFromHits(
     byName.set(h.name, list);
   }
   const done: string[] = [];
+  // R158（协议 §5 v0.4）：机器写一律**前缀键**——修前"单一命中产裸键"＝把本档的解析写成
+  //   链上全局规则，编译/沙盒两域同名实例被无声顶替（用户实锤"两域配置串味"的写侧根因）。
   for (const [name, hits] of byName) {
-    const files = [...new Set(hits.map((h) => h.file))];
-    const topOnly = hits.every((h) => h.ctx === docRel);
-    if (files.length === 1 && topOnly) {
-      await setBindingInDir(context, dir, name, files[0]);
-      done.push(`${name} → ${files[0]}`);
-    } else {
-      for (const h of hits) {
-        await setBindingInDir(context, dir, `${relFrom(dir, h.ctx)}::${name}`, h.file);
-        done.push(`${h.ctx}::${name} → ${h.file}`);
-      }
+    for (const h of hits) {
+      await setBindingInDir(context, dir, `${relFrom(dir, h.ctx)}::${name}`, h.file);
+      done.push(`${h.ctx}::${name} → ${h.file}`);
     }
   }
   return done;

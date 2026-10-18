@@ -474,8 +474,9 @@ describe('RPC 九颗（片 5 收面后 Panel 侧的真通道形状；颗数由�
     // 两颗部件各自把"我就是 adder 这个实现"录进**所在目录**的表（值按层目录相对化，与 copyToSandbox 同源）
     expect(partsTable.bindings).toEqual({ adder: 'adder.djs', full_adder: 'full_adder.djs' });
     const rootTable = JSON.parse(readText('D:/p/.verilogviz.json'));
-    // 顶层档那条显式绑定跟着搬：值＝批内那颗的**落盘名**（重名被改过也连得上，⛔ 认旧 id）
-    expect(rootTable.bindings.adder).toBe('parts/adder.djs');
+    // 顶层档那条显式绑定跟着搬：R158/协议 v0.4＝**文档级前缀键**（⛔ 裸键把单文档旧关系升成链上全局规则）；
+    // 值＝批内那颗的**落盘名**（重名被改过也连得上，⛔ 认旧 id）
+    expect(rootTable.bindings['top.djs::adder']).toBe('parts/adder.djs');
     // 负件：解不到的绑定 id⛔ 进表（进了就是永远解不开的悬空项），但必须在 Output 里说一句话
     expect(rootTable.bindings.ghost).toBeUndefined();
     expect(partsTable.bindings.ghost).toBeUndefined();
@@ -1032,10 +1033,10 @@ describe('双容器六树的台架驱动（片 5-B）', () => {
     partQp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
-    expect(meta.bindings).toEqual({ counter: 'parts/adder.djs' });
+    expect(meta.bindings).toEqual({ 'main.djs::counter': 'parts/adder.djs' });   // R158 机器写＝前缀键（宿主段相对本层）
     // 写后一级清单**保持开着**并刷新该行状态（已录 → parts/adder.djs）
     expect(qp.hidden).toBe(false);
-    expect(qp.items.find((i: any) => i.label === 'counter').detail).toContain('已录 → parts/adder.djs');
+    expect(qp.items.find((i: any) => i.label === 'counter').detail).toContain('已录（本文件） → parts/adder.djs');
     // Esc 主弹窗＝会话收；再调命令＝新会话（singleton：旧颗先 dispose，⛔ 叠第二颗）
     qp.hide();
     expect(qp.disposed).toBe(true);
@@ -1059,8 +1060,8 @@ describe('双容器六树的台架驱动（片 5-B）', () => {
     partQp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
-    expect(meta.bindings.adder).toBe('lib/adder.v');  // ⛔ 强加 .djs 尾，也⛔ 只有 .djs 可挑
-    expect(meta.bindings.top).toBeUndefined();        // 顶层模块⛔ 进绑定表
+    expect(meta.bindings).toEqual({ 'top.v::adder': 'lib/adder.v' });   // R158 机器写＝前缀键；⛔ 强加 .djs 尾，也⛔ 只有 .djs 可挑
+    expect(meta.bindings['top.v::top']).toBeUndefined();                // 顶层模块⛔ 进绑定表
   });
 
   it('深度自检新增（R153）：未录入实例那一行亮得出「自动同名 → lib/adder.v」（修前恒 null；R157⑥ 迁进弹窗 detail）', async () => {
@@ -1231,7 +1232,7 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     partQp.activeItems = [partQp.items.find((i: any) => i.label === 'lib/full.djs')];   // 根相对写入，表逻辑折成同目录裸名
     partQp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    expect(readMetaFile('D:/p/lib/.verilogviz.json').bindings).toEqual({ half: 'full.djs' });  // 同目录部件存裸名（相对本层）
+    expect(readMetaFile('D:/p/lib/.verilogviz.json').bindings).toEqual({ 'top.djs::half': 'full.djs' });  // 前缀键宿主段＋同目录部件裸名值（均相对本层）
     expect(vscode.state.files.has(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())).toBe(false);
   });
 
@@ -1248,13 +1249,24 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
       .toEqual({ counter: 'shared/counter.djs', adder: 'shared/adder.djs' });      // 旧调用＝根表语义
   });
 
-  it('setDocBindings 落文档目录层：整表替换、值相对化，读回 round-trip 一致', async () => {
-    await boot({ folders: ['D:/p'], seed: { 'D:/p/sub/top.djs': '{"cells":[]}' } });
+  it('setDocBindings 落文档目录层：⛔ 整表替换只覆本档条目、值相对化，读回 round-trip 一致', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/sub/top.djs': '{"cells":[]}',
+      'D:/p/sub/.verilogviz.json': JSON.stringify({ bindings: { 'other.djs::z': 'z.djs', g: 'shared/g.djs', 'top.djs::old': 'gone.djs' } }),
+    } });
     const panel = vscode.state.panels[0];
     await rpc(panel, 'setDocBindings', { docName: 'sub/top.djs', bindings: { a: 'shared/x.djs', b: 'sub/y.djs' } });
-    expect(readMetaFile('D:/p/sub/.verilogviz.json').bindings).toEqual({ a: '../shared/x.djs', b: 'y.djs' });
+    // R158/协议 v0.4：⛔ 整表替换——只覆写**本档被重写的实例**条目（前缀键、宿主段相对本层）；
+    // 别档键、全局裸键、本档未涉及的旧条目（`top.djs::old`）一颗不碰
+    expect(readMetaFile('D:/p/sub/.verilogviz.json').bindings).toEqual({
+      'other.djs::z': 'z.djs', g: 'shared/g.djs', 'top.djs::old': 'gone.djs',
+      'top.djs::a': '../shared/x.djs', 'top.djs::b': 'y.djs',   // 本档新条目（值按层相对）
+    });
     const back = await rpc(panel, 'getAllBindings', { doc: 'sub/top.djs' });
-    expect(back.data).toEqual({ a: 'shared/x.djs', b: 'sub/y.djs' });               // `../` 折回根相对
+    expect(back.data).toEqual({                            // 读回＝折叠视图（前缀宿主按层折回根相对；裸值按层折回根相对）
+      'sub/other.djs::z': 'sub/z.djs', g: 'sub/shared/g.djs', 'sub/top.djs::old': 'sub/gone.djs',
+      'sub/top.djs::a': 'shared/x.djs', 'sub/top.djs::b': 'sub/y.djs',
+    });                                                    // `../` 折回根相对
   });
 
   it('normalizePartName：剥双 `.djs` 扩展 ⇒ 单尾；⛔ 给 .v/.gate 部件强加 `.djs` 尾（"绑了没反应"真根源）', async () => {
@@ -1468,7 +1480,7 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     expect(meta.schemaVersion).toBe('0.3.1');
     expect(meta.meta).toEqual({ owner: 'lin' });
     const libMeta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/lib/.verilogviz.json').path.toLowerCase())!));
-    expect(libMeta.bindings.mux).toBe('mux.djs');                    // 写全成行，落 lib 层表（值相对本层）
+    expect(libMeta.bindings['top.djs::mux']).toBe('mux.djs');              // 写全成行＝前缀键（v0.4），落 lib 层表（值相对本层）
     expect(libMeta.circuits).toEqual([]);                            // ensure 新表带缺省，正事之外⛔ 臆造
     // 通道二：M7 清扫（表含脏值 ⇒ 写回，头部仍在且键序 $schema 在前）
     fs_noop();
@@ -1526,7 +1538,7 @@ describe('R144 质检轮：记录即权威 + 自动兜底显形 + 右键/新建�
     } });
     await vscode.commands.executeCommand('verilogViz.materializeBindings', vscode.Uri.file('D:/p/lib/top.djs'));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/lib/.verilogviz.json').path.toLowerCase())!));
-    expect(meta.bindings).toEqual({ adder: 'add.djs', counter: 'counter.djs' });   // 只固化未录入的
+    expect(meta.bindings).toEqual({ adder: 'add.djs', 'top.djs::counter': 'counter.djs' });   // 只固化未录入的（v0.4＝前缀键）
     expect(vscode.state.infoMessages.some((m: string) => m.includes('已固化 1 条'))).toBe(true);
   });
 
@@ -1724,7 +1736,7 @@ describe('R145 多层电路绑定表达（`宿主文档::实例名` 前缀键—
     partQp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
-    expect(meta.bindings.adder).toBe('alt/alt_impl.v');    // 串过桩的成员校验＝二级清单确是 Verilog 那颗（⛔ .djs 清单）
+    expect(meta.bindings['top.v::adder']).toBe('alt/alt_impl.v');   // R158 前缀键；串过桩的成员校验＝二级清单确是 Verilog 那颗（⛔ .djs 清单）
     await vscode.commands.executeCommand('verilogViz.compileAndShow', vscode.Uri.file('D:/p/top.v'));
     const names = (compilePush()?.files || []).map((f: any) => f.name);
     expect(names).toContain('alt/alt_impl.v');
@@ -1749,7 +1761,7 @@ describe('R146/R147 绑定完整性（配置不齐＝可见、可一键写全、
     await vscode.commands.executeCommand('verilogViz.auditBindings', vscode.Uri.file('D:/p/top.djs'));
     expect(vscode.state.warnMessages.filter((m: string) => m.includes('1 个子部件实例')).length).toBe(1);   // 只剩 counter 未录
     const meta = metaOf('D:/p/.verilogviz.json');
-    expect(meta.bindings).toEqual({ adder: 'adder.djs', counter: 'parts/counter.djs' });                   // 写全（值根相对→按层相对由表逻辑处理）
+    expect(meta.bindings).toEqual({ adder: 'adder.djs', 'top.djs::counter': 'parts/counter.djs' });   // 写全＝前缀键（v0.4）；已录的裸键原样不动
     expect(metaOf('D:/p/parts/.verilogviz.json')).toBeUndefined();                                          // ⛔ 往部件所在目录乱建
   });
 
@@ -1765,7 +1777,7 @@ describe('R146/R147 绑定完整性（配置不齐＝可见、可一键写全、
     expect(hits.find((h: any) => h.name === 'adder')!.file).toBe('sub/adder.djs');
   });
 
-  it('写全规则：同实例名跨层命中不同文件 ⇒ 全部前缀键（裸键会越权顶别层）；单一命中才裸', async () => {
+  it('写全规则（v0.4）：一律前缀键——⛔ 裸键（单一命中也不产：裸＝把本档解析升成链上全局规则）', async () => {
     await boot({ folders: ['D:/p'], seed: { 'D:/p/main.djs': '{"cells":[]}' } });
     const { completeFromHits } = await import('../../extension/src/sandboxFiles');
     const written = await completeFromHits({ extensions: {} } as any, 'main.djs', [
@@ -1777,8 +1789,9 @@ describe('R146/R147 绑定完整性（配置不齐＝可见、可一键写全、
     const meta = metaOf('D:/p/.verilogviz.json');
     expect(meta.bindings['main.djs::adder']).toBe('root_adder.djs');
     expect(meta.bindings['sub/ctrl.djs::adder']).toBe('sub/adder.djs');
-    expect(meta.bindings.mux).toBe('lib/mux.djs');          // 唯一宿主+唯一文件 ⇒ 裸键够用
-    expect(meta.bindings.adder).toBeUndefined();            // ⛔ 冲突项留裸键＝越权
+    expect(meta.bindings['main.djs::mux']).toBe('lib/mux.djs');   // 单一命中也前缀——文件级作用域（v0.4）
+    expect(meta.bindings.adder).toBeUndefined();                  // ⛔ 任何裸键
+    expect(meta.bindings.mux).toBeUndefined();
   });
 
   it('R152 默认绑定权威：未录入实例 ⇒ 红字 + 同名兜底断供（无须 policy）', async () => {
@@ -1839,7 +1852,7 @@ describe('R146/R147 绑定完整性（配置不齐＝可见、可一键写全、
     await new Promise((r) => setTimeout(r, 0));
     panel.fired[0]({ vvh: 'doc', op: 'completeBindings', docName: 'top.djs', hits: [{ ctx: 'top.djs', name: 'counter', file: 'parts/counter.djs' }] });
     await new Promise((r) => setTimeout(r, 0));
-    expect(metaOf('D:/p/.verilogviz.json').bindings).toEqual({ counter: 'parts/counter.djs' });
+    expect(metaOf('D:/p/.verilogviz.json').bindings).toEqual({ 'top.djs::counter': 'parts/counter.djs' });   // 画布写全＝前缀键（v0.4）
     expect(panel.messageLog.some((m: any) => m.vvh === 'doc' && m.op === 'bindingsWritten')).toBe(true);
     // 回执＝"写完"通知；⛔ 伴随 revert/init 重推（remount 吞编辑那一族被这条路堵死后门）
     expect(panel.messageLog.filter((m: any) => m.op === 'revert' && m.vvh === 'doc')).toHaveLength(0);
@@ -2008,7 +2021,7 @@ describe('诊断锚点 + 写前校验（2026-10-17 用户五连投诉：报错�
     partQp2.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
-    expect(meta.bindings.counter).toBe('parts/adder.djs');
+    expect(meta.bindings['main.djs::counter']).toBe('parts/adder.djs');   // R158 前缀键
   });
 });
 
@@ -2253,8 +2266,8 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
       const partsTable = JSON.parse(readText('D:/p2/parts/.verilogviz.json'));
       expect(partsTable.bindings).toEqual({ adder: 'adder.djs', full_adder: 'full_adder.djs' });
       const rootTable = JSON.parse(readText('D:/p2/.verilogviz.json'));
-      // ctrl.djs 那条"我要用 parts/adder"跨档连到了那颗部件的**落盘名**——接缝的两端都是真的
-      expect(rootTable.bindings.adder).toBe('parts/adder.djs');
+      // ctrl.djs 那条"我要用 parts/adder"跨档连到了那颗部件的**落盘名**——接缝的两端都是真的（v0.4＝文档级前缀键）
+      expect(rootTable.bindings['ctrl.djs::adder']).toBe('parts/adder.djs');
     } finally {
       delete (globalThis as any).localStorage;
     }
@@ -2425,7 +2438,7 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
     const r = await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.materialize', { doc: 'main.djs' }) as any;
     expect(r.done.length).toBe(1);
-    expect(readMetaFile('D:/p/.verilogviz.json').bindings.half).toBe('half.djs');
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings['main.djs::half']).toBe('half.djs');   // R158 固化＝前缀键
   });
 
   it('深度自检新增（R153）：bindings.materialize 的 **.v 侧**真落表（修前按构造恒 0 颗＝点了没反应）', async () => {
@@ -2439,7 +2452,7 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
     const r = await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.materialize', { doc: 'top.v' }) as any;
     expect(r.done).toEqual(['adder → adder.v']);             // 形状＝`名 → 末段名`（面板直接念它）
-    expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ adder: 'lib/adder.v' });
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ 'top.v::adder': 'lib/adder.v' });   // R158 固化＝前缀键
   });
 
   it('批次二·circuits 族：list 空账 / toggle 翻转进名单 / 翻回', async () => {
@@ -2663,7 +2676,7 @@ describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树
       'D:/p/fresh/counter.djs': '{"cells":[]}',
     } });
     await vscode.commands.executeCommand('verilogViz.openBindingConfig', vscode.Uri.file('D:/p/fresh/new.djs'));
-    expect(diskMeta('D:/p/fresh/.verilogviz.json').bindings).toEqual({ counter: 'counter.djs' });   // 值按表层相对
+    expect(diskMeta('D:/p/fresh/.verilogviz.json').bindings).toEqual({ 'new.djs::counter': 'counter.djs' });   // 建表即写全＝前缀键（v0.4），值按表层相对
     expect(vscode.state.infoMessages.some((m: string) => m.includes('绑定配置＝'))).toBe(true);
   });
 
@@ -2673,7 +2686,7 @@ describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树
     expect(diskMeta('D:/p/fresh/.verilogviz.json').bindings).toEqual({});
   });
 
-  it('④ 绑定弹窗多层点名：孙层进账（深层行带 宿主::前缀键）；写回按**表层相对**折键', async () => {
+  it('④ 绑定弹窗文件级点名（R158 裁决）：只列本档实例；写回按**表层相对**折前缀键', async () => {
     await boot({ folders: ['D:/p'], seed: {
       'D:/p/sub/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"ctrl"}]}',
       'D:/p/sub/ctrl.djs': '{"cells":[{"type":"Subcircuit","celltype":"adder"}]}',
@@ -2681,20 +2694,19 @@ describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树
     } });
     await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/sub/main.djs'));
     const qp = vscode.state.quickPicks[0];
-    expect(qp.items.filter((i: any) => i.key).map((i: any) => i.key).sort()).toEqual(['ctrl', 'sub/ctrl.djs::adder']);
-    // 深层行标注宿主文件（"部件显示不全"的另一半：看得见才知道要录）
-    const deep = qp.items.find((i: any) => i.key === 'sub/ctrl.djs::adder');
-    expect(deep.description).toContain('ctrl.djs');
-    qp.activeItems = [deep];
+    // R158 文件级作用域（用户裁决）：main.djs 的弹窗＝它自己的实例清单——
+    //   ⛔ 深层 ctrl 内部的 adder 进账（那是"正在渲染的电路"的账，归画布提示条/audit，全层 BFS 那格盯着）
+    expect(qp.items.filter((i: any) => i.key).map((i: any) => i.key)).toEqual(['sub/main.djs::ctrl']);
+    qp.activeItems = [qp.items[0]];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const partQp = vscode.state.quickPicks[1];
-    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'sub/adder.djs')];   // 候选＝根相对名
+    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'sub/ctrl.djs')];   // 候选＝根相对名
     partQp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = diskMeta('D:/p/sub/.verilogviz.json');
-    expect(meta.bindings['ctrl.djs::adder']).toBe('adder.djs');   // 键与值都按表层相对进表（读侧折叠的镜像）
-    expect(meta.bindings['sub/ctrl.djs::adder']).toBeUndefined(); // ⛔ 根相对原样进表＝读侧折成 sub/sub 的错位
+    expect(meta.bindings['main.djs::ctrl']).toBe('ctrl.djs');   // 键与值都按表层相对进表（读侧折叠的镜像）
+    expect(meta.bindings['sub/main.djs::ctrl']).toBeUndefined(); // ⛔ 根相对原样进表＝读侧折成 sub/sub 的错位
   });
 
   it('⑤ 层次树点行带实例名 ⇒ 弹窗聚焦那颗行（activeItems resolve 到写回主键；第二参⛔ 动第一参旧形状）', async () => {
@@ -2713,9 +2725,44 @@ describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树
     await vscode.commands.executeCommand('verilogViz.bindParts', { label: 'ctrl', desc: '', kind: 'instance' });
     let qp = vscode.state.quickPicks[0];
     expect(qp.title).toContain('main.djs');
-    expect(qp.activeItems.map((i: any) => i.key)).toEqual(['ctrl']);
-    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/sub/main.djs'), 'adder');
+    expect(qp.activeItems.map((i: any) => i.key)).toEqual(['sub/main.djs::ctrl']);   // 裸实例名 resolve 到写回主键
+    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/sub/main.djs'), 'ctrl');
     qp = vscode.state.quickPicks[1];   // 新会话顶掉旧会话（singleton）
-    expect(qp.activeItems.map((i: any) => i.key)).toEqual(['sub/ctrl.djs::adder']);   // 裸实例名 resolve 到深层行的写回主键
+    expect(qp.activeItems.map((i: any) => i.key)).toEqual(['sub/main.djs::ctrl']);
+  });
+
+  it('⑥ R158 文件级作用域（.v 侧）：弹窗只列本文件例化行（⛔ 闭包全文件 tally）＋候选只列编译域', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); endmodule',
+      'D:/p/adder.v': 'module adder; full_adder f1(); endmodule',   // 深层：full_adder 是 adder.v 的内部实例
+      'D:/p/full_adder.v': 'module full_adder; endmodule',
+      'D:/p/parts/counter.djs': '{"cells":[]}',
+    } });
+    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/top.v'));
+    const qp = vscode.state.quickPicks[0];
+    // 修前＝闭包 tally：top.v 的 adder + adder.v 的 full_adder 全上榜（"任何文件都丢全量"）
+    expect(qp.items.filter((i: any) => i.key).map((i: any) => i.label)).toEqual(['adder']);
+    qp.activeItems = [qp.items[0]];
+    qp.accept();
+    await new Promise((r) => setTimeout(r, 0));
+    const labels = vscode.state.quickPicks[1].items.map((i: any) => i.label);
+    expect(labels).toContain('adder.v');                       // 编译域候选在册
+    expect(labels).not.toContain('parts/counter.djs');          // ⛔ 沙盒域文件混进 .v 弹窗（两域混用观感主源）
+  });
+
+  it('⑦ R158 候选分域（.djs 侧）：部件弹窗⛔ 列 .v 文件', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"adder"}]}',
+      'D:/p/adder.v': 'module adder; endmodule',
+      'D:/p/alt_impl.djs': '{"cells":[]}',
+    } });
+    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/main.djs'));
+    const qp = vscode.state.quickPicks[0];
+    qp.activeItems = [qp.items[0]];
+    qp.accept();
+    await new Promise((r) => setTimeout(r, 0));
+    const labels = vscode.state.quickPicks[1].items.map((i: any) => i.label);
+    expect(labels).toContain('alt_impl.djs');
+    expect(labels).not.toContain('adder.v');                    // ⛔ 编译域文件混进沙盒弹窗
   });
 });

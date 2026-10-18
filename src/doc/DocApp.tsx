@@ -59,8 +59,10 @@ export default function DocApp() {
   const handleBind = useCallback((celltype: string, partName: string) => {
     bindMapRef.current.set(celltype, partName);
     // 落盘持久化：fire-and-forget；宿主按文档目录写 .verilogviz.json（watcher 会广播回来）
+    // R158（协议 §5 v0.4）：只交**这一条**改动（⛔ 整张折叠 map——那会把祖先表的全局裸键
+    //   原样拍进本档目录层，v0.4 的 setDocBindings 虽会折成本档前缀键，但一次放置抄全表＝噪音）。
     const name = docNameRef.current;
-    if (name) hostFire('Failed to save doc bindings', (h) => h.setDocBindings(name, Object.fromEntries(bindMapRef.current)));
+    if (name) hostFire('Failed to save doc bindings', (h) => h.setDocBindings(name, { [celltype]: partName }));
   }, []);
   // doc 名字的镜像（handleBind 落盘要用；⛔ 进 useCallback 依赖）
   const docNameRef = useRef<string>('');

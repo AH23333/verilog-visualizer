@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
 import { vscodeFs } from './dispatch';
-import { bindingsForFile, setBinding, META_FILE, openBindingConfig, collectInstanceHits, relFrom } from './sandboxFiles';
-import { closureOf, scanDefs } from './compilePanel';
+import { bindingsForFile, setBinding, META_FILE, openBindingConfig, relFrom } from './sandboxFiles';
+import { scanDefs } from './compilePanel';
 import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
 import { ProjectStore } from './projectStore';
 import { isBindingTargetValue, isVerilogPath, rootRel } from './verilogDomain';
@@ -23,10 +23,12 @@ export interface BindingInstance {
   count?: number;
   auto: string | null;
   recorded: string | null;
-  /** 2026-10-18 多层点名：深层行的宿主文件（根相对）；顶层行不带＝形状向后兼容 */
+  /** 2026-10-18 多层点名：深层行的宿主文件（根相对）——R158 后弹窗⛔ 列深层行，字段留作形状兼容 */
   ctx?: string;
-  /** 写回/选中主键：顶层＝裸 name；深层＝`宿主::实例` 前缀键（表语义同一把尺） */
+  /** 写回/选中主键（R158 起一律＝`<本档根相对名>::<实例名>`，写表层由 tableKey 折成本层相对） */
   key?: string;
+  /** recorded 的出处：local＝本档前缀键；global＝链上裸键（手编/agent 全局录）——弹窗 detail 分标 */
+  recordedScope?: 'local' | 'global';
 }
 export interface BindingData {
   docRel: string;
@@ -60,6 +62,9 @@ export async function bindingDataFor(context: vscode.ExtensionContext, uri: vsco
     const parts = sandboxFiles
       .filter((n) => n.toLowerCase() !== docRel.toLowerCase())
       .sort((a, b) => a.localeCompare(b));
+    // R158 文件级作用域（协议 §5 v0.4，用户实机裁决）：⛔ 深层部件的内部实例进账——那是
+    //   "正在渲染的电路"的账，归画布提示条与 audit 命令（collectInstanceHits 两本全层账⛔ 动）。
+    //   弹窗丢全层账＝"任何文件点开都近似全量表"的根因之一。
     const instances: BindingInstance[] = [...tally].map(([name, count]) => {
       const recKey1 = `${docRel}::${name}`;
       const rec = recorded[recKey1] || recorded[name] || null;
@@ -67,23 +72,8 @@ export async function bindingDataFor(context: vscode.ExtensionContext, uri: vsco
       if (sandboxFiles.includes(`${dir}/${name}.djs`)) auto = `${dir}/${name}.djs`;
       else if (dir && sandboxFiles.includes(`${name}.djs`)) auto = `${name}.djs`;
       else if (sandboxFiles.includes(`${name}.djs`)) auto = `${name}.djs`;
-      return { name, count, auto, recorded: rec };
+      return { name, count, auto, recorded: rec, recordedScope: recorded[recKey1] ? 'local' : recorded[name] ? 'global' : undefined, key: recKey1 };
     });
-    // 多层点名（2026-10-18）：顶层⛔ 是画布的全部——部件文件的**内部实例**同样要录、要能在这张面板改。
-    //   行数据直接吃 `collectInstanceHits({all:true})`（宿主模拟画布解析链的**同一颗主人**，⛔ 第二份打分表）。
-    try {
-      const deep = await collectInstanceHits(context, docRel, { all: true });
-      const seenKey = new Set<string>();
-      for (const h of deep) {
-        if (h.ctx === docRel) continue;                                    // 顶层行 tally 已聚合
-        const key = `${h.ctx}::${h.name}`;
-        if (seenKey.has(key)) continue;
-        seenKey.add(key);
-        const rec = recorded[key] || null;
-        instances.push({ name: h.name, ctx: h.ctx, key,
-          auto: rec ? null : (h.file || null), recorded: rec });
-      }
-    } catch { /* 深层读不到盘＝只展顶层，⛔ 整颗面板挂掉 */ }
     return {
       docRel,
       docName: docRel,
@@ -93,24 +83,21 @@ export async function bindingDataFor(context: vscode.ExtensionContext, uri: vsco
       meta: `${dir ? dir + '/' : ''}${META_FILE}`,
     };
   } else {
-    const job = await closureOf(context, uri);
+    // R158 文件级作用域：只列**本文件**文本里的例化行（⛔ 闭包全文件 tally——
+    //   修前右键 top.v 连 adder.v 里的 full_adder 都上榜，每档弹窗近乎同表＝"丢出所有绑定内容"）。
+    const content = new TextDecoder().decode(await then(vscode.workspace.fs.readFile(uri)));
     const tally = new Map<string, number>();
-    for (const f of job.files) {
-      for (const i of parseVerilogInstances(f.content)) {
-        if (i !== job.topModule) tally.set(i, (tally.get(i) || 0) + 1);
-      }
-    }
+    for (const i of parseVerilogInstances(content)) tally.set(i, (tally.get(i) || 0) + 1);
     const tree = await store.listTree();
-    const sandbox = await store.listSandboxTree();
-    const vparts = tree.files.map((f) => f.name);
-    const sparts = sandbox.files.map((f) => f.name);
-    const parts = [...vparts, ...sparts]
-      .filter((n, idx, arr) => arr.findIndex((x) => x === n) === idx)
+    // 候选分域（协议 §5 v0.4）：.v 弹窗只列编译域（.v/.sv/.vh）——修前 .djs 混进候选是
+    //   "编译/沙盒配置混用"观感的一半；跨域值（M2：.v 实例→.djs 实现）手编专属。
+    const parts = tree.files.map((f) => f.name)
       .filter((n) => n.toLowerCase() !== docRel.toLowerCase())
       .sort((a, b) => a.localeCompare(b));
     // 「自动同名」的一颗主人＝`scanDefs`（模块名 → **真定义它的文件**，全工作区扫，与「写全配置」同源）。
     // 修前这里拿闭包 `job.files` 建索引：闭包只含**已录入绑定**的文件，而这一栏是给**未录入**实例看的
     // ⇒ 按构造永远命不中（面板对每个未录入实例一直报"未绑定"，盘上明明有那颗实现文件看不见）。
+    // ⛔ 再回落 .djs 同名：编译侧 closureOf 对未录入实例是断供报错（R152），显示一本用不上的账＝撒谎。
     const defRel = new Map<string, string>();
     for (const [mod, defUri] of await scanDefs()) defRel.set(mod, rel(root, defUri));
     const instances: BindingInstance[] = [...tally].map(([name, count]) => {
@@ -120,11 +107,7 @@ export async function bindingDataFor(context: vscode.ExtensionContext, uri: vsco
       const rec = recRaw && isBindingTargetValue(recRaw) ? recRaw : null;
       let auto: string | null = defRel.get(name) ?? null;
       if (auto === docRel) auto = null;                     // ⛔ 把自己录成部件
-      if (!auto) {
-        if (sparts.includes(`${dir}/${name}.djs`)) auto = `${dir}/${name}.djs`;
-        else if (sparts.includes(`${name}.djs`)) auto = `${name}.djs`;
-      }
-      return { name, count, auto, recorded: recRaw && !auto && !rec ? recRaw : (rec || null) };
+      return { name, count, auto, recorded: recRaw && !auto && !rec ? recRaw : (rec || null), recordedScope: recorded[recKey1] ? 'local' : recorded[name] ? 'global' : undefined, key: recKey1 };
     });
     return {
       docRel,
@@ -191,10 +174,11 @@ export async function openBindingPicker(context: vscode.ExtensionContext, uri: v
       ...data.instances.map((i): BindingPick => ({
         label: i.name,
         description: i.ctx ? `在 ${basename(i.ctx)} 内` : (typeof i.count === 'number' ? `×${i.count}` : ''),
-        detail: i.recorded ? `已录 → ${i.recorded}`
-          : i.auto ? `自动同名 → ${i.auto}（未录入；选部件即固化）`
-          : '未绑定——选一个部件文件写入绑定表',
-        key: i.key ?? i.name,
+        detail: i.recorded
+          ? `${i.recordedScope === 'global' ? '已录（全局裸键）' : '已录（本文件）'} → ${i.recorded}`
+          : i.auto ? `自动同名 → ${i.auto}（未录入；选部件即固化为本文件记录）`
+          : '未绑定——选一个部件文件写入本文件记录',
+        key: i.key ?? `${data.docRel}::${i.name}`,
       })),
       { label: '$(gear) 打开绑定配置（.verilogviz.json 手改）', detail: data.meta, cfg: true },
     ];
