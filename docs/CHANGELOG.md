@@ -7,6 +7,37 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R159：真宿主集成测试上线 + "越修越坏"四刀（2026-10-18 夜）
+
+> 用户令"穷尽所有测试手段"。台架全绿而真机断裂的根因＝**假件与真宿主语义分岔**——本批把
+> "真 VS Code 那边会怎么干"变成可命令化验证（`tests/integration`，基座 electron `--extensionTestsPath`，
+> 窗口自起自退），并当场揪出三族分岔。
+
+### Added
+- **真宿主集成 harness**（`tests/integration/run.cjs`+`suite.cjs`，`node tests/integration/run.cjs`）：
+  扩展真激活 / 语言真注册（languageId=verilog）/ custom editor 真打开 / QuickPick 叠放证人 / bindParts 命令路；
+  **console 哨兵**四颗（acquire 双拿、贡献点形状病、CSP 违规、菜单引未声明命令）——回潮即判红。
+
+### Fixed（四刀，每刀独立提交）
+- **弹窗叠放（e4483cb）**：真宿主实锤"同一时刻只显示一颗 QuickPick"（本跑证人：二级 show 顶没一级→onDidHide→dispose）
+  ⇒ 绑定弹窗改**单颗 picker 两级导航**（一级实例↔二级部件换 items、返回行、写后保持选中、Esc 收）；
+  stub `createQuickPick` 补真实语义（show 顶没先前可见颗）——此族台架从此可测。
+- **acquireVsCodeApi 双拿（c8505b1）**：DocApp 与 vscodeHost 各拿各的，第二次抛 "already been acquired"
+  ⇒ doc 画布 ready/edit/completeBindings **全哑火**（真宿主 console 实锤）；唯一出口 `getVsCodeApiOrNull()`。
+- **manifest 形状病（c8505b1）**：`viewsWelcome` 对象→**数组**（"contribution.value is not iterable"＝四块欢迎面板真机失踪）；
+  菜单引未声明命令 `vscode.open`→自有 `verilogViz.openDoc`。
+- **打包缺口（78ca00c）**：apply-brand 补拷 `schemas/`（jsonValidation 声明在、文件缺＝配置编辑校验静默失踪）。
+
+### 在册教训
+- **基座 `pre/index.html` 动不得**：其内联脚本哈希**写死**在 workbench CSP——给 trackFocus 补 null 守卫＝
+  所有扩展 webview 的 postMessage 通道被 CSP 掐死（本批亲历，已回滚 src+out）。`classList of null` 轮询噪音
+  （self-recover）只能待上游修，⛔ 进哨兵。
+- **QuickPick 叠放读数漂移**（两跑相反＝焦点态相关）⇒ 弹窗代码⛔ 依赖叠放，单颗导航是唯一稳态。
+
+### 验证
+- vitest **277/277** · ext:check 0 · vite build ✓ · **真宿主终证 failed=0**（7/7 + 哨兵零命中）。
+
+---
 ## [未发布 Unreleased] — R158：绑定域 C 收紧为文件级作用域（协议 v0.4；用户"一片混乱"实机裁决）（2026-10-18）
 
 > 用户六条实机投诉：编译树右键部件绑定弹出沙盒内容、打开配置见沙盒键、两域配置混用、

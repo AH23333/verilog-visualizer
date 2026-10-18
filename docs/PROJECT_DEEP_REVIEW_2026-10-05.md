@@ -1691,3 +1691,30 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
 - 本卷账+CHANGELOG R158+USER_GUIDE/CHECKLIST 随迁（docs 束）。
 - 验证读数：ext:check exit 0 · vite build ✓ · vitest **277/277**。
 - ⚠ 承前遗留不变；另记：用户手改过的 `test_files` 旧表里若还有沙盒裸键，.v 弹窗会以「已录（全局裸键）」如实显示（读侧零回归的代价是透明呈现，⛔ 替用户删表——手编内容珍贵纪律）。
+
+---
+
+# 卷六十九 · R159 真宿主 harness 上线与"越修越坏"四刀（2026-10-18 夜）
+
+## 一、方法论翻案（用户令"穷尽所有测试手段"）
+- 台架 277/277 与真机"越修越坏"**同时为真**的机制：假件是我写的、判据也是我写的，心智模型与真宿主分岔时两边一起错、测试永远绿。
+- 解法＝把"真 VS Code 会怎么干"变成命令化验证：`tests/integration`（基座 electron `--extensionTestsPath`，
+  窗口自起自退、⛔ 屏幕控制）。**上游惯例现读核实**：testsPath 必须与 developmentPath 成对（第一跑只有 testsPath，
+  宿主日志证明测试模块根本没被加载）。结果账固定路径 + 心跳 + 每步落盘（挂中途也有半账）；closeWindow 不可靠⇒父侧 taskkill 品牌进程兜底。
+
+## 二、四刀账（每刀独立提交、独立可回退）
+| 刀 | 提交 | 病灶（全有真宿主证人） | 修法 |
+|---|---|---|---|
+| 1 | `e4483cb` | QuickPick 叠放：真宿主同一时刻只显一颗，二级 show 顶没一级→onDidHide→dispose＝弹窗真机必断 | 单颗 picker 两级导航（换 items）；stub 补"show 顶没先前可见颗" |
+| 2 | `c8505b1` | acquireVsCodeApi 双拿（DocApp↔vscodeHost 各拿各的）＝doc 画布协议消息全哑火 | 唯一出口 getVsCodeApiOrNull() |
+| 3 | `c8505b1` | viewsWelcome 对象形状（not iterable＝四块欢迎面板失踪）；菜单引 undeclared vscode.open | 数组化；换 verilogViz.openDoc |
+| 4 | `b2416b5` | （我亲历）给基座 pre/index.html trackFocus 补守卫→**内联脚本哈希写死在 workbench CSP**＝所有 webview 通道被掐死 | 已回滚 src+out；classList 噪音降级为在册观察项，CSP 违规升哨兵 |
+
+## 三、读数漂移的诚实账
+- 叠放探针两跑读数相反（一跑顶没、一跑存活）＝**焦点态相关不确定**⇒ 产品结论不赌方向：弹窗代码⛔ 依赖叠放，单颗导航是唯一稳态；探针只留读数⛔ 判方向。
+- `classList of null`（基座 trackFocus 250ms 轮询，iframe 换页瞬间 body=null）：self-recover 噪音，⛔ 进哨兵（进＝逼我们改动不得的 pre 文件），等上游。
+
+## 四、本卷提交账与读数
+- `78ca00c` 打包 schemas 缺口 → `e4483cb` 第一刀+harness → `c8505b1` 二三刀 → `b2416b5` 四刀（哨兵换防）。
+- 终读数：vitest 277/277 · ext:check 0 · vite build ✓ · **真宿主 failed=0**（7/7 PASS + 四哨兵零命中）。
+- ⚠ 承前：test_files 遗物⛔ 动；docs/mem.txt 永不入册；push 欠账继续累计（本卷又 +4 笔）。
