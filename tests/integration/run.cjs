@@ -38,7 +38,19 @@ const child = spawn('cmd.exe', ['/c', bat, ...args], {
   windowsHide: true,
 });
 child.stdout.on('data', (d) => { const s = String(d); if (s.includes('[vv-it]')) process.stdout.write(s); });
-child.stderr.on('data', (d) => process.stderr.write(d));
+let errbuf = '';
+child.stderr.on('data', (d) => { errbuf += String(d); process.stderr.write(d); });
+
+// **console 哨兵**：这些病灶都曾真机咬人（各自有账），回潮即判红——⛔ 让"满屏 console 错"再隐身
+// ⚠ 基座 webview 预文档（out/.../webview/browser/pre/index.html）的内联脚本哈希**写死**在 workbench CSP 里——
+//   改那个文件一个字符＝所有扩展 webview 的 postMessage 通道被 CSP 掐死（R159 亲历：守卫补丁⇒webview 全哑）。
+//   所以 classList 那颗轮询噪音（self-recover，2 拍）只能⛔ 进哨兵清单，等上游修。
+const FORBIDDEN = [
+  [/An instance of the VS Code API has already been acquired/, 'acquireVsCodeApi 双拿回潮（DocApp/vscodeHost 必须同一出口）'],
+  [/contribution\.value is not iterable/, 'manifest 贡献点形状病回潮（viewsWelcome 之类不是数组）'],
+  [/violates the following Content Security Policy/, 'webview 内联脚本被 CSP 拦（多半是基座 pre/index.html 被动过——哈希写死在 workbench，⛔ 改）'],
+  [/菜单项引用未在.命令.部分进行定义的命令/, 'manifest 菜单引了未声明命令（核对 contributes.commands）'],
+];
 
 const killer = setTimeout(() => { console.error('[vv-it] 150s 超时——强杀'); try { child.kill(true); } catch { } }, 150000);
 
@@ -65,6 +77,10 @@ child.on('exit', (code) => {
   }
   if (parsed.started && !parsed.results) { console.error('[vv-it] 测试模块起了但没跑完：' + JSON.stringify(parsed)); process.exit(2); }
   for (const r of parsed.results) console.log((r.pass ? 'PASS' : 'FAIL') + '  ' + r.name + (r.note ? '  [' + r.note + ']' : ''));
-  console.log('[vv-it] failed=' + parsed.failed + '（工作台账：' + tmp + '）');
-  process.exit(parsed.failed > 0 ? 1 : 0);
+  let sentinelFail = 0;
+  for (const [re, why] of FORBIDDEN) {
+    if (re.test(errbuf)) { console.log('FAIL  console-sentinel  [' + why + ']'); sentinelFail++; }
+  }
+  console.log('[vv-it] failed=' + (parsed.failed + sentinelFail) + '（工作台账：' + tmp + '）');
+  process.exit(parsed.failed + sentinelFail > 0 ? 1 : 0);
 });

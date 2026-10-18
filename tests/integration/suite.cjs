@@ -25,8 +25,9 @@ async function run() {
       catch (e) { ok('activate', false, String((e && e.message) || e)); }
     }
 
-    // 2) QuickPick 叠放证人（台架假件测不出、真机"越修越坏"的头号嫌疑人）：
-    //    真宿主同一时刻只显示一颗 QuickPick——第二颗 show() 会不会把第一颗顶没（onDidHide 触发）？
+    // 2) QuickPick 叠放**证人记录**（信息项，⛔ 判方向——R159 两跑读数相反：宿主失焦时二级 show
+    //    顶没一级、聚焦时存活＝真宿主行为不确定 ⇒ 产品结论只能是"单颗 picker 两级导航"，
+    //    弹窗代码（bindingPanel）已按此实现；这颗探针只留读数。）
     {
       const qp1 = vscode.window.createQuickPick();
       let hidden1 = false;
@@ -38,12 +39,10 @@ async function run() {
       qp2.items = [{ label: '二级：部件' }];
       qp2.show();
       await wait(400);
-      ok('quickpick-stacking-hides-first', hidden1,
-        hidden1 ? '证人到手：二级 show 顶没一级（onDidHide 已触发）⇒ 弹窗⛔ 叠放，得单颗两级导航'
-          : '意外：一级存活（叠放可行）');
+      ok('quickpick-stacking-reading', true, hidden1 ? '本跑：二级 show 顶没一级（onDidHide 触发）' : '本跑：一级存活（窗口焦点态相关，读数漂移）');
       let throwNote = '';
       try { qp1.items = [{ label: '顶没之后再赋' }]; } catch (e) { throwNote = String((e && e.message) || e); }
-      ok('quickpick-write-after-hide', true, throwNote || '顶没后赋 items 不抛（dispose 前仍可写）');
+      ok('quickpick-write-after-hide', true, throwNote || '顶没/存活后赋 items 均不抛');
       qp2.dispose(); qp1.dispose();
     }
 
