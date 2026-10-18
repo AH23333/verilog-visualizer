@@ -1,6 +1,6 @@
 // R19 验收：本轮 8 项问题
 //  1) 输入/输出 与 端口 整合为同一组
-//  2) 汉化补全（快捷键面板 / 命令面板）
+//  2) 汉化补全（原生命令面 contributes / 画布调色板每一行）
 //  3) D 触发器（两个或非门交叉互连）能跑出确定电平
 //  4) 右键菜单可「放置部件」
 //  5) 右键菜单弹出后，左键点画布可关闭
@@ -109,35 +109,32 @@ async function dragWireById(page, srcId, srcPort, tgtId, tgtPort) {
     merged ? ok('[1] 「输入/输出」与「端口」已合并为一组', pal.heads.join(' , '))
            : bad('[1] 分组未整合', `heads=${JSON.stringify(pal.heads)}，gates=${pal.gates.length} 颗（gates=0 ⇒ 元件库根本没挂载，这条判据够不着）`);
 
-    // ===== [2] 汉化（快捷键面板 / 命令面板）=====
+    // ===== [2] 汉化：判"今天用户真看得见的两块面" =====
+    // ⚠ 退役留话（波次三，2026-10-18 现读）：这两格原来判的是「快捷键面板」与「webview 命令面板」，
+    //   而 `ShortcutsHelpDialog.tsx` 已随旧 React 应用一起删除（`git log --diff-filter=D` 指到 95df75d），
+    //   Ctrl+/ 与 Ctrl+Shift+P 在今天的 webview 里⛔ 有主人 ⇒ 旧读数是 `hasTitle:false` / `placeholder:null`，
+    //   那是**面板不存在**，⛔ 是"面板里有英文"——旧判据把两件事混成了一格，红得没有信息量。
+    //   键位帮助与命令面板现在都归基座原生 ⇒ 判据跟着搬到两块**活面**：
+    //   ① 原生命令面（`contributes.commands` 标题、`keybindings` 是否指向在册命令）；
+    //   ② 画布调色板（每行 `中文名 + 型号名`；`CN_NAME` 漏一颗就露出裸英文行——那才是真未汉化）。
     console.log('\n===== [2] 汉化补全 =====');
-    await page.keyboard.press('Control+/'); await sleep(700);
-    const sc = await page.evaluate(() => {
-      // 只扫对话框内部：body 里还有沙盒调色板（Nand/Button/… 本就是型号名，不是未汉化文案）
-      const span = [...document.querySelectorAll('span')].find(s => s.textContent?.trim() === '键盘快捷键');
-      let el = span || document.body;
-      while (el && !el.innerText.includes('Ctrl+O')) el = el.parentElement;
-      const t = (el || document.body).innerText;
-      return {
-        hasTitle: !!span,
-        // 按键名（Delete/Ctrl/Shift/…）本就是键盘上的字，不翻译
-        enLeft: (t.match(/[A-Za-z]{4,}/g) || []).filter(w => !/Ctrl|Shift|Alt|Esc|Wheel|Delete|Home|End|Page|F\d|Verilog/.test(w)).slice(0, 8),
-        groups: /文件|视图|编辑器|画布/.test(t),
-      };
-    });
-    console.log('    快捷键面板:', JSON.stringify(sc));
-    (sc.hasTitle && sc.groups && sc.enLeft.length === 0)
-      ? ok('[2a] 快捷键面板已汉化', sc.enLeft.length ? '' : '无残留英文')
-      : bad('[2a] 快捷键面板仍有英文', JSON.stringify(sc.enLeft));
-    await page.keyboard.press('Escape'); await sleep(400);
-    await page.keyboard.press('Control+Shift+p'); await sleep(600);
-    const cp = await page.evaluate(() => {
-      const i = document.querySelector('input[placeholder]');
-      return i ? i.placeholder : null;
-    });
-    console.log('    命令面板 placeholder:', JSON.stringify(cp));
-    (cp && /[一-龥]/.test(cp)) ? ok('[2b] 命令面板已汉化', cp) : bad('[2b] 命令面板未汉化', String(cp));
-    await page.keyboard.press('Escape'); await sleep(400);
+    const man = JSON.parse(require('fs').readFileSync(path.join(PROJECT_ROOT, 'extension/package.json'), 'utf8'));
+    const cmds = (man.contributes || {}).commands || [];
+    const kb = (man.contributes || {}).keybindings || [];
+    const cmdIds = new Set(cmds.map((x) => x.command));
+    const badTitles = cmds.filter((x) => !/[一-龥]/.test(String(x.title || ''))).map((x) => `${x.command}→${x.title}`);
+    const orphanKeys = kb.filter((x) => !cmdIds.has(x.command) && !/^(workbench|editor|vscode)\./.test(String(x.command))).map((x) => x.command);
+    console.log('    contributes:', JSON.stringify({ commands: cmds.length, keybindings: kb.length, badTitles, orphanKeys }));
+    (cmds.length >= 20 && badTitles.length === 0 && orphanKeys.length === 0)
+      ? ok('[2a] 命令标题全中文、键位都指向在册命令', `${cmds.length} 颗命令 / ${kb.length} 条键位`)
+      : bad('[2a] 命令面汉化或键位在册性有缺', JSON.stringify({ badTitles, orphanKeys, commands: cmds.length }));
+    const palLabels = await page.evaluate(() => [...document.querySelectorAll('button[data-gate]')]
+      .map((b) => (b.innerText || '').trim()).filter(Boolean));
+    const bare = palLabels.filter((t) => !/[一-龥]/.test(t));
+    console.log('    调色板行数:', palLabels.length, ' 裸英文行:', JSON.stringify(bare.slice(0, 8)));
+    (palLabels.length >= 20 && bare.length === 0)
+      ? ok('[2b] 调色板每一行都带中文名（型号名只作副标签）', `${palLabels.length} 行`)
+      : bad('[2b] 调色板有整行裸英文（CN_NAME 漏了那颗型号）', JSON.stringify({ bare: bare.slice(0, 8), rows: palLabels.length }));
 
     // ===== [3] D 触发器：两个或非门交叉互连 =====
     console.log('\n===== [3] D 触发器（或非门交叉互连）=====');

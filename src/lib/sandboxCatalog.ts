@@ -154,7 +154,7 @@ export const CN_NAME: Record<string, string> = {
   Display7: '七段数码管', NumDisplay: '数值显示', NumEntry: '数值输入',
   Mux: '多路选择器', Mux1Hot: '独热选择器', MuxSparse: '稀疏选择器', Repeater: '缓冲器',
   Eq: '相等比较', Ne: '不等比较', Lt: '小于比较', Le: '小于等于', Gt: '大于比较', Ge: '大于等于',
-  ShiftLeft: '左移', ShiftRight: '右移', Negation: '取负',
+  ShiftLeft: '左移', ShiftRight: '右移', Negation: '取负', UnaryPlus: '正号器',
   BusGroup: '合线器', BusSlice: '总线切片', BusUngroup: '分线器',
   ZeroExtend: '零扩展', SignExtend: '符号扩展',
   AndReduce: '与归约', OrReduce: '或归约', XorReduce: '异或归约',

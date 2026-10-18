@@ -186,7 +186,7 @@ GREEN 名单（12 颗）：`r12-export` `r13-custom-gate` `r42-verify` `r48-veri
 | 静态形状档读到已删组件（`ENOENT …/SettingsPanel.tsx`） | 1 | r114 | 与 `r87` 同族（档的名册还停在被删的那批组件上）＝任务 #69 |
 | 读不到画布 `model`（`reading 'model'`） | 2 | r17 r120 | `window.__djsDebug` 那颗调试出口在编译模式下没挂上／或页面根本没挂载 |
 | 执行上下文被导航打掉 | 1 | r48 | 页面导航与 `page.evaluate` 抢拍（老账：R48/R49 至今仍未判成） |
-| 其余逐颗（内容级红，⛔ 归入环境） | 7 | r14 r19 r21 r31 r35 r87 r118 | 每颗都要单独定案：r19＝汉化漏网（8 颗器件名 + 命令面板）／r21＝移位输出 `Vector3vl xxxx`／r31＝沙盒"退出"那颗钮⛔ 在／r87＝Esc 名册下界／r14·r118＝画布读数分岔 |
+| 其余逐颗（内容级红，⛔ 归入环境） | 7 | r14 r19 r21 r31 r35 r87 r118 | 每颗都要单独定案：r19＝汉化漏网（8 颗器件名 + 命令面板）⚠**此判已改，见 ⑤-补4 的"r19 改判"**／r21＝移位输出 `Vector3vl xxxx`／r31＝沙盒"退出"那颗钮⛔ 在／r87＝Esc 名册下界／r14·r118＝画布读数分岔 |
 
 **单跑对照（跑批刚结束就逐颗单跑，2026-10-18 05:17–05:21 UTC+8）——这一格推翻了我自己的假设**：
 我原本打算把"等锚点/点不到锚点"这 12 颗归给**跑批超载**（批跑时机器上同时挂着 8 个 node 进程，
@@ -240,8 +240,24 @@ GREEN 30 → **54**，RED 44 → **20**，ENVRED 0。逐颗比 = **24 颗红转�
 | 等锚点/条件超时（`waitForFunction`） | 5 | r81 r113 qc-paused qc-preview qc-realuser |
 | 沙盒工具条锚点（`setSandboxToggle` 找不到「打开设置面板」） | 2 | qc-audit qc-audit2 |
 | 静态形状档读到已删组件（`ENOENT …/SettingsPanel.tsx`） | 1 | r114 |
-| 汉化漏网（快捷键面板 8 颗器件名 + 命令面板） | 1 | r19 |
+| ⚠ 汉化漏网（快捷键面板 8 颗器件名 + 命令面板）——**此族名已改判，见下面"r19 改判"** | 1 | r19 |
 | 逐颗内容级（⛔ 归环境） | 6 | r14（缩放位移）r23（活动栏空）r31（沙盒退出钮）r35（提取器疑盲）r87（Esc 名册下界）r137（CSP 挂载） |
+
+**r19 改判（波次三的第一颗，2026-10-18 现读）**：上表把 r19 归成"汉化漏网"⛔ 成立——那两格读的是**已删表面**。
+`ShortcutsHelpDialog.tsx` 随旧 React 应用一起删除（`git log --diff-filter=D -- '*ShortcutsHelpDialog*'` → `95df75d`），
+Ctrl+/ 与 Ctrl+Shift+P 在今天的 webview 里⛔ 有主人 ⇒ 批跑日志（`.tmpbuild/gates/r19-verify.log` 第 7–10 行）
+真实读数是 `hasTitle:false` + `placeholder:null`＝**面板根本不存在**；而那 8 个字样
+（Nand/Xnor/Repeater/Clock/Lamp/Input/Output/Constant）来自"找不到面板就退到 `document.body`"的兜底尺，
+它们在调色板里本就是「与非门 / Nand」这种**双语行的副标签**。⇒ 旧判据把"锚点没了"与"文案没汉化"混进了同一格，
+红得不带信息量。重写后判两块**活面**：
+`[2a]` 原生命令面（`extension/package.json` 的 `contributes.commands` 31 颗标题全含中文 + 2 条 `keybindings` 都指向在册命令，
+现读 `badTitles=[]` / `orphanKeys=[]`）；`[2b]` 画布调色板每一行（每颗 `button[data-gate]` 的整行文本必须含中文）。
+⇒ **`[2b]` 第一跑就抓到一颗真产品缺口**：`UnaryPlus` 整行裸英文——`src/lib/sandboxCatalog.ts` 的 `CN_NAME`
+里有 `Negation: '取负'` 却⛔ `UnaryPlus` ⇒ 补 `UnaryPlus: '正号器'`。现读 `node tests/r19-verify.cjs` =
+**11 pass / 0 fail / 0 unverified**（`裸英文行: []`／`50 行`）。
+⇒ 台架教训（与⑤-补3"尺读的层错了"同族）：**判据报红先问"它读的那块表面今天还在不在"**——
+`hasTitle:false`、`placeholder:null` 这类"锚点为空"的读数⛔ 不能证明文案缺，它只证明尺够不着；
+且**按行判（整行裸英文）优于按词判**（`[A-Za-z]{4,}`），后者天然把双语行的副标签算成缺陷。
 
 **波次二的 UNVERIFIED 清单（16 格，各档都按"够不着就单列，⛔ 拿假对照充绿"登记）**：
 r92 [1][2][3][4] ／ r83 [2b][4b][6][7][7b] ／ r115 [setup][1][3][4][6][7] ／ r135-part [5]。

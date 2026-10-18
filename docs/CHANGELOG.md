@@ -89,6 +89,20 @@
   > **补记（同夜 R155，⛔ 静默改上面那句）**：那一批已跑完＝GREEN 30 / RED 44，
   > 上面"17 颗"与现读集合差一致；两颗绿转红（r42/r48）与归族更正见 R155 那节的 Readings。
 
+- **闸门波次三第一颗：`r19-verify` 的汉化两格搬到活表面，并因此抓到一颗真产品缺口**。
+  旧读数（`.tmpbuild/gates/r19-verify.log` 第 7–10 行）＝`hasTitle:false` + `placeholder:null`＋8 个英文字样，
+  我上一批把它归成"汉化漏网（快捷键面板 8 颗器件名 + 命令面板）"——**这条归族⛔ 成立，已在 [GATE_LAYERS.md](./GATE_LAYERS.md) ⑤-补4 改判**：
+  `ShortcutsHelpDialog.tsx` 随旧 React 应用一起删除（`git log --diff-filter=D -- '*ShortcutsHelpDialog*'` → `95df75d`），
+  Ctrl+/ 与 Ctrl+Shift+P 在今天的 webview 里⛔ 有主人 ⇒ 那是**面板不存在**、⛔ 是"面板里有英文"；
+  那 8 个字样来自"找不到面板就退到 `document.body`"的兜底尺，它们本就是调色板「与非门 / Nand」这类双语行的副标签。
+  重写为两块活面：`[2a]` 原生命令面（读 `extension/package.json`：`contributes.commands` 31 颗标题全含中文、
+  2 条 `keybindings` 都指向在册命令，`badTitles=[]`/`orphanKeys=[]`）、`[2b]` 画布调色板逐行
+  （每颗 `button[data-gate]` 的整行文本必须含中文）。⇒ **`[2b]` 第一跑就红出真缺口**：
+  `src/lib/sandboxCatalog.ts` 的 `CN_NAME` 有 `Negation: '取负'` 却漏了 `UnaryPlus` ⇒ 补 `UnaryPlus: '正号器'`（产品缺陷，用户可见）。
+  现读：`node tests/r19-verify.cjs` = **11 pass / 0 fail / 0 unverified**（`裸英文行: []`／`50 行`）；`pnpm test` **257 passed / 0 failed**。
+  > 台架教训（与 ⑤-补3"尺读的层错了"同族）：判据报红先问**它读的那块表面今天还在不在**——"锚点为空"的读数证不了文案缺，只证尺够不着；
+  > 且**按行判优于按词判**（`[A-Za-z]{4,}` 天然把双语行的副标签算成缺陷）。
+
 ---
 ## [未发布 Unreleased] — R154：验证系统自己的诚信（2026-10-18 夜·用户令代管）
 
