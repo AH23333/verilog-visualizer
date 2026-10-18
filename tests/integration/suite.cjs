@@ -75,6 +75,30 @@ async function run() {
         await wait(400);
         ok('bindParts-no-throw', true);
       } catch (e) { ok('bindParts-no-throw', false, String((e && e.message) || e)); }
+
+      // 6) R160 批次三：MCP 活编辑器桥真管道往返（net 真模块、闸真跑——caller 固化 mcp/agent 在扩展侧，
+      //    这里只当最挑剔的 agent：一枪只读要过、一枪写面要 SURFACE_DENIED 且带 traceId）。
+      //    管道名算法⛔ 第三份拷贝＝直接 require 桥脚本那颗（台架双源锁钉的是 mcpBridge↔mcp-server）。
+      try {
+        const net = require('net');
+        const { pipeNameFor } = require(require('path').join(__dirname, '..', '..', 'mcp', 'mcp-server.cjs'));
+        const pipe = pipeNameFor(ws.uri.fsPath);
+        const shot = (tool, args) => new Promise((res, rej) => {
+          const s = net.connect(pipe);
+          let buf = '';
+          s.setTimeout(8000);
+          s.once('error', rej);
+          s.once('timeout', () => { s.destroy(); rej(new Error('管道超时')); });
+          s.once('connect', () => s.write(JSON.stringify({ id: 1, tool, args: args || {} }) + '\n'));
+          s.on('data', (d) => { buf += d.toString('utf8'); const nl = buf.indexOf('\n'); if (nl >= 0) { s.destroy(); res(JSON.parse(buf.slice(0, nl))); } });
+        });
+        await wait(1200);   // activate 里桥在契约落定的 promise 链尾起——给它一拍
+        const g = await shot('sys.getStatus');
+        ok('mcp-pipe-roundtrip', g.ok === true && !!(g.result && g.result.projectRoot),
+          g.ok ? 'root=' + g.result.projectRoot : JSON.stringify(g));
+        const d = await shot('bindings.set', { celltype: 'x', part: 'y.djs' });
+        ok('mcp-write-denied', d.ok === false && d.code === 'SURFACE_DENIED' && !!d.traceId, JSON.stringify(d).slice(0, 160));
+      } catch (e) { ok('mcp-pipe-roundtrip', false, String((e && e.message) || e)); }
     }
   } catch (e) {
     ok('suite-crash', false, String((e && e.stack) || e));

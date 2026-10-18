@@ -39,6 +39,7 @@ const ctx = (mode: number) => ({
  *   被自己抹掉的文件——症状是"找不到前端构建产物"，看着像产品缺陷，其实是台架（判据写坏的时候⛔ 响得没说服力）。
  */
 async function boot(opts: { folders?: string[], mode?: number, seed?: Record<string, string>, appRoot?: string } = {}) {
+  process.env.VV_MCP = 'off';   // 台架⛔ 碰真命名管道（MCP 协议判据在 mcpBridge.test.ts 直调 handleMcpLine；管道往返归真宿主 harness）
   const ext = await import('../../extension/src/extension');
   // 每颗用例独占一份账：`pending` 缓冲与 `dirState` 都是模块级状态，⛔ 清场就会串门——
   // A 工作区缓冲的行会被下一次 flush 写进 B 的日档；先开过户的用例让后面无 `.vv/` 的用例
@@ -2602,11 +2603,16 @@ describe('阶段三·给 agent 的四档深度（D0 全表／D1 单颗预演／D
     expect(cut.gates.surfaceGlobalOpen).toBe(true);
     expect(cut.gates.surfaceInTool).toBe(false);
     expect(cut.gates.blockers[0]).toContain('契约里这颗的 surfaces');
-    // agent 那条线：契约给五颗诊断工具开了 mcp，但**总闸关着**＝今天进不来（放开＝改契约一行，这正是统一层的杠杆）
+    // R160 批次三开闸后改判：agent 那条线（mcp）**总闸已开**——sys.selfCheck 在 mcp 面预演＝ready；
+    // "总闸关着进不来"的取证位换给 cli（仍关）。放开写面进 mcp＝逐颗显式拍板（vscodeShell ⑤ 锁看着）。
     const mcp = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool', { tool: 'sys.selfCheck', surface: 'mcp' }) as any;
     expect(mcp.gates.surfaceInTool).toBe(true);
-    expect(mcp.gates.surfaceGlobalOpen).toBe(false);
-    expect(mcp.gates.blockers[0]).toContain('surfacesGlobal');
+    expect(mcp.gates.surfaceGlobalOpen).toBe(true);
+    expect(mcp.gates.verdict).toBe('ready');
+    const cli = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool', { tool: 'sys.selfCheck', surface: 'cli' }) as any;
+    expect(cli.gates.surfaceInTool).toBe(true);
+    expect(cli.gates.surfaceGlobalOpen).toBe(false);
+    expect(cli.gates.blockers[0]).toContain('surfacesGlobal');
     // 词表外的 surface 实参⛔ 静默采纳（那会把"我写错了"读成"那条线不通"）：回落并如实记一笔
     const typo = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.describeTool', { tool: 'fs.rename', surface: 'ipc' }) as any;
     expect(typo.asked.surfaceFallback).toBe(true);

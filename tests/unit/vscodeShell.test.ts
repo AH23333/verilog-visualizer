@@ -333,6 +333,11 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
       空surfaces: tools.filter(({ t }) => !t.surfaces.length).map(({ id }) => id),          // 全空＝没人可达的死登记
       重复surfaces: tools.filter(({ t }) => new Set(t.surfaces).size !== t.surfaces.length).map(({ id }) => id),
     }).toEqual({ perm: [], sideEffects: [], 空surfaces: [], 重复surfaces: [] });
+    // ⑤ R160 批次三第一档纪律：挂在 mcp 面上的工具⛔ 有副作用（agent 线＝只读；写面放开＝逐颗显式拍板，
+    //   不许顺着 surfaces 数组悄悄多挂一颗）。surfacesGlobal.mcp 的开闸事实源也在这颗锁里看得到。
+    expect(api.surfacesGlobal.mcp).toBe(true);
+    expect(tools.filter(({ t }) => t.surfaces.includes('mcp') && t.sideEffects !== 'none')
+      .map(({ id, t }) => `${id}.sideEffects=${t.sideEffects}`)).toEqual([]);
   });
 
   it('R160 API 层收编锁：UI 层（extension/bindingPanel）⛔ 直插 bindings 数据函数——一道门纪律的回潮哨', () => {

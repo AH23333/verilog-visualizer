@@ -34,6 +34,7 @@ import { executeTool, CALLER_UI, onToolExecuted } from './toolRegistry';
 import { registerFilesystemTools } from './toolsFs';
 import { registerDomainTools } from './toolsDomain';
 import { registerRpcTools } from './dispatch';
+import { startMcpBridge } from './mcpBridge';
 import { ProjectStore, type FsLike } from './projectStore';
 import { watcherGlobs, isBindablePath, rootRel } from './verilogDomain';
 
@@ -408,7 +409,11 @@ export function activate(context: vscode.ExtensionContext) {
     if (rejects.length) {
       void vscode.window.showWarningMessage("API 工程覆盖被拒绝：" + rejects.join("；") + "（已沿用默认账）");
     }
-  }).catch(() => { /* 读不到工程覆盖＝默认账，常态 */ });
+  }).catch(() => { /* 读不到工程覆盖＝默认账，常态 */ }).then(() => {
+    // 批次三 A 案：MCP 活编辑器桥——契约落定后才决定开不开门（surfacesGlobal.mcp 且开了文件夹）。
+    // 闸/账/HITL 全在 executeTool（caller 传输固化＝mcp/agent/非交互），本行只负责起收。
+    void startMcpBridge(context).catch(() => undefined);
+  });
 
   // 协议⑨闸③：工程授权档案 .vv/api.grants.json（可选提交；缺席＝闸不生效——activate 一次性加载，热更新需重启窗口）
   void loadProjectGrants(context).then((notes) => {
