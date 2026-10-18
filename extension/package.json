@@ -606,6 +606,21 @@
           "group": "verilogViz@2"
         },
         {
+          "command": "verilogViz.bindParts",
+          "when": "resourceExtname =~ /\\.(v|sv|vh)$/",
+          "group": "verilogViz@2"
+        },
+        {
+          "command": "verilogViz.auditBindings",
+          "when": "resourceExtname =~ /\\.(v|sv|vh|djs)$/",
+          "group": "verilogViz@2"
+        },
+        {
+          "command": "verilogViz.completeBindings",
+          "when": "resourceExtname =~ /\\.(v|sv|vh|djs)$/",
+          "group": "verilogViz@2"
+        },
+        {
           "command": "verilogViz.newVerilogFile",
           "group": "verilogViz@2"
         },
@@ -855,7 +870,7 @@
             "strict"
           ],
           "default": "auto",
-          "markdownDescription": "部件绑定完整度策略：**auto**＝未录入的实例靠同名兜底解析，并可见提示\"一键写全\"；**strict**＝必须录全——没录入配置的子部件实例⛔ 同名兜底（编译报错、画布不展开，右键「写全绑定配置」一键补齐后恢复）。",
+          "markdownDescription": "沙盒画布子部件展开的兜底策略（R152 裁决：**编译侧恒为绑定权威**——未录入实例⛔ 同名兜底，直接报错引导「写全绑定配置」；本设置只管画布）：**auto**＝画布上未录入的子电路实例靠同名部件兜底展开，并可见提示\"一键写全\"；**strict**＝画布也⛔ 兜底——没录入配置的子部件实例不展开，右键「写全绑定配置」一键补齐后恢复。",
           "enumItemLabels": [
             "自动兜底（提示写全）",
             "严格（必须配全）"

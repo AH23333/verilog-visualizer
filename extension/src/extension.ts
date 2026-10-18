@@ -15,13 +15,14 @@ import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 import { AUTOOPEN_ENV, isBuiltIntoThisApp, shouldAutoOpen } from './startupPolicy';
 import { ModuleTree, HierarchyTree, SandboxTree, FileTreeDragAndDrop, openAtModule, getActiveSandboxDocUri,
   CodeFilesTree, SandboxPartsTree, SandboxHierarchyTree, onActiveSandboxDocChange } from './trees';
-import { DOC_VIEW_TYPE, VvDocProvider } from './customEditors';
-import { compileAndShow, recompileOnSave, flushPendingCompile, type EnsurePanel } from './compilePanel';
+import { DOC_VIEW_TYPE, VvDocProvider, refreshAllDocSiblings } from './customEditors';
+import { compileAndShow, recompileOnSave, flushPendingCompile, recompileOnExternalChange, trackLastTextEditor, type EnsurePanel } from './compilePanel';
 import { newVerilogFile, newSandboxFile, newSandboxFolder, openExamples } from './examples';
 import {
   openDoc, togglePartRole, getCircuitsSet, openBindingConfig,
   collectInstanceHits, completeFromHits, normalizeBindingsDisk, META_FILE,
-  scanDirChoices, importFilters, describeDeletion, ensureDirsMeta
+  scanDirChoices, importFilters, describeDeletion, ensureDirsMeta,
+  migrateAfterExternalRename, migrateAfterExternalDelete
 } from './sandboxFiles';
 import { openBindingPicker } from './bindingPanel';
 import { loadApiContract, loadProjectApiOverride } from './apiSurface';
@@ -72,10 +73,12 @@ export function activate(context: vscode.ExtensionContext) {
   // 根相对名转交一颗主人（这颗原是"截前缀"的一份：盘符大小写一漂就交半截路径）
   const rel = (root: vscode.Uri, uri: vscode.Uri): string => rootRel(root, uri);
 
-  /** 树刷新总闸：watcher 增删、refreshTrees 命令、新建命令都汇到这（六树一盘账） */
+  /** 树刷新总闸：watcher 增删、refreshTrees 命令、新建命令都汇到这（六树一盘账）。
+   *  R160（问题S）：顺带把最新部件源推给所有活画布——新建/删除/改名 .djs 不再要重开页。 */
   const refreshAllTrees = () => {
     moduleTree.refresh(); hierarchyTree.refresh(); sandboxTree.refresh();
     codeFilesTree.refresh(); sandboxPartsTree.refresh();
+    void refreshAllDocSiblings(context);
   };
 
   // X6 域设防（2026-10-17）：导入命令按入口分域——对话框归命令层，机械体走 fs.import 工具
@@ -356,10 +359,38 @@ export function activate(context: vscode.ExtensionContext) {
   for (const glob of [...watcherGlobs(), '**/.verilogviz.json']) {
     const watcher = vscode.workspace.createFileSystemWatcher(glob);
     watcher.onDidCreate(refreshAllTrees);                // 新文件/新目录立刻进树（标题按钮建的也走这条）
-    watcher.onDidChange(() => { moduleTree.refresh(); hierarchyTree.refresh(); if (glob.includes('verilogviz')) broadcastBindingsChanged(); });
+    watcher.onDidChange((uri) => {
+      moduleTree.refresh(); hierarchyTree.refresh();
+      // R160（批1问题H）：外部改盘（agent/Write 直写 .v）⛔ 走编辑器保存事件——此前诊断永远挂旧账。
+      //   闭包内的 .v 盘变更补同一脚重编译（lastJob 不在＝从未编译 ⇒ recompileOnSave 自带守卫）。
+      void recompileOnExternalChange(context, uri, ensurePanel);
+      if (glob.includes('verilogviz')) broadcastBindingsChanged();
+    });
     watcher.onDidDelete(() => { refreshAllTrees(); if (glob.includes('verilogviz')) broadcastBindingsChanged(); });
     context.subscriptions.push(watcher);
   }
+  // R160 假 API 案（真宿主 harness 实锤）：这里曾插过一颗 `workspace.onDidFilesChange`——
+  //   **该 API 在 extHost 公开面上不存在**（src 与 out/ 双查无；台架桩是我写的假件，自证陷阱又咬一口）。
+  //   更险的是它**炸在 activate 中段**：抛错点之前的命令/watcher 照常注册＝扩展"半活"假象
+  //   （上屏 H 闭环全过），抛错点之后的改名/删除迁移监听⛔ 挂上＝X 修复静默失踪。
+  //   外部改盘重编译的真根因是**闭包收缩死锁**（bindingRefs 射程集已修，watcher.onDidChange 本就触发）。
+  // R160（批3问题X）：Explorer 的 F2 改名/Del 删除走 workbench 原生编辑，⛔ 经过扩展的 fs.* 工具
+  //   ⇒ 此前绑定账完全不知情（真机实锤：adder.v→adder2.v 根表仍指旧名）。补两颗监听：
+  //   盘上搬家 workbench 已做完，这里只补 G1 迁移 + 刷树广播（与 fs.rename/fs.delete 同一把账）。
+  context.subscriptions.push(
+    vscode.workspace.onDidRenameFiles(async (e) => {
+      for (const { oldUri, newUri } of e.files) {
+        try { await migrateAfterExternalRename(context, oldUri, newUri); } catch { /* 单颗失败不拦整批 */ }
+      }
+      refreshAllTrees(); broadcastBindingsChanged();
+    }),
+    vscode.workspace.onDidDeleteFiles(async (e) => {
+      for (const uri of e.files) {
+        try { await migrateAfterExternalDelete(context, uri); } catch { /* 同上 */ }
+      }
+      refreshAllTrees(); broadcastBindingsChanged();
+    }),
+  );
   // 协议⑤：工程层 .vv/api.json 契约覆盖（只收窄/只关开关；固有属性越权＝整份拒）。
   void loadProjectApiOverride(context).then((rejects) => {
     if (rejects.length) {
@@ -386,7 +417,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
       moduleTree.refresh(); hierarchyTree.refresh(); sandboxTree.refresh();
     }),
-    vscode.window.onDidChangeActiveTextEditor(() => hierarchyTree.refresh()),
+    vscode.window.onDidChangeActiveTextEditor((ed) => { hierarchyTree.refresh(); trackLastTextEditor(ed?.document.uri); }),
     // 设置（contributes.configuration）改了 → 所有活画布各自 patch
     vscode.workspace.onDidChangeConfiguration((e) => {
       if (e.affectsConfiguration('verilogViz') || e.affectsConfiguration('editor.fontSize')) broadcastConfigChanged();

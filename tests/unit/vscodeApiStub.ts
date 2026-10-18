@@ -403,6 +403,9 @@ export interface FakeMachine {
   configListeners: Array<(e: any) => void>;
   /** 片 5：onDidSaveTextDocument 的监听器流水账 */
   saveListeners: Array<(doc: TextDocumentLike) => void>;
+  /** R160（问题X）：onDidRenameFiles / onDidDeleteFiles 的监听器流水账（测试 fire 用） */
+  renameListeners: Array<(e: any) => void>;
+  deleteFileListeners: Array<(e: any) => void>;
   /** 片 5：registerCustomEditorProvider 的流水账（viewType → provider + 注册选项） */
   customEditorProviders: Record<string, { provider: CustomEditorProvider<any>, options: any }>;
   /** 片 5：showQuickPick / showInputBox 的预设答案（undefined＝用户取消）。
@@ -429,7 +432,7 @@ export const state: FakeMachine = {
   serializerViewTypes: [], saveDialogResult: undefined, openDialogResult: undefined,
   treeProviders: {}, webviewViews: {}, watchers: [], diagnostics: new Map(), outputText: '',
   editors: [], openWithCalls: [], activeEditor: undefined, workspaceFolderListeners: [], activeEditorListeners: [],
-  configValues: {}, configListeners: [], saveListeners: [], customEditorProviders: {},
+  configValues: {}, configListeners: [], saveListeners: [], renameListeners: [], deleteFileListeners: [], customEditorProviders: {},
   quickPickResult: undefined, quickPickQueue: [], quickPicks: [], inputBoxResult: undefined, modalChoice: undefined, warnMessages: [], deleteCalls: [], activeTab: undefined,
 };
 
@@ -588,6 +591,18 @@ export const workspace = {
     state.saveListeners.push(fn);
     return { dispose: () => { state.saveListeners = state.saveListeners.filter((f) => f !== fn); } };
   },
+  /** R160（问题X）：Explorer 改名/删除走 workbench 原生编辑 ⇒ 扩展监听这两颗补 G1 账。
+   *  桩里只登记流水（测试可手动 fire），形状照真宿主 {files:[{oldUri,newUri}]/[uri]}。 */
+  onDidRenameFiles: (fn: (e: any) => any): Disposable => {
+    state.renameListeners.push(fn);
+    return { dispose: () => { state.renameListeners = state.renameListeners.filter((f) => f !== fn); } };
+  },
+  onDidDeleteFiles: (fn: (e: any) => any): Disposable => {
+    state.deleteFileListeners.push(fn);
+    return { dispose: () => { state.deleteFileListeners = state.deleteFileListeners.filter((f) => f !== fn); } };
+  },
+  // ⛔ 桩上不得出现 extHost 公开面没有的 API（R160 onDidFilesChange 案：假件补了颗不存在的
+  //   workspace.onDidFilesChange，台架全绿而真宿主 activate 当场炸——假件自证的现行犯）。
 };
 
 /** 放一份文本进内存盘（测试的 Arrange） */

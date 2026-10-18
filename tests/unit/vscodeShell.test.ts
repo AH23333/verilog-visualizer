@@ -380,7 +380,9 @@ describe('域界一颗主人（片 C2：哪些文件算 Verilog / 算沙盒）',
     // （代码侧的门修好了，菜单这侧照旧隐身＝用户看到的还是"不支持 .vh"）。
     const raw = fs.readFileSync(path.join(ROOT, 'extension/package.json'), 'utf8');
     const clauses = raw.split('\n').filter((l) => l.includes('resourceExtname =~'));
-    expect(clauses.length).toBe(4);                      // 正件：射程非空（现读 3 条菜单 + 1 条键位）
+    // R160（批1问题A）：Explorer 右键补齐 .v 侧绑定三项（bindParts/auditBindings/completeBindings）
+    //   ⇒ 4 条涨到 7 条（4 菜单 + 1 键位 + 2 混合域）。
+    expect(clauses.length).toBe(7);                      // 正件：射程非空
     for (const c of clauses) expect(['v', 'sv', 'vh'].filter((e) => !c.includes(`|${e}`))).toEqual([]);
   });
 

@@ -245,6 +245,16 @@ describe('侧边栏双容器六视图（片 5-B 编译/沙盒分家；R152 起�
     expect(manifest.contributes.views?.verilogVizSandbox?.find((v: any) => v.id === 'verilogViz.sandboxFiles')?.type).toBe('tree');
   });
 
+  it('R160 问题B：文件树/沙盒树的**文件叶 element 带 uri**（真宿主 view/item/context 传 element，menuUri 三形吃它）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule', 'D:/p/a.djs': '{"cells":[]}' } });
+    for (const id of ['verilogViz.codeFiles', 'verilogViz.sandboxFiles']) {
+      const leaves = await vscode.state.treeProviders[id].getChildren();
+      const fileLeaf = leaves.find((n: any) => n.name && !n.dir);
+      expect(fileLeaf).toBeTruthy();
+      expect(fileLeaf.uri?.fsPath?.toLowerCase().replace(/\\/g, '/')).toContain(id === 'verilogViz.codeFiles' ? 'top.v' : 'a.djs');
+    }
+  });
+
   it('模块树：文件→模块两级，空文件⛔ 上榜，点击滚到 `module <名>` 行', async () => {
     await boot({
       folders: ['D:/p'],
@@ -2073,6 +2083,36 @@ describe('文件系统批次B（2026-10-17 审查后落）：G1 三路共源 + C
     const root = readMetaFile('D:/p/.verilogviz.json');
     expect(root.circuits).toEqual([]);
     expect(root.bindings).toEqual({ other: 'main.djs' });
+  });
+
+  it('R160 问题X：Explorer 的 F2 改名走 workbench 原生编辑 ⇒ onDidRenameFiles 监听补 G1 账（真机实锤：adder.v→adder2.v 根表⛔ 迁）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'top.v::adder': 'adder.v' } }),
+      'D:/p/adder.v': 'module adder(input a, input b, output y); endmodule',
+      'D:/p/top.v': 'module top; adder u(.a(1), .b(2), .y(w)); endmodule',
+    } });
+    // 模拟 workbench：盘上搬家已做完，fire 原生改名事件
+    const w = vscode.workspace as any;
+    if (w.fs.move) await w.fs.move(vscode.Uri.file('D:/p/adder.v'), vscode.Uri.file('D:/p/adder2.v'));
+    else { await w.fs.writeFile(vscode.Uri.file('D:/p/adder2.v'), new TextEncoder().encode('module adder(input a, input b, output y); endmodule')); await w.fs.delete(vscode.Uri.file('D:/p/adder.v')); }
+    for (const fn of [...vscode.state.renameListeners]) {
+      await fn({ files: [{ oldUri: vscode.Uri.file('D:/p/adder.v'), newUri: vscode.Uri.file('D:/p/adder2.v') }] });
+    }
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ 'top.v::adder': 'adder2.v' });
+  });
+
+  it('R160 问题X：Explorer 的 Del 删除 ⇒ onDidDeleteFiles 监听随清（⛔ 悬空绑定）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'top.v::adder': 'adder.v', 'top.v::mux': 'mux.v' } }),
+      'D:/p/adder.v': 'module adder; endmodule',
+      'D:/p/mux.v': 'module mux; endmodule',
+    } });
+    const w = vscode.workspace as any;
+    await w.fs.delete(vscode.Uri.file('D:/p/adder.v'));
+    for (const fn of [...vscode.state.deleteFileListeners]) {
+      await fn({ files: [vscode.Uri.file('D:/p/adder.v')] });
+    }
+    expect(readMetaFile('D:/p/.verilogviz.json').bindings).toEqual({ 'top.v::mux': 'mux.v' });
   });
 
   it('moveToFile 防自环与原地 no-op：目录⛔ 进自己子树；同目录"移动"⛔ 白跑 (n) 顺延', async () => {
