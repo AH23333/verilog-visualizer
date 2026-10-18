@@ -300,12 +300,12 @@ export class SandboxHierarchyTree implements vscode.TreeDataProvider<Node> {
   refresh(): void { this._change.fire(); }
 
   getTreeItem(n: Node): vscode.TreeItem {
-    // 点层次树项 = 直奔该子电路的部件绑定（QuickPick 选部件文件）
+    // 点层次树项 = 直奔该子电路的部件绑定（带活动文档 uri + **实例名**：面板打开后聚焦那一行）
     const cmd = n.kind === 'instance' && activeSandboxDoc.name ? {
       command: 'verilogViz.bindParts', title: '部件绑定',
       arguments: [vscode.Uri.joinPath(
         vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file('.'),
-        ...activeSandboxDoc.name.split('/'))],
+        ...activeSandboxDoc.name.split('/')), n.label],
     } : undefined;
     const item = makeItem(n, cmd);
     item.contextValue = n.kind === 'instance' ? 'sandboxHierarchyItem' : undefined;

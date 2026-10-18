@@ -3349,7 +3349,10 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
         {/* R146/R150 绑定完整性提示条（doc 模式）：⚠ 未录入绑定配置的子部件实例（不管解析过没解析过，
             实时按当前电路+绑定表审计）——「写全配置」交真相给宿主落 .verilogviz.json，写全后条自动消失。 */}
         {doc?.onFixBindings && (() => {
-          const hits = getBindingAudit((paperRef.current?.model.getCells() ?? []).map((c: any) => ({ type: c.get('type'), celltype: c.get('celltype') }))).map((h) => ({ ctx: h.ctx, name: h.name, file: h.file }));
+          // 「写全配置」点了没反应（2026-10-18 用户实锤）的根修：判定表直吃 **doc.initialBindings**
+          //   （宿主落表→bindingsChanged 重读→这个 state 变→本帧重算＝条立灭）——⛔ 等 effect 喂
+          //   gateSystem 那份模块快照（落后两拍，暂停仿真时条会永久冻结在旧表上）。
+          const hits = getBindingAudit((paperRef.current?.model.getCells() ?? []).map((c: any) => ({ type: c.get('type'), celltype: c.get('celltype') })), doc.initialBindings ?? undefined).map((h) => ({ ctx: h.ctx, name: h.name, file: h.file }));
           if (!hits.length) return null;
           return (
             <div data-sb-bind-audit style={{ position: 'absolute', top: cycleWarn ? 44 : 8, left: '50%', transform: 'translateX(-50%)',

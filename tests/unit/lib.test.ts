@@ -209,3 +209,30 @@ describe('gateSystem R145 多层绑定前缀键（宿主文档::实例名）', (
     }
   });
 });
+
+describe('gateSystem R157④ getBindingAudit 的 bindingsOverride（「写全配置点了没反应」根修）', () => {
+  it('covered 判定吃**渲染当下**的表：effect 快照落后两拍时，override 新表让条立灭（⛔ 冻结）', async () => {
+    const { getBindingAudit, setPartFileSource, setActivePartBindings, setActiveCtxDoc } = await import('../../src/lib/gateSystem');
+    const files: any[] = [
+      { id: 'adder.djs', name: 'adder.djs', role: 'part', kind: 'djs', graphJson: '{"cells":[]}' },
+    ];
+    const cells = [{ type: 'Subcircuit', celltype: 'adder' }];
+    try {
+      setPartFileSource(() => files);
+      setActiveCtxDoc('main.djs');
+      // 无表世界：点名一颗（审计本来的活）
+      setActivePartBindings({});
+      expect(getBindingAudit(cells).map((h) => h.name)).toEqual(['adder']);
+      // 事故形状：宿主刚落表、广播重读的 effect 还没喂到模块快照（activePartBindings 仍旧表），
+      // 但渲染这帧的 doc.initialBindings 已是新表 ⇒ 提示条必须按 override 判隐（修前吃旧表＝条永挂）。
+      setActivePartBindings({});
+      expect(getBindingAudit(cells, { adder: 'adder.djs' })).toEqual([]);
+      // 前缀键同口径：本层精控也算 covered
+      expect(getBindingAudit(cells, { 'main.djs::adder': 'adder.djs' })).toEqual([]);
+      // override 没覆盖的实例照点名（⛔ 把条整体噎掉）
+      expect(getBindingAudit(cells, { other: 'adder.djs' }).map((h) => h.name)).toEqual(['adder']);
+    } finally {
+      setActivePartBindings(null); setActiveCtxDoc(''); setPartFileSource(null);
+    }
+  });
+});

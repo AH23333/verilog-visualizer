@@ -156,8 +156,9 @@ export async function setBindingInDir(context: vscode.ExtensionContext, dirRel: 
   await writeMeta(context, meta, dir);
 }
 
-/** 同目录表内相对化：'../sub/x.djs' 形态（部件不在文档目录时用相对跳转；链解析侧按层目录回根相对）。 */
-function relFrom(dir: string, rootRel: string): string {
+/** 同目录表内相对化：'../sub/x.djs' 形态（部件不在文档目录时用相对跳转；链解析侧按层目录回根相对）。
+ *  2026-10-18 导出：绑定面板深层行写回也要同一把尺（前缀键的宿主段必须按**表层目录**相对）。 */
+export function relFrom(dir: string, rootRel: string): string {
   const dsegs = dir.split('/').filter(Boolean);
   const fsegs = rootRel.split('/').filter(Boolean);
   let i = 0;
@@ -205,13 +206,26 @@ export async function ensureDirMeta(context: vscode.ExtensionContext, dirRel: st
   return uri;
 }
 
-/** 「打开绑定配置」：定位文档目录表（无则 ensure 建）→ 原生编辑器直开（可手改，保存即生效）。 */
+/** 「打开绑定配置」：定位文档目录表（无则**建表即写全**）→ 原生编辑器直开（可手改，保存即生效）。
+ *  R137-B「目录有部件即自动建表」的兑现（2026-10-18 用户实锤：新建只给空壳＝"打开一看什么都没有"）——
+ *  首次建档顺手把该文档各层实例的现解析落进去（collect→complete，值按层相对）；**已有表一个字不碰**
+ *  （手编内容珍贵，⛔ 覆盖——这条纪律不变）。 */
 export async function openBindingConfig(context: vscode.ExtensionContext, docUri: vscode.Uri | null): Promise<void> {
   const root = projectRoot(context);
   const dirRel = docUri ? (pathRel(root, docUri).split('/').filter((_seg, i, a) => i < a.length - 1).join('/')) : '';
   const uri = metaUri(context, dirRel);
   try { await then(vscode.workspace.fs.stat(uri)); }
-  catch { await writeMeta(context, { circuits: [], bindings: {} }, dirRel); }
+  catch {
+    if (docUri) {
+      try {
+        const docRel = pathRel(root, docUri);
+        const hits = await collectInstanceHits(context, docRel);
+        await completeFromHits(context, docRel, hits);                        // 有实例可写 ⇒ setBindingInDir 已建表
+      } catch { /* 模拟失败退空壳——⛔ 让"打开配置"整颗命令挂掉 */ }
+    }
+    try { await then(vscode.workspace.fs.stat(uri)); }
+    catch { await writeMeta(context, { circuits: [], bindings: {} }, dirRel); }
+  }
   const doc = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(doc, { preview: false });
   void vscode.window.showInformationMessage(`绑定配置＝「${dirRel || '项目根'}」目录的 ${META_FILE}（改完保存即生效；部件文件路径写该目录内或 ../ 相对）。`);
@@ -489,8 +503,15 @@ export async function completeFromHits(
 
 /** 宿主侧「实例树全层枚举」：按盘上内容模拟画布解析链（BFS，环/预算护栏），
  *  产出 (宿主,实例名,命中文件) 对——⛔ 打开画布也能审计/写全（右键命令路）。
- *  `.djs`：cells 逐层展开，打分复刻 gateSystem（同目录 part0→同目录1→根 part2→根3→其他）。 */
-export async function collectInstanceHits(context: vscode.ExtensionContext, docRel: string): Promise<BindingHit[]> {
+ *  `.djs`：cells 逐层展开，打分复刻 gateSystem（同目录 part0→同目录1→根 part2→根3→其他）。
+ *  opts.all（2026-10-18 绑定面板多层点名）：**已录入的深层实例也进账**（file=表值）——
+ *  面板⛔ 只列"未配置"那半，用户要看的是全 picture；写全/审计调用⛔ 传，行为零变化。 */
+export async function collectInstanceHits(
+  context: vscode.ExtensionContext,
+  docRel: string,
+  opts?: { all?: boolean },
+): Promise<BindingHit[]> {
+  const all = !!opts?.all;
   const root = projectRoot(context);
   const dirOf = (p: string): string => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
   const recorded = await bindingsForFile(context, docRel);
@@ -528,9 +549,13 @@ export async function collectInstanceHits(context: vscode.ExtensionContext, docR
     while (queue.length && (budget--) > 0) {
       const doc = queue.shift()!;
       for (const inst of await readCells(doc)) {
-        if (recorded[`${doc}::${inst}`] || recorded[inst]) continue;          // 已录入＝表说了算，⛔ 进 hits
-        const f = resolve(dirOf(doc), inst);
-        if (f) { hits.push({ ctx: doc, name: inst, file: f }); if (!visited.has(f.toLowerCase())) { visited.add(f.toLowerCase()); queue.push(f); } }
+        const rec = recorded[`${doc}::${inst}`] ?? recorded[inst];            // 已录入（本层精控优先，回落裸键）
+        if (rec && !all) continue;                                            // 审计/写全口径：表说了算，⛔ 进 hits
+        const f = rec || resolve(dirOf(doc), inst);                           // all：已录的直接报表值，未录走兜底真相
+        if (f) {
+          hits.push({ ctx: doc, name: inst, file: f });
+          if (/\.(djs|gate|json)$/i.test(f) && !visited.has(f.toLowerCase())) { visited.add(f.toLowerCase()); queue.push(f); }
+        }
       }
     }
   } else {
@@ -539,9 +564,10 @@ export async function collectInstanceHits(context: vscode.ExtensionContext, docR
     for (const f of job.files) {
       for (const inst of [...new Set(parseVerilogInstances(f.content))]) {
         if (inst === job.topModule) continue;
-        if (recorded[`${f.name}::${inst}`] || recorded[inst]) continue;       // 该层已精控/全局已录 ⇒ 不算未配置
-        const def = defs.get(inst);
-        if (def) hits.push({ ctx: f.name, name: inst, file: pathRel(root, def) });
+        const rec = recorded[`${f.name}::${inst}`] ?? recorded[inst];           // 该层已精控/全局已录
+        if (rec && !all) continue;                                              // 审计口径：⛔ 不算未配置
+        const def = rec || (defs.get(inst) ? pathRel(root, defs.get(inst)!) : undefined);
+        if (def) hits.push({ ctx: f.name, name: inst, file: def });
       }
     }
   }

@@ -58,10 +58,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   const ensurePanel: EnsurePanel = (ctx) => openPanel(ctx);
 
-  /** view/item/context 的实参形状（真宿主：带 resourceUri 的项传 Uri，否则传整个 TreeItem）——两种都接住。 */
+  /** view/item/context 的实参形状（真宿主三种都见过：带 resourceUri 的项传 Uri、整颗 TreeItem、
+   *  以及 **provider 的数据节点 Node{label,uri,kind}**——2026-10-18 用户实锤：树右键「部件绑定」
+   *  「编译并查看电路」报"先在文件上右键"＝第三种没接住，uri 静默丢光全走兜底）。 */
   const menuUri = (arg: any): vscode.Uri | undefined => {
     if (arg?.fsPath) return arg;
     if (arg?.resourceUri) return arg.resourceUri;
+    if (arg?.uri?.fsPath) return arg.uri;                  // 数据节点形（trees.ts 的 Node{uri}）
     return undefined;
   };
 
@@ -164,7 +167,9 @@ export function activate(context: vscode.ExtensionContext) {
     }),
 
     // .v → 画布（编译单由这里推；入口＝标题按钮 / Ctrl+F5 / 命令面板带参）
-    vscode.commands.registerCommand('verilogViz.compileAndShow', (uri?: vscode.Uri) => compileAndShow(context, uri, ensurePanel)),
+    // 真机实锤（2026-10-18）：view 右键传的是数据节点（Node{uri}），⛔ 当 Uri 直喂——
+    //   过 menuUri 三形通吃（explorer 右键＝Uri、标题钮＝无参走活动档、树右键＝Node）。
+    vscode.commands.registerCommand('verilogViz.compileAndShow', (arg?: any) => compileAndShow(context, menuUri(arg), ensurePanel)),
     // 标题栏按钮 → 活动画布（Panel 或 custom editor；没人听就静默落空）
     vscode.commands.registerCommand('verilogViz.sim.togglePause', () => void pushToActiveCanvas({ vvh: 'push', op: 'sim', action: 'togglePause' })),
     vscode.commands.registerCommand('verilogViz.sim.stepOnce', () => void pushToActiveCanvas({ vvh: 'push', op: 'sim', action: 'stepOnce' })),
@@ -214,14 +219,19 @@ export function activate(context: vscode.ExtensionContext) {
     //   QuickPick 两级（选实例 → 选部件文件）后写**文档目录层**的 `.verilogviz.json`。
     //   R144「自动兜底显形」：一级列表逐项标注当前生效解析（已录入/自动同名/无来源），
     //   ⛔ 再出现"表看不见、行为却正常"的暗魔法。
-    vscode.commands.registerCommand('verilogViz.bindParts', async (arg: any) => {
+    vscode.commands.registerCommand('verilogViz.bindParts', async (arg: any, focusArg?: any) => {
       const uri = menuUri(arg) ?? getActiveSandboxDocUri();
       if (!uri) { void vscode.window.showInformationMessage('先在文件（.djs 或 .v/.sv/.vh）上右键。'); return; }
       if (!isBindablePath(uri.fsPath)) {
         void vscode.window.showInformationMessage('只能在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上打开部件绑定。');
         return;
       }
-      await openBindingPanel(context, uri);
+      // 层次树行（点击 command 带第二参＝实例名 / 右键传行 Node{label}，本层⛔ 挂文件 uri）
+      //   ⇒ 面板打开后**定位到那一条**（修用户实锤"点 alu_top 弹到别的、找不到那颗行"）。
+      const focus = typeof focusArg === 'string' && focusArg
+        ? focusArg
+        : (!menuUri(arg) && typeof arg?.label === 'string' ? arg.label : undefined);
+      await openBindingPanel(context, uri, focus);
     }),
 
     // R144「固化绑定」：机械体已上账为 bindings.materialize 工具（批次二）——命令=薄壳+告示。

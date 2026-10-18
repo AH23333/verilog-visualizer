@@ -2588,3 +2588,83 @@ describe('阶段三·给 agent 的四档深度（D0 全表／D1 单颗预演／D
     expect(vs.filter((v: any) => v.traceId).length).toBeGreaterThan(1);
   });
 });
+
+describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树元素右键 / 建表即写全 / 多层点名 / 聚焦 / 落表即时可见', () => {
+  const diskMeta = (p: string) => JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file(p).path.toLowerCase())!));
+
+  it('① view 右键传数据节点 Node{uri}：bindParts/compileAndShow 直中（⛔"先在文件上右键"族）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); endmodule',
+      'D:/p/adder.v': 'module adder; endmodule',
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { adder: 'adder.v' } }),
+      'D:/p/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"adder"}]}',
+      'D:/p/adder.djs': '{"cells":[]}',
+    } });
+    // trees getChildren 的真形状＝Node（provider 数据对象），view/item/context 第一参就是它
+    await vscode.commands.executeCommand('verilogViz.bindParts', { label: 'main.djs', desc: '', uri: vscode.Uri.file('D:/p/main.djs'), kind: 'file' });
+    const bp = vscode.state.panels.find((p: any) => p.viewType === 'verilogViz.binding');
+    expect(bp).toBeTruthy();
+    expect(bp!.title).toContain('main.djs');
+    expect(vscode.state.infoMessages.some((m: string) => m.includes('先在文件'))).toBe(false);
+    await vscode.commands.executeCommand('verilogViz.compileAndShow', { label: 'top.v', desc: '', uri: vscode.Uri.file('D:/p/top.v'), kind: 'file' });
+    expect(vscode.state.infoMessages.some((m: string) => m.includes('先打开一个 Verilog 源码文件'))).toBe(false);
+    const pushPanel = vscode.state.panels.find((p: any) => p.viewType === 'verilogVisualizer');
+    const job = [...(pushPanel?.messageLog || [])].reverse().find((m: any) => m.vvh === 'push' && m.op === 'compile');
+    expect(job).toBeTruthy();
+  });
+
+  it('② 无表文档「打开绑定配置」：建表即写全（⛔ 交空壳给用户看）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/fresh/new.djs': '{"cells":[{"type":"Subcircuit","celltype":"counter"}]}',
+      'D:/p/fresh/counter.djs': '{"cells":[]}',
+    } });
+    await vscode.commands.executeCommand('verilogViz.openBindingConfig', vscode.Uri.file('D:/p/fresh/new.djs'));
+    expect(diskMeta('D:/p/fresh/.verilogviz.json').bindings).toEqual({ counter: 'counter.djs' });   // 值按表层相对
+    expect(vscode.state.infoMessages.some((m: string) => m.includes('绑定配置＝'))).toBe(true);
+  });
+
+  it('③ 空实例文档建表＝仍是空壳（⛔ 无米之炊也⛔ 挂命令）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/fresh/new.djs': '{"cells":[]}' } });
+    await vscode.commands.executeCommand('verilogViz.openBindingConfig', vscode.Uri.file('D:/p/fresh/new.djs'));
+    expect(diskMeta('D:/p/fresh/.verilogviz.json').bindings).toEqual({});
+  });
+
+  it('④ 绑定面板多层点名：孙层进账（深层行带 宿主::前缀键）；保存按**表层相对**写键', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/sub/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"ctrl"}]}',
+      'D:/p/sub/ctrl.djs': '{"cells":[{"type":"Subcircuit","celltype":"adder"}]}',
+      'D:/p/sub/adder.djs': '{"cells":[]}',
+    } });
+    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/sub/main.djs'));
+    const bp = vscode.state.panels.find((p: any) => p.viewType === 'verilogViz.binding');
+    const data = bp!.messageLog.find((m: any) => m.vvh === 'binding' && m.op === 'data')?.data;
+    expect(data.instances.map((i: any) => i.key ?? i.name).sort()).toEqual(['ctrl', 'sub/ctrl.djs::adder']);
+    await bp!.fired[0]({ vvh: 'binding', op: 'save', changes: { 'sub/ctrl.djs::adder': 'sub/adder.djs' } });   // 面板候选＝根相对名
+    const meta = diskMeta('D:/p/sub/.verilogviz.json');
+    expect(meta.bindings['ctrl.djs::adder']).toBe('adder.djs');   // 键与值都按表层相对进表（读侧折叠的镜像）
+    expect(meta.bindings['sub/ctrl.djs::adder']).toBeUndefined(); // ⛔ 根相对原样进表＝读侧折成 sub/sub 的错位
+  });
+
+  it('⑤ 层次树点行带实例名 ⇒ 面板聚焦那颗行（resolve 到写回主键；第二参⛔ 动第一参旧形状）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/sub/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"ctrl"}]}',
+      'D:/p/sub/ctrl.djs': '{"cells":[{"type":"Subcircuit","celltype":"adder"}]}',
+      'D:/p/sub/adder.djs': '{"cells":[]}',
+    } });
+    const trees = await import('../../extension/src/trees');
+    trees.setActiveSandboxDoc('sub/main.djs', ['ctrl']);
+    const hierarchy = vscode.state.treeProviders['verilogViz.sandboxHierarchy'];
+    const item = await hierarchy.getTreeItem((await hierarchy.getChildren())[0]);
+    expect(String(item.command?.arguments?.[0])).toContain('sub/main.djs');   // 旧证人形状不破
+    expect(item.command?.arguments?.[1]).toBe('ctrl');
+    // 右键路径：view 传行 Node（kind=instance 无 uri）⇒ 活动文档兜底 + label 作聚焦
+    await vscode.commands.executeCommand('verilogViz.bindParts', { label: 'ctrl', desc: '', kind: 'instance' });
+    const bp = vscode.state.panels.find((p: any) => p.viewType === 'verilogViz.binding');
+    expect(bp!.title).toContain('main.djs');
+    const f = bp!.messageLog.find((m: any) => m.vvh === 'binding' && m.op === 'focus');
+    expect(f?.name).toBe('ctrl');
+    await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/sub/main.djs'), 'adder');
+    const fs2 = bp!.messageLog.filter((m: any) => m.vvh === 'binding' && m.op === 'focus');
+    expect(fs2[fs2.length - 1]?.name).toBe('sub/ctrl.djs::adder');   // 裸实例名 resolve 到深层行的写回主键
+  });
+});

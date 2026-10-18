@@ -76,10 +76,14 @@ export function getAutoHitList(): Array<{ ctx: string; name: string; file: strin
 export function clearAutoHits(): void { autoHits.clear(); }
 
 /* R150 实时多层审计：画布"当前电路"里**未录入绑定配置**的子部件实例（逐层递归 cells）。
-   ⛔ 依赖"展开过才有账"；strict 下被拦（resolvePartRef 返 null）的也点名——另走一次打分兜底拿真相。 */
-export function getBindingAudit(rootCells?: any[]): Array<{ ctx: string; name: string; file: string }> {
+   ⛔ 依赖"展开过才有账"；strict 下被拦（resolvePartRef 返 null）的也点名——另走一次打分兜底拿真相。
+   bindingsOverride（2026-10-18「写全配置点了没反应」根修）：covered 判定吃**渲染当下**的表——
+   activePartBindings 由 effect 在 render 之后喂（链条落后两拍：宿主落表→广播重读→重渲染，
+   这一帧的审计却拿旧表 ⇒ 条冻结）。提示条把 doc.initialBindings（state，这帧已是新值）直传。 */
+export function getBindingAudit(rootCells?: any[], bindingsOverride?: Record<string, string> | null): Array<{ ctx: string; name: string; file: string }> {
   const out: Array<{ ctx: string; name: string; file: string }> = [];
   if (!Array.isArray(rootCells)) return out;
+  const pb = bindingsOverride ?? activePartBindings;
   const files = partFileSource ? partFileSource() : sandboxStore.list();
   const base = (f: SandboxFile) => baseName(f.name).replace(/\.(djs|gate|json)$/i, '');
   const dirOfF = (f: SandboxFile) => dirOf(f);
@@ -115,8 +119,8 @@ export function getBindingAudit(rootCells?: any[]): Array<{ ctx: string; name: s
       const hit = ref ? ref.file : scoreHit(scope, name);            // strict 被拦也拿真相
       if (!hit) continue;
       // 录入判定＝裸键或该层前缀键任一在册（与展开判定同口径：表说了算才算配了）
-      const covered = activePartBindings[name] !== undefined || activePartBindings[`${ctx}::${name}`] !== undefined
-        || (ctx === activeCtxDoc && activePartBindings[`${activeCtxDoc}::${name}`] !== undefined);
+      const covered = pb[name] !== undefined || pb[`${ctx}::${name}`] !== undefined
+        || (ctx === activeCtxDoc && pb[`${activeCtxDoc}::${name}`] !== undefined);
       if (!covered) out.push({ ctx, name, file: hit.name });
       walk(cellsOf(hit), hit.name, depth - 1);
     }

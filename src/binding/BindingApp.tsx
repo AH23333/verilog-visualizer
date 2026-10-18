@@ -2,9 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface BindingInstance {
   name: string;
-  count: number;
+  count?: number;
   auto: string | null;
   recorded: string | null;
+  /** 深层行的宿主文件（根相对）；顶层行不带 */
+  ctx?: string;
+  /** 写回/选中主键：顶层＝裸 name；深层＝`宿主::实例` */
+  key?: string;
 }
 export interface BindingData {
   docRel: string;
@@ -23,6 +27,8 @@ export default function BindingApp() {
   const [sel, setSel] = useState<Record<string, string>>({});
   const [savedAt, setSavedAt] = useState<number>(0);
   const [saveErrors, setSaveErrors] = useState<string[]>([]);
+  const [focusKey, setFocusKey] = useState<string>('');
+  const rowRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const getBridge = useCallback(() => {
     if (!bridge.current && typeof (window as any).acquireVsCodeApi === 'function') {
@@ -44,9 +50,17 @@ export default function BindingApp() {
         setSaveErrors([]);
         const initial: Record<string, string> = {};
         for (const it of (d.data as BindingData).instances) {
-          initial[it.name] = it.recorded || it.auto || '';
+          const k = it.key ?? it.name;
+          initial[k] = it.recorded || it.auto || '';
         }
         setSel(initial);
+      }
+      // 聚焦行（层次树点进来时宿主随 data 推送）：高亮 + 滚进视野
+      if (d.op === 'focus') {
+        const key = String(d.name || '');
+        setFocusKey(key);
+        const el = rowRefs.current[key];
+        if (el) { try { el.scrollIntoView({ block: 'center' }); } catch { /* 老 webview 没这选项 */ } }
       }
       if (d.op === 'saved') {
         setSavedAt(Date.now());
@@ -67,16 +81,17 @@ export default function BindingApp() {
     }
   }, [getBridge]);
 
-  const handleSelect = (name: string, val: string) => {
-    setSel((prev) => ({ ...prev, [name]: val }));
+  const handleSelect = (key: string, val: string) => {
+    setSel((prev) => ({ ...prev, [key]: val }));
   };
 
   const handleSave = () => {
     const changes: Record<string, string> = {};
     for (const it of data?.instances || []) {
-      const v = sel[it.name] ?? '';
+      const k = it.key ?? it.name;
+      const v = sel[k] ?? '';
       const iv = it.recorded || it.auto || '';
-      if (v !== iv) changes[it.name] = v;
+      if (v !== iv) changes[k] = v;
     }
     const b = getBridge();
     if (b) b.postMessage({ vvh: 'binding', op: 'save', changes });
@@ -87,7 +102,7 @@ export default function BindingApp() {
     if (b) b.postMessage({ vvh: 'binding', op: 'openConfig' });
   };
 
-  const boundCount = (data?.instances || []).filter((it) => (sel[it.name] || '').trim()).length;
+  const boundCount = (data?.instances || []).filter((it) => (sel[it.key ?? it.name] || '').trim()).length;
 
   return (
     <div style={{ fontFamily: 'var(--vscode-font-family, sans-serif)', padding: 16, color: 'var(--vscode-foreground, #ccc)' }}>
@@ -101,27 +116,38 @@ export default function BindingApp() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
           {data!.instances.map((it) => {
-            const v = sel[it.name] || '';
+            const k = it.key ?? it.name;
+            const v = sel[k] || '';
             const partList = data.parts.slice();
+            const isFocus = focusKey === k;
             return (
               <div
-                key={it.name}
+                key={k}
+                ref={(el) => { rowRefs.current[k] = el; }}
                 data-binding-name={it.name}
+                data-binding-key={k}
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   gap: 8,
                   padding: '4px 6px',
                   borderRadius: 4,
-                  background: 'color-mix(in srgb, var(--success, #4caf50) 5%, transparent)',
-                  border: '1px solid color-mix(in srgb, var(--border, #666) 30%, transparent)',
+                  background: isFocus
+                    ? 'color-mix(in srgb, var(--accent, #4b8cff) 18%, transparent)'
+                    : 'color-mix(in srgb, var(--success, #4caf50) 5%, transparent)',
+                  border: isFocus ? '1px solid var(--accent, #4b8cff)' : '1px solid color-mix(in srgb, var(--border, #666) 30%, transparent)',
                 }}
               >
                 <code style={{ fontFamily: 'monospace', fontWeight: 600, minWidth: 100 }}>{it.name}</code>
-                <span style={{ fontSize: '12px', color: 'var(--text-muted, #888)' }}>×{it.count}</span>
+                {it.ctx && (
+                  <code title={`宿主：${it.ctx}`} style={{ fontSize: 11, color: 'var(--text-muted, #888)', fontFamily: 'monospace' }}>
+                    在 {it.ctx.split('/').pop()} 内
+                  </code>
+                )}
+                <span style={{ fontSize: '12px', color: 'var(--text-muted, #888)' }}>{typeof it.count === 'number' ? `×${it.count}` : ''}</span>
                 <select
                   value={v}
-                  onChange={(e) => handleSelect(it.name, e.target.value)}
+                  onChange={(e) => handleSelect(k, e.target.value)}
                   style={{
                     flex: 1,
                     padding: '2px 4px',
