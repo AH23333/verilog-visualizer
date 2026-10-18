@@ -38,6 +38,13 @@ function bridge(): VsCodeApi {
   return api;
 }
 
+/** **一颗会话只准 acquire 一次**（真宿主实锤：第二次抛 "An instance of the VS Code API has already been
+ *  acquired"——修前 DocApp 的 bridge 与这里各拿各的，doc 画布 ready/edit/completeBindings 全哑火）。
+ *  所有要碰 vscode API 的模块都从这里取，⛔ 再 window.acquireVsCodeApi()。非壳环境（浏览器闸门）回 null。 */
+export function getVsCodeApiOrNull(): VsCodeApi | null {
+  try { return bridge(); } catch { return null; }
+}
+
 let seq = 0;
 const pending = new Map<string, { resolve: (v: any) => void, reject: (e: any) => void, timer: ReturnType<typeof setTimeout> }>();
 

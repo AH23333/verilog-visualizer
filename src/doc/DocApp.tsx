@@ -12,6 +12,7 @@ import SandboxCanvas from '../components/SandboxCanvas';
 import { useVscodeTheme } from '../hooks/useVscodeTheme';
 import { setPartFileSource, clearAutoHits, setBindingPolicy } from '../lib/gateSystem';
 import { getHost, hostFire } from '../lib/host/host';
+import { getVsCodeApiOrNull } from '../lib/host/vscodeHost';
 import { sandboxStore, type SandboxFile } from '../store/sandboxStore';
 import { settingsStore } from '../store/settingsStore';
 
@@ -48,7 +49,6 @@ function makePartSource(siblings: Sibling[], binds: Map<string, string>) {
 export default function DocApp() {
   const theme = useVscodeTheme();
   const [doc, setDoc] = useState<DocPayload | null>(null);
-  const vscodeRef = useRef<any>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 会话内「celltype → 部件文件名」绑定（SandboxCanvas doc 模式「部件绑定」对话框
   // 确认后经 doc.onBind 逐条交来；init 时从宿主 .verilogviz.json bindings 段载入）。
@@ -67,13 +67,9 @@ export default function DocApp() {
   // doc 名字的镜像（handleBind 落盘要用；⛔ 进 useCallback 依赖）
   const docNameRef = useRef<string>('');
 
-  // acquireVsCodeApi 一个会话只准调一次：lazy 取一次缓存
-  const bridge = useCallback((): any => {
-    if (!vscodeRef.current && typeof (window as any).acquireVsCodeApi === 'function') {
-      try { vscodeRef.current = (window as any).acquireVsCodeApi(); } catch { /* 已取过/非壳环境 */ }
-    }
-    return vscodeRef.current;
-  }, []);
+  // acquireVsCodeApi 一个会话只准调一次：全画布**唯一出口**在 vscodeHost（真宿主实锤：第二次 acquire
+  //   抛 "already been acquired"，修前这里与 host 层各拿各的＝doc 协议消息全哑火）——⛔ 再 window.acquireVsCodeApi()。
+  const bridge = useCallback((): any => getVsCodeApiOrNull(), []);
   // R146 绑定完整性：提示条「写全配置」＝把画布实解的 autoHits 真相交宿主落表；
   // 宿主回推 bindingsWritten 后清账（auto hits 归零＝条自动消失，⛔ remount 吞编辑）。
   const handleFixBindings = useCallback((hits: Array<{ ctx: string; name: string; file: string }>) => {
