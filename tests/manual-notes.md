@@ -70,7 +70,9 @@
 - [OK·H] 外部改坏 adder.v（编辑器未开此文件）→ 自动 1 错锚定 top.v 行3＋toast；外部修复 → 自动清账＋画布重出。
 - [OK·K/N] 编译成功清旧诊断；编译失败清画布旧图。
 - [OK·A/D] Explorer 右键三项齐；bindingPolicy 描述改口与行为一致。
-- [结案·R] 沙盒画布 Ctrl+F **弹窗正常**（新基座复验：弹窗出＋「没有匹配的部件」空画布读数对＋**Esc 关✓**；× 钮与 Esc/backdrop 同一 onClose 回调，代码同源）。此前"无反应"读数＝我点击位贴部件面板（SELECT 护栏 return）假读数；批2"卡死"现场实为部件清单 demo 钮＋删除 ×（S 断供期误读）。⚠ 测试期间基座三次在 press_key Ctrl+F 后 ~1s **干净退出**（exit code 0、无 crashpad、无渲染器错误）——归因 computer-use/基座交互（工具侧），非扩展病；× 钮真机一点验可选（非阻塞）。
+- [结案·R] 沙盒画布 Ctrl+F **弹窗正常**（新基座复验：弹窗出＋「没有匹配的部件」空画布读数对＋**Esc 关✓**）。此前"无反应"读数＝我点击位贴部件面板（SELECT 护栏 return）假读数；批2"卡死"现场实为部件清单 demo 钮＋删除 ×（S 断供期误读）。
+  ⚠ **× 钮关闭未验**：computer-use 对 webview 内元素的点击坐标会**漂移到窗口标题栏 ×**（用户亲验：基座几次"干净退出 exit 0"皆我点 × 钮时点到了 VS Code 关闭按钮）⇒ 该点移交用户真机自验；× 与 Esc/backdrop 同 onClose 回调，Esc 已验，代码同源。
+  **教训入册：本环境下 ⛔ computer-use 点 webview 内元素（尤其浮层/绝对定位件）；键操作用 press_key 带 element_id（实测安全）；侧栏/画布内点击失败即停手交用户。**
 - [结案·T] 无 IO 部件（demo 仅 And 无 Input/Output）放置**成功渲染**（cell 上画布＋tab 脏标），无假错误、无 DRC 红；放置成功本就无 toast（⛔ 失败路才有提示），设计如此。
 
 ### 假 API 事故（本轮最大教训，harness 当场揪出）
@@ -81,3 +83,23 @@
   旧诊断"watcher 只对开编辑器文件触发"是误判——真根因只有闭包收缩死锁（bindingRefs 射程集已修，watcher.onDidChange 本就触发）。
 - 处置：摘除假 API 块＋桩同步删除＋桩顶纪律注释「⛔ 桩上不得出现 extHost 公开面没有的 API」。
 - 终读数：vitest **282/282** · 真宿主 harness **failed=0**（7/7＋哨兵零命中）· 新基座 activate 日志无错。
+
+## 批5 回归轮（2026-10-19 凌晨，用户令「× 钮交我测，其余继续」）
+
+- [新案·审计错报案·中→已修 c1c317e] 开着 top.v 从命令面板跑「检查绑定完整性」，报的却是「child.djs」——
+  双域绑定命令（bindParts/materialize/audit/complete/openBindingConfig 五颗）目标序＝沙盒粘滞档**压过**活动编辑器
+  （B/L/J 同族第四案）。修＝统一 bindTargetUri＝菜单实参→活动编辑器（可绑域内）→粘滞档→最后文本 uri；
+  台架钉＋真宿主复验（粘滞 child.djs＋活动 top.v⇒报「top.v」✓）。
+- [问题L 补刀·已修 0a033b5] 粘滞只记在 getChildren（视图可见才跑）——编辑器激活期间层次视图藏着⇒粘滞从没吃过，
+  切回容器照旧退 welcome（真机实锤）。修＝捕获挪进 refresh()（onDidChangeActiveTextEditor 事件驱动）；
+  真宿主复验：切 webview 页签后层次树保持 adder/mux/sub ✓。
+- [结案·V] 综合网表另存默认名＝`top_netlist.v`（与画布内容一致）✓——N 修后失败清画布⇒名实分岔的旧路已不存在。
+- [结案·复制沙盒] 编译画布「复制到沙盒」全链 ✓：top/ 落盘（主电路＋3 子部件＋目录表 111B）＋toast 报数＋部件树即时上树。
+- [结案·新建 Verilog 文件] 命令面板路 QuickInput 正常弹（预填默认名 top.v＝设计，value 字段）。
+- [移交·Q] 部件面板滚轮：computer-use 滚轮路受坐标漂移污染读数不可信；静态判定不成立
+  （侧栏 overflowY:auto＋wheel 只绑画布 wrapper 兄弟容器）⇒ 请真机滚一下即定。
+- [移交·×/弹窗族] 弹窗 × 钮、自定义门/表达式生成等 webview 浮层＝用户自测（坐标漂移会点到 VS Code 关闭钮，亲验）。
+- 归因更正（用户亲验）：批4 记的"press_key Ctrl+F 后基座干净退出"＝**我点 webview 元素坐标漂移到窗口标题栏 ×**，
+  ⛔ 工具玄学也 ⛔ 扩展病。安全路总结：workbench 壳层元素点击✓；webview 内一律 set_focus＋press_key(带 element_id)✓；
+  webview 内坐标/元素点击⛔（浮层件必死）。
+- 终读数：vitest **284/284** · harness **failed=0** · 两新钉（审计目标序＋L 捕获位）在册。
