@@ -109,9 +109,15 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
   /** 模块名 → 定义文件（refresh 时作废；约定"模块名=文件名"只是兜底，现在以真扫描为准） */
   private _defMap: Map<string, vscode.Uri> | null = null;
   /** R160（批1问题L）：webview/custom editor 激活时 activeTextEditor＝undefined——层次树此前当场
-   *  退 welcome（用户看着画布，树却说"没打开文件"）。记一颗最后的 .v uri 作粘滞兜底。 */
+   *  退 welcome（用户看着画布，树却说"没打开文件"）。记一颗最后的 .v uri 作粘滞兜底。
+   *  ⚠ 捕获必须在 refresh()（事件驱动）里做，⛔ 只靠 getChildren——视图藏着时 getChildren 根本
+   *  不跑（真机实锤：开 top.v→编译画布→切回编译容器，树里没一颗节点＝粘滞从没吃过）。 */
   private _lastVerilogUri: vscode.Uri | null = null;
-  refresh(): void { this._defMap = null; this._change.fire(); }
+  refresh(): void {
+    const ed = vscode.window.activeTextEditor;
+    if (ed && isVerilogPath(ed.document.fileName)) this._lastVerilogUri = ed.document.uri;
+    this._defMap = null; this._change.fire();
+  }
 
   getTreeItem(n: Node): vscode.TreeItem {
     const item = makeItem(n, n.uri ? {
