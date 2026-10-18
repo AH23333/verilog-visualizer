@@ -37,6 +37,8 @@
     "res.listProject":     { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "res.listProject", "idempotent": true, "since": "0.2.0", "description": "编译域工程树" },
     "res.listSandbox":     { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "res.listSandbox", "idempotent": true, "since": "0.2.0", "description": "沙盒域工程树" },
     "compile.closure":     { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "compile.closure", "idempotent": true, "since": "0.2.0", "description": ".v 依赖闭包（拓扑文件名单+顶层模块）" },
+    "sys.ping":          { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.ping", "idempotent": true, "since": "0.4.0", "description": "L0 活体探针：alive/激活检查点/桥态/uptime（半活假象终结者）" },
+    "sys.ctxSnapshot":   { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.ctxSnapshot", "idempotent": true, "since": "0.4.0", "description": "L2 宿主隐式态如实快照（编辑器/粘滞/Panel/活画布/页签）" },
     "sys.listTools":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.listTools", "idempotent": true, "since": "0.2.0", "description": "discoverTools：权威工具清单+schema" },
     "sys.getStatus":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.getStatus", "idempotent": true, "since": "0.2.0", "description": "契约版本/调用面/工具账规模/工程根" },
     "sys.readAudit":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.readAudit", "idempotent": true, "since": "0.2.0", "description": "readLogs：审计 jsonl 最近 N 行" },

@@ -17,14 +17,20 @@ import * as vscode from 'vscode';
 import { registerTool, argUri, getTool, listTools, type ToolCaller, type ToolSurface } from './toolRegistry';
 import { broadcastBindingsChanged, projectRoot, vscodeFs } from './dispatch';
 import { ProjectStore, sanitizeRel } from './projectStore';
+import { rootRel } from './verilogDomain';
 import {
   getAllBindings, setBindingInDir, collectInstanceHits, completeFromHits,
   materializeBindings, togglePartRole, getCircuitsSet, pathRel, META_FILE,
 } from './sandboxFiles';
-import { closureOf, scanDefs } from './compilePanel';
+import { closureOf, scanDefs, lastJobInfo, getLastTextUri } from './compilePanel';
 import { apiOverrideSnapshot, canSurface, loadApiContract } from './apiSurface';
 import { checkGrant, grantsSnapshot } from './apiGrants';
 import { auditChannelState } from './apiAudit';
+import { activationSnapshot } from './activationTrail';
+import { bridgeSnapshot } from './mcpBridge';
+import { openDocsSnapshot } from './customEditors';
+import { getActiveSandboxDocUri } from './trees';
+import { hostState } from './hostState';
 
 let registered = false;
 
@@ -272,7 +278,14 @@ export function registerDomainTools(): void {
   });
 
   registerTool({
-    id: 'sys.getStatus', title: '宿主状态', description: '契约版本/调用面开关/工具账规模/工程根。幂等只读。',
+    id: 'sys.ping', title: '活体探针',
+    description: 'L0 半毫秒探针：扩展活着没、activate 活到哪一步（检查点账，半活假象终结者）、MCP 桥听没听、挂了多久。零实参零副作用，agent 进门第一枪。',
+    schema: { type: 'object', properties: {} },
+    handler: async () => ({ alive: true, activation: activationSnapshot(), bridge: bridgeSnapshot() }),
+  });
+
+  registerTool({
+    id: 'sys.getStatus', title: '宿主状态', description: '契约版本/调用面/工具账规模/工程根＋活体三格（activation 检查点/bridge 桥态/openDocs 活画布/lastCompile 最近编译单）。幂等只读。',
     schema: { type: 'object', properties: {} },
     handler: async (ctx) => {
       const c = loadApiContract();
@@ -282,6 +295,41 @@ export function registerDomainTools(): void {
         contractTools: Object.keys(c.tools).length,
         registeredTools: listTools().length,
         projectRoot: projectRoot(ctx).fsPath.replace(/\\/g, '/'),
+        activation: activationSnapshot(),
+        bridge: bridgeSnapshot(),
+        openDocs: openDocsSnapshot(),
+        lastCompile: lastJobInfo(),
+      };
+    },
+  });
+
+  registerTool({
+    id: 'sys.ctxSnapshot', title: '宿主隐式态快照（如实转述）',
+    description: 'L2「现场是什么」：活动编辑器/最后文本 uri/沙盒粘滞档/编译 Panel 与最近编译单/活画布清单/可见页签。'
+      + '专治 P3（隐式上下文劫持族）：agent ⛔ 猜"现在是谁"——一切写操作的目标仍须显式实参，这颗只供**看见**。全字段可 null，null 也是真话。',
+    schema: { type: 'object', properties: {} },
+    handler: async (ctx) => {
+      const ed = vscode.window.activeTextEditor;
+      const sb = getActiveSandboxDocUri();
+      const circuits = sb ? await getCircuitsSet(ctx) : new Set<string>();
+      const norm = (u: vscode.Uri | undefined | null): string | null => (u ? u.fsPath.replace(/\\/g, '/') : null);
+      const tg = (vscode.window as any).tabGroups;
+      const visibleTabs = (tg?.all ?? []).flatMap((g: any) => g.tabs ?? []).map((t: any) => ({
+        label: String(t.label ?? ''),
+        kind: t.input?.viewType ? `custom:${t.input.viewType}` : (t.input?.uri ? 'editor' : 'other'),
+        active: !!t.isActive,
+      }));
+      return {
+        activeEditor: ed ? { path: norm(ed.document.uri), languageId: ed.document.languageId } : null,
+        lastTextUri: norm(getLastTextUri()),
+        // role 口径与沙盒树同一把尺：circuits 名单（根相对名）里有＝circuit，其余＝part（协议 v0.4 缺省语义）
+        activeSandboxDoc: sb ? {
+          name: norm(sb),
+          role: circuits.has(rootRel(projectRoot(ctx), sb)) ? 'circuit' : 'part',
+        } : null,
+        compilePanel: { open: hostState.panelOpen, lastJob: lastJobInfo() },
+        openDocs: openDocsSnapshot(),
+        visibleTabs,
       };
     },
   });

@@ -1,7 +1,7 @@
 # API_REFERENCE（生成物 · 统一调用层）
 
 > ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
-> apiVersion `0.1.0` · 生成工具数 **35** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
+> apiVersion `0.1.0` · 生成工具数 **37** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
@@ -44,9 +44,11 @@
 | `res.listProject` | 列编译域文件 | read | none | ui/mcp | — | `res.listProject` | 0.2.0 |
 | `res.listSandbox` | 列沙盒域文件 | read | none | ui/mcp | — | `res.listSandbox` | 0.2.0 |
 | `res.readProjectFile` | 读工程文件 | read | none | ui/mcp | — | `res.readProjectFile` | 0.2.0 |
+| `sys.ctxSnapshot` | 宿主隐式态快照（如实转述） | read | none | ui/mcp/cli | — | `sys.ctxSnapshot` | 0.4.0 |
 | `sys.describeTool` | 单颗工具深档（含闸门预演） | read | none | ui/mcp/cli | — | `sys.describeTool` | 0.3.0 |
 | `sys.getStatus` | 宿主状态 | read | none | ui/mcp/cli | — | `sys.getStatus` | 0.2.0 |
 | `sys.listTools` | 工具发现 | read | none | ui/mcp/cli | — | `sys.listTools` | 0.2.0 |
+| `sys.ping` | 活体探针 | read | none | ui/mcp/cli | — | `sys.ping` | 0.4.0 |
 | `sys.readAudit` | 读调用审计 | read | none | ui/mcp/cli | — | `sys.readAudit` | 0.2.0 |
 | `sys.selfCheck` | 调用层自检（agent 进门第一枪） | read | none | ui/mcp/cli | — | `sys.selfCheck` | 0.3.0 |
 
@@ -693,6 +695,17 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
+### `sys.ctxSnapshot` — 宿主隐式态快照（如实转述）
+
+L2「现场是什么」：活动编辑器/最后文本 uri/沙盒粘滞档/编译 Panel 与最近编译单/活画布清单/可见页签。专治 P3（隐式上下文劫持族）：agent ⛔ 猜"现在是谁"——一切写操作的目标仍须显式实参，这颗只供**看见**。全字段可 null，null 也是真话。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
 ### `sys.describeTool` — 单颗工具深档（含闸门预演）
 
 深度 D1：一颗工具的**全部真相**＝registry 卡（标题/描述/参数 schema）+ 契约卡（perm/sideEffects/surfaces/ref/审批/since）+ 闸前预演（这一枪会不会被①②③④哪道拦、缺哪颗必填）+ 该工具最近的审计行（带 traceId）。⛔ 执行 handler＝零副作用。agent ⛔ 靠真打一枪来试签名。
@@ -732,7 +745,7 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 
 ### `sys.getStatus` — 宿主状态
 
-契约版本/调用面开关/工具账规模/工程根。幂等只读。
+契约版本/调用面/工具账规模/工程根＋活体三格（activation 检查点/bridge 桥态/openDocs 活画布/lastCompile 最近编译单）。幂等只读。
 
 ```json
 {
@@ -744,6 +757,17 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 ### `sys.listTools` — 工具发现
 
 §15 discoverTools：全部上账工具的 id/标题/描述/参数 schema/契约属性。agent 必须以它为准，⛔ 靠经验猜签名。
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### `sys.ping` — 活体探针
+
+L0 半毫秒探针：扩展活着没、activate 活到哪一步（检查点账，半活假象终结者）、MCP 桥听没听、挂了多久。零实参零副作用，agent 进门第一枪。
 
 ```json
 {

@@ -31,6 +31,12 @@ export interface CompileJob {
 /** 画布 Panel 的打开/复用（extension.ts 注入，避免反向依赖） */
 export type EnsurePanel = (context: vscode.ExtensionContext) => Promise<vscode.WebviewPanel> | vscode.WebviewPanel;
 
+/** R160 批次四（sys.ctxSnapshot/getStatus，P10）：最近一次编译单的只读转述——⛔ 判断，只如实报。 */
+export function lastJobInfo(): { entry: string; files: number; refs: number } | null {
+  if (!lastJob) return null;
+  return { entry: lastJob.entry.fsPath.replace(/\\/g, '/'), files: lastJob.closurePaths.size, refs: lastJob.refs.size };
+}
+
 async function readText(uri: vscode.Uri): Promise<string> {
   return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
 }

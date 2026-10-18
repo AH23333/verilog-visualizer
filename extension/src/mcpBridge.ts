@@ -81,17 +81,25 @@ function probeAlive(pipe: string): Promise<boolean> {
   });
 }
 
+/** 桥的活体读数（sys.ping/getStatus 用，P10）：listening＝门开没开；pipe＝门在哪；conns＝几条 agent 线挂着。 */
+const bridgeState: { listening: boolean; pipe: string | null; skipped: string | null } = { listening: false, pipe: null, skipped: null };
+export function bridgeSnapshot(): { listening: boolean; pipe: string | null; conns: number; skipped: string | null } {
+  return { ...bridgeState, conns: liveConns.size };
+}
+const liveConns = new Set<net.Socket>();
+
 /**
  * 起桥（activate 在契约落定后调）。返回 Disposable＝真起了；undefined＝没起
  * （开关关/没开文件夹/双开让位/listen 失败——都不算错，静默是常态）。
  */
 export async function startMcpBridge(context: vscode.ExtensionContext): Promise<vscode.Disposable | undefined> {
-  if (process.env.VV_MCP === 'off') return undefined;                        // 台架 seam：vitest 的 activate ⛔ 碰真管道（协议判据走 handleMcpLine 直调）
-  if (!vscode.workspace.workspaceFolders?.length) return undefined;             // agent 的 --project 对着文件夹，没根没桥
-  if ((loadApiContract().surfacesGlobal?.mcp ?? true) === false) return undefined;  // 关闸＝门不开
+  const skip = (why: string): undefined => { bridgeState.skipped = why; return undefined; };
+  if (process.env.VV_MCP === 'off') return skip('env VV_MCP=off（台架）');
+  if (!vscode.workspace.workspaceFolders?.length) return skip('无工作区文件夹');             // agent 的 --project 对着文件夹，没根没桥
+  if ((loadApiContract().surfacesGlobal?.mcp ?? true) === false) return skip('契约 mcp 关');  // 关闸＝门不开
   const pipe = pipeNameFor(projectRoot(context).fsPath);
-  if (await probeAlive(pipe)) return undefined;                                  // 另一颗窗口在服务这颗工程，让位
-  const conns = new Set<net.Socket>();
+  if (await probeAlive(pipe)) return skip('双开让位（他窗在服务）');
+  const conns = liveConns;
   const server = net.createServer((sock) => {
     conns.add(sock);
     sock.on('error', () => sock.destroy());
@@ -115,12 +123,14 @@ export async function startMcpBridge(context: vscode.ExtensionContext): Promise<
     });
   });
   return await new Promise((res) => {
-    server.once('error', () => { server.close(); res(undefined); });   // EADDRINUSE/权限问题＝不起了（另一颗抢先/环境不支持）
+    server.once('error', () => { server.close(); skip('listen 失败（他窗抢先/环境不支持）'); res(undefined); });   // EADDRINUSE/权限问题＝不起了（另一颗抢先/环境不支持）
     server.listen(pipe, () => {
+      bridgeState.listening = true; bridgeState.pipe = pipe; bridgeState.skipped = null;
       const disp: vscode.Disposable = {
         dispose: () => {
           for (const s of conns) s.destroy();
           server.close();
+          bridgeState.listening = false; bridgeState.pipe = null;
           if (process.platform !== 'win32') { try { require('fs').unlinkSync(pipe); } catch { /* 已没了＝正常 */ } }
         },
       };

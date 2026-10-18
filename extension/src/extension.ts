@@ -35,6 +35,8 @@ import { registerFilesystemTools } from './toolsFs';
 import { registerDomainTools } from './toolsDomain';
 import { registerRpcTools } from './dispatch';
 import { startMcpBridge } from './mcpBridge';
+import { markActivationStart, markActivated } from './activationTrail';
+import { hostState } from './hostState';
 import { ProjectStore, type FsLike } from './projectStore';
 import { watcherGlobs, isBindablePath, rootRel } from './verilogDomain';
 
@@ -47,9 +49,11 @@ const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): 
   new Promise<T>((res, rej) => t.then(res, (e) => rej(e)));
 
 export function activate(context: vscode.ExtensionContext) {
+  markActivationStart();       // R160 批次四（P1 半活假象终结者）：航行记录仪归零重启
   registerFilesystemTools();   // 统一调用层批次一：文件系统十工具上账（幂等）
   registerDomainTools();       // 批次二：bindings/circuits/res/compile/sys 四族十四工具（§15 范式）
   registerRpcTools();          // 阶段三第一刀：RPC 那 9 颗也上同一张执行器（闸与账⛔ 有两套）
+  markActivated('tools');
   const storeFactory = () => new ProjectStore(vscodeFsLike(projectRoot(context)), '@root');
   const moduleTree = new ModuleTree();
   const hierarchyTree = new HierarchyTree();
@@ -57,6 +61,7 @@ export function activate(context: vscode.ExtensionContext) {
   const codeFilesTree = new CodeFilesTree(storeFactory);
   const sandboxPartsTree = new SandboxPartsTree(storeFactory, () => getCircuitsSet(context));
   const sandboxHierarchyTree = new SandboxHierarchyTree();
+  markActivated('trees');
 
   const ensurePanel: EnsurePanel = (ctx) => openPanel(ctx);
 
@@ -412,7 +417,9 @@ export function activate(context: vscode.ExtensionContext) {
   }).catch(() => { /* 读不到工程覆盖＝默认账，常态 */ }).then(() => {
     // 批次三 A 案：MCP 活编辑器桥——契约落定后才决定开不开门（surfacesGlobal.mcp 且开了文件夹）。
     // 闸/账/HITL 全在 executeTool（caller 传输固化＝mcp/agent/非交互），本行只负责起收。
-    void startMcpBridge(context).catch(() => undefined);
+    void startMcpBridge(context)
+      .then((d) => markActivated(d ? 'bridge:listening' : 'bridge:off'))
+      .catch(() => markActivated('bridge:error'));
   });
 
   // 协议⑨闸③：工程授权档案 .vv/api.grants.json（可选提交；缺席＝闸不生效——activate 一次性加载，热更新需重启窗口）
@@ -442,6 +449,7 @@ export function activate(context: vscode.ExtensionContext) {
     // `.v` 保存 → 画布开着就自动重编译（verilogViz.compile.autoRecompile，默认开）
     vscode.workspace.onDidSaveTextDocument((doc) => { if (doc) void recompileOnSave(context, doc, ensurePanel); }),
   );
+  markActivated('commands-watchers');
 
   // `.djs` 电路文档 = custom editor（双击即开交互画布，原生软盘保存）
   context.subscriptions.push(
@@ -449,6 +457,7 @@ export function activate(context: vscode.ExtensionContext) {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );
+  markActivated('editors');
 
   if (vscode.window.registerWebviewPanelSerializer) {
     vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, {
@@ -458,6 +467,7 @@ export function activate(context: vscode.ExtensionContext) {
       },
     });
   }
+  markActivated('serializer');
   // 开发宿主（官方 flag `--extensionDevelopmentPath`，或 F5）与**我们自己的二进制**里直接把窗口弹出来：
   // 被别人安装的扩展⛔ 抢着开——那是别人的编辑器。规则本体在 `./startupPolicy.ts`（无 vscode 依赖，可无头判）。
   if (shouldAutoOpen({
@@ -468,6 +478,7 @@ export function activate(context: vscode.ExtensionContext) {
   })) {
     void openPanel(context);
   }
+  markActivated('done');       // 同步体跑完＝活到底（桥等异步补点排在 done 之后，登记簿语义见 activationTrail）
 }
 
 export function deactivate() { }
@@ -495,11 +506,12 @@ function openPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
 
 function wirePanel(context: vscode.ExtensionContext, panel: vscode.WebviewPanel) {
   const webview = panel.webview;
+  hostState.panelOpen = true;   // R160 批次四（P10）：两条装载路（新开/重启恢复）都过这颗——ctxSnapshot 的 panel.open 只认这里
 
   // 释放登记**必须两条装载路都做**（新开 = openPanel，窗口重启 = serializer）。
   // 加 `=== panel` 守卫：旧面板的 dispose ⛔ 抹掉新面板的登记。
   panel.onDidDispose(() => {
-    if (currentPanel === panel) currentPanel = undefined;
+    if (currentPanel === panel) { currentPanel = undefined; hostState.panelOpen = false; }
     clearActiveCanvas(webview);
     unregisterWebviewSink(webview);
   }, null, context.subscriptions);

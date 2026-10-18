@@ -98,6 +98,14 @@ async function run() {
           g.ok ? 'root=' + g.result.projectRoot : JSON.stringify(g));
         const d = await shot('bindings.set', { celltype: 'x', part: 'y.djs' });
         ok('mcp-write-denied', d.ok === false && d.code === 'SURFACE_DENIED' && !!d.traceId, JSON.stringify(d).slice(0, 160));
+        // 四-1 活体探针：真宿主里 ping 必须报"活到底"（检查点全程＋桥 listening）；ctxSnapshot 如实转述（此窗必有工作区根）
+        const p = await shot('sys.ping', {});
+        ok('mcp-ping-alive', p.ok === true && p.result.alive === true && p.result.activation.done === true
+          && p.result.bridge.listening === true,
+          p.ok ? 'stages=' + p.result.activation.checkpoints.map((c) => c.stage).join(',') + ' bridge=' + JSON.stringify(p.result.bridge) : JSON.stringify(p));
+        const c = await shot('sys.ctxSnapshot', {});
+        ok('mcp-ctx-snapshot', c.ok === true && typeof c.result.compilePanel.open === 'boolean' && Array.isArray(c.result.visibleTabs),
+          c.ok ? 'panelOpen=' + c.result.compilePanel.open + ' tabs=' + c.result.visibleTabs.length : JSON.stringify(c));
       } catch (e) { ok('mcp-pipe-roundtrip', false, String((e && e.message) || e)); }
     }
   } catch (e) {

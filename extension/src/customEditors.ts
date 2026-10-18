@@ -196,6 +196,11 @@ export function trackOpenDoc(doc: VvCircuitDocument): vscode.Disposable {
   return { dispose: () => { openDocs.delete(doc); } } as vscode.Disposable;
 }
 
+/** 活画布清单（R160 批次四 sys.ctxSnapshot 用，P10）：画布隐藏时 panel dispose＝只含可见画布（S 案在册语义）。 */
+export function openDocsSnapshot(): Array<{ name: string; dirty: boolean }> {
+  return [...openDocs].map((d) => ({ name: d.uri.fsPath.replace(/\\/g, '/'), dirty: !!(d as any).isDirty }));
+}
+
 export async function refreshAllDocSiblings(context: vscode.ExtensionContext): Promise<void> {
   for (const doc of openDocs) {
     try {

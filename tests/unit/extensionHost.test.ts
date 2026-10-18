@@ -2715,6 +2715,73 @@ describe('阶段三·给 agent 的四档深度（D0 全表／D1 单颗预演／D
   });
 });
 
+describe('R160 批次四 四-1：活体探针（activationTrail / sys.ping / sys.ctxSnapshot / getStatus 扩容）', () => {
+  it('boot 后 sys.ping：alive＋activation.done＋检查点全程在册＋桥 seam 如实报 skipped', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule' } });
+    // 桥补点在 activate 尾部的 promise 链上（读覆盖档→起桥）——负载下可能晚于 boot 的那一拍 setTimeout(0)，
+    // ⛔ 把"再等一拍"的时序赌注写进逐字序断言（首跑 flake 亲证）；轮询到 bridge 落账或超时，两态都如实。
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    let r: any;
+    for (let i = 0; i < 20; i++) {
+      r = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.ping', {});
+      // 轮询到**补点落账**（⛔ 只看 skipped——skipped 在 startMcpBridge 同步体里写，mark 在其后的 .then，两者间有竞）
+      if (/^bridge:/.test(String(r.activation.checkpoints[r.activation.checkpoints.length - 1]?.stage || ''))) break;
+      await new Promise((res) => setTimeout(res, 10));
+    }
+    expect(r.alive).toBe(true);
+    expect(r.activation.done).toBe(true);
+    expect(r.activation.failedAfter).toBe(null);
+    const stages = r.activation.checkpoints.map((c: any) => c.stage);
+    expect(stages.slice(0, 6)).toEqual(['tools', 'trees', 'commands-watchers', 'editors', 'serializer', 'done']);   // 同步体逐字序
+    expect(stages.slice(6)).toEqual(['bridge:off']);                                                                   // 台架 seam＝恒 off
+    expect(r.bridge.listening).toBe(false);
+    expect(r.bridge.skipped).toContain('VV_MCP');
+  });
+
+  it('登记簿语义：断头位＝最后一颗检查点（半活假象从此一枪可诊）；markFail 压 done', async () => {
+    const trail = await import('../../extension/src/activationTrail');
+    trail.markActivationStart();
+    trail.markActivated('tools');
+    trail.markActivated('trees');
+    let s = trail.activationSnapshot();
+    expect(s.done).toBe(false);
+    expect(s.failedAfter).toBe('trees');                       // 模拟：activate 死在 trees 之后——读数直指断头段
+    trail.markActivationFail('watchers', new Error('boom'));
+    s = trail.activationSnapshot();
+    expect(s.done).toBe(false);
+    expect(s.failedAfter).toBe('watchers');
+    expect(s.checkpoints[s.checkpoints.length - 1].err).toContain('boom');
+  });
+
+  it('sys.ctxSnapshot：编辑器在场报编辑器；webview 抢焦（编辑器=undefined）时 lastTextUri 粘滞照报——null 也是真话', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule' } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file('D:/p/top.v'));
+    vscode.state.activeEditor = { document: doc, viewColumn: 1, revealRange: () => { } };
+    for (const fn of vscode.state.activeEditorListeners) await fn(vscode.state.activeEditor);   // 真宿主语义：事件驱动 trackLastTextEditor
+    let c = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.ctxSnapshot', {}) as any;
+    expect(c.activeEditor.path).toContain('top.v');
+    expect(c.lastTextUri).toContain('top.v');
+    expect(c.compilePanel.open).toBe(true);                    // boot 的自动开面板路（PROD+内置＝弹）
+    vscode.state.activeEditor = undefined;                     // webview/custom editor 抢焦＝真宿主语义
+    for (const fn of vscode.state.activeEditorListeners) await fn(undefined);
+    c = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.ctxSnapshot', {}) as any;
+    expect(c.activeEditor).toBe(null);
+    expect(c.lastTextUri).toContain('top.v');                  // 粘滞不丢（P3 案族）
+    expect(Array.isArray(c.visibleTabs)).toBe(true);           // 桩无 tabGroups＝[]，字段必须在
+  });
+
+  it('sys.getStatus 扩容：活体四格（activation/bridge/openDocs/lastCompile）齐活且形状如实', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule' } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const g = await executeTool(ctx(PROD) as never, CALLER_UI, 'sys.getStatus', {}) as any;
+    expect(g.activation.done).toBe(true);
+    expect(g.bridge).toHaveProperty('listening');
+    expect(Array.isArray(g.openDocs)).toBe(true);
+    expect(g.lastCompile === null || typeof g.lastCompile.entry === 'string').toBe(true);
+  });
+});
+
 describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树元素右键 / 建表即写全 / 多层点名 / 聚焦 / 落表即时可见', () => {
   const diskMeta = (p: string) => JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file(p).path.toLowerCase())!));
 
