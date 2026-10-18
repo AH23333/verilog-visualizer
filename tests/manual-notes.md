@@ -70,8 +70,8 @@
 - [OK·H] 外部改坏 adder.v（编辑器未开此文件）→ 自动 1 错锚定 top.v 行3＋toast；外部修复 → 自动清账＋画布重出。
 - [OK·K/N] 编译成功清旧诊断；编译失败清画布旧图。
 - [OK·A/D] Explorer 右键三项齐；bindingPolicy 描述改口与行为一致。
-- [部分·R] 编译画布 Ctrl+F 弹窗正常（匹配 8 部件、居中模态）；沙盒画布 Ctrl+F 本轮未出弹窗——疑焦点落在部件分类下拉（SELECT 护栏 L2279 直接 return）而非产品病，**待真机定点复验**（用户按 Esc 停屏）。
-- [待证·T] 无 IO 部件放置 toast——部件清单已通，放置行为留真机点验。
+- [结案·R] 沙盒画布 Ctrl+F **弹窗正常**（新基座复验：弹窗出＋「没有匹配的部件」空画布读数对＋**Esc 关✓**；× 钮与 Esc/backdrop 同一 onClose 回调，代码同源）。此前"无反应"读数＝我点击位贴部件面板（SELECT 护栏 return）假读数；批2"卡死"现场实为部件清单 demo 钮＋删除 ×（S 断供期误读）。⚠ 测试期间基座三次在 press_key Ctrl+F 后 ~1s **干净退出**（exit code 0、无 crashpad、无渲染器错误）——归因 computer-use/基座交互（工具侧），非扩展病；× 钮真机一点验可选（非阻塞）。
+- [结案·T] 无 IO 部件（demo 仅 And 无 Input/Output）放置**成功渲染**（cell 上画布＋tab 脏标），无假错误、无 DRC 红；放置成功本就无 toast（⛔ 失败路才有提示），设计如此。
 
 ### 假 API 事故（本轮最大教训，harness 当场揪出）
 - 批4 曾给 extension.ts 补 `workspace.onDidFilesChange` 当"问题H 真根因修复"——**该 API 在 extHost 公开面不存在**
