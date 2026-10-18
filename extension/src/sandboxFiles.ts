@@ -329,6 +329,28 @@ async function performRename(context: vscode.ExtensionContext, uri: vscode.Uri, 
   return true;
 }
 
+/** R160（批3问题X）：Explorer 的 F2 改名/Del 删除走 **workbench 原生编辑**（⛔ 经过扩展的
+ *  fs.rename/fs.delete 工具）——真机实锤：adder.v→adder2.v 后根表仍指已不存在的 adder.v。
+ *  修向＝监听 onDidRenameFiles/onDidDeleteFiles，盘上搬家 workbench 已做完，这里只补 G1 账。
+ *  形态判定：改名看新位置 stat；删除已 stat 不到 ⇒ 文件精确路+目录前缀路**双跑**
+ *  （文件无子项 ⇒ 前缀路天然 no-op；目录不被绑定值精确指 ⇒ 精确路 no-op，互不伤）。 */
+export async function migrateAfterExternalRename(context: vscode.ExtensionContext, oldUri: vscode.Uri, newUri: vscode.Uri): Promise<void> {
+  const root = projectRoot(context);
+  const oldFull = pathRel(root, oldUri);
+  const newFull = resolveLayerValue('', pathRel(root, newUri));
+  let isDir = false;
+  try { isDir = (await then(vscode.workspace.fs.stat(newUri)) as any).type === 2; } catch { /* 判不了按文件 */ }
+  if (isDir) await migratePrefix(context, oldFull, newFull);
+  else await migrateFileRef(context, oldFull, newFull);
+}
+
+export async function migrateAfterExternalDelete(context: vscode.ExtensionContext, uri: vscode.Uri): Promise<void> {
+  const root = projectRoot(context);
+  const goneFull = pathRel(root, uri);
+  await migrateFileRef(context, goneFull, null);
+  await migratePrefix(context, goneFull, null);
+}
+
 /** C9「移动到」的机械体：dest 目录内 (n) 去重 → performRename（迁移语义同源）。返回终 uri（失败 null）。 */
 export async function moveToFile(context: vscode.ExtensionContext, srcUri: vscode.Uri, destDirUri: vscode.Uri): Promise<vscode.Uri | null> {
   const root = projectRoot(context);
