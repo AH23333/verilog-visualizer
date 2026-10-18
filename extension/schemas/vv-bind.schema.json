@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://verilog-visualizer.local/schemas/vv-bind.schema.json",
   "title": "Verilog Visualizer 目录级绑定配置（域 C · .verilogviz.json）",
-  "description": "CONFIG_PROTOCOL v0.3.1 §5 的现状 schema：目录链合并（文档目录→…→根，近层胜）、绑定值相对本层目录。解析优先：前缀键（宿主::实例）> 裸键（录入）> 自动同名兜底。手编内容 ensure ⛔ 覆盖。",
+  "description": "CONFIG_PROTOCOL v0.4.0 §5 的现状 schema：目录链合并（文档目录→…→根，近层胜），绑定值相对本层目录。解析优先：前缀键（宿主::实例）> 裸键（录入）> 自动同名兜底（v0.4 ⛔ 变）。机器写（弹窗/写全/固化/画布放置）只产前缀键；裸键＝手编/agent 全局专属。手编内容 ensure ⛔ 覆盖。",
   "type": "object",
   "properties": {
     "schemaVersion": {
@@ -32,7 +32,7 @@
       },
       "propertyNames": {
         "pattern": "^[^:]+(::[^:]+)?$",
-        "description": "裸键=表级通用绑定（UI 绑定/固化只产这种）；前缀键 `<宿主文档>::<实例名>`=只约束该宿主层的例化（多层精控，手编专属）。"
+        "description": "前缀键 `<宿主文件(相对本层)>::<实例名>`＝文件级绑定（机器写只产这种，v0.4）；裸键＝表级全局绑定（手编/agent 专属，对链上所有同名实例生效）。"
       }
     }
   },
