@@ -88,6 +88,9 @@ export class VvDocProvider implements vscode.CustomEditorProvider<VvCircuitDocum
 
   async resolveCustomEditor(document: VvCircuitDocument, panel: vscode.WebviewPanel): Promise<void> {
     document.panel = panel;
+    // R160（问题S）：注册进活文档表——refreshAllTrees 总闸据此把最新 siblings 推给画布
+    const track = trackOpenDoc(document);
+    panel.onDidDispose(() => track.dispose(), null, this._context.subscriptions);
     // 画布与仿真循环在后台：切走⛔ 停表（retainContext 一关，回来就是重新加载、电路没了）
     panel.webview.options = { enableScripts: true, localResourceRoots: webviewRoots(this._context) };
     // ⚠ dispose 后 `panel.webview` 这个 getter 会当场抛 "Webview is disposed"（真机实测）——
@@ -170,39 +173,7 @@ export class VvDocProvider implements vscode.CustomEditorProvider<VvCircuitDocum
    *  role：`.verilogviz.json` 的 circuits 名单是**显式取消**表（缺省全部件——refreshGates/
    *  绑定解析都靠它），在名单里的才降为 circuit。 */
   private async _siblings(docUri: vscode.Uri): Promise<SiblingDoc[]> {
-    const root = projectRoot(this._context);
-    const docRel = relName(root, docUri);
-    const docDir = docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '';
-    // R137：目录里有部件（.djs）就保证该目录的 .verilogviz.json 存在（可见可手编，已存在不覆盖）
-    try { await ensureDirsMeta(this._context, [docRel]); } catch { /* 建表失败不拦装载 */ }
-    try {
-      const [tree, circuits] = await Promise.all([
-        new ProjectStore(vscodeFs(root), '@root').listSandboxTree(),
-        getCircuitsSet(this._context),
-      ]);
-      const names = tree.files
-        .map((f) => f.name)
-        .filter((n) => n !== docRel)
-        // R145：⛔ 再限"同级+根"——绑定值可以指任何目录（`alt/impl.djs`、`../shared/x.djs`），
-        // 候选集缺了它们时**越层记录永远撞不上**＝"录了没生效"的另一条真通路。
-        // 层级优先归打分管（resolvePartRef 的 scope score：同级>根>其他），这里只负责全量给到。
-        .sort((a, b) => {
-          const da = a.includes('/') ? a.slice(0, a.lastIndexOf('/')) : '';
-          const db = b.includes('/') ? b.slice(0, b.lastIndexOf('/')) : '';
-          const pa = (n: string) => (n === docDir ? 0 : n === '' ? 1 : 2);
-          return pa(da) - pa(db) || a.localeCompare(b);
-        });
-      const out: SiblingDoc[] = [];
-      for (const name of names) {
-        try {
-          out.push({
-            name, content: await readText(vscode.Uri.joinPath(root, ...name.split('/'))),
-            role: circuits.has(name) ? 'circuit' : 'part',
-          });
-        } catch { /* 读不到的跳过 */ }
-      }
-      return out;
-    } catch { return []; }
+    return siblingsOf(this._context, docUri);
   }
 
   private _missingEntryHtml(): string {
@@ -212,4 +183,60 @@ export class VvDocProvider implements vscode.CustomEditorProvider<VvCircuitDocum
       打包分发时再跑 <code>pnpm webview:sync</code> 把产物复制进 <code>extension/webview/</code>。
     </body></html>`;
   }
+}
+
+/** R160（批2问题S）：部件源此前＝**打开时快照**——新建/删除/改名 .djs 后，已开的画布永远
+ *  看不见新部件（真机实锤：child.djs 画布的部件清单到关页也不会出 demo.djs）。
+ *  修向＝活文档注册表 + refreshAllDocSiblings：宿主 refreshAllTrees 总闸顺带把最新
+ *  siblings 推给每一颗画布（webview 侧 DocApp 认 `op:'siblings'` 重挂部件源并刷 gates）。 */
+const openDocs = new Set<VvCircuitDocument>();
+
+export function trackOpenDoc(doc: VvCircuitDocument): vscode.Disposable {
+  openDocs.add(doc);
+  return { dispose: () => { openDocs.delete(doc); } } as vscode.Disposable;
+}
+
+export async function refreshAllDocSiblings(context: vscode.ExtensionContext): Promise<void> {
+  for (const doc of openDocs) {
+    try {
+      await doc.pushToWebview({ vvh: 'doc', op: 'siblings', siblings: await siblingsOf(context, doc.uri) });
+    } catch { /* 单颗推送失败不拦其余（多半正在 dispose） */ }
+  }
+}
+
+/** 部件源生成的一颗主人（provider._siblings 与 refreshAllDocSiblings 共用语义）。 */
+async function siblingsOf(context: vscode.ExtensionContext, docUri: vscode.Uri): Promise<SiblingDoc[]> {
+  const root = projectRoot(context);
+  const docRel = relName(root, docUri);
+  const docDir = docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '';
+  // R137：目录里有部件（.djs）就保证该目录的 .verilogviz.json 存在（可见可手编，已存在不覆盖）
+  try { await ensureDirsMeta(context, [docRel]); } catch { /* 建表失败不拦装载 */ }
+  try {
+    const [tree, circuits] = await Promise.all([
+      new ProjectStore(vscodeFs(root), '@root').listSandboxTree(),
+      getCircuitsSet(context),
+    ]);
+    const names = tree.files
+      .map((f) => f.name)
+      .filter((n) => n !== docRel)
+      // R145：⛔ 再限"同级+根"——绑定值可以指任何目录（`alt/impl.djs`、`../shared/x.djs`），
+      // 候选集缺了它们时**越层记录永远撞不上**＝"录了没生效"的另一条真通路。
+      // 层级优先归打分管（resolvePartRef 的 scope score：同级>根>其他），这里只负责全量给到。
+      .sort((a, b) => {
+        const da = a.includes('/') ? a.slice(0, a.lastIndexOf('/')) : '';
+        const db = b.includes('/') ? b.slice(0, b.lastIndexOf('/')) : '';
+        const pa = (n: string) => (n === docDir ? 0 : n === '' ? 1 : 2);
+        return pa(da) - pa(db) || a.localeCompare(b);
+      });
+    const out: SiblingDoc[] = [];
+    for (const name of names) {
+      try {
+        out.push({
+          name, content: await readText(vscode.Uri.joinPath(root, ...name.split('/'))),
+          role: circuits.has(name) ? 'circuit' : 'part',
+        });
+      } catch { /* 读不到的跳过 */ }
+    }
+    return out;
+  } catch { return []; }
 }

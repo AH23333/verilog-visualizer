@@ -23,6 +23,9 @@ export interface CompileJob {
   /** 诊断锚点（与 bindingErrors **逐条等长平行**）：缺失绑定的部件在宿主源文件里的 1-based 行号
    *  ——Problems 从"全锚文件首行"改锚实例行（用户裁决：报错要落在出事的地方）。给不出行＝缺条目。 */
   bindingAnchors?: Array<{ file: string; line: number | null }>;
+  /** R160（问题H）：绑定值引用到的文件（根相对小写，含解析失败的）——自动重编译的"在射程内"判定
+   *  吃它，⛔ 只看成功闭包（失败收缩 ⇒ 修好文件也等不来重编译的死锁）。 */
+  bindingRefs?: string[];
 }
 
 /** 画布 Panel 的打开/复用（extension.ts 注入，避免反向依赖） */
@@ -64,6 +67,9 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
   const synthSeen = new Set<string>();
   const bindCache = new Map<string, Record<string, string>>();
   const anchors: Array<{ file: string; line: number | null }> = [];   // 与 bindingErrors 逐条平行（见 CompileJob 注）
+  // R160（问题H 死锁补刀）：绑定值**引用到**的文件（哪怕解析失败⛔ 进闭包）——否则编译拦下后
+  //   闭包收缩，用户修好那颗文件的盘改动⛔ 再触发自动重编译＝错误永远挂账直到手动 F5。
+  const bindingRefs = new Set<string>();
   const bindingsFor = async (ownerRel: string): Promise<Record<string, string>> => {
     const dir = ownerRel.includes('/') ? ownerRel.slice(0, ownerRel.lastIndexOf('/')) : '';
     if (!bindCache.has(dir)) bindCache.set(dir, await bindingsForFile(context, dir ? `${dir}/_` : '_'));
@@ -90,12 +96,13 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
       // R145 多层精控：`宿主文档::实例名` 前缀键只约束那一层；无命中回落裸键。⛔ 无同名兜底。
       const ov = ovs[`${item.name}::${inst}`] ?? ovs[`${item.ownerRel}::${inst}`] ?? ovs[inst];
       if (!ov) {
-        bindingErrors.push(`[BINDING_MISSING] 模块「${inst}」（在 ${item.name}）未录入绑定配置：右键「写全配置」或用「部件绑定」弹窗录制`);
+        bindingErrors.push(`[BINDING_MISSING] 模块「${inst}」（在 ${item.name}）未录入绑定配置：右键「写全绑定配置」或用「部件绑定」弹窗录制`);
         anchors.push(anchorOf(inst));
         continue;
       }
       if (isVerilogPath(ov)) {
         const def = vscode.Uri.joinPath(root, ...ov.split('/'));
+        bindingRefs.add(toRel(root, def).toLowerCase());   // R160：引用即记账（解析失败也记）
         try {
           const defText = await readText(def);
           const defMods = parseVerilogModules(defText);
@@ -115,6 +122,7 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
         queue.push({ name: toRel(root, def), content: '', ownerRel: toRel(root, def) });
       } else if (/\.(djs|gate)$/i.test(ov)) {
         // M2：`.djs/.gate` 部件 → 转 Verilog module 注入闭包；子部件按部件所在目录递归。
+        bindingRefs.add(ov.toLowerCase());   // R160：部件文件引用即记账
         const genName = ov.replace(/\.(djs|gate)$/i, '') + `.${inst}.v`;
         if (synthSeen.has(genName.toLowerCase())) continue;
         synthSeen.add(genName.toLowerCase());
@@ -139,6 +147,7 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
   return {
     files: [...files.values()], topModule, entryName: entryRel,
     ...(bindingErrors.length ? { bindingErrors, bindingAnchors: anchors } : {}),
+    bindingRefs: [...bindingRefs],
   };
 }
 
@@ -154,7 +163,21 @@ function reportBindingErrors(job: CompileJob, quiet: boolean): void {
 }
 
 /** 面板开着时的"最近一次编译"——保存自动重编译的锚；也是 ready 握手的挂起单 */
-let lastJob: { entry: vscode.Uri, closurePaths: Set<string> } | undefined;
+let lastJob: { entry: vscode.Uri, closurePaths: Set<string>, refs: Set<string> } | undefined;
+
+/** R160（批1问题J）：webview/custom editor 激活时 activeTextEditor＝undefined（真宿主语义），
+ *  命令面板跑「编译并查看电路」当场哑。记一颗"最后的文本编辑器 uri"作第三兜底。 */
+let lastTextUri: vscode.Uri | undefined;
+export function trackLastTextEditor(uri: vscode.Uri | undefined): void {
+  if (uri && isVerilogPath(uri.fsPath)) lastTextUri = uri;
+}
+
+/** R160（批1问题H）：外部改盘（agent/Write 工具直写 .v）不走编辑器保存事件 ⇒ 此前
+ *  诊断永远挂旧账，须手动 Ctrl+F5。watcher 的 onDidChange 对闭包内 .v 补同一脚重编译。 */
+export async function recompileOnExternalChange(context: vscode.ExtensionContext, uri: vscode.Uri, ensurePanel: EnsurePanel): Promise<void> {
+  if (!isVerilogPath(uri.fsPath) && !uri.path.endsWith('.verilogviz.json')) return;
+  await recompileOnSave(context, { uri } as vscode.TextDocument, ensurePanel);
+}
 
 /**
  * 画布就绪握手（编译 Panel 侧，与 doc ready 同族）：宿主在 html 赋值后立刻
@@ -165,13 +188,14 @@ export async function flushPendingCompile(context: vscode.ExtensionContext, pane
   if (!lastJob) return;
   const job = await closureOf(context, lastJob.entry);
   lastJob.closurePaths = new Set(job.files.map((f) => f.name.toLowerCase()));
+  lastJob.refs = new Set(job.bindingRefs || []);
   await panel.webview.postMessage({ vvh: 'push', op: 'compile', ...job });
   reportBindingErrors(job, true);          // ready 补推＝compileAndShow 的同源重演，⛔ 二次弹
 }
 
 /** compileAndShow：入口可来自命令参数（编辑器标题按钮/资源管理器右键）或当前活动编辑器 */
 export async function compileAndShow(context: vscode.ExtensionContext, argUri: vscode.Uri | undefined, ensurePanel: EnsurePanel): Promise<void> {
-  let uri = argUri ?? vscode.window.activeTextEditor?.document.uri;
+  let uri = argUri ?? vscode.window.activeTextEditor?.document.uri ?? lastTextUri;
   if (!uri) {
     // 活动标签是文本但焦点不在编辑器（比如刚点过 Explorer）：退而取活动 Tab 的文本文档
     const tab = vscode.window.tabGroups.activeTabGroup.activeTab;
@@ -183,7 +207,7 @@ export async function compileAndShow(context: vscode.ExtensionContext, argUri: v
     return;
   }
   const job = await closureOf(context, uri);
-  lastJob = { entry: uri, closurePaths: new Set(job.files.map((f) => f.name.toLowerCase())) };
+  lastJob = { entry: uri, closurePaths: new Set(job.files.map((f) => f.name.toLowerCase())), refs: new Set(job.bindingRefs || []) };
   const panel = await ensurePanel(context);
   await panel.webview.postMessage({ vvh: 'push', op: 'compile', ...job });
   reportBindingErrors(job, false);
@@ -198,10 +222,13 @@ export async function recompileOnSave(context: vscode.ExtensionContext, doc: vsc
   if (!(vscode.workspace.getConfiguration('verilogViz').get<boolean>('compile.autoRecompile') ?? true)) return;
   if (!lastJob) return;
   const key = toRel(projectRoot(context), doc.uri).toLowerCase();
-  const inClosure = isMetaFile || doc.uri.fsPath.toLowerCase() === lastJob.entry.fsPath.toLowerCase() || lastJob.closurePaths.has(key);
+  // R160（问题H）：射程＝成功闭包 ∪ 绑定引用（含解析失败的）——只认闭包会在"编译拦下后修文件"时死锁
+  const inClosure = isMetaFile || doc.uri.fsPath.toLowerCase() === lastJob.entry.fsPath.toLowerCase()
+    || lastJob.closurePaths.has(key) || lastJob.refs.has(key);
   if (!inClosure) return;
   const job = await closureOf(context, lastJob.entry);
   lastJob.closurePaths = new Set(job.files.map((f) => f.name.toLowerCase()));
+  lastJob.refs = new Set(job.bindingRefs || []);
   const panel = await ensurePanel(context);
   await panel.webview.postMessage({ vvh: 'push', op: 'compile', ...job });
   reportBindingErrors(job, false);         // 自动重编译也报（相邻同签名去重守卫防刷屏）
