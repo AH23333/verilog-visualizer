@@ -1657,3 +1657,37 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
 - 本卷账＋CHANGELOG R157 条目（docs 束）。
 - 验证读数：ext:check exit 0 · vite build 两入口 ✓ · vitest **275/275**。
 - ⚠ 遗留（承前不阻塞）：`test_files/新文件夹/` 用户真机遗物⛔ 动；`docs/mem.txt` 永不入册；push 欠账继续累计。
+
+---
+
+# 卷六十八 · R158 绑定域 C 收文件级作用域（2026-10-18，用户"一片混乱"实机裁决；先协议后代码）
+
+## 一、六投诉的现读定位（关键翻案：⛔ uri 传错）
+- 用户报"编译模式右键部件绑定弹出沙盒内容"——第一嫌疑人 `menuUri` 失败回落 `getActiveSandboxDocUri()` **被现读否掉**：
+  Wave 2 原生树化的 codeFile 节点带 `resourceUri`（trees.ts:222），真宿主直传 Uri，menuUri 三形第一形就中。
+- 真根因四颗，全在**内容作用域**：
+  ① `bindingDataFor` .v 侧＝**闭包全文件 tally**（top.v 弹窗连 adder.v 的 full_adder 都列）；
+  ② `bindingsForFile` 目录链折叠把沙盒机器写的**裸键**顶进 .v 视图（"已录 → parts/xxx.djs"满屏）；
+  ③ .v 弹窗候选混列 .djs（"两域混用"观感）；
+  ④ `setDocBindings` **整表替换**——画布一次放置把整张折叠视图原样拍回目录层（两域互拍污染主源，"沙盒一定也有巨大问题"应验）。
+- 协议 §5 现读：裸键/前缀键语义在册，但"机器写只产裸键"是 v0.3 的**明文**——不是实现漏了分域，是**协议没分域**。
+  按导师令先改协议（v0.4.0）再改码。
+
+## 二、v0.4 三笔收紧（8e0b3cb 协议 → 3ac5ea3 代码）
+1. **视图作用域＝文件级**：弹窗只列该文件自身实例；闭包/深层两本全层账归画布提示条与 audit（`collectInstanceHits` 本体⛔ 动，R157⑤ 的深层行从**视图**退场，全层 BFS 判据原样绿）。
+2. **机器写一律前缀键** `<宿主文件(相对本层)>::<实例>`：弹窗/completeFromHits/materialize/importLegacyData 逐文档绑定/画布放置五路齐改；裸键＝手编/agent 全局专属。**读侧优先序⛔ 变**（前缀>裸>auto）⇒ 存量裸键零回归（用户 test_files 里的旧表照常生效）。撞名固化/部件身份留裸键——那本就是"文件 X 实现 celltype X"的全局身份，协议注释在册。
+3. **候选分域**：.v 弹窗只列 .v/.sv/.vh、.djs 只列 .djs/.gate；跨域值（M2）手编专属。
+4. `setDocBindings` 只覆本档被重写的实例条目；DocApp 改单条上送（⛔ 整折叠图上交）。
+
+## 三、判据随迁账（12 格改 + 2 格新增，277/277）
+- 写侧产键断言逐颗改前缀：弹窗六格、audit/写全三格、materialize 两格、importLegacyData 一格、X18 一格、round-trip 一格（折叠读回＝前缀宿主折根相对，期望值现读 `bindingsForFile` 折法逐键核对，⛔ 猜）。
+- 新增裁决钉：⑥ .v 弹窗只列本文件行＋候选⛔ .djs；⑦ .djs 候选⛔ .v。
+- ⚠ 教训入册：**detail 文案的箭头空格**（`已录（本文件） → X`）这种形状钉子，改文案与改判据必须同刀——本卷第一跑就红在这颗空格上（判据没白改，是代码先错了格式）。
+- api:doc 漂移格按自述"再生成落盘+当场红"走了一遍（描述改了两处：bindings.complete、setDocBindings）。
+
+## 四、本卷提交账
+- `8e0b3cb` docs(协议 v0.4.0)——§5 三笔+schema 描述。
+- `3ac5ea3` fix(R158)——视图/写侧/候选/setDocBindings 四路+12 格随迁+⑥⑦ 新钉+API_REFERENCE 再生成。
+- 本卷账+CHANGELOG R158+USER_GUIDE/CHECKLIST 随迁（docs 束）。
+- 验证读数：ext:check exit 0 · vite build ✓ · vitest **277/277**。
+- ⚠ 承前遗留不变；另记：用户手改过的 `test_files` 旧表里若还有沙盒裸键，.v 弹窗会以「已录（全局裸键）」如实显示（读侧零回归的代价是透明呈现，⛔ 替用户删表——手编内容珍贵纪律）。
