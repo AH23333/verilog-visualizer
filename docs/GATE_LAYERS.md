@@ -265,6 +265,56 @@ r92 [1][2][3][4] ／ r83 [2b][4b][6][7][7b] ／ r115 [setup][1][3][4][6][7] ／ 
 其中 r92 的"全局一份设置"那一格已核实＝**R150 路标③ 的既定裁定**
 （`src/store/settingsStore.ts:1-6`：真源在宿主 `contributes.configuration`，片 5 起不再持久化），⛔ 再当缺陷挂着。
 
+### ⑤-补5 波次三第一批：qc 那一族五颗（2026-10-18 09:20–10:56，单跑逐颗）
+
+⑤-补4 那张"剩下的 20 颗红"名册里，`qc-*` 五颗是**同一族**（五颗都起自己的 vite、都在同一条老入口上），
+所以这一批按族削，⛔ 逐颗打补丁。削完的现读：
+
+| 颗 | 现读 | 根因（三族各一颗） |
+|---|---|---|
+| qc-audit | **5 PASS / 0 FAIL** | `setSandboxToggle` 点的是**已删的沙盒设置面板** |
+| qc-audit2 | **4 PASS / 0 FAIL** | 同上（两颗共用一份夹具 helper） |
+| qc-paused | **10 PASS / 0 FAIL** | 入口＝dist 根路径（旧 React 单页），`boot()` 等 `button[data-activity]` 等到 30s 超时 |
+| qc-realuser | **6 PASS / 0 FAIL** | 同上 |
+| qc-preview | **3 PASS / 0 FAIL** | 同上 |
+
+**三族根因逐条（都能复用成一句问法）**：
+
+1. **设置面板那一族（qc-audit/audit2）**：面板随 R150 路标③ 整块删除（`src/` 里 `data-sandbox-settings`
+   现读 **0 处**，只剩测试在点），而**回读真值那把尺跟着一起瞎**——沙盒偏好从片 5 起不再持久化，
+   `localStorage['verilog-viz-sandbox-settings']` 恒为 null，于是旧日志里那句
+   `默认 snapToGrid = (未写入，用默认 true)` 是**尺读不到自己**，⛔ 是产品没写。
+   正解＝翻转与回读都走 `settingsStore` 本体（那颗 store 文件头就写着 `setSandboxSettings` 供"闸门驱动"），
+   收成 `_ui.cjs` 的 `sandboxPref/readSandboxPref/setSandboxPref` 一份；⚠ 契约＝**只认 vite dev 的源模块**，
+   跑 dist 时 `import('/src/store/settingsStore.ts')` 会**响亮地抛**（这颗守卫当场拦住了 qc-paused，见下面第 4 条）。
+   翻转后必须**当场回读**并让调用方按 `landed` 作废结论：`landed:true` 的现读＝`{"from":true,"to":false}`。
+2. **入口那一族（三颗 preview 档）**：它们量的是**构建产物**，⛔ 能为了跑通退到 dev 的 `gates.html`——
+   因为 `gates.html` **根本⛔ 在 `vite build` 的 inputs 里**（正本 `vite.config.ts:19-25`：main/doc/binding），
+   `dist/gates.html` 现读不存在 ⇒ 生产包里的沙盒**只有一颗主人＝`doc.html`**（custom editor）。
+   ⇒ 入口搬到 `doc.html` + `tests/_dochost.cjs` 那颗同协议假宿主（seedId 一次跑一个：同 seedId 的 reload＝磁盘⛔ 重铺，
+   这正是"保存→刷新→重开"要的语义），并在每颗前面加一格 `[0]` **入口自证**（画布＋侧栏＋工具条的屏幕读数）。
+   ⚠ 这一段与 `r154-dochost-persist-gate.cjs:25-26` 那条"被波次回写脚本把 URL 扫成 gates.html"是同一颗坑：
+   **批量改入口的脚本⛔ 能整行匹配 `const URL =`**，每颗档的入口主人要逐颗认。
+3. **`ensurePalette` 假设了活动栏**：doc 入口没有活动栏（侧栏随画布挂载），于是每颗 `clickGate`
+   都抛"等不到活动栏『部件』按钮"。helper 的职责是"让部件库可见且分组全展开"，
+   入口形状那一层交回各自的前置 ⇒ 现在两条形都有（有活动栏＝点 `modules`；没有＝等 `button[data-gate]` 出现，等不到才报挂载问题）。
+4. **顺手抓到一颗产品缺陷（X25）**：qc-paused 迁到 dist 后，前置"关掉 `autoStartSim`"没生效——
+   画布开局只问过 `getConfig` 却从没把它落进 `settingsStore`（`applyHostConfig` 过去只有编译侧 `CanvasApp` 调过，
+   `DocApp` 只取 `bindings.policy`）⇒ **用户在 VS Code 设置里改的整套 `verilogViz.sandbox.*`
+   在 `.djs` 编辑器里整块失效**，而 `.djs` 编辑器正是生产包里沙盒的唯一入口。修法与读数见 CHANGELOG R156；
+   ⚠ 这一颗是靠"把闸门搬到真入口"才露出来的 ⇒ 老闸门停在死入口上时，它判的东西早已⛔ 是产品。
+5. **我自己写错的一把新尺（同批自我更正）**：为了在 dist 里判"引擎没起"，第一版写成"灯上没有 `Vector3vl` 读数"。
+   现读 `{"in":"Vector3vl 0"}` 当场把它否掉——`commit` 里那句 `seedGateOutputs` 会在引擎从没跑过时就把输出播成
+   `Vector3vl 0`，它测的是"**播过种**"，⛔ 是"在跑"。正解＝读用户看得见的那两个字：
+   工具条那颗钮 `running ? 「暂停」 : 「运行」`（正本 `src/components/SandboxToolbar.tsx:72`）。
+   ⇒ 复用问法：**替一把死尺时，新尺也要问"它读的到底是不是我要测的那一维"**（名册 348 那一族的 JS 版）。
+
+**改完的名册算术（⛔ 等于跑批读数）**：20 颗红 − 本批 5 颗 − r19（⑤-补5 之前那颗）＝**还剩 14 颗**
+（r14 r17 r18 r23 r30 r31 r32 r34 r35 r81 r87 r113 r114 r137）。
+这颗数只是**名册相减**，下一轮全量跑批仍要按"差集"复核（⑤-补3 那条教训：⛔ 由总量倒推，也⛔ 由相减前进）。
+另外本批只单跑过这五颗，`_ui.cjs` 的 `ensurePalette`/`sandboxPref` 是**共用夹具**，
+下一批必须重跑吃这两颗 helper 的全部档（r14-coords/r18/r92 还拿着 `data-sandbox-settings` 那把死锚，`?.click()` 空转中）。
+
 ## ⑥ 挂账
 
 

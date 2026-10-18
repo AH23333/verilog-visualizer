@@ -517,7 +517,7 @@ UI 手动执行也算一次调用：`{ traceId, ts, tool, subject, args(redact �
 
 | `contributes.configuration` verilogViz.* | 域 A（v0.2 §7.1 现状表延续） |
 
-| webview `settingsStore`（UI 偏好的 localStorage 旧部） | 阶段一收尾项=迁域 A 或 runtime（一次性迁移器，非本协议新债） |
+| webview `settingsStore` | **已收＝域 A 的影子内存**（片 5 起⛔ 再持久化；活接口五个，正本 `src/store/settingsStore.ts` 文件头——旧写"迁域 A 或 runtime"是待办，现已落地）。⚠ **X25（2026-10-18 修）**：这条"真源在域 A"过去只有**编译侧** `CanvasApp` 接上，`.djs` 编辑器只取了 `bindings.policy` ⇒ 生产包里沙盒的唯一入口（`doc.html`）整块忽略用户改的 `verilogViz.sandbox.*`（现读证据＝关掉 `autoStartSim` 后画布仍自己跑）。证人：`tests/unit/sandboxHostConfig.test.ts`（两颗入口都落店 + 晚到配置的补做守卫）与 `tests/qc-paused.cjs`／`tests/qc-realuser.cjs`（dist 的 doc 入口上成对判「不起仿⇒不传播」vs「默认⇒传播」）。⛔ 未真机核实的一半：真宿主 `cfg.get('sandbox.*')` 读到 settings.json 并向 custom editor 广播 `configChanged` 这一条只有壳里能判（见 FILESYSTEM_CHECKLIST 的点验单） |
 
 | `src/lib/host/` 中立层 | §12.2/§10.2 边界的实现先例 |
 

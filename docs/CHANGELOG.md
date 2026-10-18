@@ -104,6 +104,59 @@
   > 且**按行判优于按词判**（`[A-Za-z]{4,}` 天然把双语行的副标签算成缺陷）。
 
 ---
+## [未发布 Unreleased] — R156：闸门波次三第一批（qc 五颗搬到活表面）＋ X25（`.djs` 编辑器一直忽略用户设置）（2026-10-18 上午·代管）
+
+> 这一批没有新功能：把五颗停在"已删表面"上的闸门搬回今天的真入口，
+> 于是**产品缺陷自己露出来了**（X25）。族谱与逐条根因在 [GATE_LAYERS.md](./GATE_LAYERS.md) ⑤-补5。
+
+### Fixed
+- **X25：`.djs` 编辑器整块忽略用户的沙盒设置**（`src/doc/DocApp.tsx`）。
+  `settingsStore` 的文件头写着"真源在宿主 `contributes.configuration`"，但 `applyHostConfig` 只有**编译侧**
+  `CanvasApp` 调过；`DocApp` 那半只取了 `cfg.bindings.policy`——而 `doc.html` 是**生产包里沙盒的唯一入口**
+  （`gates.html` ⛔ 在 `vite build` 的 inputs 里，正本 `vite.config.ts:19-25`）。
+  ⇒ 用户改 `verilogViz.sandbox.*`（网格吸附／走线样式／默认位宽／自动起仿／仿真速度／常量折叠）
+  在 `.djs` 里**一个都不生效**，两模式行为因此分岔。现场证据＝把「打开沙盒时自动运行仿真」关掉，
+  画布仍自己跑起来（`tests/qc-paused.cjs` 的 [1b]/[2] 抓到，改前 2 FAIL／改后 10 PASS / 0 FAIL）。
+  现在两颗入口同语义：开局拉一次并落店，并接住宿主向所有 webview 广播的 `configChanged`
+  （正本 `extension/src/dispatch.ts:93`）。
+- **X25 的后半：配置到得比画布建树晚**（`src/components/SandboxCanvas.tsx` + `src/store/settingsStore.ts`）。
+  拉配置是异步 RPC，建树那一次读的还是默认档 ⇒ 光把 `applyHostConfig` 补上，**第一次打开仍会按默认起仿**。
+  改两处：① 建树那次改成**现读** `settingsStore.getSandboxSettings().autoStartSim`（⛔ 吃 React 闭包里的旧 `settings`）；
+  ② 那颗 store 加落店次数读数 `getHostConfigSeq()`，画布据此把同一次起停决定**按新到的配置补做一次**。
+  ⚠ 补做只到用户自己表过态为止：点过「运行 / 暂停」这张画布就归他管（`simManualToggleRef`），
+  之后哪怕只改字号（宿主照样广播）也⛔ 把引擎拉回去——换一张画布才清零。
+  我第一版没这条守卫，注释还自信地写着"手动点运行不动 seq 所以覆盖不到"：**改设置就会 seq++**，是错的。
+- **`_ui.cjs` 的 `ensurePalette` 把"活动栏"当无条件前提**：doc 入口没有活动栏（侧栏随画布挂载），
+  每颗 `clickGate` 都抛「等不到活动栏『部件』按钮」⇒ 整族 FATAL。helper 的职责收成
+  "让部件库可见且分组全展开"，入口那一层交回各自前置；两条形都保留"必须等、⛔ 只 count 一次"的老纪律。
+- **`r19` 的汉化两格**（本批第一件事，已单独提交 `6bdfa07`）：旧尺读的是随旧 React 壳删除的快捷键面板，
+  搬到活表面后当场抓到 `CN_NAME` 漏了 `UnaryPlus`＝真未汉化。
+
+### Added
+- **三颗 preview 档的入口搬到产品真身**：`qc-preview` / `qc-paused` / `qc-realuser` 现在跑
+  `dist/doc.html` + `tests/_dochost.cjs` 的同协议假宿主（仍量**构建产物**，⛔ 退到 dev 的 gates.html），
+  每颗前面多一格 `[0] 入口自证`（画布＋侧栏＋工具条的屏幕读数）。
+- **新的判据**（都是旧档从没判过的）：`[S] 「保存」把正文交给宿主`（读假宿主收到的**字节**，
+  替掉旧版"点保存→睡 900ms→当它成了"）、qc-paused `[0b] 画布开局向宿主要过配置`、
+  `[1b] 非运行态看工具条那颗钮`、以及 qc-paused/qc-realuser 的**成对**结论
+  （关掉自动起仿⇒拨输入不传播 vs 默认档⇒拨输入点亮）。
+- `_ui.cjs`：`sandboxPref` / `readSandboxPref` / `setSandboxPref`（沙盒偏好读写翻转一份主人，翻完当场回读 `landed`）；
+  `_dochost.cjs`：`mountProbe`（三颗 doc 档共用屏幕读数）+ 导出 `DEFAULT_CONFIG`。
+- **`tests/unit/sandboxHostConfig.test.ts`（8 颗）**：配置落店语义（缺字段回落默认、只有宿主落店才 seq++）、
+  **两颗入口都真的落店**（`CanvasApp` 与 `DocApp` 各钉 `applyHostConfig` + `configChanged`）、
+  宿主确实向所有 sink 广播、建树那次读的是现读档、手动表态后配置不再插手。
+
+### Readings（本批权威读数）
+- `pnpm test` **265 passed / 0 failed**（新增 8 颗＝X25 证人）；`pnpm build`（tsc + vite）**✓ built in 3.47s**；
+  `pnpm ext:check`（tsc --noEmit + esbuild）**rc=0**（本批⛔ 改 `extension/` 的代码，跑它是为了证"两侧类型面还咬得上"——`HostConfig` 那一形状就是两侧的接缝）。
+- 五颗 qc 单跑：qc-audit **5/0**、qc-audit2 **4/0**、qc-paused **10/0**、qc-realuser **6/0**、qc-preview **3/0**；
+  `r154-dochost-persist-gate` 回归核对 **7/0**（DocApp 那半改动过，这颗必须重跑）。
+- 名册算术：⑤-补4 的 20 颗红 − 本批 5 颗 − `r19` ＝ **剩 14 颗**；⚠ 这只是相减，下一轮全量跑批按差集复核。
+- ⛔ 真机核实的一半（登记未验证）：真宿主从 `settings.json` 读到 `verilogViz.sandbox.*` 并广播给 custom editor
+  这条线只有壳里能判；点验单已写进 [FILESYSTEM_CHECKLIST.md](./FILESYSTEM_CHECKLIST.md)（一条：
+  关掉「自动运行仿真」→ 打开 `.djs` → 工具条那颗应写着**「运行」**；改回开 → 新开的文档自己跑起来）。
+
+---
 ## [未发布 Unreleased] — R154：验证系统自己的诚信（2026-10-18 夜·用户令代管）
 
 
