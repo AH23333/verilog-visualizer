@@ -16,7 +16,7 @@ import { AUTOOPEN_ENV, isBuiltIntoThisApp, shouldAutoOpen } from './startupPolic
 import { ModuleTree, HierarchyTree, SandboxTree, FileTreeDragAndDrop, openAtModule, getActiveSandboxDocUri,
   CodeFilesTree, SandboxPartsTree, SandboxHierarchyTree, onActiveSandboxDocChange } from './trees';
 import { DOC_VIEW_TYPE, VvDocProvider, refreshAllDocSiblings } from './customEditors';
-import { compileAndShow, recompileOnSave, flushPendingCompile, recompileOnExternalChange, trackLastTextEditor, type EnsurePanel } from './compilePanel';
+import { compileAndShow, recompileOnSave, flushPendingCompile, recompileOnExternalChange, trackLastTextEditor, getLastTextUri, type EnsurePanel } from './compilePanel';
 import { newVerilogFile, newSandboxFile, newSandboxFolder, openExamples } from './examples';
 import {
   openDoc, togglePartRole, getCircuitsSet, openBindingConfig,
@@ -67,6 +67,18 @@ export function activate(context: vscode.ExtensionContext) {
     if (arg?.resourceUri) return arg.resourceUri;
     if (arg?.uri?.fsPath) return arg.uri;                  // 数据节点形（trees.ts 的 Node{uri}）
     return undefined;
+  };
+
+  /** R160（审计错报案·真机实锤）：双域绑定命令（bindParts/materialize/audit/complete/openBindingConfig）
+   *  的目标解析链＝菜单实参 → **活动文本编辑器（在可绑域内）** → 沙盒粘滞档 → 最后文本 uri。
+   *  旧序沙盒粘滞压过活动编辑器 ⇒ 开着 top.v 从命令面板跑「检查绑定完整性」，审的却是 child.djs。
+   *  ⚠ menuUri 不吃 isBindablePath 过滤：右键文件夹「打开绑定配置」传的就是目录 uri。 */
+  const bindTargetUri = (arg: any): vscode.Uri | undefined => {
+    const ed = vscode.window.activeTextEditor?.document.uri;
+    return menuUri(arg)
+      ?? (ed && isBindablePath(ed.fsPath) ? ed : undefined)
+      ?? getActiveSandboxDocUri()
+      ?? getLastTextUri();
   };
 
   /** root 相对 posix 名（绑定链/目录表的定位键） */
@@ -223,7 +235,7 @@ export function activate(context: vscode.ExtensionContext) {
     //   R144「自动兜底显形」：一级列表逐项标注当前生效解析（已录入/自动同名/无来源），
     //   ⛔ 再出现"表看不见、行为却正常"的暗魔法。
     vscode.commands.registerCommand('verilogViz.bindParts', async (arg: any, focusArg?: any) => {
-      const uri = menuUri(arg) ?? getActiveSandboxDocUri();
+      const uri = bindTargetUri(arg);
       if (!uri) { void vscode.window.showInformationMessage('先在文件（.djs 或 .v/.sv/.vh）上右键。'); return; }
       if (!isBindablePath(uri.fsPath)) {
         void vscode.window.showInformationMessage('只能在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上打开部件绑定。');
@@ -240,7 +252,7 @@ export function activate(context: vscode.ExtensionContext) {
     // R144「固化绑定」：机械体已上账为 bindings.materialize 工具（批次二）——命令=薄壳+告示。
     // 已录入的条目⛔ 覆盖（手编内容珍贵）；固化后行为不变——变的是"文件说的和画布做的终于对得上"。
     vscode.commands.registerCommand('verilogViz.materializeBindings', async (arg: any) => {
-      const uri = menuUri(arg) ?? getActiveSandboxDocUri();
+      const uri = bindTargetUri(arg);
       if (!uri) { void vscode.window.showInformationMessage('先在文件（.djs 或 .v）上右键。'); return; }
       const docRel = rel(projectRoot(context), uri);
       const r = await executeTool(context, CALLER_UI, 'bindings.materialize', { doc: docRel }).catch(() => undefined) as { done: string[] } | undefined;
@@ -252,7 +264,7 @@ export function activate(context: vscode.ExtensionContext) {
     // R146 绑定完整性·核查：全层枚举「⛔ 表里没录、靠同名兜底」的实例——配置不齐当场可见。
     // 带直达动作：［写全配置］一键落表（等同 complete 命令），［打开配置］直开该层文件。
     vscode.commands.registerCommand('verilogViz.auditBindings', async (arg: any) => {
-      const uri = menuUri(arg) ?? getActiveSandboxDocUri() ?? vscode.window.activeTextEditor?.document.uri;
+      const uri = bindTargetUri(arg);
       if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。'); return; }
       const docRel = rel(projectRoot(context), uri);
       const hits = await collectInstanceHits(context, docRel);
@@ -271,7 +283,7 @@ export function activate(context: vscode.ExtensionContext) {
     // R146 绑定完整性·写全：一键把全层自动命中落进文档目录的 .verilogviz.json
     //（画布上的实时提示条走 doc 消息通道回宿主；这颗命令＝不打开画布也能用，与核查同落表逻辑）。
     vscode.commands.registerCommand('verilogViz.completeBindings', async (arg: any) => {
-      const uri = menuUri(arg) ?? getActiveSandboxDocUri() ?? vscode.window.activeTextEditor?.document.uri;
+      const uri = bindTargetUri(arg);
       if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。'); return; }
       const docRel = rel(projectRoot(context), uri);
       const hits = await collectInstanceHits(context, docRel);
@@ -331,7 +343,7 @@ export function activate(context: vscode.ExtensionContext) {
     // R137：「打开绑定配置」——目录级 .verilogviz.json 直开原生编辑器（无则建空表）。
     // 入口：树文件/文件夹右键、explorer .djs/.v 右键、命令面板。手改保存 → watcher 广播回灌画布。
     vscode.commands.registerCommand('verilogViz.openBindingConfig', async (arg: any) => {
-      const uri = menuUri(arg) ?? getActiveSandboxDocUri();
+      const uri = bindTargetUri(arg);
       await openBindingConfig(context, uri ?? null);
     }),
 

@@ -1775,6 +1775,22 @@ describe('R146/R147 绑定完整性（配置不齐＝可见、可一键写全、
     expect(metaOf('D:/p/parts/.verilogviz.json')).toBeUndefined();                                          // ⛔ 往部件所在目录乱建
   });
 
+  it('R160 审计错报案：命令面板路（⛔ 菜单实参）目标＝活动 .v 编辑器，⛔ 被沙盒粘滞档劫持', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u_a(); endmodule',
+      'D:/p/adder.v': 'module adder; endmodule',
+      'D:/p/child.djs': '{"cells":[]}',
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'top.v::adder': 'adder.v' } }),
+    } });
+    const trees = await import('../../extension/src/trees');
+    trees.setActiveSandboxDoc('child.djs', []);                                       // 沙盒粘滞档＝child.djs（旧序会审它）
+    vscode.state.activeEditor = { document: await vscode.workspace.openTextDocument(vscode.Uri.file('D:/p/top.v')), viewColumn: 1, revealRange: () => { } };
+    await vscode.commands.executeCommand('verilogViz.auditBindings');                 // 面板路：无实参
+    const infos = vscode.state.infoMessages.join('\n');
+    expect(infos).toContain('「top.v」');                                              // 新序：活动编辑器赢
+    expect(infos).not.toContain('「child.djs」');                                      // 旧病复燃即红
+  });
+
   it('全层 BFS：孙层实例也进账（main→ctrl→adder 两层都点名）', async () => {
     await boot({ folders: ['D:/p'], seed: {
       'D:/p/sub/main.djs': '{"cells":[{"type":"Subcircuit","celltype":"ctrl"}]}',

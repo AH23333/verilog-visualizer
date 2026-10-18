@@ -171,6 +171,8 @@ let lastTextUri: vscode.Uri | undefined;
 export function trackLastTextEditor(uri: vscode.Uri | undefined): void {
   if (uri && isVerilogPath(uri.fsPath)) lastTextUri = uri;
 }
+/** R160（审计错报案）：双域命令的目标解析链末级兜底（编译画布激活、⛔ 文本编辑器在场时）。 */
+export function getLastTextUri(): vscode.Uri | undefined { return lastTextUri; }
 
 /** R160（批1问题H）：外部改盘（agent/Write 工具直写 .v）不走编辑器保存事件 ⇒ 此前
  *  诊断永远挂旧账，须手动 Ctrl+F5。watcher 的 onDidChange 对闭包内 .v 补同一脚重编译。 */
