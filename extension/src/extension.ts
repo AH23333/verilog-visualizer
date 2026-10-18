@@ -20,7 +20,7 @@ import { compileAndShow, recompileOnSave, flushPendingCompile, recompileOnExtern
 import { newVerilogFile, newSandboxFile, newSandboxFolder, openExamples } from './examples';
 import {
   openDoc, togglePartRole, getCircuitsSet, openBindingConfig,
-  collectInstanceHits, completeFromHits, normalizeBindingsDisk, META_FILE,
+  normalizeBindingsDisk, META_FILE,
   scanDirChoices, importFilters, describeDeletion, ensureDirsMeta,
   migrateAfterExternalRename, migrateAfterExternalDelete
 } from './sandboxFiles';
@@ -263,32 +263,32 @@ export function activate(context: vscode.ExtensionContext) {
 
     // R146 绑定完整性·核查：全层枚举「⛔ 表里没录、靠同名兜底」的实例——配置不齐当场可见。
     // 带直达动作：［写全配置］一键落表（等同 complete 命令），［打开配置］直开该层文件。
+    // R160 API 层收编：数据动作走 executeTool（bindings.audit/complete 工具），命令＝UI 薄壳；
+    //   刷树由 onToolExecuted 订阅、广播在 handler 内——命令层⛔ 再各自刷。
     vscode.commands.registerCommand('verilogViz.auditBindings', async (arg: any) => {
       const uri = bindTargetUri(arg);
       if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。'); return; }
       const docRel = rel(projectRoot(context), uri);
-      const hits = await collectInstanceHits(context, docRel);
+      const { hits } = await executeTool(context, CALLER_UI, 'bindings.audit', { doc: docRel }) as { hits: Array<{ ctx: string; name: string; file: string }> };
       if (!hits.length) { void vscode.window.showInformationMessage(`「${docRel}」的绑定配置是完整的：全部子部件实例都有记录（或本就无实例）。`); return; }
       const sample = hits.slice(0, 4).map((h) => `${h.ctx === docRel ? '' : `${h.ctx}::`}${h.name}→${h.file}`).join('、');
       const act = await vscode.window.showWarningMessage(
         `「${docRel}」有 ${hits.length} 个子部件实例⛔ 录入绑定配置，正靠同名兜底解析：${sample}${hits.length > 4 ? ' …' : ''}`,
         '写全配置', '打开绑定配置');
       if (act === '写全配置') {
-        const written = await completeFromHits(context, docRel, hits);
-        refreshAllTrees(); broadcastBindingsChanged();
+        const { written } = await executeTool(context, CALLER_UI, 'bindings.complete', { doc: docRel }) as { written: string[] };
         void vscode.window.showInformationMessage(`已写全 ${written.length} 条：绑定配置现在是这张电路的完整图景（可打开核对/手改）。`);
       } else if (act === '打开绑定配置') await openBindingConfig(context, uri);
     }),
 
     // R146 绑定完整性·写全：一键把全层自动命中落进文档目录的 .verilogviz.json
     //（画布上的实时提示条走 doc 消息通道回宿主；这颗命令＝不打开画布也能用，与核查同落表逻辑）。
+    // R160 API 层收编：机械体＝bindings.complete 工具（audit+写全+广播），命令只余目标解析与告示。
     vscode.commands.registerCommand('verilogViz.completeBindings', async (arg: any) => {
       const uri = bindTargetUri(arg);
       if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。'); return; }
       const docRel = rel(projectRoot(context), uri);
-      const hits = await collectInstanceHits(context, docRel);
-      const written = await completeFromHits(context, docRel, hits);
-      refreshAllTrees(); broadcastBindingsChanged();
+      const { written } = await executeTool(context, CALLER_UI, 'bindings.complete', { doc: docRel }) as { written: string[] };
       void vscode.window.showInformationMessage(written.length
         ? `已写全 ${written.length} 条绑定进「${docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '项目根'}」的 ${META_FILE}。`
         : `无需写全：${docRel} 的实例解析记录已是完整状态。`);

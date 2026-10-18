@@ -335,6 +335,21 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
     }).toEqual({ perm: [], sideEffects: [], 空surfaces: [], 重复surfaces: [] });
   });
 
+  it('R160 API 层收编锁：UI 层（extension/bindingPanel）⛔ 直插 bindings 数据函数——一道门纪律的回潮哨', () => {
+    // 账本卷六十九「乱源=树命令直插 sandboxFiles 绕过边界」的收尾：audit/complete/bindParts 的
+    // 数据动作已改走 executeTool（bindings.audit/complete/get/set 工具）。这颗锁钉死回潮路：
+    // UI 层的 './sandboxFiles' import 名单里再出现这四颗＝红（工具层 toolsDomain/dispatch 内部照旧合法）。
+    // ⚠ \bsetBinding\b ⛔ 误伤 setBindingInDir（g|I 之间无词界）；读 import 块而非全文（注释里提名字⛔ 红）。
+    const banned = ['collectInstanceHits', 'completeFromHits', 'bindingsForFile', 'setBinding'];
+    for (const f of ['extension.ts', 'bindingPanel.ts']) {
+      const src = fs.readFileSync(path.join(ROOT, 'extension/src', f), 'utf8');
+      const imports = [...src.matchAll(/import\s*\{([^}]*)\}\s*from\s*'\.\/sandboxFiles'/g)].map((m) => m[1]).join(',');
+      expect(imports.length, `${f} 应确有 sandboxFiles import（⛔ 正则失配造成的空名单恒绿）`).toBeGreaterThan(0);
+      const hit = banned.filter((b) => new RegExp(`\\b${b}\\b`).test(imports));
+      expect(hit, `${f} 直插了工具层数据函数`).toEqual([]);
+    }
+  });
+
   it('面板释放登记只有**一处**，且在两条装载路共用的 wirePanel 里', () => {
     // 面板有两个来路：`openPanel`（开局自动/compileAndShow 复用）与 serializer（窗口重启恢复）。
     // 只挂在 openPanel 上时：恢复出面板 → 关掉 → `currentPanel` 仍指着已释放的那颗

@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
 import { vscodeFs } from './dispatch';
-import { bindingsForFile, setBinding, META_FILE, openBindingConfig, relFrom } from './sandboxFiles';
+import { META_FILE, openBindingConfig, relFrom } from './sandboxFiles';
+import { executeTool, CALLER_UI } from './toolRegistry';
 import { scanDefs } from './compilePanel';
 import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
 import { ProjectStore } from './projectStore';
@@ -43,7 +44,9 @@ export async function bindingDataFor(context: vscode.ExtensionContext, uri: vsco
   const root = projectRoot(context);
   const docRel = rel(root, uri);
   const dir = docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '';
-  const recorded = await bindingsForFile(context, docRel);
+  // R160 API 层收编：读也走同一道门（bindings.get＝链合并生效表，与 bindingsForFile 逐字同源）——
+  //   账上留一行 read/auto，UI 与 agent 看的是同一张表、同一把闸。
+  const recorded = (await executeTool(context, CALLER_UI, 'bindings.get', { doc: docRel }) as { bindings: Record<string, string> }).bindings;
   const store = new ProjectStore(vscodeFs(root), '@root');
 
   if (/\.djs$/i.test(uri.fsPath)) {
@@ -227,7 +230,13 @@ export async function openBindingPicker(context: vscode.ExtensionContext, uri: v
         const errs = await validateBindingTarget(context, partLevel.instName, value);
         if (errs.length) { void vscode.window.showErrorMessage(`绑定未写入：${errs.join('；')}`); return; }   // 留在二级清单，可改选
       }
-      await setBinding(context, tableKey(partLevel.instKey), value, uri);
+      // R160 API 层收编：写走 bindings.set 工具（同 setBinding 的落表语义＝目录层表＋广播；
+      //   dir 由文档路径现算，与旧 setBinding 内部同一把尺）。
+      const docRel = rel(projectRoot(context), uri);
+      await executeTool(context, CALLER_UI, 'bindings.set', {
+        dir: docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '',
+        celltype: tableKey(partLevel.instKey), part: value,
+      });
       data = await bindingDataFor(context, uri);
       renderInst();
       qp.activeItems = qp.items.filter((it) => it.key === partLevel.instKey);   // 编辑中的那颗行保持选中
