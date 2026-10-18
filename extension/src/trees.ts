@@ -108,6 +108,9 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
   readonly onDidChangeTreeData = this._change.event;
   /** 模块名 → 定义文件（refresh 时作废；约定"模块名=文件名"只是兜底，现在以真扫描为准） */
   private _defMap: Map<string, vscode.Uri> | null = null;
+  /** R160（批1问题L）：webview/custom editor 激活时 activeTextEditor＝undefined——层次树此前当场
+   *  退 welcome（用户看着画布，树却说"没打开文件"）。记一颗最后的 .v uri 作粘滞兜底。 */
+  private _lastVerilogUri: vscode.Uri | null = null;
   refresh(): void { this._defMap = null; this._change.fire(); }
 
   getTreeItem(n: Node): vscode.TreeItem {
@@ -122,10 +125,15 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
   async getChildren(el?: Node): Promise<Node[]> {
     if (!el) {
       const editor = vscode.window.activeTextEditor;
-      if (!editor || !isVerilogPath(editor.document.fileName)) {
+      const uri = editor && isVerilogPath(editor.document.fileName)
+        ? editor.document.uri
+        : (this._lastVerilogUri && isVerilogPath(this._lastVerilogUri.fsPath) ? this._lastVerilogUri : null);
+      if (!editor && uri) this._lastVerilogUri = uri;          // 粘滞：只在编辑器活着时更新
+      if (editor && isVerilogPath(editor.document.fileName)) this._lastVerilogUri = editor.document.uri;
+      if (!uri) {
         return [{ label: '打开一个 Verilog 源码文件（.v/.sv/.vh）以查看层次结构', desc: '', kind: 'hint' }];
       }
-      return this._instancesOf(editor.document.uri, '');
+      return this._instancesOf(uri, '');
     }
     if (el.uri) return this._instancesOf(el.uri, el.chain ?? el.label);
     return [];
@@ -188,7 +196,9 @@ function childrenOfLayer(
     .map((f): Node => ({
       label: f.name.slice(prefix.length),
       desc: opts.sizes ? `${Math.round((f.size ?? 0) / 102.4) / 10} KB` : '',
-      uri: null,
+      // R160 真机实锤（批3问题B）：view/item/context 的命令实参＝**这颗 Node**（⛔ TreeItem），
+      //   uri 留 null ⇒ menuUri 三形全空，右键「部件绑定/写全配置」拿错档或哑火。
+      uri: uriOfRel(f.name),
       dir: undefined,
       name: f.name,
     }));
