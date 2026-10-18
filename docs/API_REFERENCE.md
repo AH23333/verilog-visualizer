@@ -1,7 +1,7 @@
 # API_REFERENCE（生成物 · 统一调用层）
 
 > ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
-> apiVersion `0.1.0` · 生成工具数 **35** · 调用面 ui=开 / rpc=开 / mcp=关 / cli=关
+> apiVersion `0.1.0` · 生成工具数 **35** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
@@ -14,14 +14,14 @@
 
 | 工具 id | 标题 | perm | sideEffects | surfaces | 审批 | ref（命令/rpc） | since |
 |---|---|---|---|---|---|---|---|
-| `bindings.audit` | 审计绑定完整性 | read | none | ui | — | `bindings.audit` | 0.2.0 |
+| `bindings.audit` | 审计绑定完整性 | read | none | ui/mcp | — | `bindings.audit` | 0.2.0 |
 | `bindings.complete` | 写全绑定 | config-write | config-write | ui | — | `bindings.complete` | 0.2.0 |
-| `bindings.get` | 读绑定 | read | none | ui | — | `bindings.get` | 0.2.0 |
+| `bindings.get` | 读绑定 | read | none | ui/mcp | — | `bindings.get` | 0.2.0 |
 | `bindings.materialize` | 固化自动绑定 | config-write | config-write | ui | — | `bindings.materialize` | 0.2.0 |
 | `bindings.set` | 写绑定 | config-write | config-write | ui | — | `bindings.set` | 0.2.0 |
-| `circuits.list` | 读电路名单 | read | none | ui | — | `circuits.list` | 0.2.0 |
+| `circuits.list` | 读电路名单 | read | none | ui/mcp | — | `circuits.list` | 0.2.0 |
 | `circuits.toggle` | 翻转部件角色 | config-write | config-write | ui | — | `verilogViz.togglePartRole` | 0.2.0 |
-| `compile.closure` | 依赖闭包 | read | none | ui | — | `compile.closure` | 0.2.0 |
+| `compile.closure` | 依赖闭包 | read | none | ui/mcp | — | `compile.closure` | 0.2.0 |
 | `fs.copyPath` | 复制路径 | read | none | ui | — | `verilogViz.copyPath` | 0.2.0 |
 | `fs.createFile` | 新建文件 | file-write | file-write | ui | — | `verilogViz.newVerilogFile` | 0.2.0 |
 | `fs.createFolder` | 新建文件夹 | file-write | file-write | ui | — | `verilogViz.newSandboxFolder` | 0.2.0 |
@@ -41,9 +41,9 @@
 | `host.publishProblems` | 发 Problems | read | none | rpc | — | `publishProblems` | 0.1.0 |
 | `host.saveExportFile` | 宿主另存为 | file-write | file-write | rpc | — | `saveExportFile` | 0.1.0 |
 | `host.setDocBindings` | 写一份文档的绑定表 | config-write | config-write | rpc | — | `setDocBindings` | 0.1.0 |
-| `res.listProject` | 列编译域文件 | read | none | ui | — | `res.listProject` | 0.2.0 |
-| `res.listSandbox` | 列沙盒域文件 | read | none | ui | — | `res.listSandbox` | 0.2.0 |
-| `res.readProjectFile` | 读工程文件 | read | none | ui | — | `res.readProjectFile` | 0.2.0 |
+| `res.listProject` | 列编译域文件 | read | none | ui/mcp | — | `res.listProject` | 0.2.0 |
+| `res.listSandbox` | 列沙盒域文件 | read | none | ui/mcp | — | `res.listSandbox` | 0.2.0 |
+| `res.readProjectFile` | 读工程文件 | read | none | ui/mcp | — | `res.readProjectFile` | 0.2.0 |
 | `sys.describeTool` | 单颗工具深档（含闸门预演） | read | none | ui/mcp/cli | — | `sys.describeTool` | 0.3.0 |
 | `sys.getStatus` | 宿主状态 | read | none | ui/mcp/cli | — | `sys.getStatus` | 0.2.0 |
 | `sys.listTools` | 工具发现 | read | none | ui/mcp/cli | — | `sys.listTools` | 0.2.0 |

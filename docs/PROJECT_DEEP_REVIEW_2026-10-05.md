@@ -1771,3 +1771,19 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
   A) 扩展内起本地管道服务＋`mcp-server.cjs` stdio 桥（agent 直连活编辑器，subject/surface 传输固化）；
   B) headless CLI（`vv-cli` 脱 VS Code 跑只读/文件类工具，解耦最彻底但需 vscode API 替身）；
   C) 先不接（保持 mcp=关，等具体 agent 消费方）。
+
+## 七、批次三 A 案落地：MCP 活编辑器桥（用户拍板「A」，2026-10-19）
+- **三件套**：`extension/src/mcpBridge.ts`（命名管道服务端：NDJSON 一行一枪、caller 传输固化 {mcp/agent/非交互}、
+  管道名＝工程根 sha1（⛔ 发现文件进用户仓库——configRoot 旧教训）、双开探活让位、契约 mcp=false⇒零监听面）；
+  `mcp/mcp-server.cjs`（stdio JSON-RPC↔管道桥：tools/list 现读 sys.listTools 过滤 mcp 面＝⛔ 第二份工具表；
+  MCP 客户端配置 `node mcp-server.cjs --project <工程>`，该工程须正开在基座里）；契约开闸（mcp=true＋只读 12 颗上 mcp 面）。
+- **第一档纪律（锁⑤）**：mcp 面⛔ 挂有副作用工具——agent 线＝只读；写面放开＝逐颗显式拍板。
+  HITL 路在场（requiresApproval＋非交互⇒执行器弹窗），只是第一档没放写工具进来。
+- **验证四线全绿**：台架 mcpBridge.test 9 颗（协议纯函数＋闸行为＋**管道名算法双源文本锁**）·
+  vscodeShell 锁⑤（mcp 开闸事实源＋只读纪律）· D1 预演钉改判（mcp 已开＝ready；关闸取证位换 cli）·
+  真宿主 harness 9/9（新增 mcp-pipe-roundtrip＋mcp-write-denied：net 真模块、真闸、traceId 回包）。
+- **端到端亲测（活基座＋外部桥）**：initialize→tools/list(12 颗)→sys.getStatus(真工程根)→bindings.get(真绑定表)→
+  bindings.set 拒单 SURFACE_DENIED→**按 traceId 在 .vv/audit 账上查得那一行**（verdict=surface-denied、channel=mcp、
+  argsDigest 只记形状）＝agent 自调试闭环成。⚠ 途中实撞出在册语义：`.vv/` 未开户⇒审计静默丢行且 vvReady 进程内缓存
+  （init 后要重启窗口才开账，刻意保守）——e2e 首跑没账即此因，非 bug。
+- 读数：vitest **294/294** · harness **failed=0（9 步）** · 终态已装基座。

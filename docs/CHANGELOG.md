@@ -54,6 +54,29 @@
   Q＋弹窗 ×/webview 浮层族移交真机（见批5 追加）。R/T/V 已结案。
 
 ---
+## [未发布 Unreleased] — R160 批次三：MCP 活编辑器桥（agent 线开闸·只读档，2026-10-19）
+
+> 用户拍板 A 案。外部 agent 经 `mcp/mcp-server.cjs`（stdio MCP↔命名管道桥）直连**活着的**编辑器工程：
+> 闸/账/HITL 全在扩展侧 executeTool，caller 传输固化 `{mcp, agent, 非交互}`——业务代码⛔ 自造身份。
+
+### Added
+- **`extension/src/mcpBridge.ts`**：管道服务端（NDJSON 一行一枪；管道名＝工程根 sha1，⛔ 发现文件进仓库；
+  双开探活让位；契约 mcp=false⇒零监听面）。
+- **`mcp/mcp-server.cjs`**：MCP(JSON-RPC 2.0) stdio 桥；tools/list 现读 sys.listTools 过滤 mcp 面（⛔ 第二份工具表）。
+  接入配置：`node …/mcp/mcp-server.cjs --project <工程文件夹>`（该工程须正开在基座里）。
+- **契约开闸**：surfacesGlobal.mcp=true；第一档只读 12 颗上 mcp 面（sys.*5＋bindings.get/audit＋circuits.list＋res.*3＋compile.closure）。
+- 锁：台架 mcpBridge 9 颗（协议纯函数/闸行为/**管道名算法双源文本锁**）；vscodeShell 锁⑤（mcp 面⛔ 有副作用工具——
+  写面放开＝逐颗显式拍板）；harness 新增 mcp-pipe-roundtrip＋mcp-write-denied（net 真模块往返、traceId 回包）。
+
+### 端到端亲测
+initialize→tools/list(12)→sys.getStatus(真根)→bindings.get(真表)→bindings.set 拒单→**按 traceId 在 .vv/audit 查得那一行**
+（verdict=surface-denied、argsDigest 只记形状）＝agent 自调试闭环成。在册语义亲撞：`.vv/` 未开户⇒审计丢行且 vvReady
+进程内缓存（开户后须重启窗口，刻意保守）。
+
+### 验证
+- vitest **294/294** · 真宿主 harness **failed=0（9 步）** · D1 预演钉改判（mcp 已开＝ready，关闸取证位换 cli）。
+
+---
 ## [未发布 Unreleased] — R159：真宿主集成测试上线 + "越修越坏"四刀（2026-10-18 夜）
 
 > 用户令"穷尽所有测试手段"。台架全绿而真机断裂的根因＝**假件与真宿主语义分岔**——本批把
