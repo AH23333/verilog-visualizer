@@ -42,6 +42,10 @@
 - 结案：V（另存默认名 top_netlist.v 与画布一致）；复制到沙盒全链（top/ 主电路＋3 子部件＋目录表落盘＋部件树即时上树）；
   新建 Verilog 文件面板路（预填默认名＝设计）。
 - 移交真机：Q（滚轮静态不成立）、弹窗 ×/webview 浮层族（computer-use 坐标漂移会点到 VS Code 关闭钮——用户亲验，批4"工具侧"归因已更正）。
+- **API 层收编（5f343a5）**：卷六十九「树命令直插 sandboxFiles」乱源清零——audit/complete 命令与 bindParts 弹窗的 bindings 数据动作
+  全改走 executeTool（bindings.audit/complete/get/set 工具）；命令/UI＝薄壳，刷树归 onToolExecuted、广播在 handler；
+  对账锁一颗（UI 层 import 现四颗数据函数＝红）。35 颗工具、四道闸、生成文档的调用层至此闭环；
+  ⛔ 待拍板：MCP 传输形态（活编辑器管道桥 / headless CLI / 暂缓）——契约侧 sys.* 的 mcp 面已备好。
 
 ### 验证
 - vitest **284/284** · **真宿主 harness failed=0**（7/7＋四哨兵零命中）· 新基座 activate 日志无错 ·

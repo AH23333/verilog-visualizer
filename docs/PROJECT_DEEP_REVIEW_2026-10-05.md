@@ -1759,3 +1759,15 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
   安全路固化：workbench 壳层元素点击✓；webview 内⛔ 一切点击（含元素点击），键入用 set_focus＋press_key(带 element_id)；webview 浮层族移交用户真机。
 - 移交真机：Q（滚轮静态不成立：侧栏 overflowY:auto＋wheel 只绑画布 wrapper）、弹窗 ×/自定义门/表达式生成等浮层族。
 - 终读数：vitest **284/284** · harness **failed=0**（本卷 +2 笔提交，push 欠账续累计）。
+
+## 六、API 层收编落账（卷六十九方向的闭环）
+- 用户令「别忘了还需要做API层」。盘点现状：toolRegistry/executeTool（四闸+HITL+traceId+审计一锅）、fs 族 9＋域族 16＋RPC 族 9＝**35 颗上账**、
+  docs/API_REFERENCE.md 双源生成（`pnpm api:doc`）＋漂移钉——卷六十九定的「收编而非另起」主体早已在场。
+- 本刀（`5f343a5`）收最后一批尾巴：auditBindings/completeBindings 命令与 bindingPanel（bindParts 弹窗）的 bindings 数据动作
+  全改走 executeTool（bindings.audit/complete/get/set）＝卷六十九点名「树命令直插 sandboxFiles」乱源清零；
+  对账锁一颗（UI 层 import 名单现四颗数据函数＝红）。读数：vitest **285/285** · harness **failed=0**。
+- **在册待拍板（MCP/agent 端点）**：契约与 sys 自调试套件（listTools/describeTool/selfCheck/readAudit）已备好，
+  surfacesGlobal.mcp 一颗开关的事；⛔ 的是传输形态——
+  A) 扩展内起本地管道服务＋`mcp-server.cjs` stdio 桥（agent 直连活编辑器，subject/surface 传输固化）；
+  B) headless CLI（`vv-cli` 脱 VS Code 跑只读/文件类工具，解耦最彻底但需 vscode API 替身）；
+  C) 先不接（保持 mcp=关，等具体 agent 消费方）。
