@@ -1718,3 +1718,34 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
 - `78ca00c` 打包 schemas 缺口 → `e4483cb` 第一刀+harness → `c8505b1` 二三刀 → `b2416b5` 四刀（哨兵换防）。
 - 终读数：vitest 277/277 · ext:check 0 · vite build ✓ · **真宿主 failed=0**（7/7 PASS + 四哨兵零命中）。
 - ⚠ 承前：test_files 遗物⛔ 动；docs/mem.txt 永不入册；push 欠账继续累计（本卷又 +4 笔）。
+
+---
+
+# 卷七十 · R160 四批上屏走测统一修与假 API 事故（2026-10-18 深夜）
+
+## 一、战役形态（用户令「放开边界、大量测试、统计后统一修」）
+- 四批制：批1 编译域全链 / 批2 沙盒域全链 / 批3 交叉与边缘 / 批4 汇总统一修。⛔ 边测边修（"越修越坏"温床）。
+- 上屏 20 案入册 `tests/manual-notes.md`（高7/中7/低4/待证2），批4 按病灶族一次修完、真基座全活 bundle 复验。
+
+## 二、假 API 事故（本卷最大教训——假件自证现行犯，harness 当场揪出）
+- "问题H 真根因"曾判为「watcher 只对开编辑器文件触发」，补 `workspace.onDidFilesChange`——**该 API 在 extHost 公开面不存在**（fork src 与 out/ 双查无）。
+- 台架 282 全绿＝桩是我写的：假件补了颗真宿主没有的 API，测试永远绿。真宿主 harness activate 当场炸（failed=1）。
+- 更险读数＝**扩展"半活"假象**：activate 中段抛错，抛错点之前的命令/watcher 照常注册⇒上屏 H 闭环"全过"、
+  之后的改名/删除迁移监听静默失踪（X 修复其实⛔ 挂上）。旧诊断误判——真根因只有闭包收缩死锁（bindingRefs 已修，watcher 本就触发）。
+- 处置三件套：摘假 API 块；桩同步删＋桩顶纪律「⛔ 桩上不得出现 extHost 公开面没有的 API」；X 在全活 bundle 上双向复验补实锤。
+
+## 三、修复账（按病灶族五刀）
+| 族 | 案 | 病灶 | 修法 |
+|---|---|---|---|
+| 解析 | E/E2/G | 黑名单含非原语 add/sub；ANSI 逗号续行端口不解析 | 两解析器删两颗；parseModulePorts 按方向切段+逗号逐项收 |
+| 树/弹窗 | B/B2/L | view/item/context 传 element 而文件叶无 uri；webview 激活层次树退 welcome | 文件叶补 uri；最后 Verilog uri 粘滞 |
+| 绑定迁移 | X/A/D/C | Explorer F2/Del 走 workbench 原生编辑扩展不知情；Explorer 右键缺三项；文案分岔 | onDidRename/DeleteFiles 补监听（真 API）；manifest 三项；文案对齐 |
+| 编译面板 | H/J/K/N | 闭包收缩死锁；activeTextEditor=undefined 命令哑；成功不清账/失败不清图 | bindingRefs 射程集；最后文本 uri 兜底；publishProblems([]) 上送+清 circuitJson |
+| 部件供数 | S | siblings 只推一颗、换代无踢 | refreshAllDocSiblings 总闸+gatesEpoch 换代 |
+
+## 四、终读数与在册待办
+- vitest **282/282** · 真宿主 harness **failed=0**（7/7+哨兵零命中）· 新基座（pid 1396）activate 无错 ·
+  上屏复验：H 闭环双向✓、X 双向✓、S 部件上清单✓、G 0 问题出图✓、弹窗两级往返✓、K/N✓。
+- 待办：R（沙盒画布 Ctrl+F 未出弹窗——疑焦点在部件分类下拉 SELECT 护栏，待真机定点复验；用户按 Esc 停屏收兵）；
+  T（无 IO 部件放置 toast 待点验）；M/Q/V/I 归因工具侧或低优先（见台账）。
+- ⚠ 承前：test_files 遗物⛔ 动；docs/mem.txt 永不入册；push 欠账继续累计（本卷 +5 笔）。

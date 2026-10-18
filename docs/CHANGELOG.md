@@ -7,6 +7,40 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R160：四批上屏走测 20 案统一修 + 假 API 事故（2026-10-18 深夜）
+
+> 用户令「放开边界、大量测试、统计后统一修」。四批上屏走测入册 20 案（`tests/manual-notes.md`），
+> 高/中严重度全部编码修复＋真基座全活 bundle 上屏复验；台架补 R160 回归钉。
+
+### Fixed（按病灶族）
+- **解析族（E/E2/G）**：两解析器黑名单删非原语 `add`/`sub`（用户模块撞车⇒例化永不被认）；
+  `parseModulePorts` 重写——按方向关键词切段、段内逗号逐项收（`input a, b` 续行端口是最常见 Verilog 风格，曾假阳性拦死编译）。
+- **树与弹窗（B/B2/L）**：文件树/沙盒树文件叶补 `uri`——真宿主 view/item/context 传 **element** 而非 TreeItem，
+  三形全空⇒右键弹窗开错宿主；层次树加「最后 Verilog uri」粘滞（webview 激活时不退 welcome）。
+- **绑定作用域与迁移（X/A/D/C）**：Explorer F2/Del 走 workbench 原生编辑，补 `onDidRenameFiles`/`onDidDeleteFiles`
+  ⇒ 绑定前缀键随迁/随清（复验双向 ✓）；explorer/context 补 bindParts/auditBindings/completeBindings 三项；
+  BINDING_MISSING 文案与菜单项名对齐。
+- **编译面板（H/J/K/N）**：编译失败后闭包收缩⇒修好文件等不来重编译的死锁，`closureOf` 补 `bindingRefs` 射程集
+  （绑定引用即记账，⛔ 只看成功闭包）；外部改盘（agent 直写 .v）经 watcher.onDidChange 补自动重编译（改坏→报错、修复→清账双向 ✓）；
+  webview/custom editor 激活时 `activeTextEditor=undefined`——记「最后文本编辑器 uri」第三兜底；
+  成功清旧诊断（publishProblems([]) 上送）、失败清画布旧图。
+- **沙盒部件供数（S）**：`refreshAllDocSiblings` 总闸——refreshAllTrees 时向每颗活文档 push siblings，
+  画布部件清单实时换代（gatesEpoch 踢重取）；画布隐藏时 panel dispose＝只推可见画布（合理设计，复验实锤）。
+
+### 事故与在册教训（假件自证现行犯）
+- **`workspace.onDidFilesChange` 不存在于 extHost 公开面**（fork src 与 out/ 双查无）：曾当"问题H 真根因"补进
+  activate——台架 282 全绿（桩是我写的，假件补了真宿主没有的 API），真宿主 harness activate 当场炸。
+- **扩展"半活"假象**：activate 中段抛错，抛错点之前的命令/watcher 照常注册⇒上屏 H 闭环"全过"，
+  之后的改名/删除迁移监听静默失踪。旧诊断「watcher 只对开编辑器文件触发」系误判——真根因只有闭包收缩死锁。
+- 处置：摘假 API＋桩同步删＋桩顶纪律「⛔ 桩上不得出现 extHost 公开面没有的 API」；X 在全活 bundle 上双向复验补实锤。
+
+### 验证
+- vitest **282/282** · **真宿主 harness failed=0**（7/7＋四哨兵零命中）· 新基座 activate 日志无错 ·
+  上屏复验：H 闭环双向、X 双向、S 部件上清单、G 0 问题出图、弹窗两级往返、K/N 清账（读数全录 `tests/manual-notes.md`）。
+- ⚠ 在册待办：R（沙盒画布 Ctrl+F 未出弹窗——疑焦点在部件分类下拉的 SELECT 护栏，待真机定点复验）、T（无 IO 部件放置 toast 待点验）、
+  M/Q/V/I（归因工具侧或低优先，见台账）。
+
+---
 ## [未发布 Unreleased] — R159：真宿主集成测试上线 + "越修越坏"四刀（2026-10-18 夜）
 
 > 用户令"穷尽所有测试手段"。台架全绿而真机断裂的根因＝**假件与真宿主语义分岔**——本批把
