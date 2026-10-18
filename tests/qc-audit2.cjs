@@ -36,10 +36,11 @@ async function boot(page) {
   try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
   await require('./_ui.cjs').newSandboxFile(page);
 }
-const snapFlag = (page) => page.evaluate(() => {
-  const raw = localStorage.getItem('verilog-viz-sandbox-settings');
-  return raw ? JSON.parse(raw).snapToGrid : '(未写入，用默认 true)';
-});
+// 沙盒偏好的真值只认 `settingsStore`（正本 `_ui.cjs` 的 `sandboxPref`，注释在那儿）。
+// ⚠ 旧写法读 `localStorage['verilog-viz-sandbox-settings']`——那颗 store 从片 5 起不再持久化
+//   （真源搬到宿主 `contributes.configuration`），于是这一句恒回 `'(未写入，用默认 true)'`：
+//   一把永远说"没写过"的尺，判不出"我到底拨动成功了没"（qc-audit2 日志里那句读数就是它的死状）。
+const snapFlag = (page) => require('./_ui.cjs').readSandboxPref(page, 'snapToGrid');
 async function dragUnderZoom(page) {
   const before = await page.evaluate(() => {
     const c = window.__sandboxPaper.model.getCells().find(c => c.get('type') === 'Input');
@@ -69,13 +70,14 @@ async function dragUnderZoom(page) {
   if (!after) return { err: 'drag failed' };
   return { beforeX: before.x, afterX: after.x, modelDx: after.x - before.x, mod16: after.x % 16 };
 }
-// 精确定位「吸附到网格」那一行的开关并切换 —— 实现只许有一份（_ui.cjs 的 setSandboxToggle）。
-// 两颗闸门各自复制一份定位代码，就是 qc-audit 那份飘掉而这里没飘的原因。
+// 翻转「吸附到网格」——实现只许有一份（`_ui.cjs` 的 `setSandboxPref`）。
+// 两颗闸门各自复制一份定位代码，就是 qc-audit 那份飘掉而这里没飘的原因；
+// 现在连"点开关"这一步也⛔ 自己写：沙盒设置面板已随 R150 路标③ 删除，能翻的只有那颗 store。
 async function setSnap(page, want) {
   const before = await snapFlag(page);
-  const flip = await require('./_ui.cjs').setSandboxToggle(page, '吸附到网格', want);
+  const flip = await require('./_ui.cjs').setSandboxPref(page, 'snapToGrid', want);
   const after = await snapFlag(page);
-  return { before, after, flip };
+  return { before, after, landed: flip.landed, from: flip.from, to: flip.to };
 }
 
 
@@ -105,7 +107,7 @@ async function setSnap(page, want) {
 
     const r = await setSnap(page, false);
     console.log('    切换 snapToGrid:', JSON.stringify(r));
-    if (r.after !== false) { bad('[A2] 吸附未能真正关闭，后续结论不可信', JSON.stringify(r)); }
+    if (r.after !== false || !r.landed) { bad('[A2] 吸附未能真正关闭，后续结论不可信', JSON.stringify(r)); }
     else {
       await page.evaluate(() => {
         const c = window.__sandboxPaper.model.getCells().find(x => x.get('type') === 'Input');

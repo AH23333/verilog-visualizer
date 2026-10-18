@@ -1,12 +1,22 @@
 // 在「生产构建」(vite preview, 跑 dist) 下复现「逻辑门无法使用」
+//
+// ⚠ 入口（波次三，2026-10-18）：这一族原来开的是 dist 的**根路径**（旧 React 单页 + localStorage 沙盒库）。
+//   那颗主人随片 5 退役后，根路径只剩编译态残壳 `index.html`：`boot()` 等的活动栏 `button[data-activity]`
+//   在上面⛔ 存在 ⇒ 整格 FATAL 在 30s 超时，红的是入口不是产品。
+//   而 `gates.html` 又⛔ 在 `vite build` 的 inputs 里（正本 `vite.config.ts:19-25`：main/doc/binding），
+//   所以**生产包里的沙盒只剩一颗主人＝`doc.html`**（custom editor）。⇒ 入口搬到它 + `tests/_dochost.cjs`
+//   那颗同协议假宿主：这一族继续在**构建产物**上量产品真身，⛔ 为了跑通而降口径去跑 dev 的 gates.html。
 const { spawn } = require('child_process');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
+const DH = require('./_dochost.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 4173;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(4173)); } catch { }
-const URL = `http://localhost:${PORT}/`;
+const URL = DH.DOC_URL(PORT);          // 等的就是这颗文件：dist 里没有 doc.html 也在这里当场暴露
+const DOC = 'qc/preview_circuit.djs';  // 带文件夹的相对名＝顺手验一条真形状（工作区名⛔ 等于裸名）
+const EMPTY = JSON.stringify({ cells: [] });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 // 跑批只认 PASS/FAIL：这颗原来通篇 `>>>` 叙述，一条断言都不打 ⇒ 被 FATAL 盖成 RED 也没人说清它判了什么。
 let pass = 0, fail = 0;
@@ -46,14 +56,17 @@ async function wire(page, s, sp, t, tp) {
     const errors = [];
     page.on('pageerror', e => errors.push(String(e)));
     page.on('console', m => { if (/error/i.test(m.type())) errors.push('console: ' + m.text().slice(0, 140)); });
-    // 两处死锚点（实测 `放置结果: null` → 整格 FATAL）：
-    //   · networkidle 在这台 dev/preview 服务器上等不满；
-    //   · `button[title="新建文件"]` 在编译视图里弹 PromptDialog 遮罩，沙盒根本没进去。
-    await require('./_ui.cjs').boot(page, URL);
-    await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k=>localStorage.removeItem(k)); });
-    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1500 });
-    try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    await require('./_ui.cjs').newSandboxFile(page);
+    // 三处死锚点（实测 `放置结果: null` → 整格 FATAL）已全部交掉：
+    //   · networkidle 在这台 preview 服务器上等不满 ⇒ `bootDoc` 只等 DOM + 画布锚点；
+    //   · `button[data-activity]`（活动栏）随旧 React 单页退役 ⇒ 假宿主下 doc.html 直接挂画布；
+    //   · `button[title="新建文件"]` 在编译视图弹 PromptDialog 遮罩 ⇒ 「新建」这件事交给假宿主的 seed 磁盘。
+    const seedId = `qc-preview-${Date.now()}`;   // 一次跑一个 seedId：同 seedId 的 reload＝磁盘⛔ 重铺
+    await DH.installFakeHost(page, { seedId, docName: DOC, files: { [DOC]: EMPTY } });
+    await DH.bootDoc(page, PORT, { settle: 1500 });
+    const mounted = await DH.mountProbe(page);   // 三颗 doc 档共用一份屏幕读数（⛔ 各写一遍选择器形状）
+    (mounted.paper && mounted.sidebar && mounted.gates > 0)
+      ? ok('[0] 生产包里的 doc.html 挂得起沙盒画布（入口这一层先自证）', `部件库先可见 ${mounted.gates} 颗（分组折叠着，展开由夹具负责）`)
+      : bad('[0] dist 的 doc.html 没挂起画布 ⇒ 下面各格的前置⛔ 成立', JSON.stringify(mounted));
 
     console.log('===== [1] 与门：输入引脚驱动 =====');
     await clickGate(page, 'Input'); await clickGate(page, 'Input');

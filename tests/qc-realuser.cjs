@@ -1,14 +1,23 @@
 // 完全模拟真实用户：全部用真实鼠标操作（放置/连线/点击输入引脚），
 // 并覆盖「保存 → 刷新 → 重开」持久化路径。生产构建 (vite preview) 下运行。
 // 设置档走默认预设（autoStartSim=true）；同一套动作在"仿真没自动起"下的另一颗是 qc-paused。
+//
+// ⚠ 入口（波次三，2026-10-18）：原来开的是 dist 根路径＝旧 React 单页（活动栏 + localStorage 沙盒库），
+//   那颗主人随片 5 退役 ⇒ `boot()` 等的 `button[data-activity]` 永远等不到，整格 FATAL 在 30s。
+//   生产包里的沙盒只剩一颗主人＝`doc.html`（custom editor，⛔ 在 `vite build` 的 inputs 里的是
+//   gates.html，正本 `vite.config.ts:19-25`），所以入口搬到 doc.html + `tests/_dochost.cjs` 的同协议假宿主：
+//   量的仍是**构建产物**，只是终于量在产品真身上。
 const { spawn } = require('child_process');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
+const DH = require('./_dochost.cjs');
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 4175;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(4175)); } catch { }   // 与 qc-paused 分开一颗端口：同端口先后跑会把上一颗的遗留服务读成自己的
-const URL = `http://localhost:${PORT}/`;
+const URL = DH.DOC_URL(PORT);
+const DOC = 'qc/realuser_circuit.djs';
+const EMPTY = JSON.stringify({ cells: [] });
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 // 跑批只认 PASS/FAIL 行：本格原来通篇 `>>>` 叙述、一条断言都不打 ⇒ NOVERDICT 被 FATAL 盖成 RED，
 // 谁也没法说它到底判了什么。下面把三条真实交互结论各钉一颗判据。
@@ -59,15 +68,21 @@ const lampState = (page, id) => page.evaluate((id) => {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     const errors = [];
     page.on('pageerror', e => errors.push(String(e)));
-    await require('./_ui.cjs').boot(page, URL);
-    // 与 qc-paused 的唯一差别：**不写设置档**，走默认预设（autoStartSim: true ⇒ 仿真自己在跑）。
+    // 与 qc-paused 的唯一差别：交**默认设置**（autoStartSim=true ⇒ 仿真自己在跑）。
     // qc-paused 那一颗钉的是"仿真没起时手动拨输入也要跟着算"。
-    await page.evaluate(() => { ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates','verilog-viz-sandbox-settings'].forEach(k=>localStorage.removeItem(k)); });
-    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1500 });
-    try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    // ⚠ 死锚点（实测遮罩拦点击）：`button[title="新建文件"]` 在**编译视图**点下去弹的是
-    // PromptDialog（`fixed inset-0 z-[2100]`），不填就不关 ⇒ 后面每次真鼠标点击都被它拦住。
-    await require('./_ui.cjs').newSandboxFile(page);
+    // 旧写法把这颗前提写在 `localStorage['verilog-viz-sandbox-settings']` 上——沙盒偏好从片 5 起
+    // 不再持久化（真源＝宿主 `contributes.configuration`），所以今天唯一的入口形状就是宿主的 getConfig：
+    // 交 `sandbox:{}` ＝让 `settingsStore.applyHostConfig` 落成默认档（与产品里"用户没改过设置"同一形状）。
+    const seedId = `qc-realuser-${Date.now()}`;   // 一次跑一个 seedId：同 seedId 的 reload＝磁盘⛔ 重铺
+    await DH.installFakeHost(page, {
+      seedId, docName: DOC, files: { [DOC]: EMPTY },
+      config: { ...DH.DEFAULT_CONFIG, sandbox: {} },
+    });
+    await DH.bootDoc(page, PORT, { settle: 1500 });
+    const mounted = await DH.mountProbe(page);
+    (mounted.paper && mounted.sidebar && mounted.gates > 0 && mounted.toolbar)
+      ? ok('[0] 生产包里的 doc.html 挂起沙盒（画布 + 部件库 + 工具条都在）', `器件库 ${mounted.gates} 颗 / 画布 ${mounted.cells} 格`)
+      : bad('[0] dist 的 doc.html 没挂全 ⇒ 下面各格的前置⛔ 成立', JSON.stringify(mounted));
 
     console.log('===== 真实鼠标放置 + 连线 =====');
     await realClickGate(page, 'Input'); await realClickGate(page, 'Input');
@@ -98,19 +113,25 @@ const lampState = (page, id) => page.evaluate((id) => {
     const s1 = await lampState(page, ids.Lamp[0]);
     console.log('    点击两个输入后 灯:', JSON.stringify(s1));
     const lit1 = /3, 192, 60|#03c03c/.test(s1.led);
-    (lit1 ? ok : bad)('[2] 生产包 + 不自动起仿：真鼠标拨两个输入后与门把灯点亮', `${JSON.stringify(s1)}（links=${nLinks}）`);
+    (lit1 ? ok : bad)('[2] 生产包 + 默认档（自动起仿）：真鼠标拨两个输入后与门把灯点亮', `${JSON.stringify(s1)}（links=${nLinks}）`);
 
     console.log('\n===== 保存 → 刷新 → 重开 =====');
+    // 保存＝点工具条那颗真「保存」钮（用户看得见的那一颗），然后**问宿主收到了什么正文**——
+    // 读的是发出去的字节，⛔ 再从画布复算一遍（那只会复述我的假设）。
+    // 这一格是旧版没有的：旧档点完保存直接 sleep(900)，"到底交出去没有"从没判过，
+    // 于是 [3]「刷新后部件还在」可能只是同一页内存没清（doc 持久化那颗 r154 的[5] 反向臂同理）。
     await page.locator('button[title^="保存"]').first().click();
-    await sleep(900);
-    await require('./_ui.cjs').boot(page, URL, { reload: true, settle: 1500 });
-    try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
-    // 重载后落在默认视图（电路/代码）：沙盒必须由夹具再进去。刻意不用 enterSandbox ——
-    // 它读不到 paper 会**新建文件**，那正好把"持久化"这颗判据的前置抹掉。
-    await page.locator('button[data-activity="sandbox"]').click();
+    await sleep(1200);
+    const ro = await DH.fakeHostReadout(page);
+    const body = ro ? String(ro.files[DOC] || '') : '';
+    (ro && ro.edits >= 1 && /"And"/.test(body) && /"Lamp"/.test(body))
+      ? ok('[S] 「保存」把正文交给宿主（落盘正文里找得到与门和灯）', `edits=${ro.edits} 正文 ${body.length}B`)
+      : bad('[S] 保存没落到宿主（画布上的东西⛔ 交出去）', JSON.stringify({ edits: ro && ro.edits, doc: ro && ro.docMessages, 正文头: body.slice(0, 70) }));
+    // 同 seedId 刷新＝假宿主那盘⛔ 重铺（`vv-fake-fs` 跨 reload 存活）⇒ 画布只能从"盘上正文"长回来
+    await page.reload({ waitUntil: 'domcontentloaded' });
     const restored = await page.waitForFunction(() => !!window.__sandboxPaper, null, { timeout: 15000 }).then(() => true).catch(() => false);
     if (!restored) {
-      bad('[3] 刷新后活动沙盒文件自动带回', '回到沙盒却没有 paper：活动文件没被恢复');
+      bad('[3] 刷新后活动沙盒文件自动带回', '重载后没有 paper：文档没被重新交给编辑器');
       bad('[4] 刷新后与门仍响应真鼠标点击', '前置没成（没有画布），不作数');
     } else {
     const ids2 = await page.evaluate(() => {

@@ -68,21 +68,23 @@ async function dragUnderZoom(page) {
   if (!after) return { err: 'drag failed' };
   return { beforeX: before.x, afterX: after.x, modelDx: after.x - before.x };
 }
-// 打开设置 → 沙盒页 → 切换「吸附到网格」。
+// 翻转「吸附到网格」。
 // ⚠ 原来这里自己写了一份"往上数 4 层父元素看谁含行标签"的找法：那一棵祖先本来就含
 //   整页文字，于是选中了**别的一行**的开关 —— 状态读数回来是 '已开启'（看着像点对了），
 //   实际 snapToGrid 一动没动（本仓库闸门 r81 同款教训：前置没成，结论就不作数）。
-//   定位与点击全部交给共用夹具 _ui.cjs 的 setSandboxToggle（按行标签的兄弟节点找按钮）。
-/** 设置档里的真值（不是按钮的 title）：这一格的开关到底生没生效，只认这个 */
-const snapFlag = (page) => page.evaluate(() => {
-  const raw = localStorage.getItem('verilog-viz-sandbox-settings');
-  return raw ? JSON.parse(raw).snapToGrid : '(未写入，用默认 true)';
-});
+// ⚠ 波次三（2026-10-18）：整条"打开设置面板 → 沙盒页 → 拨那一行的开关"已⛔ 是今天的形状——
+//   设置面板随 R150 路标③ 删除（`src/` 里 `data-sandbox-settings` 现读 0 处，只有测试还在点），
+//   沙盒偏好也不再写 localStorage（`settingsStore` 片 5 起不再持久化，真源＝宿主 `contributes.configuration`），
+//   所以下面那颗 `snapFlag` 旧尺恒回 `'(未写入，用默认 true)'`＝**判据自己瞎了**，
+//   于是这一格永远报"没能真的关掉吸附"，而产品那侧根本没被问过。
+//   定位与翻转全部交给共用夹具 `_ui.cjs` 的 `setSandboxPref`（读写同一颗 store，翻完当场回读）。
+/** 沙盒偏好的真值（⛔ 再看 localStorage）：这一格的开关到底生没生效，只认 `_ui.cjs` 那份现读 */
+const snapFlag = (page) => require('./_ui.cjs').readSandboxPref(page, 'snapToGrid');
 async function setSnap(page, want) {
   const before = await snapFlag(page);
-  const flip = await require('./_ui.cjs').setSandboxToggle(page, '吸附到网格', want);
+  const flip = await require('./_ui.cjs').setSandboxPref(page, 'snapToGrid', want);
   const after = await snapFlag(page);
-  return { before, after, flip };
+  return { before, after, landed: flip.landed, from: flip.from, to: flip.to };
 }
 
 
@@ -116,12 +118,10 @@ async function setSnap(page, want) {
     // 关掉吸附再测一次
     const snapState = await setSnap(page, false);
     console.log('    尝试关掉吸附：', JSON.stringify(snapState));
-    // ⚠ 必须**当场确认真的关掉了**：那一行开关定位失败时上面只是没点，
-    // 而 d2 读起来仍是"位移 ≈60/64"，结论就会盖在一个从没生效的前置上。
-    const snapNow = await page.evaluate(() => {
-      const raw = localStorage.getItem('verilog-viz-sandbox-settings');
-      return raw ? JSON.parse(raw).snapToGrid : '(未写入，用默认 true)';
-    });
+    // ⚠ 必须**当场确认真的关掉了**：翻转没生效时 d2 读起来仍是"位移 ≈60/64"，
+    //   结论就会盖在一个从没生效的前置上。回读走 store 本体（`landed`＝翻完那一颗的现读），
+    //   ⛔ 再拿 localStorage 当证据——那颗 store 已不再持久化，它只会说"(未写入，用默认 true)"。
+    const snapNow = snapState.after;
     await page.evaluate(() => {
       const p = window.__sandboxPaper;
       const c = p.model.getCells().find(x => x.get('type') === 'Input');
@@ -130,7 +130,7 @@ async function setSnap(page, want) {
     await sleep(300);
     const d2 = await dragUnderZoom(page);
     console.log('    吸附关闭后:', JSON.stringify(d2), ' 此刻 snapToGrid =', JSON.stringify(snapNow));
-    if (snapNow !== false) bad('[A] 没能真的关掉「吸附到网格」⇒ 位移结论不作数', `snapToGrid=${JSON.stringify(snapNow)}`);
+    if (snapNow !== false || !snapState.landed) bad('[A] 没能真的关掉「吸附到网格」⇒ 位移结论不作数', JSON.stringify({ snapNow, landed: snapState.landed }));
     else if (d2.err) bad('[A] 关闭吸附后拖拽', d2.err);
     else {
       const close = Math.abs(d2.modelDx - 60) <= 4;
