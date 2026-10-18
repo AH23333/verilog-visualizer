@@ -29,7 +29,9 @@ export function parseVerilogInstances(source: string): string[] {
   // Primitives and keywords to skip
   const primitives = new Set([
     'and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor', 'buf', 'bufif0', 'bufif1',
-    'notif0', 'notif1', 'dff', 'dffs', 'dffe', 'dlatch', 'adffe', 'add', 'sub',
+    // R160 真机实锤（批1问题E）：'add'/'sub' ⛔ 列——IEEE 1364 没有这两颗原语（算术是 +/- 运算符），
+    //   列了＝用户拿 add/sub 当模块名时例化永不被识别（与 parseInstantiations 的裁决对齐）。
+    'notif0', 'notif1', 'dff', 'dffs', 'dffe', 'dlatch', 'adffe',
     'module', 'endmodule', 'input', 'output', 'inout', 'wire', 'reg', 'assign',
     'always', 'initial', 'if', 'else', 'case', 'endcase', 'begin', 'end',
     'posedge', 'negedge', 'parameter', 'localparam', 'function', 'endfunction',
@@ -158,26 +160,35 @@ function parseModulePorts(source: string): Map<string, ModuleDefInfo> {
     const portList = match[2];
     const ports: PortInfo[] = [];
 
-    // Parse each port declaration: direction [width] name
-    // Patterns: input [7:0] clk, output reg [3:0] result, input rst_n, etc.
-    // Also handles: input [WIDTH-1:0] data, output [N:0] addr
-    const portPattern = /(input|output|inout)\s+(?:reg\s+|wire\s+|logic\s+)?(?:signed\s+)?(?:\[([^\]]+)\s*:\s*([^\]]+)\]\s+)?(\w+)/gi;
-    let portMatch;
+    // R160 真机实锤（批1问题G）：旧正则只抓 direction 后**第一个**名字——`input a, b` 的 b、
+    //   `input d0, d1, s` 的 d1/s 全丢 ⇒ 假阳性「端口不存在」拦死编译。最常见 ANSI 风格直接坏。
+    //   新法：按方向关键词切段，段内逗号逐项收（每项=可选类型/宽度+结尾名）。
+    const segs: Array<{ dir: 'input' | 'output' | 'inout'; text: string }> = [];
+    const dirRe = /\b(input|output|inout)\b/gi;
+    let dm: RegExpExecArray | null; let segEnd = 0; let curDir: 'input' | 'output' | 'inout' | null = null;
+    while ((dm = dirRe.exec(portList)) !== null) {
+      if (curDir) segs.push({ dir: curDir, text: portList.slice(segEnd, dm.index) });
+      curDir = dm[1].toLowerCase() as 'input' | 'output' | 'inout';
+      segEnd = dm.index + dm[0].length;
+    }
+    if (curDir) segs.push({ dir: curDir, text: portList.slice(segEnd) });
 
-    while ((portMatch = portPattern.exec(portList)) !== null) {
-      const direction = portMatch[1].toLowerCase() as 'input' | 'output' | 'inout';
-      const msbStr = portMatch[2] || undefined;
-      const lsbStr = portMatch[3] || undefined;
-      // Group 4 is always the port name
-      const name = portMatch[4];
-
-      // Attempt to determine width: if both msb/lsb are numeric, compute width
-      const msbNum = msbStr ? parseInt(msbStr, 10) : NaN;
-      const lsbNum = lsbStr ? parseInt(lsbStr, 10) : NaN;
-      const width = (!isNaN(msbNum) && !isNaN(lsbNum)) ? Math.abs(msbNum - lsbNum) + 1 : 1;
-      const isSigned = /signed/i.test(portMatch[0]);
-
-      ports.push({ name, direction, width, isSigned });
+    for (const seg of segs) {
+      for (const raw of seg.text.split(',')) {
+        const item = raw.trim();
+        if (!item) continue;
+        // 类型关键词可出现在宽度前后（`reg [7:0] x` / `[7:0] wire x`）；名字恒在项尾
+        const m = item.match(/^(?:(?:reg|wire|logic|signed)\s+)*(?:\[([^\]]+)\s*:\s*([^\]]+)\]\s*)?(?:(?:reg|wire|logic|signed)\s+)*(\w+)\s*$/);
+        if (!m) continue;
+        const msbStr = m[1] || undefined;
+        const lsbStr = m[2] || undefined;
+        const name = m[3];
+        const msbNum = msbStr ? parseInt(msbStr, 10) : NaN;
+        const lsbNum = lsbStr ? parseInt(lsbStr, 10) : NaN;
+        const width = (!isNaN(msbNum) && !isNaN(lsbNum)) ? Math.abs(msbNum - lsbNum) + 1 : 1;
+        const isSigned = /signed/i.test(item);
+        ports.push({ name, direction: seg.dir, width, isSigned });
+      }
     }
 
     modules.set(moduleName, { name: moduleName, ports, fileName: '' });

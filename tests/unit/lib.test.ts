@@ -3,7 +3,7 @@
 // 非凭印象：and/dff 在原语跳过名单、$auto→AUTO_1 命名、空串也补名、$_DFF_P_→$dff 值归一）。
 // 输入形状 = yosys write_json 标准。UI 层行为由 Playwright 闸门覆盖（r121 等）。
 import { describe, it, expect } from 'vitest';
-import { parseVerilogModules, parseVerilogInstances, parseInstantiations, stripBom } from '../../src/lib/verilogParse';
+import { parseVerilogModules, parseVerilogInstances, parseInstantiations, stripBom, validateModuleInterfaces } from '../../src/lib/verilogParse';
 import { findNetConflicts, stripExtraDrivers, normalizeStdDffCells } from '../../src/lib/verilogConflicts';
 import { normalizeIoLabels, renameAutoCells, assignAutoNetNames } from '../../src/lib/verilogCircuit';
 
@@ -34,6 +34,22 @@ endmodule`;
     const src = 'module t; my_and g1 (o, a, b); my_dff d0 (.q(q), .d(d), .clk(c)); endmodule';
     expect(parseInstantiations(src).map((i) => i.instanceName)).toEqual(['g1', 'd0']);
     expect(parseInstantiations(src).map((i) => i.moduleName)).toEqual(['my_and', 'my_dff']);
+  });
+  it('R160 问题E：`add`/`sub` ⛔ 在原语黑名单——撞名模块的例化必须被认出（真机实锤：sub u_sub() 被吞）', () => {
+    const src = 'module t; add u_add(.a(a)); sub u_sub(.clk(c), .q(q)); endmodule';
+    expect(parseVerilogInstances(src)).toEqual(['add', 'sub']);
+    expect(parseInstantiations(src).map((i) => i.moduleName)).toEqual(['add', 'sub']);
+  });
+  it('R160 问题G：ANSI 逗号续行端口全收（`input a, b` 的 b、`input d0, d1, s` 的 d1/s ⛔ 丢）', () => {
+    const src = 'module adder(input a, b, output y); endmodule\nmodule mux(input d0, d1, s, output [3:0] y); endmodule';
+    const insts = parseInstantiations('module t; adder u(.a(1), .b(2), .y(w)); mux m(.d0(w), .d1(b), .s(s), .y(y)); endmodule');
+    expect(insts).toHaveLength(2);
+    // validateModuleInterfaces 吃 parseModulePorts——续行端口不认会假阳性"端口不存在"（真机 4 错拦死编译）
+    const errs = validateModuleInterfaces([
+      { name: 'adder.v', content: src },
+      { name: 't.v', content: 'module t; adder u(.a(1), .b(2), .y(w)); mux m(.d0(w), .d1(b), .s(s), .y(y)); endmodule' },
+    ]);
+    expect(errs.filter((e) => /不存在/.test(e.message))).toEqual([]);
   });
   it('stripBom：剥 UTF-8 BOM 并归一 CRLF', () => {
     expect(stripBom('\uFEFFa\r\nb\r')).toBe('a\nb\n');

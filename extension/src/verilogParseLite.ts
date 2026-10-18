@@ -16,7 +16,8 @@ export function parseVerilogInstances(source: string): string[] {
   const definedModules = new Set(parseVerilogModules(source));
   const primitives = new Set([
     'and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor', 'buf', 'bufif0', 'bufif1',
-    'notif0', 'notif1', 'add', 'sub', 'module', 'endmodule', 'input', 'output',
+    // R160 真机实锤（批1问题E）：⛔ 'add'/'sub'——非 IEEE 1364 原语，撞名模块的例化会被吞（与主仓对齐）。
+    'notif0', 'notif1', 'module', 'endmodule', 'input', 'output',
     'inout', 'wire', 'reg', 'assign', 'always', 'initial', 'if', 'else', 'case',
     'endcase', 'begin', 'end', 'posedge', 'negedge', 'parameter', 'localparam',
   ]);
@@ -43,7 +44,8 @@ export function parseVerilogInstancesWithLines(source: string): Array<{ name: st
   const definedModules = new Set(parseVerilogModules(source));
   const primitives = new Set([
     'and', 'or', 'not', 'nand', 'nor', 'xor', 'xnor', 'buf', 'bufif0', 'bufif1',
-    'notif0', 'notif1', 'add', 'sub', 'module', 'endmodule', 'input', 'output',
+    // R160 真机实锤（批1问题E）：⛔ 'add'/'sub'（与 parseVerilogInstances 同判据，两形一把尺）。
+    'notif0', 'notif1', 'module', 'endmodule', 'input', 'output',
     'inout', 'wire', 'reg', 'assign', 'always', 'initial', 'if', 'else', 'case',
     'endcase', 'begin', 'end', 'posedge', 'negedge', 'parameter', 'localparam',
   ]);
