@@ -122,6 +122,17 @@ async function bootDoc(page, port, { settle = 2600 } = {}) {
   await new Promise((r) => setTimeout(r, settle));
 }
 
+/** 入口自证用的屏幕读数（三颗 doc 档共用一份，⛔ 各写一遍 querySelector 形状）。 */
+async function mountProbe(page) {
+  return page.evaluate(() => ({
+    paper: !!window.__sandboxPaper,
+    sidebar: !!document.querySelector('[data-sandbox-sidebar]'),
+    gates: document.querySelectorAll('button[data-gate]').length,
+    toolbar: !!document.querySelector('button[title="运行 / 暂停仿真"]'),
+    cells: window.__sandboxPaper ? window.__sandboxPaper.model.getCells().length : -1,
+  }));
+}
+
 /** 交回假宿主读到的一切（正文＝**发出去过的字节**，⛔ 再从别处复算） */
 async function fakeHostReadout(page) {
   return page.evaluate(() => {
@@ -140,4 +151,4 @@ async function fakeHostReadout(page) {
   });
 }
 
-module.exports = { installFakeHost, bootDoc, fakeHostReadout, DOC_URL };
+module.exports = { installFakeHost, bootDoc, fakeHostReadout, mountProbe, DOC_URL, DEFAULT_CONFIG };

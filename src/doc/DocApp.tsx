@@ -13,6 +13,7 @@ import { useVscodeTheme } from '../hooks/useVscodeTheme';
 import { setPartFileSource, clearAutoHits, setBindingPolicy } from '../lib/gateSystem';
 import { getHost, hostFire } from '../lib/host/host';
 import { sandboxStore, type SandboxFile } from '../store/sandboxStore';
+import { settingsStore } from '../store/settingsStore';
 
 interface DocPayload { name: string; content: string; initialBindings?: Record<string, string> }
 type Sibling = { name: string; content: string; role?: 'part' | 'circuit' };
@@ -89,6 +90,17 @@ export default function DocApp() {
   useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   useEffect(() => {
+    // X25（2026-10-18 现读，用户可见缺陷）：`doc.html` 是生产包里沙盒画布的**唯一入口**
+    //   （`gates.html` ⛔ 在 `vite build` 的 inputs 里，正本 `vite.config.ts:19-25`），
+    //   而这一侧过去只取 `cfg.bindings.policy`，从没把整份配置落进 `settingsStore`
+    //   ⇒ 用户在 VS Code 设置里改的 `verilogViz.sandbox.*`（网格吸附／走线样式／默认位宽／
+    //     自动起仿／仿真速度／常量折叠）在 `.djs` 编辑器里**整块失效**，编译侧那半却照用（R150 路标③ 只落了一半）。
+    //   现场证据＝把 autoStartSim 关掉后画布仍自己跑起来（`tests/qc-paused.cjs` 的 [1b]/[2] 抓到）。
+    //   现在与编译侧同一形状：拉一次落一次店（`CanvasApp.tsx:95-104` 那份）。
+    const pullConfig = () => getHost().then((h) => h.getConfig()).then((cfg) => {
+      settingsStore.applyHostConfig(cfg);
+      setBindingPolicy(cfg.bindings?.policy);          // R146 strict：与编译侧同语义
+    }).catch(() => { /* 无宿主环境（浏览器闸门）＝按默认档 */ });
     const onMessage = (ev: MessageEvent) => {
       const d = ev.data as {
         vvh?: string; op?: string; docName?: string; content?: string; siblings?: Sibling[];
@@ -129,6 +141,9 @@ export default function DocApp() {
           setDoc((cur) => (cur && cur.name === docName ? { ...cur, initialBindings: { ...saved } } : cur));
         }).catch((e) => console.warn('Failed to reload doc bindings', e));
       }
+      // X25：宿主那侧 `verilogViz.sandbox.*` 一改就向**所有** webview 广播 configChanged
+      //   （正本 `extension/src/dispatch.ts:93` 那条 sinks 循环，编译面板与文档编辑器同一把）。
+      if (d.vvh === 'push' && d.op === 'configChanged') { pullConfig(); }
       // R146：「写全配置」落表面板回执＝宿主写完并已广播。⛔ remount 重载画布（会吞未保存的
       // 在编辑）——只清 auto 命中账：写进去的记录与画布现用解析同源（写前实解＝写后记录），
       // ⛔ 需要重画；提示条数据源即 autoHits，清账即隐，下次装载自然重新审计。
@@ -139,8 +154,9 @@ export default function DocApp() {
     // 真机实测＝黑屏画布）——挂载完先发 ready，宿主这才回 init（customEditors.resolveCustomEditor）。
     try { bridge()?.postMessage({ vvh: 'doc', op: 'ready' }); }
     catch { /* 非壳环境（浏览器闸门）：没有 init 可等 */ }
-    // R146：strict 绑定策略注入（未录入实例⛔ 同名兜底——与编译侧 closureOf 同语义）。
-    getHost().then((h) => h.getConfig()).then((cfg) => setBindingPolicy(cfg.bindings?.policy)).catch(() => { /* 无宿主环境＝auto */ });
+    // R146：strict 绑定策略注入（未录入实例⛔ 同名兜底——与编译侧 closureOf 同语义）；
+    // X25：同一次拉取顺手把沙盒设置落店（⛔ 再各拉一份——两份 getConfig 就是两个主人的配置）。
+    pullConfig();
     return () => window.removeEventListener('message', onMessage);
   }, [bridge]);
 

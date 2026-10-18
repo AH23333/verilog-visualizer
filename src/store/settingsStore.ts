@@ -3,8 +3,8 @@
 // autosave 无消费方），只剩沙盒运行偏好的影子内存（真源在宿主 contributes.configuration，
 // 片 5 起不再持久化）。
 //
-// 活接口仅四个：`applyHostConfig`（宿主全量推送落店）、`subscribe`、`getSandboxSettings`/
-// `setSandboxSettings`（工具条 simSpeed 滑条 + 闸门驱动）。字号仅作为 `editorFontSize`
+// 活接口只有五个：`applyHostConfig`（宿主全量推送落店）、`getHostConfigSeq`（落过几次店）、
+// `subscribe`、`getSandboxSettings`/`setSandboxSettings`（工具条 simSpeed 滑条 + 闸门驱动）。字号仅作为 `editorFontSize`
 // 的投影保留（applyFontSize 落根字号），读写面不开。
 
 import type { HostConfig } from '../lib/host/host';
@@ -42,6 +42,9 @@ const DEFAULT_SANDBOX: SandboxSettings = {
 let fontSize: number = 16;
 let sandbox: SandboxSettings = { ...DEFAULT_SANDBOX };
 let listeners: Array<() => void> = [];
+// 宿主配置落过几次店（0＝从没落过＝现在吃的还是 DEFAULT_SANDBOX）。
+// 画布用它分辨「这份配置到得比建树晚」——见 SandboxCanvas 里 X25 那一段。
+let hostConfigSeq = 0;
 
 function notify() {
   listeners.forEach((fn) => fn());
@@ -80,7 +83,13 @@ export const settingsStore = {
       fontSize = Math.min(36, Math.max(8, Math.round(cfg.editorFontSize)));
       applyFontSize(fontSize);
     }
+    hostConfigSeq++;
     notify();
+  },
+
+  /** 宿主配置落店次数（消费方用它分辨"配置到得比建树晚"，见 SandboxCanvas 的 X25 那一段） */
+  getHostConfigSeq(): number {
+    return hostConfigSeq;
   },
 
   subscribe(fn: () => void): () => void {

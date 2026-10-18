@@ -575,6 +575,36 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
 
   useEffect(() => settingsStore.subscribe(() => setSettings(settingsStore.getSandboxSettings())), []);
 
+  // X25（2026-10-18 现读，用户可见缺陷）：`doc.html` 那侧拉宿主配置是**异步 RPC**，
+  // 到店时机通常晚于这张画布建树 ⇒ 建树那次读的还是默认档（autoStartSim=true）。
+  // 后果＝用户在设置里关掉「打开沙盒时自动运行仿真」，第一次打开 .djs 仍然自己跑起来
+  // （现场证据：`tests/qc-paused.cjs` 在 dist 的 doc 入口上读到灯被驱动）。
+  // 这里把同一次决定按**新到的那一份配置**补做一遍。
+  // ⚠ "补做"只到用户自己表过态为止：他点过一次「运行 / 暂停」，这张画布的运行态就归他管——
+  //   之后哪怕只是改了字号（宿主照样广播 configChanged），也⛔ 拿 `autoStartSim` 把引擎拉回去。
+  //   我第一版没这一条，写下的注释还自信地声称"seq 不动所以覆盖不到"——错：改设置就会 seq++。
+  const simDecisionSeqRef = useRef(-1);
+  const simManualToggleRef = useRef(false);
+  useEffect(() => {
+    const seq = settingsStore.getHostConfigSeq();
+    if (seq === simDecisionSeqRef.current) return;
+    const circuit = circuitRef.current;
+    // 画布还没建起来＝这次不算"晚到的配置"（建树那次会自己去读**现读**的档，见上面 1637 那一段），
+    // ⛔ 在这里把 seq 记掉——记掉就等于把这一次更新吞了，晚到的配置再也不补做。
+    if (!circuit || !paperRef.current) return;
+    simDecisionSeqRef.current = seq;
+    if (simManualToggleRef.current) return;
+    if (settings.autoStartSim) {
+      runningRef.current = true;
+      setRunning(true);
+      try { circuit.start(); } catch { /* 引擎内部状态不允许时保持现状 */ }
+    } else {
+      runningRef.current = false;
+      setRunning(false);
+      try { circuit.stop(); } catch { /* 同上 */ }
+    }
+  }, [settings]);
+
   const gridSize = Math.max(1, settings.gridSize || 16);
   // MUST be stable: it is a dependency of the align/distribute/nudge callbacks, which are in
   // turn dependencies of the paper-building effect. Recreating it on every render makes that
@@ -1634,7 +1664,9 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       return view.model.getBBox().center();
     };
 
-    if (settings.autoStartSim && runningRef.current) {
+    // 现读那颗 store（⛔ 用 React 那份 `settings` 闭包）：建树这一次必须吃"此刻已落店的档"，
+    // 否则宿主配置在 render 之后才到，这里就按默认档把仿真起了（X25，见下面 simDecisionSeqRef）。
+    if (settingsStore.getSandboxSettings().autoStartSim && runningRef.current) {
       circuit.start();
     } else {
       // 如实反映引擎状态：autoStartSim 关闭（或用户曾暂停）时电路并没有启动。
@@ -1643,6 +1675,11 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       runningRef.current = false;
       setRunning(false);
     }
+    // 记下这次决定吃的是第几份宿主配置（0＝从没落过店，用的默认档）——晚到的那一份由下面
+    // X25 那颗 effect 补做，⛔ 让"配置到得比建树晚"把用户的开关吞掉。
+    // 换了一张画布＝用户在这张画布上的表态也一并清零（新画布重新按配置起仿）。
+    simDecisionSeqRef.current = settingsStore.getHostConfigSeq();
+    simManualToggleRef.current = false;
     try { restoreMemoryData(() => paperRef.current); } catch { /* best effort */ }
     try { flushStaleQueue(() => circuitRef.current); } catch { /* best effort */ }
 
@@ -2424,6 +2461,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     const c = circuitRef.current;
     if (!c) return;
     const next = !running;
+    simManualToggleRef.current = true;      // X25：从这一刻起这张画布的运行态归用户，晚到的配置⛔ 再插手
     runningRef.current = next;
     setRunning(next);
     try { if (next) c.start(); else c.stop(); } catch {}
