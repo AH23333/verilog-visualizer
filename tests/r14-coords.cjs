@@ -13,6 +13,7 @@ const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/App
 const PORT = 1427;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1427)); } catch { }
 const URL = `http://localhost:${PORT}/gates.html`;  // vv-c5：入口＝夹具外壳（老 App 的活动栏随旧 React 单页一起退役了）
+const UI = require('./_ui.cjs');
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 const results = { pass: 0, fail: 0 };
 const ok = (n, m = '') => { results.pass++; console.log(`  PASS  ${n}${m ? ' — ' + m : ''}`); };
@@ -108,6 +109,10 @@ async function boot(page) {
       const p = c.position();
       return { x: p.x, y: p.y };
     });
+    // 波次四语义迁移：旧 localStorage 关吸附的路已随 store 退役（片5 不再持久化）——现行走 store 直写；
+    //   不关则 60px 被 16px 网格吸成 64（这颗确定性 FAIL 的真身，非产品回归）。
+    await UI.setSandboxPref(page, 'snapToGrid', false);
+    await sleep(120);
     await page.evaluate(() => window.__sandboxPaper.scale(2));   // 模拟放大
     await sleep(150);
     // 在 body 元素上直接派发冒泡 mousedown（headless 下基于坐标的 Playwright mouse 在缩放后

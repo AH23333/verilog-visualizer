@@ -126,12 +126,11 @@ async function openExpand(page, gateName) {
       { id: 'g_nok', name: 'NESTOK', graphJson: JSON.stringify(validNestedGate()) },
       { id: 'g_nbad', name: 'NESTBAD', graphJson: JSON.stringify(badNestedGate()) },
     ]);
-    await page.evaluate((g) => {
-      ['verilog-viz-sandbox-files','verilog-viz-sandbox-active','verilog-viz-sandbox-gates',
-       'verilog-viz-sandbox-settings','verilog-viz-sandbox-w','verilog-viz-sandbox-folders',
-       'verilog-viz-font-size'].forEach(k => localStorage.removeItem(k));
-      localStorage.setItem('verilog-viz-sandbox-gates', g);
-    }, gates);
+    // 波次四重锚：旧沙盒五件套与退役 gate 档一并换新路（部件＝role:'part' 文件，主文件排 0 号占 active）
+    await UI.seedSandboxStore(page, [
+      { name: 'main', content: JSON.stringify({ cells: [] }) },
+      ...JSON.parse(gates).map((g) => ({ name: g.name, content: g.graphJson })),
+    ]);
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
     await page.locator('button[data-activity="sandbox"]').first().click(); await sleep(900);

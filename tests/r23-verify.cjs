@@ -11,7 +11,7 @@ const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-c
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1476;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1476)); } catch { }
-const URL = `http://localhost:${PORT}/`;
+const URL = `http://localhost:${PORT}/gates.html`;   // 波次四补：入口名单当时漏了这颗（旧 `/` 是退役 App 的）
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 let pass = 0, fail = 0;
 const ok = (n, d = '') => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };

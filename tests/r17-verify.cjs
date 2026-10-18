@@ -117,7 +117,7 @@ async function boot(page) {
     // ---------- [2] 主题切换不丢部件 ----------
     console.log('\n===== [2] 切主题后部件保留 =====');
     const before = await page.evaluate(() => window.__sandboxPaper.model.getCells().length);
-    await page.locator('button[title="主题"]').click(); await sleep(1200);
+    await page.locator('button[data-activity="主题"]').click(); await sleep(1200);   // 波次四：夹具 data-activity（title 也补了，两边都通）
     const afterTheme = await page.evaluate(() => {
       const p = window.__sandboxPaper;
       return { cells: p ? p.model.getCells().length : -1, types: p ? p.model.getCells().map(c => c.get('type')) : [] };
@@ -129,8 +129,10 @@ async function boot(page) {
 
     // ---------- [3] 切 Files/Modules/Hierarchy 后回来部件保留 ----------
     console.log('\n===== [3] 切侧栏面板后部件保留 =====');
+    // 波次四：夹具活动栏＝button[data-activity=…]（中文在 text 不在 title），随 r30 映射表走。
+    const PANEL_ACT = { '文件': 'files', '模块': 'modules', '层次结构': 'hierarchy' };
     for (const panel of ['文件', '模块', '层次结构']) {
-      await page.locator(`button[title="${panel}"]`).click(); await sleep(700);
+      await page.locator(`button[data-activity="${PANEL_ACT[panel]}"]`).click(); await sleep(700);
       const st = await page.evaluate(() => {
         const p = window.__sandboxPaper;
         return p ? { cells: p.model.getCells().length, types: p.model.getCells().map(c => c.get('type')) } : { cells: -1, types: [] };

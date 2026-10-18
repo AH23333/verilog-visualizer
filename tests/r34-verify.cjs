@@ -78,9 +78,12 @@ const subCount = (page) => page.evaluate(
         { id: 'w1', isLink: true, source: { id: 'i1', port: 'out' }, target: { id: 'o1', port: 'in' }, netname: 'N1', bits: 1 },
       ] }),
     };
-    await page.evaluate(({ badGate, normalGate }) => {
-      localStorage.setItem('verilog-viz-sandbox-gates', JSON.stringify([badGate, normalGate]));
-    }, { badGate, normalGate });
+    // 波次四重锚：旧 verilog-viz-sandbox-gates 独立存档已并入沙盒文件（role:'part' 就是部件）
+    await UI.seedSandboxStore(page, [
+      { name: 'main', content: JSON.stringify({ cells: [] }) },
+      { name: 'BAD', content: badGate.graphJson },
+      { name: 'G1', content: normalGate.graphJson },
+    ]);
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
 
     await clickActivity(page, 'sandbox'); await sleep(900);
@@ -241,9 +244,13 @@ const subCount = (page) => page.evaluate(
       const el = bar.querySelector('span');
       return parseFloat(getComputedStyle(el).fontSize);
     });
-    await page.evaluate(() => localStorage.setItem('verilog-viz-font-size', '24'));
-    await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
-    await clickActivity(page, 'sandbox'); await sleep(900);
+    // 波次四重锚：字号真源已从 localStorage 迁宿主 editor.fontSize（R150 路标③）——
+    //   现行走 applyHostConfig 落店（vite dev 源模块与 app 同实例），量同一颗 rem 联动
+    await page.evaluate(async () => {
+      const m = await import('/src/store/settingsStore.ts');
+      m.settingsStore.applyHostConfig({ editorFontSize: 24 });
+    });
+    await sleep(600);
     const fsAt24 = await page.evaluate(() => {
       const bar = document.querySelector('[data-sandbox-sidebar]');
       const el = bar.querySelector('span');
@@ -255,7 +262,7 @@ const subCount = (page) => page.evaluate(
 
     // ===== [8] 子模块右键「保存为自定义门」（复制到沙盒的绑定闭环）=====
     // 恢复 16px 根字号，避免影响后续定位
-    await page.evaluate(() => localStorage.setItem('verilog-viz-font-size', '16'));
+    await page.evaluate(async () => { const m = await import('/src/store/settingsStore.ts'); m.settingsStore.applyHostConfig({ editorFontSize: 16 }); });   // 波次四：现行通道复位
     await page.reload({ waitUntil: 'domcontentloaded' }); await sleep(2000);
     await clickActivity(page, 'sandbox'); await sleep(900);
     // 打开含子模块的文件（前面 BAD/G1 放置过的那个；导入 carried.djs 后可能切了活动文件，

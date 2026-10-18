@@ -114,7 +114,7 @@ async function open(browser, url, waitMs = 1800) {
   page.on('console', (m) => { if (/error/i.test(m.type())) errors.push('console: ' + m.text().slice(0, 110)); });
   let mounted = false;
   await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => { });
-  try { await page.waitForFunction((sel) => !!document.querySelector(sel), 'button[data-activity]', { timeout: 30000 }); mounted = true; } catch { }
+  try { await page.waitForFunction(() => { const r = document.querySelector('#root'); return !!r && r.children.length > 0; }, null, { timeout: 30000 }); mounted = true; } catch { }   // 波次四：生产入口通用挂载证据（#root×React），⛔ 绑夹具活动栏
   await sleep(waitMs);
   const out = await page.evaluate(() => ({
     hasCsp: !!document.querySelector('meta[http-equiv="Content-Security-Policy"]'),
@@ -194,11 +194,19 @@ import('${chunkUrl}').then(m => window.__pb = 'ok:' + Object.keys(m).sort().join
     (prism.length === 0 ? ok : bad)('[6] CSP 下 Prism 那张 CDN 样式表没被拒（style-src 收着 cdnjs）', J(prism.slice(0, 2)));
 
     // ---- 全流程：CSP 下进沙盒画电路、真起仿真 ----
-    await H.page.evaluate(() => ['verilog-viz-sandbox-files', 'verilog-viz-sandbox-active', 'verilog-viz-sandbox-gates', 'verilog-viz-sandbox-settings']
-      .forEach((k) => localStorage.removeItem(k)));
-    await H.page.reload({ waitUntil: 'domcontentloaded' });
+    // 波次四语义迁移：生产包沙盒画布的主人是 **doc.html（custom editor）**，index.html 是编译面——
+    //   "画电路真起仿真"这段的当代正路＝假宿主推空文档进真 webview（qc-paused 同型通道，同一壳内 CSP）。
+    //   旧"清五件套 localStorage 再 newSandboxFile"路随 store 退役（且那行本带 forEach 括号错位死码）。
+    {
+      const DH = require('./_dochost.cjs');
+      const docName = 'csp_probe.djs';
+      await DH.installFakeHost(H.page, {
+        seedId: 'r137-' + Date.now(), docName,
+        files: { [docName]: JSON.stringify({ cells: [] }) },
+      });
+      await DH.bootDoc(H.page, PORT, { settle: 1600 });
+    }
     try { await H.page.locator('button:has-text("Skip")').click({ timeout: 2500 }); } catch { }
-    await UI.newSandboxFile(H.page);
     for (const g of ['Input', 'Input', 'And', 'Lamp']) { await UI.clickGate(H.page, g); await sleep(450); }
     const ids = await H.page.evaluate(() => {
       const p = window.__sandboxPaper; if (!p) return null;

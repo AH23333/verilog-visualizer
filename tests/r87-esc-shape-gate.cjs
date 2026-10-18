@@ -21,9 +21,10 @@ const J = (o) => JSON.stringify(o);
 let pass = 0, fail = 0;
 const ok = (n, d) => { pass++; console.log(`  PASS  ${n}${d ? ' — ' + d : ''}`); };
 const bad = (n, d) => { fail++; console.log(`  FAIL  ${n}${d ? ' — ' + d : ''}`); };
-const TOTAL_FLOOR = 13;   // 现场读数（2026-10-06，批次 R93 加了 DffPortsModal 之后）：Esc 族一共 13 处
-                          // （11 处弹窗＋2 处射程外：随 paper 重建那颗、MemoryViewModal 那颗）；
-                          // 低于这个数就是"把监听删了冒充修好"，不许静默变绿。
+const TOTAL_FLOOR = 10;   // 波次四现场回读（2026-10-18，R150 退役 + PhaseC 拆分之后）：Esc 族 10 处
+                          // （8 处弹窗收口 + 2 处射程外：随 paper 重建那颗、MemoryViewModal 那颗）；
+                          // 旧 13 里 3 处随 ExamplesDialog/SearchDialog/SettingsPanel/ShortcutsHelpDialog 退役消亡，
+                          // BusWidthDialog/RebindDialog 两颗是拆分新增。低于这个数＝"删监听冒充修好",不许静默变绿。
 
 const files = fs.readdirSync(path.join(ROOT, 'src/components')).filter((f) => f.endsWith('.tsx')).map((f) => `src/components/${f}`);
 function effectBlocks(src) {
@@ -77,11 +78,13 @@ for (const v of out) console.log(`    射程外 ${v.site} 依赖表=${J(v.dep)}`
     : viol.length ? `${viol.length} 处违规：${J(viol.map((v) => `${v.site}[${v.dep}]`))}`
       : `全部收口（已收口 ${fixed.length} 处，射程外 ${out.length} 处）`);
 
-const sb = fs.readFileSync(path.join(ROOT, 'src/components/SandboxCanvas.tsx'), 'utf8');
+// 波次四搬家回写：两颗锚点随 PhaseC 拆组件搬进新家（判据原样：锚在⛔ 意味着删除弹窗骗过静态检查）
+const tool = fs.readFileSync(path.join(ROOT, 'src/components/SandboxToolbar.tsx'), 'utf8');
+const bwd = fs.readFileSync(path.join(ROOT, 'src/components/BusWidthDialog.tsx'), 'utf8');
 const sfd = fs.readFileSync(path.join(ROOT, 'src/components/SandboxFileBindingDialog.tsx'), 'utf8');
-(sb.includes('data-sandbox-bindings') && sb.includes('data-bus-width-dialog') && sfd.includes('data-file-binding-dialog') ? ok : bad)(
+(tool.includes('data-sandbox-bindings') && bwd.includes('data-bus-width-dialog') && sfd.includes('data-file-binding-dialog') ? ok : bad)(
   '[2] 反向臂：统一绑定弹窗与位宽弹窗的 DOM 锚点都还在（不许靠删掉弹窗让静态判据变绿）',
-  `绑定入口=${sb.includes('data-sandbox-bindings')} 统一弹窗=${sfd.includes('data-file-binding-dialog')} 位宽=${sb.includes('data-bus-width-dialog')}`);
+  `绑定入口=${tool.includes('data-sandbox-bindings')} 统一弹窗=${sfd.includes('data-file-binding-dialog')} 位宽=${bwd.includes('data-bus-width-dialog')}`);
 
 // ---- [3] 同一族第二病：⛔ 不许从自己写的文案里"认事" ----
 // 现场读数（2026-10-06）：本批 V2b 中文化之前全仓**只有 1 处**——
@@ -109,10 +112,11 @@ for (const rel of walkDir('src')) {
 // 本批改动：删掉绑定总览（旧 BindingDialog 的 Esc 监听），新增 PartSearchDialog 一颗
 // ⇒ 仍 11 处，但 SandboxCanvas 2→1、PartSearchDialog +1。
 // 按"哪个文件该有几处"逐颗点名 —— ⛔ 不钉行号（搬动就漂），也不钉那颗效果的变量名。
+// 波次四对账：ExamplesDialog/SearchDialog/SettingsPanel/ShortcutsHelpDialog/SandboxCanvas(位宽颗) 已随
+//   R150 退役 / PhaseC 拆分搬家；点名制不变——谁的颗点名谁（BusWidth/Rebind 为新一批）。
 const ROSTER = {
-  'ConfirmDialog.tsx': 1, 'ContextMenu.tsx': 1, 'DffPortsModal.tsx': 1, 'ExamplesDialog.tsx': 1,
-  'FsmTableModal.tsx': 1, 'MemPortsModal.tsx': 1, 'PartSearchDialog.tsx': 1, 'SandboxCanvas.tsx': 1,
-  'SearchDialog.tsx': 1, 'SettingsPanel.tsx': 1, 'ShortcutsHelpDialog.tsx': 1,
+  'BusWidthDialog.tsx': 1, 'ConfirmDialog.tsx': 1, 'ContextMenu.tsx': 1, 'DffPortsModal.tsx': 1,
+  'FsmTableModal.tsx': 1, 'MemPortsModal.tsx': 1, 'PartSearchDialog.tsx': 1, 'RebindDialog.tsx': 1,
 };
 const fixedByFile = {};
 for (const v of fixed) fixedByFile[v.site.split(':')[0]] = (fixedByFile[v.site.split(':')[0]] || 0) + 1;

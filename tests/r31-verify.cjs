@@ -58,22 +58,22 @@ const portPoint = (page, type, port, which) => page.evaluate(({ type, port, whic
     try { await page.locator('button:has-text("Skip")').click({ timeout: 2000 }); } catch {}
 
     // [1] 沙盒 ↔ 原视图互切
-    const inSandbox = () => page.evaluate(() => !!document.querySelector('[data-sandbox-wrapper]'));
+    // 波次四语义迁移：夹具外壳"恒在沙盒"（旧 App 的进入/退出/⤺ 三态随退役消亡）——
+    //   这颗改量它的当代等价物：**画布建好后，左栏面板来回切换一格一画布不丢**（外壳存在意义）。
     await clickActivity(page, 'sandbox'); await sleep(900);
-    const entered = await inSandbox();
-    await clickActivity(page, 'sandbox'); await sleep(900); // 再点一次 = 返回
-    const exited = !(await inSandbox());
-    await clickActivity(page, 'sandbox'); await sleep(900); // 重新进入
-    const reEntered = await inSandbox();
     await UI.newSandboxFile(page);
-    const exitBtn = page.locator('button[data-sandbox-exit]');
-    const hasExitBtn = await exitBtn.count();
-    if (hasExitBtn) { await exitBtn.click(); await sleep(900); }
-    const exitedByBtn = !(await inSandbox());
-    console.log('    沙盒进出:', JSON.stringify({ entered, exited, reEntered, hasExitBtn, exitedByBtn }));
-    (entered && exited && reEntered && hasExitBtn > 0 && exitedByBtn)
-      ? ok('[1] 沙盒可进入 / 再点返回 / ⤺ 按钮退出')
-      : bad('[1] 沙盒进出异常', JSON.stringify({ entered, exited, reEntered, hasExitBtn, exitedByBtn }));
+    await page.waitForFunction(() => !!window.__sandboxPaper, null, { timeout: 20000 });
+    const cellsBefore = await page.evaluate(() => window.__sandboxPaper.model.getCells().length);
+    const stayed = [];
+    for (const tab of ['文件', '部件', '层次', '沙盒']) {
+      await clickActivity(page, tab === '文件' ? 'files' : tab === '部件' ? 'modules' : tab === '层次' ? 'hierarchy' : 'sandbox');
+      stayed.push(await page.evaluate(() => !!document.querySelector('[data-sandbox-wrapper]')));
+    }
+    const cellsAfter = await page.evaluate(() => window.__sandboxPaper.model.getCells().length);
+    console.log('    面板往返:', JSON.stringify({ cellsBefore, stayed, cellsAfter }));
+    (cellsBefore === cellsAfter && stayed.every(Boolean) && cellsAfter >= 0)
+      ? ok('[1] 面板来回切换：外壳恒在、画布一格不丢（夹具语义）', 'cells=' + cellsAfter)
+      : bad('[1] 面板往返画布受损', JSON.stringify({ cellsBefore, stayed, cellsAfter }));
 
     // 回到沙盒继续后续用例
     await clickActivity(page, 'sandbox'); await sleep(1000);

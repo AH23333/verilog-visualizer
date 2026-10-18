@@ -33,7 +33,7 @@ export default function GateHarness() {
         <button data-activity="hierarchy" style={btnStyle} onClick={() => setPanel('hierarchy')}>层次</button>
         <button data-activity="sandbox" style={btnStyle} onClick={() => { /* 外壳恒在沙盒 */ }}>沙盒</button>
         <button data-activity="主题" style={btnStyle}
-          onClick={() => document.body.classList.toggle('vscode-dark')}>主题</button>
+          title="主题" onClick={() => document.body.classList.toggle('vscode-dark')}>主题</button>
       </div>
       <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
         <SandboxCanvas theme={theme} leftPanel={panel} />

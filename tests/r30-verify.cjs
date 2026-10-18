@@ -23,7 +23,8 @@ async function waitForServer(t = 20000) {
   return false;
 }
 const clickActivity = async (page, label) => {
-  await page.locator(`button.activity-btn[title="${label}"]`).click(); await sleep(450);
+  const MAP = { '沙盒': 'sandbox', '编译': 'compile', '文件': 'files', '部件': 'modules', '模块': 'modules', '库': 'modules', '层次': 'hierarchy', '层次结构': 'hierarchy', '主题': '主题' };  // 波次四：夹具 key 全表
+  await page.locator(`button[data-activity="${MAP[label] || label}"]`).first().click(); await sleep(450);  // 波次四：夹具锚 data-activity
 };
 (async () => {
   let server, browser;

@@ -23,7 +23,7 @@ const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules/playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1613;
-const URL = `http://127.0.0.1:${PORT}/`;
+const URL = `http://127.0.0.1:${PORT}/gates.html`;   // 波次四：同上（这颗 boot 已是 UI.boot，marker 依赖活动栏）
 const UI = require('./_ui.cjs');
 const sleep = UI.sleep;
 const J = (o) => { try { return JSON.stringify(o); } catch { return String(o); } };

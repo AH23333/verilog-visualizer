@@ -29,23 +29,42 @@ async function expandAllGroups(page) {
   throw new Error('expandAllGroups: 分组展开没收敛');
 }
 
-/** 保证「部件」面板开着且所有分组已展开（沙盒左栏停在哪个面板由进入前的语境决定） */
+/** 保证「部件」库可见且所有分组已展开（⛔ 假设"从活动栏进部件页"——见下面两条形）
+ *
+ * 今天有**两种**入口形状：gates.html 的夹具外壳要按 `data-activity="modules"` 才切到部件页；
+ * `doc.html`（生产包里沙盒的唯一主人，custom editor）根本没有活动栏，侧栏随画布一起挂载。
+ * 这颗 helper 的职责是"让部件库可见且分组全展开"，入口那一层交给各自的前置——
+ * 旧实现把活动栏当无条件前提，于是 doc 入口下每次 `clickGate` 都抛「等不到活动栏『部件』按钮」。 */
 async function ensurePalette(page) {
   // ⚠ **必须等，不能只 count()**：vite 冷启动时首次请求要现场 transform 一堆依赖，
   //   React 挂载活动栏会比 boot 的 800ms settle 更晚。原实现 count() 拿不到就直接抛
   //   「活动栏没有『部件』按钮」，把一次**启动慢**报成产品缺陷（r113 复跑踩了整整一次）。
   //   诊断信息带上真实可见的 data-activity 列表，一眼能分清「慢」还是「真没有」。
-  const modules = page.locator('button[data-activity="modules"]').first();
-  try {
-    await modules.waitFor({ timeout: 15000 });
-  } catch {
-    const seen = await page.evaluate(() =>
-      Array.from(document.querySelectorAll('button[data-activity]')).map((b) => b.getAttribute('data-activity')).join(',') || '(空)');
-    throw new Error(`ensurePalette: 等不到活动栏「部件」按钮；当前可见的 data-activity = [${seen}]`);
-  }
-  if (!(await page.locator('button[data-gate]').count())) {
-    await modules.click();
-    await page.waitForFunction(() => document.querySelectorAll('button[data-gate]').length > 0, null, { timeout: 10000 });
+  const bar = await page.locator('button[data-activity]').count();
+  if (bar) {
+    const modules = page.locator('button[data-activity="modules"]').first();
+    try {
+      await modules.waitFor({ timeout: 15000 });
+    } catch {
+      const seen = await page.evaluate(() =>
+        Array.from(document.querySelectorAll('button[data-activity]')).map((b) => b.getAttribute('data-activity')).join(',') || '(空)');
+      throw new Error(`ensurePalette: 有活动栏却没有「部件」那一页；当前可见的 data-activity = [${seen}]`);
+    }
+    if (!(await page.locator('button[data-gate]').count())) {
+      await modules.click();
+      await page.waitForFunction(() => document.querySelectorAll('button[data-gate]').length > 0, null, { timeout: 10000 });
+    }
+  } else {
+    // 没有活动栏＝侧栏型入口（doc.html）：等部件库真挂出来，等不到才报挂载问题
+    const got = await page.waitForFunction(() => document.querySelectorAll('button[data-gate]').length > 0, null, { timeout: 15000 })
+      .then(() => true).catch(() => false);
+    if (!got) {
+      const where = await page.evaluate(() => ({
+        sidebar: !!document.querySelector('[data-sandbox-sidebar]'),
+        gates: document.querySelectorAll('button[data-gate]').length,
+      }));
+      throw new Error(`ensurePalette: 侧栏入口（无活动栏）等不到一颗 button[data-gate] — ${JSON.stringify(where)}`);
+    }
   }
   await expandAllGroups(page);
 }
@@ -350,43 +369,57 @@ async function busDialog(page, { total, groupWidth, apply = true } = {}) {
 }
 
 /**
- * 打开设置面板 → 「沙盒」那一页 → 把某一行开关拨到 `want`。
+ * 沙盒运行偏好（`snapToGrid` / `gridSize` …）的现读与翻转——**只许一份实现**。
  *
- * ⚠ 为什么只许一份实现：qc-audit 与 qc-audit2 各写了一份"找那颗开关"的代码，
- * 一份按 `button[title=已开启]` **往上数 4 层父元素**看哪层含行标签 —— 而设置页的
- * 容器祖先本来就含全部文字，于是它选中了**别的**那一行：`snapToGrid` 从来没被拨动，
- * 另一份（按行标签的兄弟节点找按钮）才是对的。同一个动作两份代码飘掉一份，就是这条。
- * 定位走"行标签 → 同一行的按钮"，点完由调用方**自己回读真值**（localStorage）确认。
+ * ⚠ 退役留话（波次三，2026-10-18 现读）：这颗原来叫 `setSandboxToggle`，走的是
+ *   「点工具条 `button[data-sandbox-settings]` → 设置面板「沙盒」页 → 按行标签找开关」。
+ *   那三格表面今天都不存在了：设置面板随 R150 路标③ 整块删除（`src/` 里 `data-sandbox-settings`
+ *   现读 **0 处**，只剩测试在点），配置真源搬到宿主 `contributes.configuration`
+ *   （`verilogViz.sandbox.snapToGrid`，`extension/package.json:807`）⇒ 在 gates.html 里够不着真源。
+ *   连"回读真值"那把尺也一起瞎了：`settingsStore` 片 5 起**不再持久化**，
+ *   所以旧档里的 `localStorage['verilog-viz-sandbox-settings']` 恒为 null——
+ *   qc-audit2 日志那句 `默认 snapToGrid = (未写入，用默认 true)` 就是它的死状（读数永远说"没写过"，
+ *   于是"我到底拨动成功了没"这件事⛔ 再有答案）。
+ *
+ * 现读/翻转都走那颗 store 模块本体：它自己文件头就写着 `setSandboxSettings` 供
+ * 「工具条 simSpeed 滑条 + **闸门驱动**」——闸门驱动是它名义上的消费方之一，⛔ 另开后门、
+ * ⛔ 在产品里加测试专用的 window 把手。vite dev 下 `import('/src/store/settingsStore.ts')`
+ * 与 app 那条 import 链解析到同一个模块 URL ⇒ 拿到的是同一个实例（改它，画布下一次 `snapVal` 就跟着变）。
+ *
+ * ⚠ 只认 vite dev 源模块：跑 dist 的那几格（`vite preview`）载不进来，会**响亮地抛**
+ *   而不是静默返回 undefined——静默就是上面那族的复发。
+ * ⚠ 「原生配置那一半」（`cfg.get('sandbox.snapToGrid')` → `applyHostConfig`）这条线只有真壳能判，
+ *   登记在 `pnpm test:real` 那边；这颗 helper 覆盖⛔ 它。
  */
-async function setSandboxToggle(page, labelText, want) {
-  const opened = await page.evaluate(() => {
-    const b = document.querySelector('button[data-sandbox-settings]');
-    if (!b) return false; b.click(); return true;
-  });
-  if (!opened) throw new Error('setSandboxToggle: 沙盒工具条上没有「打开设置面板」那颗');
-  await sleep(700);
-  const onTab = await page.evaluate(() => {
-    const b = Array.from(document.querySelectorAll('button')).find((x) => String(x.textContent || '').trim() === '沙盒');
-    if (!b) return false; b.click(); return true;
-  });
-  if (!onTab) throw new Error('setSandboxToggle: 设置面板里没有「沙盒」这一页');
-  await sleep(400);
-  const res = await page.evaluate(({ label, want }) => {
-    // 行标签 = 没有子元素、文本恰好等于行名的那个 div（Row 的第一格）
-    const leaf = Array.from(document.querySelectorAll('div'))
-      .find((d) => d.children.length === 0 && String(d.textContent || '').trim() === label);
-    if (!leaf) return { found: false };
-    const btn = (leaf.parentElement && leaf.parentElement.nextElementSibling
-      ? leaf.parentElement.nextElementSibling.querySelector('button') : null)
-      || (leaf.parentElement ? leaf.parentElement.querySelector('button') : null);
-    if (!btn) return { found: true, clicked: false, why: '那一行旁边没有按钮（Row 形状变了）' };
-    const on = btn.getAttribute('title') === '已开启';
-    if (on !== want) { btn.click(); return { found: true, clicked: true, from: btn.getAttribute('title') }; }
-    return { found: true, clicked: false, why: `已经是${want ? '开' : '关'}，不用点` };
-  }, { label: labelText, want });
-  await sleep(500);
-  await page.keyboard.press('Escape'); await sleep(400);
-  return res;
+async function sandboxPref(page, key, want = undefined) {
+  return page.evaluate(async ({ k, v }) => {
+    let m;
+    try {
+      m = await import('/src/store/settingsStore.ts');
+    } catch (e) {
+      throw new Error(`sandboxPref: /src/store/settingsStore.ts 载不进来（这颗 helper 只认 vite dev 的源模块，跑 dist 的档⛔ 用它）：${e}`);
+    }
+    if (!m || !m.settingsStore || typeof m.settingsStore.getSandboxSettings !== 'function') {
+      throw new Error('sandboxPref: 载进来的模块没有 settingsStore.getSandboxSettings（那颗 store 的形状变了，判据要跟着改）');
+    }
+    const before = m.settingsStore.getSandboxSettings()[k];
+    if (typeof v === 'undefined') return { value: before };
+    m.settingsStore.setSandboxSettings({ [k]: v });
+    const after = m.settingsStore.getSandboxSettings()[k];
+    return { from: before, value: after, landed: after === v };
+  }, { k: key, v: want });
+}
+
+/** 现读那一颗偏好（判定用；⛔ 拿 localStorage 当沙盒偏好的真值）。 */
+async function readSandboxPref(page, key) {
+  const r = await sandboxPref(page, key);
+  return r.value;
+}
+
+/** 把偏好拨到 `want` 并**当场回读**确认落地；回读不符＝`landed:false`，调用方必须据此作废结论。 */
+async function setSandboxPref(page, key, want) {
+  const r = await sandboxPref(page, key, want);
+  return { key, from: r.from, to: r.value, landed: r.landed };
 }
 
 /** 读那颗 2.8 秒就消失的沙盒提示条（读不到返回 null，让调用方自己决定算不算数） */
@@ -727,6 +760,7 @@ async function waitCompiled(page, { minCells = 1, tries = 90, napMs = 700 } = {}
 
 module.exports = { sleep, expandAllGroups, ensurePalette, boot, freePort, enterSandbox, newSandboxFile, backToSandbox,
   cellRect, cellFill, cellBoxes, clickGate, waitForPorts, portPoints, dragWire, menuClick, menuSet, toastText,
-  blankCanvasPoint, busDialog, ensureFreshDist, setSandboxToggle, isEnglishSentence, setMessageLiterals,
+  blankCanvasPoint, busDialog, ensureFreshDist, sandboxPref, readSandboxPref, setSandboxPref,
+  isEnglishSentence, setMessageLiterals,
   clickZoomInto, portPointOf, dragWireBetween, reapViteByPort, pushCompile, canvasReadout, waitCompiled,
   installHostStub, uninstallHostStub, copyToSandboxCapture, seedSandboxStore };

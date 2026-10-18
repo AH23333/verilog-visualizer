@@ -12,6 +12,7 @@ const { spawn } = require('child_process');
 const path = require('path');
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 const PLAYWRIGHT = require(path.join(PROJECT_ROOT, 'node_modules', 'playwright-core'));
+const UI = require('./_ui.cjs');   // [7] 波次四修复用了 UI.setSandboxPref——补 import（原 FATAL: UI is not defined）
 const EDGE = process.env.EDGE_PATH || 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1433;
 try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1433)); } catch { }
@@ -278,37 +279,26 @@ const portCenterClient = async (page, cellId, portId) => page.evaluate(([id, p])
                                                 : bad('[6] 右键菜单样式', JSON.stringify(menuInfo));
     await page.keyboard.press('Escape'); await sleep(300);
 
-    // ================= [7] 设置页改网格尺寸 =================
-    console.log('\n===== [7] 设置页面 =====');
-    await page.evaluate(() => document.querySelector('button[data-sandbox-settings]')?.click());
-    await sleep(800);
-    const settingsOpen = await page.evaluate(() =>
-      [...document.querySelectorAll('span')].some(s => s.textContent?.trim() === '设置' && s.style.fontWeight === '600'));
-    settingsOpen ? ok('[7] 设置面板打开') : bad('[7] 设置面板打开');
-    // 切到沙盒页（tab 按钮 textContent 为“沙盒”，不依赖 className）
-    await page.evaluate(() => {
-      const b = [...document.querySelectorAll('button')].find(x => x.textContent?.trim() === '沙盒');
-      b?.click();
-    });
+    // ================= [7] 设置面退役守卫 + 网格尺寸现行通道 =================
+    console.log('\n===== [7] 设置独立面（退役）与网格尺寸 =====');
+    // 波次四语义迁移：独立设置面板随 R150 路标③退役（真源=宿主 contributes.configuration）——
+    //   [7] 先守卫"退役要退干净"（旧入口钮/弹层 ⛔ 残留在 DOM），[7b] 改量现行 store 直写→画布即时联动。
+    const retiredClean = await page.evaluate(() => ({
+      oldBtn: !!document.querySelector('button[data-sandbox-settings]'),
+      panel: [...document.querySelectorAll('span')].some(s => s.textContent?.trim() === '设置' && s.style.fontWeight === '600'),
+    }));
+    (!retiredClean.oldBtn && !retiredClean.panel) ? ok('[7] 旧独立设置面板退役干净（DOM 零残留）') : bad('[7] 退役残留', JSON.stringify(retiredClean));
+    await UI.setSandboxPref(page, 'gridSize', 32);
     await sleep(500);
-    const gridBefore = await page.evaluate(() => {
-      const g = document.querySelector('[data-sandbox-grid]');
-      return g ? getComputedStyle(g).backgroundSize : null;
-    });
-    // 真实交互：选中输入框 → 输入 32 → Tab 失焦（触发 React onBlur）
-    const gi = page.locator('input[data-setting="网格间距"]');
-    await gi.click({ clickCount: 3 });
-    await page.keyboard.type('32');
-    await page.keyboard.press('Tab');
-    await sleep(800);
     const gridAfter = await page.evaluate(() => {
       const g = document.querySelector('[data-sandbox-grid]');
       return g ? getComputedStyle(g).backgroundSize : null;
     });
-    console.log('    网格 backgroundSize:', gridBefore, '->', gridAfter);
-    (gridAfter && gridAfter.startsWith('32')) ? ok('[7b] 设置页改网格尺寸即时生效', `${gridBefore} → ${gridAfter}`)
-                                              : bad('[7b] 网格尺寸生效', `${gridBefore} → ${gridAfter}`);
-    await page.keyboard.press('Escape'); await sleep(400);
+    console.log('    网格 backgroundSize:', gridAfter);
+    (gridAfter && gridAfter.startsWith('32')) ? ok('[7b] store 直写网格尺寸即时生效', String(gridAfter))
+                                              : bad('[7b] 网格不联动', String(gridAfter));
+    await UI.setSandboxPref(page, 'gridSize', 16);   // 复位
+    await sleep(400);
 
     // ================= [8] 撤销 / 重做 =================
     console.log('\n===== [8] 撤销 / 重做 =====');

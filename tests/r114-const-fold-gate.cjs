@@ -134,11 +134,12 @@ try {
   const sub = fs.readFileSync(path.join(ROOT, 'src', 'lib', 'subcircuitView.ts'), 'utf8');
   const sbox = fs.readFileSync(path.join(ROOT, 'src', 'components', 'SandboxCanvas.tsx'), 'utf8');
   const store = fs.readFileSync(path.join(ROOT, 'src', 'store', 'settingsStore.ts'), 'utf8');
-  const panel = fs.readFileSync(path.join(ROOT, 'src', 'components', 'SettingsPanel.tsx'), 'utf8');
+  // 设置面板已退役（R150 路标③）：foldConstants 真源＝宿主 contributes + store 默认档，两头都要在
+  const manifest = fs.readFileSync(path.join(ROOT, 'extension', 'package.json'), 'utf8');
   const df = fs.readFileSync(path.join(ROOT, 'src', 'lib', 'displayFold.ts'), 'utf8');
   const callsIn = canvas.includes('foldArithConstants(window.digitaljs, circuitJson)')
     && sub.includes('foldArithConstants(digitaljs, json)');
-  const storeIn = store.includes('foldConstants: true') && panel.includes('foldConstants');
+  const storeIn = store.includes('foldConstants: true') && manifest.includes('verilogViz.sandbox.foldConstants');
   const noFoldInSandbox = !sbox.includes('foldArithConstants');
   const guard = df.includes('settingsStore.getSandboxSettings().foldConstants') && df.includes('return json;');
   if (callsIn && storeIn && noFoldInSandbox && guard) ok('[9] 接线成对：两折叠调用点在、设置项在、沙盒可编辑画布零引用、开关守卫生效');

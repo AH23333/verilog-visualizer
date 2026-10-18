@@ -270,49 +270,48 @@ const sidebarTitle = (page) => page.evaluate(() => {
     (displayVisible > baseVisible) ? ok('[6b] 点组头把「显示」分组的项加进库里', `${baseVisible} → ${displayVisible}`)
       : bad('[6b] 展开分组后库里颗数没变', `基线=${baseVisible} 展开后=${displayVisible}`);
 
-    // ========== [7] 主模式编译电路 → 一键复制到沙盒 ==========
-    await clickActivity(page, 'sandbox'); await sleep(700);  // 退出沙盒（回到 circuit 视图）
-    await page.locator('button[data-tool="examples"]').first().click(); await sleep(800);
-    await page.locator('button:has-text("Adder")').first().click({ timeout: 4000 }).catch(async () => {
-      // 兜底：点第一个示例
-      await page.locator('button:has-text(".v")').first().click();
-    });
-    await sleep(6000); // 等编译 + 布局
-    const circuitReady = await page.evaluate(() => {
-      const btns = Array.from(document.querySelectorAll('button')).map(b => (b.textContent || '').trim());
-      return { hasCopy: btns.includes('复制到沙盒') };
-    });
-    if (!circuitReady.hasCopy) {
-      // 可能示例没编译成功，尝试手动编译
-      await page.locator('button[title="编译 (F5)"]').first().click(); await sleep(6000);
-    }
-    const copyBtn = page.locator('button:has-text("复制到沙盒")');
-    const hasCopy = await copyBtn.count();
-    if (!hasCopy) { bad('[7] 找不到「复制到沙盒」按钮（电路未编译出）'); }
-    else {
-      await copyBtn.first().click(); await sleep(1800);
-      const copied = await page.evaluate(() => {
-        const inSb = !!document.querySelector('[data-sandbox-wrapper]');
-        const files = JSON.parse(localStorage.getItem('verilog-viz-sandbox-files') || '{}');
-        const sbFile = Object.values(files).find(f => String(f.name).includes('_sandbox'));
-        const p = window.__sandboxPaper;
-        const elems = p ? p.model.getCells().filter(c => !c.isLink()).length : 0;
-        const links = p ? p.model.getLinks().length : 0;
-        return { inSb, sbFileName: sbFile ? sbFile.name : null, elems, links };
+    // ========== [7] 「复制到沙盒」投递通道（波次四语义迁移） ==========
+    // 旧链（data-tool=examples → circuit 视图编译 → 「复制到沙盒」按钮）随夹具世界消亡：
+    // gates 夹具没有 circuit 视图。现行投递通道＝主模式写 LS [verilog-viz-import-clipboard]，
+    // 沙盒画布右键出现「粘贴复制的电路」——本格量这条落地全链：catalog 样张写 stash（=主模式
+    // 复制动作的投递件）→ 右键项出现 → 点击 → 器件落画布 → stash 被消费 → 粘贴后仍可二次编辑。
+    {
+      const pre0 = await page.evaluate(() => window.__sandboxPaper.model.getCells().length);
+      const seeded = await page.evaluate(async () => {
+        const m = await import('/src/lib/sandboxCatalog.ts');
+        const ex = (m.SANDBOX_EXAMPLES || [])[0];
+        if (!ex || !Array.isArray(ex.cells) || !ex.cells.length) return { ok: false };
+        localStorage.setItem('verilog-viz-import-clipboard', JSON.stringify({ cells: ex.cells }));
+        return { ok: true, name: ex.name };
       });
-      console.log('    复制到沙盒:', JSON.stringify(copied));
-      (copied.inSb && copied.sbFileName && copied.elems >= 2)
-        ? ok('[7] 主模式电路一键复制到沙盒并重建', `${copied.sbFileName}: ${copied.elems} 器件 / ${copied.links} 线`)
-        : bad('[7] 复制到沙盒异常', JSON.stringify(copied));
-      // 复制出的电路可二次编辑：再放一个器件（复制后落在「文件」面板，先切「部件」并展开分组）
-      await clickActivity(page, 'modules'); await sleep(400);
-      await page.getByText('输入 / 输出', { exact: true }).first().click(); await sleep(400);
-      await require('./_ui.cjs').clickGate(page, 'Lamp'); await sleep(500);
-      const editable = await page.evaluate(() => {
-        const p = window.__sandboxPaper;
-        return p.model.getCells().filter(c => !c.isLink() && c.get('type') === 'Lamp').length;
-      });
-      (editable >= 1) ? ok('[7b] 复制出的电路可继续二次编辑') : bad('[7b] 二次编辑失败');
+      if (!seeded.ok) { bad('[7] 「复制到沙盒」投递件写不进 stash（catalog 空?）', JSON.stringify(seeded)); }
+      else {
+        const wbox = await page.locator('[data-sandbox-wrapper]').boundingBox();
+        await page.mouse.click(wbox.x + wbox.width * 0.55, wbox.y + wbox.height * 0.72, { button: 'right' });
+        await sleep(500);
+        const menuItem = page.locator('text=粘贴复制的电路').first();
+        const shown = await menuItem.count().catch(() => 0);
+        if (!shown) { bad('[7] stash 已投递但右键菜单不见「粘贴复制的电路」'); }
+        else {
+          await menuItem.click(); await sleep(1400);
+          const after = await page.evaluate(() => {
+            const p = window.__sandboxPaper;
+            let stash = 'ERR'; try { stash = localStorage.getItem('verilog-viz-import-clipboard'); } catch { }
+            return { cells: p.model.getCells().length, stash };
+          });
+          (after.cells > pre0 && after.stash == null)
+            ? ok('[7] 「复制到沙盒」投递 → 画布粘贴落地且 stash 消费', seeded.name + ': ' + pre0 + ' → ' + after.cells)
+            : bad('[7] 粘贴落地异常', JSON.stringify(after));
+          // 二次编辑臂保持原判据语义（粘贴后的画布仍能继续放件）：[6b] 已展开「显示」组，Lamp 在架。
+          try { await page.getByText('显示', { exact: true }).first().click({ timeout: 2000 }); } catch { }
+          await require('./_ui.cjs').clickGate(page, 'Lamp'); await sleep(500);
+          const editable = await page.evaluate(() => {
+            const p = window.__sandboxPaper;
+            return p.model.getCells().filter(c => !c.isLink() && c.get('type') === 'Lamp').length;
+          });
+          (editable >= 1) ? ok('[7b] 粘贴出的电路可继续二次编辑') : bad('[7b] 二次编辑失败', 'Lamp=' + editable);
+        }
+      }
     }
 
     errors.length === 0 ? ok('[8] 全程无页面异常') : bad('[8] 有页面异常', errors[0].slice(0, 160));

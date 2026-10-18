@@ -21,7 +21,7 @@ const ROOT = path.resolve(__dirname, '..');
 const PW = require(path.join(ROOT, 'node_modules', 'playwright-core'));
 const EDGE = 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe';
 const PORT = 1581;
-try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1581)); } catch { } const URL = `http://localhost:${PORT}/`;
+try { process.on('exit', () => require('./_ui.cjs').reapViteByPort(1581)); } catch { } const URL = `http://localhost:${PORT}/gates.html`;   // 波次四：沙盒画布档换夹具外壳（旧 `/` 的 App 已退役）
 const UI = require('./_ui.cjs');
 // 夹具按末段名解析（test_files/ 会被用户在产品里整理）：见 tests/fixtures.cjs
 const { fixture } = require('./fixtures.cjs');
@@ -127,9 +127,11 @@ async function validate(page, files) {
     //   App 1928→1788）时，PROBLEMS 那条映射从 `App.tsx` 搬进了 `hooks/useCompilePipeline.ts`，
     //   而这颗证人只读 App.tsx ⇒ 产品没坏、证人自己变红。**搬家必须同批回写证人**——
     //   现在把"生产侧"定义为"编译那一条链上的源文件集合"，并报告读到的落在哪颗文件里。
+    // 波次四搬家回写：R150 退役拆了 App.tsx、编译管线 hooks 现为 canvas/useHostCompile.ts
+    //   （M1/M2 的 bindingErrors→verdict 映射住这里）——证人的"生产侧"名单跟着主人换文件，判据原样。
     const PROD_FILES = [
-      path.join(ROOT, 'src', 'App.tsx'),
-      path.join(ROOT, 'src', 'hooks', 'useCompilePipeline.ts'),
+      path.join(ROOT, 'src', 'canvas', 'useHostCompile.ts'),
+      path.join(ROOT, 'src', 'canvas', 'CanvasApp.tsx'),
     ];
     const prod = PROD_FILES.map((f) => ({
       file: path.basename(f),
