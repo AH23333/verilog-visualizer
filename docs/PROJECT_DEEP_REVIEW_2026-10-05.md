@@ -1568,3 +1568,61 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
   中途改码会让后面那颗闸门的读数不可复现）；只写新档（`bin/C4`、`bin/C5`、`tests/_dochost.cjs`）与 docs。
 - 躲开：`page.evaluate` 里读 `localStorage` 在 `about:blank` 上必 SecurityError ⇒ 入口先导航再清档。
 
+---
+
+# 卷六十六 · 交接质检收口：波次四红点 14+3 全部归零，终证 74/74 全绿（2026-10-18）
+
+> 代理 R154/R156 战线（65 连提交）中途停手后的交接质检：不信文档、逐项实测背书。
+> 基线复现全绿 ⇒ 全量 74 格跑出 **60 GREEN / 14 RED** ⇒ 逐颗读原始日志定性 ⇒ 修复 ⇒ 终证。
+
+## 一、质检基线（全部机器实测，非采信 CHANGELOG/账本）
+- 根 `tsc --noEmit`：0 错；`extension/` 自身 check：过。
+- `vitest run`：**269/269**（含在途 `tests/unit/sandboxHostConfig.test.ts` 12 颗——X25 证人）。
+- 全量 `node tests/run-all.cjs`：74 格 = **60 GREEN / 14 RED / ENVRED 0 / 无判成格 0**。
+
+## 二、14 颗红点逐颗裁决（无一为产品回归，全部定性＝迁移半成品/证人名单过期）
+| 颗 | 根因一句话 | 修法 |
+|---|---|---|
+| r23 | URL 停旧入口 | 改 gates.html（一行） |
+| r30 | 活动栏旧类 `.activity-btn[title]` 报废 | `clickActivity`＋中文 label 映射表（文件/部件/模块/层次） |
+| r17 | 主题钮无 title；[3] 侧栏三钮同理 | title="主题" 夹具补齐 + `data-activity` 映射（终版补刀见§四） |
+| r31 | 「沙盒进出」外壳语义消亡（外壳恒在沙盒） | 等价搬家＝面板来回切画布不丢（cells 前后对拍） |
+| r18 | 独立设置面板随 R150 路标③ 退役 | 退役负守卫（DOM 零残留）+ `UI.setSandboxPref` 现行通道正断 |
+| r34 | 字号旧 localStorage 死、注入路退 | `seedSandboxStore` + store 直写 `applyHostConfig` |
+| r35 | `gates` 是字符串当数组喂 | `JSON.parse(gates).map` 喂种 |
+| r81 | URL 旧 + **[6] PROD_FILES 指两座退役建筑**（App.tsx/useCompilePipeline.ts） | 证人名单随主人搬家：`src/canvas/useHostCompile.ts`+`CanvasApp.tsx`（line:err.line 实证在） |
+| r113 | URL 旧 | gates.html |
+| r114 | foldConstants 真源搬家 | 读 `extension/package.json` 的 `verilogViz.sandbox.foldConstants` manifest |
+| r14 | `snapToGrid` 旧 LS 路随 R150 亡 | `setSandboxPref('snapToGrid',false)` 先行（⚠ 教训：默认档"未启用"会让三格同根全红，修复前先数默认值） |
+| r87 | 名册整族过期（roster 点 13 文件、5 座已退役/2 座新生）＋反向臂锚搬家 | TOTAL_FLOOR 10、点名制 8 现役、防删锚随 `SandboxToolbar.tsx`/`BusWidthDialog.tsx` |
+| r137 | ①夹具生产入口无活动栏致挂载判据假红 ②沙盒段停旧 React 壳路 | mount 锚改 `#root.children>0`；沙盒段=假宿主 `installFakeHost+bootDoc`（_dochost 真签名，跑 dist doc.html）→ **12/12** |
+| qc-*×2 | （在 14 内）preview 族入口 | 代理 R156 波次三已自行搬迁且 X25 同批提交——实测背书（10/4/6/3/5 全绿）后采信 |
+
+## 三、假绿警报与判卷纪律修正（本卷自审）
+- **`exit=0 ≠ GREEN`**：r17/r18 上一轮被我判过"单跑转绿"，实为脚本 FATAL 后仍 `process.exit(0)`，
+  我只 grep「结果」行漏读 `fatal=` 计数 ⇒ 终版批当场回红。此后判卷**一律读 exit+fatal 双计数**。
+- 终版 74 批又炸出 **r32**（不在 14 内）：`data-tool="examples"` 钮随旧电路视图消亡——
+  fixtures 世界（gates.html 夹具仅 44 行迷你外壳）**没有 circuit 视图**。
+- 三颗复跑全部稳定复现 ⇒ 真迁移债而非跑批互扰。
+
+## 四、收口三刀（surgery_h）
+1. **r17 [3]**：`button[title=…]` → `data-activity` 映射（files/modules/hierarchy）——**10 pass / 0 fail**。
+2. **r18**：用了 `UI.setSandboxPref` 却无 `const UI = require('./_ui.cjs')`（FATAL: UI is not defined）一行补上——**11 pass / 0 fail**。
+3. **r32 [7]**：语义搬家（与 r31/r18 同法）＝「复制到沙盒」现行投递通道全链：
+   `sandboxCatalog.SANDBOX_EXAMPLES[0]` 样张写 stash `verilog-viz-import-clipboard`（= 主模式复制动作的投递件）
+   → 画布右键「粘贴复制的电路」出现 → 点击 → cells 增量 > 0 → **stash 消费掉** → 再放 Lamp 二次编辑——**14 pass / 0 fail**。
+   生产主模式那半（CanvasToolbar「复制到沙盒」键→写 LS）不在夹具可达面，由 `doc.html` 侧 qc 族覆盖。
+
+## 五、终证：**74 / 74 GREEN · RED=0 · ENVRED=0 · 无判成格=0**（`.tmpbuild/fullgates_v2.log`）
+
+## 六、本卷提交账（波次四束，代理在途件经我方实测背书后采信）
+- 束1：14 颗红格修复（r14/17/18/23/30/31/32/34/35/81/87/113/114/137）+ `GateHarness.tsx` title 补齐 + `_ui.cjs` 工具链（ensurePalette 双形/sandboxPref 三件套——qc 族与本波四颗共同消费，实跑背书）。
+- 束2：qc-* 五颗（代理 R156 波次三搬迁件，15 格现读 GREEN 背书采信）。
+- 束3：docs R156 条目三件（CHANGELOG/GATE_LAYERS 卷末两条目/CONFIG_PROTOCOL settingsStore 落账）——内容与我方读数逐字一致（X25 证人链、qc 现读表、`vite.config.ts` inputs 佐证均复核）。
+- 束4：本卷账。
+- ⚠ 遗留观察（不阻塞）：`test_files/新文件夹/` 为跑批产物 untracked 留盘；`docs/mem.txt` 永不入册（纪律承前）。
+
+## 七、纪律回放
+- 「改信号守闸门不放宽」全程生效：r31/r18/r32 三处语义搬家都**保住被计量子的原语义**（进出保组件→面板往返保组件；设置联动→store 直写联动；示例编译投递→stash 投递消费），每处注释写明旧链死因与等价性，⛔ 删判据骗绿。
+- 「证人名单随主人搬家」第二次实战（r81 PROD_FILES、r87 roster 防删锚）——名单过期红＝信号失效，不是产品缺陷；但**必须实读新主人源码**确认判据语义仍在（line:err.line、data-bus-width-dialog 逐一 grep 过）。
+- 手术脚本反引号雷三连（模板套模板 `\\\`` 断链、`\${}` 未逃逸、内嵌 -e 转义炸）——一律改字符串拼接/落盘 .cjs，第二次踩同一雷时不再重试内嵌。
