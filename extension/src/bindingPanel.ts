@@ -131,6 +131,7 @@ interface BindingPick extends vscode.QuickPickItem {
   key?: string;
   cfg?: boolean;
   clear?: boolean;
+  back?: boolean;
 }
 
 /** 会话主人（singleton）：新开的弹窗先 dispose 上一颗——⛔ 叠第二颗让人 Esc 两次才退净。 */
@@ -156,7 +157,7 @@ async function validateBindingTarget(context: vscode.ExtensionContext, instName:
 
 export async function openBindingPicker(context: vscode.ExtensionContext, uri: vscode.Uri, focus?: string): Promise<void> {
   let data = await bindingDataFor(context, uri);
-  // 面板深层行的 key＝根相对前缀（`sub/ctrl.djs::adder`，读侧折叠后的形状）；**进表必须换成
+  // 深层行的 key＝根相对前缀（`sub/ctrl.djs::adder`，读侧折叠后的形状）；**进表必须换成
   //   表层目录相对**（`ctrl.djs::adder`）——bindingsForFile 折叠语义按层相对写，两把尺⛔ 混。
   const dirNow = data.docRel.includes('/') ? data.docRel.slice(0, data.docRel.lastIndexOf('/')) : '';
   const tableKey = (k: string): string =>
@@ -165,11 +166,19 @@ export async function openBindingPicker(context: vscode.ExtensionContext, uri: v
   currentQp?.dispose();
   const qp = vscode.window.createQuickPick<BindingPick>();
   currentQp = qp;
-  qp.title = `部件绑定：${basename(data.docRel)}`;
-  qp.placeholder = '选实例改绑定；Esc＝完成';
   qp.matchOnDescription = true;
   qp.matchOnDetail = true;
-  const fill = (): void => {
+
+  // ⚠ **单颗弹窗两级导航**（真宿主集成测试实锤的教训）：真 VS Code 同一时刻只显示一颗 QuickPick——
+  //   第二颗 show() 会把第一颗顶没并触发其 onDidHide（dispose 链一断，"选完实例弹窗就死"）。
+  //   所以一级（实例清单）/二级（部件清单）都换**同一颗** picker 的 items，⛔ 叠第二颗。
+  let level: { kind: 'inst' } | { kind: 'part'; instKey: string; instName: string; cur: string } = { kind: 'inst' };
+
+  const renderInst = (): void => {
+    level = { kind: 'inst' };
+    qp.title = `部件绑定：${basename(data.docRel)}`;
+    qp.placeholder = '选实例改绑定；Esc＝完成';
+    qp.value = '';
     qp.items = [
       ...data.instances.map((i): BindingPick => ({
         label: i.name,
@@ -183,46 +192,47 @@ export async function openBindingPicker(context: vscode.ExtensionContext, uri: v
       { label: '$(gear) 打开绑定配置（.verilogviz.json 手改）', detail: data.meta, cfg: true },
     ];
   };
-  fill();
+  const renderPart = (instKey: string, instName: string, cur: string, recorded: string | null): void => {
+    level = { kind: 'part', instKey, instName, cur };
+    qp.title = `「${instName}」绑定到部件`;
+    qp.placeholder = cur ? `当前生效：${cur}；Esc/返回行＝回实例清单` : '选部件文件；Esc/返回行＝回实例清单';
+    qp.value = '';
+    qp.items = [
+      { label: '$(arrow-left) 返回实例清单', back: true },
+      ...(recorded
+        ? [{ label: '$(trash) 清除绑定', detail: `删掉记录「${recorded}」（回落同名兜底/未绑定）`, clear: true } as BindingPick]
+        : []),
+      ...data.parts.map((p): BindingPick => ({ label: p, description: p === cur ? '当前生效' : '' })),
+    ];
+    if (cur) qp.activeItems = qp.items.filter((it) => it.label === cur);
+  };
+  renderInst();
+  if (focus) qp.activeItems = qp.items.filter((it) => it.key === focus || it.label === focus);
 
   qp.onDidAccept(() => {
     const sel = qp.activeItems[0];
     if (!sel) return;
-    if (sel.cfg) { void openBindingConfig(context, uri); return; }
-    const key = sel.key!;
-    const inst = data.instances.find((i) => (i.key ?? i.name) === key);
-    const cur = inst?.recorded || inst?.auto || '';
-    const partQp = vscode.window.createQuickPick<BindingPick>();
-    partQp.title = `「${sel.label}」绑定到部件`;
-    partQp.placeholder = cur ? `当前生效：${cur}；Esc 返回实例清单` : '选部件文件；Esc 返回实例清单';
-    partQp.matchOnDescription = true;
-    partQp.matchOnDetail = true;
-    partQp.items = [
-      ...(inst?.recorded
-        ? [{ label: '$(trash) 清除绑定', detail: `删掉记录「${inst.recorded}」（回落同名兜底/未绑定）`, clear: true } as BindingPick]
-        : []),
-      ...data.parts.map((p): BindingPick => ({ label: p, description: p === cur ? '当前生效' : '' })),
-    ];
-    if (cur) partQp.activeItems = partQp.items.filter((it) => it.label === cur);
-    partQp.onDidAccept(async () => {
-      const s = partQp.activeItems[0];
-      partQp.hide();
-      if (!s) return;
-      const value = s.clear ? null : s.label;
+    if (level.kind === 'inst') {
+      if (sel.cfg) { void openBindingConfig(context, uri); return; }
+      const instKey = sel.key!;
+      const inst = data.instances.find((i) => (i.key ?? `${data.docRel}::${i.name}`) === instKey);
+      renderPart(instKey, sel.label, inst?.recorded || inst?.auto || '', inst?.recorded || null);
+      return;
+    }
+    const partLevel = level;                                   // TS 收窄：走到这里必是 part 级
+    if (sel.back) { renderInst(); qp.activeItems = qp.items.filter((it) => it.key === partLevel.instKey); return; }
+    const value = sel.clear ? null : sel.label;
+    void (async () => {
       if (value) {
-        const errs = await validateBindingTarget(context, sel.label, value);
-        if (errs.length) { void vscode.window.showErrorMessage(`绑定未写入：${errs.join('；')}`); return; }
+        const errs = await validateBindingTarget(context, partLevel.instName, value);
+        if (errs.length) { void vscode.window.showErrorMessage(`绑定未写入：${errs.join('；')}`); return; }   // 留在二级清单，可改选
       }
-      await setBinding(context, tableKey(key), value, uri);
+      await setBinding(context, tableKey(partLevel.instKey), value, uri);
       data = await bindingDataFor(context, uri);
-      fill();
-      qp.activeItems = qp.items.filter((it) => it.key === key);   // 编辑中的那颗行保持选中
-    });
-    partQp.onDidHide(() => partQp.dispose());
-    partQp.show();
+      renderInst();
+      qp.activeItems = qp.items.filter((it) => it.key === partLevel.instKey);   // 编辑中的那颗行保持选中
+    })();
   });
   qp.onDidHide(() => { if (currentQp === qp) currentQp = undefined; qp.dispose(); });
-  // 聚焦行（层次树点进来）：resolve 到写回主键口径——顶层＝裸名；深层＝`宿主::实例`
-  if (focus) qp.activeItems = qp.items.filter((it) => it.key === focus || it.label === focus);
   qp.show();
 }

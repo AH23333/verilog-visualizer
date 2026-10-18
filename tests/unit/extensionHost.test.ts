@@ -1026,22 +1026,24 @@ describe('双容器六树的台架驱动（片 5-B）', () => {
     qp.activeItems = [rows.find((i: any) => i.label === 'counter')];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const partQp = vscode.state.quickPicks[1];
-    expect(partQp.title).toContain('counter');
-    expect(partQp.items.map((i: any) => i.label)).toContain('parts/adder.djs');
-    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'parts/adder.djs')];
-    partQp.accept();
+    // **单颗弹窗两级导航**（真宿主实锤：叠第二颗会把第一颗顶没）——二级清单＝同一颗 picker 换 items
+    expect(vscode.state.quickPicks.length).toBe(1);
+    expect(qp.title).toContain('「counter」绑定到部件');
+    expect(qp.items.map((i: any) => i.label)).toContain('parts/adder.djs');
+    qp.activeItems = [qp.items.find((i: any) => i.label === 'parts/adder.djs')];
+    qp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
     expect(meta.bindings).toEqual({ 'main.djs::counter': 'parts/adder.djs' });   // R158 机器写＝前缀键（宿主段相对本层）
-    // 写后一级清单**保持开着**并刷新该行状态（已录 → parts/adder.djs）
+    // 写后**回到一级清单**并保持选中（同一颗 picker，⛔ 弹窗死掉）
     expect(qp.hidden).toBe(false);
+    expect(qp.title).toContain('部件绑定：main.djs');
     expect(qp.items.find((i: any) => i.label === 'counter').detail).toContain('已录（本文件） → parts/adder.djs');
     // Esc 主弹窗＝会话收；再调命令＝新会话（singleton：旧颗先 dispose，⛔ 叠第二颗）
     qp.hide();
     expect(qp.disposed).toBe(true);
     await vscode.commands.executeCommand('verilogViz.bindParts', vscode.Uri.file('D:/p/main.djs'));
-    expect(vscode.state.quickPicks[2].shown).toBe(true);
+    expect(vscode.state.quickPicks[1].shown).toBe(true);
   });
 
   it('bindParts（.v 形状）：候选清单＝工作区 Verilog 文件（⛔ .djs 清单——录进去就是编译侧不认的死值）', async () => {
@@ -1053,11 +1055,11 @@ describe('双容器六树的台架驱动（片 5-B）', () => {
     qp.activeItems = [rows.find((i: any) => i.label === 'adder')];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const partQp = vscode.state.quickPicks[1];
-    expect(partQp.items.map((i: any) => i.label)).toContain('lib/adder.v');     // Verilog 文件在候选里
-    expect(partQp.items.map((i: any) => i.label)).not.toContain('top.v');       // ⛔ 把自己列成部件
-    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'lib/adder.v')];
-    partQp.accept();
+    expect(qp.title).toContain('「adder」绑定到部件');                              // 单颗两级导航
+    expect(qp.items.map((i: any) => i.label)).toContain('lib/adder.v');           // Verilog 文件在候选里
+    expect(qp.items.map((i: any) => i.label)).not.toContain('top.v');              // ⛔ 把自己列成部件
+    qp.activeItems = [qp.items.find((i: any) => i.label === 'lib/adder.v')];
+    qp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
     expect(meta.bindings).toEqual({ 'top.v::adder': 'lib/adder.v' });   // R158 机器写＝前缀键；⛔ 强加 .djs 尾，也⛔ 只有 .djs 可挑
@@ -1228,9 +1230,8 @@ describe('R137 目录级显式绑定（`.verilogviz.json` 在盘可见、仿 set
     qp.activeItems = [qp.items.find((i: any) => i.label === 'half')];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const partQp = vscode.state.quickPicks[1];
-    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'lib/full.djs')];   // 根相对写入，表逻辑折成同目录裸名
-    partQp.accept();
+    qp.activeItems = [qp.items.find((i: any) => i.label === 'lib/full.djs')];   // 根相对写入，表逻辑折成同目录裸名
+    qp.accept();
     await new Promise((r) => setTimeout(r, 0));
     expect(readMetaFile('D:/p/lib/.verilogviz.json').bindings).toEqual({ 'top.djs::half': 'full.djs' });  // 前缀键宿主段＋同目录部件裸名值（均相对本层）
     expect(vscode.state.files.has(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())).toBe(false);
@@ -1731,9 +1732,8 @@ describe('R145 多层电路绑定表达（`宿主文档::实例名` 前缀键—
     qp.activeItems = [qp.items.find((i: any) => i.label === 'adder')];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const partQp = vscode.state.quickPicks[1];
-    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'alt/alt_impl.v')];
-    partQp.accept();
+    qp.activeItems = [qp.items.find((i: any) => i.label === 'alt/alt_impl.v')];
+    qp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
     expect(meta.bindings['top.v::adder']).toBe('alt/alt_impl.v');   // R158 前缀键；串过桩的成员校验＝二级清单确是 Verilog 那颗（⛔ .djs 清单）
@@ -1985,9 +1985,8 @@ describe('诊断锚点 + 写前校验（2026-10-17 用户五连投诉：报错�
     qp.activeItems = [qp.items.find((i: any) => i.label === 'counter')];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const partQp = vscode.state.quickPicks[1];
-    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'r50_counter.v')];
-    partQp.accept();
+    qp.activeItems = [qp.items.find((i: any) => i.label === 'r50_counter.v')];
+    qp.accept();
     await new Promise((r) => setTimeout(r, 0));
     expect(vscode.state.errorMessages.join('')).toContain('r50_counter');
     expect(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())).toBeUndefined();   // ⛔ 半吊子记录进表
@@ -2003,22 +2002,17 @@ describe('诊断锚点 + 写前校验（2026-10-17 用户五连投诉：报错�
     qp.activeItems = [qp.items.find((i: any) => i.label === 'counter')];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const partQp = vscode.state.quickPicks[1];
-    // 弹窗开着时部件被删（清单未刷＝stale）——校验必须拦下注定解不到的记录
+    // 弹窗开着时部件被删（清单未刷＝stale）——校验必须拦下注定解不到的记录；拦后**留在二级清单**可改选
     await vscode.workspace.fs.delete(vscode.Uri.file('D:/p/parts/adder.djs'));
-    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'parts/adder.djs')];
-    partQp.accept();
+    qp.activeItems = [qp.items.find((i: any) => i.label === 'parts/adder.djs')];
+    qp.accept();
     await new Promise((r) => setTimeout(r, 0));
     expect(vscode.state.errorMessages.join('')).toContain('部件文件不存在');
     expect(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())).toBeUndefined();
-    // 正常路径回归：文件回来 ⇒ 照写（校验不该拦合格记录）——主弹窗没关，直接再走一级
+    // 正常路径回归：文件回来 ⇒ 照写（校验不该拦合格记录）——还在同一颗二级清单里，直接再选一次
     await vscode.workspace.fs.writeFile(vscode.Uri.file('D:/p/parts/adder.djs'), new TextEncoder().encode('{"cells":[]}'));
-    qp.activeItems = [qp.items.find((i: any) => i.label === 'counter')];
+    qp.activeItems = [qp.items.find((i: any) => i.label === 'parts/adder.djs')];
     qp.accept();
-    await new Promise((r) => setTimeout(r, 0));
-    const partQp2 = vscode.state.quickPicks[2];
-    partQp2.activeItems = [partQp2.items.find((i: any) => i.label === 'parts/adder.djs')];
-    partQp2.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/p/.verilogviz.json').path.toLowerCase())!));
     expect(meta.bindings['main.djs::counter']).toBe('parts/adder.djs');   // R158 前缀键
@@ -2697,12 +2691,11 @@ describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树
     // R158 文件级作用域（用户裁决）：main.djs 的弹窗＝它自己的实例清单——
     //   ⛔ 深层 ctrl 内部的 adder 进账（那是"正在渲染的电路"的账，归画布提示条/audit，全层 BFS 那格盯着）
     expect(qp.items.filter((i: any) => i.key).map((i: any) => i.key)).toEqual(['sub/main.djs::ctrl']);
-    qp.activeItems = [qp.items[0]];
+    qp.activeItems = [qp.items.find((i: any) => i.key === 'sub/main.djs::ctrl')];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const partQp = vscode.state.quickPicks[1];
-    partQp.activeItems = [partQp.items.find((i: any) => i.label === 'sub/ctrl.djs')];   // 候选＝根相对名
-    partQp.accept();
+    qp.activeItems = [qp.items.find((i: any) => i.label === 'sub/ctrl.djs')];   // 候选＝根相对名（同一颗 picker 换 items）
+    qp.accept();
     await new Promise((r) => setTimeout(r, 0));
     const meta = diskMeta('D:/p/sub/.verilogviz.json');
     expect(meta.bindings['main.djs::ctrl']).toBe('ctrl.djs');   // 键与值都按表层相对进表（读侧折叠的镜像）
@@ -2745,7 +2738,7 @@ describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树
     qp.activeItems = [qp.items[0]];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const labels = vscode.state.quickPicks[1].items.map((i: any) => i.label);
+    const labels = qp.items.map((i: any) => i.label);                                  // 同一颗 picker 换到二级
     expect(labels).toContain('adder.v');                       // 编译域候选在册
     expect(labels).not.toContain('parts/counter.djs');          // ⛔ 沙盒域文件混进 .v 弹窗（两域混用观感主源）
   });
@@ -2761,7 +2754,7 @@ describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树
     qp.activeItems = [qp.items[0]];
     qp.accept();
     await new Promise((r) => setTimeout(r, 0));
-    const labels = vscode.state.quickPicks[1].items.map((i: any) => i.label);
+    const labels = qp.items.map((i: any) => i.label);                                  // 同一颗 picker 换到二级
     expect(labels).toContain('alt_impl.djs');
     expect(labels).not.toContain('adder.v');                    // ⛔ 编译域文件混进沙盒弹窗
   });

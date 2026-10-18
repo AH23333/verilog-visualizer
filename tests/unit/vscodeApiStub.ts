@@ -338,6 +338,7 @@ export interface QuickPickItem {
 export interface QuickPick<T extends QuickPickItem> extends Disposable {
   title: string | undefined;
   placeholder: string | undefined;
+  value: string;
   items: T[];
   activeItems: T[];
   matchOnDescription: boolean;
@@ -698,14 +699,19 @@ export const window = {
   /** 活动标签（compilePanel 的退路判别；测试直接赋 state.activeTab） */
   get tabGroups() { return { activeTabGroup: { activeTab: state.activeTab } }; },
   /** R157⑥ 弹窗会话的**有状态假件**（真 API 同形：items/activeItems/show/hide/dispose/onDidAccept/onDidHide）。
-   *  每颗都进 state.quickPicks 台账（按创建序）；测试替用户行动：置 activeItems 后 accept()，Esc＝hide()。 */
+   *  每颗都进 state.quickPicks 台账（按创建序）；测试替用户行动：置 activeItems 后 accept()，Esc＝hide()。
+   *  ⚠ **真实语义已补全**（真宿主集成测试实锤）：show() 会顶没**先前所有可见颗**（触发其 onDidHide）——
+   *   真 VS Code 同一时刻只显示一颗 QuickPick。假件⛔ 补这条，"叠第二颗"的写法就只配真机炸（R158 教训）。 */
   createQuickPick: <T extends QuickPickItem>(): QuickPick<T> => {
     const qp: any = {
-      title: undefined, placeholder: undefined, matchOnDescription: false, matchOnDetail: false,
+      title: undefined, placeholder: undefined, value: '', matchOnDescription: false, matchOnDetail: false,
       items: [] as any[], activeItems: [] as any[],
       shown: false, hidden: false, disposed: false,
       _onAccept: [] as any[], _onHide: [] as any[],
-      show() { qp.shown = true; },
+      show() {
+        for (const other of state.quickPicks) { if (other !== qp && other.shown && !other.hidden) other.hide(); }
+        qp.shown = true;
+      },
       hide() { if (!qp.hidden) { qp.hidden = true; for (const f of qp._onHide) f(); } },
       dispose() { qp.disposed = true; },
       onDidAccept(f: any) { qp._onAccept.push(f); return { dispose() { } }; },
