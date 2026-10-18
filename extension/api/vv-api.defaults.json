@@ -29,7 +29,7 @@
     "bindings.get":        { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui"], "ref": "bindings.get", "idempotent": true, "since": "0.2.0", "description": "链合并生效绑定（带 doc）或根表原文" },
     "bindings.set":        { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "bindings.set", "since": "0.2.0", "description": "直写目录层表一条绑定（part=null=删）" },
     "bindings.audit":      { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui"], "ref": "bindings.audit", "idempotent": true, "since": "0.2.0", "description": "枚举未录入、靠同名兜底的实例" },
-    "bindings.complete":   { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "bindings.complete", "since": "0.2.0", "description": "audit+写全（裸键/前缀策略）；已录入不覆" },
+    "bindings.complete":   { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "bindings.complete", "since": "0.2.0", "description": "audit+写全（v0.4：一律前缀键）；已录入不覆" },
     "bindings.materialize":  { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "bindings.materialize", "since": "0.2.0", "description": "固化自动同名命中且未录入的解析" },
     "circuits.list":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui"], "ref": "circuits.list", "idempotent": true, "since": "0.2.0", "description": "根表 circuits 显式名单" },
     "circuits.toggle":     { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "verilogViz.togglePartRole", "since": "0.2.0", "description": "翻转部件/电路角色（显式取消语义）" },
