@@ -106,6 +106,13 @@ async function run() {
         const c = await shot('sys.ctxSnapshot', {});
         ok('mcp-ctx-snapshot', c.ok === true && typeof c.result.compilePanel.open === 'boolean' && Array.isArray(c.result.visibleTabs),
           c.ok ? 'panelOpen=' + c.result.compilePanel.open + ' tabs=' + c.result.visibleTabs.length : JSON.stringify(c));
+        // 四-2 可解释性双枪：it_top.v 的 sub s1() 无绑定记录 ⇒ BINDING_MISSING＋hint；逐层表原文可读
+        const ex = await shot('bindings.explain', { doc: 'it_top.v', instance: 'sub' });
+        ok('mcp-explain-missing', ex.ok === true && ex.result.verdict === 'BINDING_MISSING' && String(ex.result.hint).includes('bindings.set'),
+          ex.ok ? 'verdict=' + ex.result.verdict : JSON.stringify(ex));
+        const tb = await shot('res.readBindingTables', { doc: 'it_top.v' });
+        ok('mcp-tables-chain', tb.ok === true && Array.isArray(tb.result.chain) && tb.result.chain.length >= 1,
+          tb.ok ? 'layers=' + tb.result.chain.map((l) => l.dir + (l.exists ? '*' : '')).join(',') : JSON.stringify(tb));
       } catch (e) { ok('mcp-pipe-roundtrip', false, String((e && e.message) || e)); }
     }
   } catch (e) {

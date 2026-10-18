@@ -2782,6 +2782,95 @@ describe('R160 批次四 四-1：活体探针（activationTrail / sys.ping / sys
   });
 });
 
+describe('R160 批次四 四-2：绑定链可解释性双枪（bindings.explain / res.readBindingTables）', () => {
+  const explain = async (doc: string, instance: string) => {
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    return await executeTool(ctx(PROD) as never, CALLER_UI, 'bindings.explain', { doc, instance }) as any;
+  };
+  it('resolved（前缀键命中）：hit 形状/经路/文件三格如实', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); endmodule',
+      'D:/p/adder.v': 'module adder; endmodule',
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'top.v::adder': 'adder.v' } }),
+    } });
+    const r = await explain('top.v', 'adder');
+    expect(r.verdict).toBe('resolved');
+    expect(r.hit.keyKind).toBe('prefix');
+    expect(r.hit.folded).toBe('adder.v');
+  });
+  it('近层压远层：根层与子层同指一合并键 ⇒ hit 在子层（与合并序同一把尺）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/sub/main.v': 'module main; adder u1(); endmodule',
+      'D:/p/sub/sub_adder.v': 'module adder; endmodule',
+      'D:/p/root_adder.v': 'module adder; endmodule',
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'sub/main.v::adder': 'root_adder.v' } }),
+      'D:/p/sub/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'main.v::adder': 'sub_adder.v' } }),
+    } });
+    const r = await explain('sub/main.v', 'adder');
+    expect(r.verdict).toBe('resolved');
+    expect(r.hit.layer).toBe('sub');
+    expect(r.hit.folded).toBe('sub/sub_adder.v');
+  });
+  it('BINDING_MISSING：hint 直接给出可照打的 bindings.set 实参形状', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); endmodule',
+      'D:/p/adder.v': 'module adder; endmodule',
+    } });
+    const r = await explain('top.v', 'adder');
+    expect(r.verdict).toBe('BINDING_MISSING');
+    expect(r.hint).toContain('bindings.set');
+    expect(r.hint).toContain('top.v::adder');
+    // 与闭包同尺证人：closureOf 对同一现场报 BINDING_MISSING（两枪⛔ 分家）
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const job = await executeTool(ctx(PROD) as never, CALLER_UI, 'compile.closure', { uri: 'D:/p/top.v' }) as any;
+    expect(String((job.bindingErrors || []).join(''))).toContain('BINDING_MISSING');
+  });
+  it('NO_SUCH_INSTANCE：解析器眼里没这颗⇒点名在场实例', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; adder u1(); endmodule' } });
+    const r = await explain('top.v', 'ghost');
+    expect(r.verdict).toBe('NO_SUCH_INSTANCE');
+    expect(r.instances).toEqual(['adder']);
+  });
+  it('BINDING_UNRESOLVED_RECORD：值指的文件不含该模块（defines 如实报）；文件失踪同 verdict 不同 hint', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); endmodule',
+      'D:/p/other.v': 'module other; endmodule',
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'top.v::adder': 'other.v' } }),
+    } });
+    const r = await explain('top.v', 'adder');
+    expect(r.verdict).toBe('BINDING_UNRESOLVED_RECORD');
+    expect(r.defines).toEqual(['other']);
+    expect(r.hint).toContain('other.v');
+  });
+  it('SCHEMA_INVALID 与 djs 绑到电路的 warn：终点检查两岔口', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); mux u2(); endmodule',
+      'D:/p/x.djs': '{"cells":[]}',
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: ['x.djs'], bindings: { 'top.v::adder': 'notes.txt', 'top.v::mux': 'x.djs' } }),
+    } });
+    const bad = await explain('top.v', 'adder');
+    expect(bad.verdict).toBe('SCHEMA_INVALID');
+    const circ = await explain('top.v', 'mux');
+    expect(circ.verdict).toBe('resolved');
+    expect(circ.role).toBe('circuit');
+    expect(circ.warn).toContain('circuits');
+  });
+  it('res.readBindingTables：根→文档目录逐层原文＋协议外键', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/sub/main.djs': '{"cells":[]}',
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: ['x.djs'], bindings: { a: 'b.djs' }, mine: 1 }),
+      'D:/p/sub/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'main.djs::c': 'd.djs' } }),
+    } });
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    const t = await executeTool(ctx(PROD) as never, CALLER_UI, 'res.readBindingTables', { doc: 'sub/main.djs' }) as any;
+    expect(t.chain.map((l: any) => l.dir)).toEqual(['/', 'sub']);
+    expect(t.chain[0].exists).toBe(true);
+    expect(t.chain[0].extraKeys).toEqual(['mine']);
+    expect(t.chain[1].bindings).toEqual({ 'main.djs::c': 'd.djs' });
+    expect(t.truncated).toBe(false);
+  });
+});
+
 describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树元素右键 / 建表即写全 / 多层点名 / 聚焦 / 落表即时可见', () => {
   const diskMeta = (p: string) => JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file(p).path.toLowerCase())!));
 

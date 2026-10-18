@@ -17,11 +17,13 @@ import * as vscode from 'vscode';
 import { registerTool, argUri, getTool, listTools, type ToolCaller, type ToolSurface } from './toolRegistry';
 import { broadcastBindingsChanged, projectRoot, vscodeFs } from './dispatch';
 import { ProjectStore, sanitizeRel } from './projectStore';
-import { rootRel } from './verilogDomain';
+import { rootRel, isVerilogPath } from './verilogDomain';
 import {
   getAllBindings, setBindingInDir, collectInstanceHits, completeFromHits,
   materializeBindings, togglePartRole, getCircuitsSet, pathRel, META_FILE,
+  readMetaAt, dirChain, metaPathOf, resolveLayerValue, normalizePartName,
 } from './sandboxFiles';
+import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
 import { closureOf, scanDefs, lastJobInfo, getLastTextUri } from './compilePanel';
 import { apiOverrideSnapshot, canSurface, loadApiContract } from './apiSurface';
 import { checkGrant, grantsSnapshot } from './apiGrants';
@@ -188,6 +190,117 @@ export function registerDomainTools(): void {
       }
       if (done.length) broadcastBindingsChanged();
       return { done };
+    },
+  });
+
+  /* ============ R160 批次四 四-2：绑定链可解释性双枪（P4 案族——"为什么解析成这个"一枪说透） ============ */
+
+  registerTool({
+    id: 'res.readBindingTables', title: '逐层绑定表原文',
+    description: 'L3：给 doc（或 dir）＝从根到该目录链上每一层 `.verilogviz.json` 的**原文**（bindings.get 只给合并结果；这里看得见每层 circuits/bindings/协议外键）。单表 >32KB 截前 200 键并标 truncated。幂等只读。',
+    schema: { type: 'object', properties: { doc: { type: 'string', description: '根相对文档路径' }, dir: { type: 'string', description: '或只给目录（该目录到根的链）' } } },
+    handler: async (ctx, a) => {
+      const doc = a.doc ? String(a.doc) : (a.dir !== undefined ? `${String(a.dir)}/_` : '_');
+      const chain = [...dirChain(doc)].reverse();                 // 根→文档目录（与合并序同向）
+      const layers: Array<Record<string, unknown>> = [];
+      let truncated = false;
+      for (const dir of chain) {
+        const m = await readMetaAt(ctx, dir);
+        if (!m) { layers.push({ dir: dir || '/', path: metaPathOf(dir), exists: false }); continue; }
+        let bindings: Record<string, unknown> = m.bindings;
+        if (JSON.stringify(bindings).length > 32768) {
+          const ks = Object.keys(bindings);
+          bindings = Object.fromEntries(ks.slice(0, 200).map((k) => [k, bindings[k]]));
+          truncated = true;
+        }
+        layers.push({ dir: dir || '/', path: metaPathOf(dir), exists: true, circuits: m.circuits, bindings, extraKeys: m._extra ? Object.keys(m._extra) : [] });
+      }
+      return { chain: layers, truncated };
+    },
+  });
+
+  registerTool({
+    id: 'bindings.explain', title: '单实例解析轨迹',
+    description: 'L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解析成）。逐层轨迹＝与闭包同一把尺的镜像：'
+      + '前缀键先于裸键、近层压远层、键值都按层折叠（bindingsForFile 的 outKey 算法，⛔ 第二套判据）；'
+      + '终点检查（文件在否/含不含该模块/djs 可不可解析/在不在 circuits 名单）；verdict＋hint（下一步打哪颗带什么实参）。幂等只读。',
+    schema: { type: 'object', properties: { doc: { type: 'string', description: '根相对宿主文档' }, instance: { type: 'string', description: '实例名/celltype' } }, required: ['doc', 'instance'] },
+    handler: async (ctx, a) => {
+      const doc = String(a.doc); const inst = String(a.instance);
+      const docUri = vscode.Uri.joinPath(projectRoot(ctx), ...doc.split('/'));
+      let text = '';
+      try { text = new TextDecoder().decode(await vscode.workspace.fs.readFile(docUri)); }
+      catch { return { doc, instance: inst, verdict: 'DOC_UNREADABLE', hint: `读不到「${doc}」：路径按根相对给；res.listProject / res.listSandbox 可列真名` }; }
+      // ① 实例在场性（解析器眼里；文档本身坏＝跳过此检交给轨迹说话）
+      const isDjs = /\.djs$/i.test(doc);
+      let declared: string[] = [];
+      let declaredOk = true;
+      try {
+        declared = isDjs
+          ? [...new Set((((JSON.parse(text)?.cells || []) as Array<{ type?: string; celltype?: string }>)
+              .filter((c) => c?.type === 'Subcircuit' && c.celltype).map((c) => String(c.celltype))))]
+          : parseVerilogInstances(text);
+      } catch { declaredOk = false; }
+      if (declaredOk && declared.length && !declared.includes(inst)) {
+        return { doc, instance: inst, verdict: 'NO_SUCH_INSTANCE', instances: declared.slice(0, 50),
+          hint: `解析器眼里「${doc}」没有这颗实例；先对名字（res.parseFile 可看解析原样输出）` };
+      }
+      // ② 逐层轨迹（closureOf 合并查表的镜像：merged[`${doc}::${inst}`] ?? merged[inst]）
+      const chain = dirChain(doc);                                 // 近→远
+      const mergedKey = `${doc}::${inst}`;
+      const tried: Array<{ layer: string; key: string; keyKind: 'prefix' | 'bare'; hit: boolean; foldedKey?: string }> = [];
+      let hit: { layer: string; key: string; keyKind: 'prefix' | 'bare'; raw: string; folded: string } | null = null;
+      for (const dir of chain) {                                   // 一趟过每层：前缀键按折叠名对账（⛔ 只猜表层写法）
+        const m = await readMetaAt(ctx, dir);
+        if (!m) { tried.push({ layer: dir || '/', key: mergedKey, keyKind: 'prefix', hit: false }); tried.push({ layer: dir || '/', key: inst, keyKind: 'bare', hit: false }); continue; }
+        for (const k of Object.keys(m.bindings)) {
+          if (!k.includes('::')) continue;
+          const at = k.lastIndexOf('::');
+          if (k.slice(at + 2) !== inst) continue;
+          const foldedKey = `${resolveLayerValue(dir, normalizePartName(k.slice(0, at)))}${k.slice(at)}`;
+          const isHit = foldedKey === mergedKey;
+          tried.push({ layer: dir || '/', key: k, keyKind: 'prefix', hit: isHit, ...(foldedKey !== k ? { foldedKey } : {}) });
+          if (isHit && !hit) {
+            const raw = String(m.bindings[k]);
+            hit = { layer: dir || '/', key: k, keyKind: 'prefix', raw, folded: resolveLayerValue(dir, normalizePartName(raw)) };
+          }
+        }
+      }
+      if (!hit) for (const dir of chain) {
+        const m = await readMetaAt(ctx, dir);
+        const has = !!m && m.bindings[inst] !== undefined && String(m.bindings[inst]) !== '';
+        tried.push({ layer: dir || '/', key: inst, keyKind: 'bare', hit: has });
+        if (has && !hit) {
+          const raw = String(m!.bindings[inst]);
+          hit = { layer: dir || '/', key: inst, keyKind: 'bare', raw, folded: resolveLayerValue(dir, normalizePartName(raw)) };
+        }
+      }
+      const docDir = doc.includes('/') ? doc.slice(0, doc.lastIndexOf('/')) : '';
+      if (!hit) {
+        return { doc, instance: inst, verdict: 'BINDING_MISSING', tried,
+          hint: `未录入绑定。写一颗：bindings.set { dir:"${docDir}", celltype:"${doc.includes('/') ? inst : `${doc.split('/').pop()}::${inst}`}", part:"<定义文件根相对>" }（R152：⛔ 同名兜底，必须显式）` };
+      }
+      // ③ 终点检查（与 closureOf 同款分岔）
+      const v = hit.folded;
+      const base: Record<string, unknown> = { doc, instance: inst, hit, tried };
+      if (isVerilogPath(v)) {
+        try {
+          const t2 = new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(projectRoot(ctx), ...v.split('/'))));
+          const mods = parseVerilogModules(t2);
+          if (!mods.includes(inst)) return { ...base, verdict: 'BINDING_UNRESOLVED_RECORD', defines: mods.slice(0, 8), hint: `「${v}」里没有模块 ${inst}（它定义的是：${mods.slice(0, 4).join('、') || '无'}）——改绑定值或补模块` };
+          return { ...base, verdict: 'resolved', via: 'recorded', file: v };
+        } catch { return { ...base, verdict: 'BINDING_UNRESOLVED_RECORD', hint: `记录指向的「${v}」不存在——bindings.set 改值或把文件放回` }; }
+      }
+      if (/\.(djs|gate)$/i.test(v)) {
+        try {
+          const parsed = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(projectRoot(ctx), ...v.split('/')))));
+          const cells = Array.isArray(parsed?.cells) ? parsed.cells.length : -1;
+          const role = (await getCircuitsSet(ctx)).has(v) ? 'circuit' : 'part';
+          return { ...base, verdict: 'resolved', via: 'recorded', file: v, cells, role,
+            ...(role === 'circuit' ? { warn: '绑到了一份在 circuits 名单里的电路（名单=显式取消部件）——多数时候这不是本意' } : {}) };
+        } catch { return { ...base, verdict: 'UNRESOLVED_REF', hint: `部件「${v}」不存在或不是合法电路 json——bindings.set 改值` }; }
+      }
+      return { ...base, verdict: 'SCHEMA_INVALID', hint: `绑定值「${v}」不支持：只认 .v/.sv/.vh 定义或 .djs/.gate 部件` };
     },
   });
 

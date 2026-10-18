@@ -1,7 +1,7 @@
 # API_REFERENCE（生成物 · 统一调用层）
 
 > ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
-> apiVersion `0.1.0` · 生成工具数 **37** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
+> apiVersion `0.1.0` · 生成工具数 **39** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
@@ -16,6 +16,7 @@
 |---|---|---|---|---|---|---|---|
 | `bindings.audit` | 审计绑定完整性 | read | none | ui/mcp | — | `bindings.audit` | 0.2.0 |
 | `bindings.complete` | 写全绑定 | config-write | config-write | ui | — | `bindings.complete` | 0.2.0 |
+| `bindings.explain` | 单实例解析轨迹 | read | none | ui/mcp | — | `bindings.explain` | 0.4.0 |
 | `bindings.get` | 读绑定 | read | none | ui/mcp | — | `bindings.get` | 0.2.0 |
 | `bindings.materialize` | 固化自动绑定 | config-write | config-write | ui | — | `bindings.materialize` | 0.2.0 |
 | `bindings.set` | 写绑定 | config-write | config-write | ui | — | `bindings.set` | 0.2.0 |
@@ -43,6 +44,7 @@
 | `host.setDocBindings` | 写一份文档的绑定表 | config-write | config-write | rpc | — | `setDocBindings` | 0.1.0 |
 | `res.listProject` | 列编译域文件 | read | none | ui/mcp | — | `res.listProject` | 0.2.0 |
 | `res.listSandbox` | 列沙盒域文件 | read | none | ui/mcp | — | `res.listSandbox` | 0.2.0 |
+| `res.readBindingTables` | 逐层绑定表原文 | read | none | ui/mcp | — | `res.readBindingTables` | 0.4.0 |
 | `res.readProjectFile` | 读工程文件 | read | none | ui/mcp | — | `res.readProjectFile` | 0.2.0 |
 | `sys.ctxSnapshot` | 宿主隐式态快照（如实转述） | read | none | ui/mcp/cli | — | `sys.ctxSnapshot` | 0.4.0 |
 | `sys.describeTool` | 单颗工具深档（含闸门预演） | read | none | ui/mcp/cli | — | `sys.describeTool` | 0.3.0 |
@@ -87,6 +89,30 @@ audit+一键写全：把自动命中且未录入的实例按「顶层同源=裸�
   },
   "required": [
     "doc"
+  ]
+}
+```
+
+### `bindings.explain` — 单实例解析轨迹
+
+L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解析成）。逐层轨迹＝与闭包同一把尺的镜像：前缀键先于裸键、近层压远层、键值都按层折叠（bindingsForFile 的 outKey 算法，⛔ 第二套判据）；终点检查（文件在否/含不含该模块/djs 可不可解析/在不在 circuits 名单）；verdict＋hint（下一步打哪颗带什么实参）。幂等只读。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "doc": {
+      "type": "string",
+      "description": "根相对宿主文档"
+    },
+    "instance": {
+      "type": "string",
+      "description": "实例名/celltype"
+    }
+  },
+  "required": [
+    "doc",
+    "instance"
   ]
 }
 ```
@@ -673,6 +699,26 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 {
   "type": "object",
   "properties": {}
+}
+```
+
+### `res.readBindingTables` — 逐层绑定表原文
+
+L3：给 doc（或 dir）＝从根到该目录链上每一层 `.verilogviz.json` 的**原文**（bindings.get 只给合并结果；这里看得见每层 circuits/bindings/协议外键）。单表 >32KB 截前 200 键并标 truncated。幂等只读。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "doc": {
+      "type": "string",
+      "description": "根相对文档路径"
+    },
+    "dir": {
+      "type": "string",
+      "description": "或只给目录（该目录到根的链）"
+    }
+  }
 }
 ```
 

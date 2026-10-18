@@ -41,7 +41,7 @@ function metaUri(context: vscode.ExtensionContext, dirRel = ''): vscode.Uri {
   return vscode.Uri.joinPath(root, ...(segs.length ? [...segs, META_FILE] : [META_FILE]));
 }
 
-async function readMetaAt(context: vscode.ExtensionContext, dirRel: string): Promise<VvMeta | null> {
+export async function readMetaAt(context: vscode.ExtensionContext, dirRel: string): Promise<VvMeta | null> {
   try {
     const raw = await then(vscode.workspace.fs.readFile(metaUri(context, dirRel)));
     const meta = JSON.parse(new TextDecoder().decode(raw));
@@ -54,6 +54,9 @@ async function readMetaAt(context: vscode.ExtensionContext, dirRel: string): Pro
     };
   } catch { return null; }
 }
+
+/** R160 批次四转导出（res.readBindingTables / bindings.explain 的只读原语——⛔ 第二把尺） */
+export function metaPathOf(dirRel: string): string { return dirRel ? `${dirRel}/${META_FILE}` : META_FILE; }
 
 async function readMeta(context: vscode.ExtensionContext): Promise<VvMeta> {
   return (await readMetaAt(context, '')) || { circuits: [], bindings: {} };
@@ -88,7 +91,7 @@ export function normalizePartName(part: string): string {
 }
 
 /** 目录链（文档目录 → … → 根），如 'a/b/x.djs' ⇒ ['a/b', 'a', ''] */
-function dirChain(relName: string): string[] {
+export function dirChain(relName: string): string[] {
 
   const dir = relName.includes('/') ? relName.slice(0, relName.lastIndexOf('/')) : '';
   const out: string[] = [];
@@ -168,7 +171,8 @@ export function relFrom(dir: string, rootRel: string): string {
 }
 
 /** 链解析把各层 value（含 ../）折算成根相对路径 */
-function resolveLayerValue(dir: string, value: string): string {
+/** 本层目录 + 可能含 ../ 的相对值 → 根相对（R160 批次四转导出给 bindings.explain 镜像同一把尺） */
+export function resolveLayerValue(dir: string, value: string): string {
   const segs = (dir ? `${dir}/` : '').split('/').concat(value.split('/')).filter(Boolean);
   const out: string[] = [];
   for (const s of segs) {
