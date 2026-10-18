@@ -4,7 +4,7 @@
 //
 // R152 权威裁决（用户）：「绑定即权威」——**所有被例化的模块都必须显式绑定**，⛔ 同名自动兜底。
 // `.verilogviz.json` 里录了 `<模块名>: <某.v/.djs>` 的，闭包照表取（解不到＝报错）；
-// 没录的 ⇒ 直接报错（编译拦下，引导「写全配置」/绑定面板录制）。与沙盒画布同一条绑定真理。
+// 没录的 ⇒ 直接报错（编译拦下，引导「写全配置」/「部件绑定」弹窗录制）。与沙盒画布同一条绑定真理。
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { projectRoot } from './dispatch';
@@ -90,7 +90,7 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
       // R145 多层精控：`宿主文档::实例名` 前缀键只约束那一层；无命中回落裸键。⛔ 无同名兜底。
       const ov = ovs[`${item.name}::${inst}`] ?? ovs[`${item.ownerRel}::${inst}`] ?? ovs[inst];
       if (!ov) {
-        bindingErrors.push(`[BINDING_MISSING] 模块「${inst}」（在 ${item.name}）未录入绑定配置：右键「写全配置」或用绑定面板录制`);
+        bindingErrors.push(`[BINDING_MISSING] 模块「${inst}」（在 ${item.name}）未录入绑定配置：右键「写全配置」或用「部件绑定」弹窗录制`);
         anchors.push(anchorOf(inst));
         continue;
       }

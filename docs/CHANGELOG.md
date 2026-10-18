@@ -7,6 +7,36 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R157：绑定链六连修（用户实机投诉 ①-⑥）（2026-10-18）
+
+> 用户真机六条投诉：树右键报"先在文件上右键"、打开配置只见空壳、编译要"先打开文件"、
+> 「写全配置」点了没反应、点 alu_top 弹到 counter 且部件显示不全、绑定面板⛔ 再是标签页内部页面。
+> 逐条现读定位（只查不猜），五修一重构，台架全程可判。
+
+### Fixed
+- **①③ 树右键实参三形通吃**（`extension.ts menuUri`）：真宿主对 view/item/context 会传
+  Uri（带 resourceUri 的项）／整颗 TreeItem／**provider 数据节点 Node{uri}**——修前只接前两形，
+  树右键「部件绑定」「编译并查看电路」的 uri 静默丢光全走兜底（症状＝"先在文件上右键"/"先打开一个 .v"）。
+- **② 建表即写全**（`sandboxFiles.openBindingConfig`）：无表文档首次建档顺手把各层实例现解析落进去
+  （collect→complete，值按层相对）；已有表一个字不碰（手编内容珍贵纪律不变）。
+- **④ 「写全配置」即时隐条根修**（`gateSystem.getBindingAudit(cells, bindingsOverride)` +
+  `SandboxCanvas` 提示条直传 `doc.initialBindings`）：covered 判定此前吃 effect 喂的模块快照——
+  宿主落表→广播重读→重渲染的链**落后两拍**，这一帧审计拿旧表＝条冻结永挂。渲染当下直传新表即灭。
+- **⑤ 多层点名 + 聚焦行**（`collectInstanceHits({all})`／`bindingDataFor` 深层行／`trees.ts` 层次树带实例名）：
+  面板/弹窗列**全部**实例（深层行＝`宿主::实例` 前缀键，写回按表层目录相对折键——两把尺不混）；
+  点层次树行直达并聚焦那颗行（修"弹到 counter 找不到 alu_top"）。
+
+### Changed
+- **⑥ 绑定 UI 弹窗化**（`bindingPanel.openBindingPicker`）：标签页 WebviewPanel 退役——
+  基座**没有** modal WebviewPanel API（vscode.d.ts 与实现层双查无），取 VS Code 设置/齿轮同款的
+  **QuickInput 弹窗会话**：一级实例清单（逐项标注 已录/自动同名/未绑定）→二级部件清单（当前生效标记、可清除）
+  →写前校验同一把尺→写后回清单保持聚焦；singleton（新会话顶旧会话）。`binding.html`/`BindingApp`/
+  vite 第三入口一并退役。台架十格面板判据迁成弹窗会话判据（stub 新增**有状态 createQuickPick 假件**＋台账）。
+
+### 验证
+- `pnpm ext:check` exit 0 · `pnpm build`（两入口）✓ · vitest **275/275**（R157 六连格＋前端 override 格＋弹窗会话迁移格）。
+
+---
 ## [未发布 Unreleased] — R155：统一调用层阶段三（RPC 收编 + 给 agent 的深度四档）（2026-10-18 夜·同一夜）
 
 > 顺序仍按用户令：完善系统 → 深度检验 → **构建统一 API 层**（与文档同批）。

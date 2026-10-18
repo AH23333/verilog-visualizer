@@ -1626,3 +1626,34 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
 - 「改信号守闸门不放宽」全程生效：r31/r18/r32 三处语义搬家都**保住被计量子的原语义**（进出保组件→面板往返保组件；设置联动→store 直写联动；示例编译投递→stash 投递消费），每处注释写明旧链死因与等价性，⛔ 删判据骗绿。
 - 「证人名单随主人搬家」第二次实战（r81 PROD_FILES、r87 roster 防删锚）——名单过期红＝信号失效，不是产品缺陷；但**必须实读新主人源码**确认判据语义仍在（line:err.line、data-bus-width-dialog 逐一 grep 过）。
 - 手术脚本反引号雷三连（模板套模板 `\\\`` 断链、`\${}` 未逃逸、内嵌 -e 转义炸）——一律改字符串拼接/落盘 .cjs，第二次踩同一雷时不再重试内嵌。
+
+---
+
+# 卷六十七 · R157 绑定链六连（2026-10-18，接手代理；用户令：小步提交·深度测试·更新文档·只查不猜）
+
+## 一、六条实机投诉与逐条现读定位
+| # | 症状（用户原话摘要） | 现读根因（⛔ 猜） | 修法 |
+|---|---|---|---|
+| ① | 编译树右键「部件绑定」报"先在文件上右键" | 真宿主 view/item/context 第三形＝**provider 数据节点 Node{uri}**，`menuUri` 只接 Uri/TreeItem 两形 ⇒ uri 静默丢光走兜底 | menuUri 三形通吃；台架 R157① |
+| ② | 「打开部件绑定配置」只有 `{"circuits":[],"bindings":{}}` | openBindingConfig 无表时只建空壳 | **建表即写全**（collect→complete，已有表一个字不碰）；R157②③ |
+| ③ | 右键「编译并查看电路」要"先打开一个 .v" | 同①第三形 | compileAndShow 过 menuUri；R157① |
+| ④ | 提示条「写全配置」点了没反应 | covered 判定吃 effect 喂的模块快照，链**落后两拍**（落表→广播→重渲染），这一帧审计拿旧表＝条冻结 | `getBindingAudit(cells, bindingsOverride)` 吃渲染当下的 `doc.initialBindings`；lib.test 新格 |
+| ⑤ | 点 alu_top 弹到 counter；部件显示不全 | 面板只列顶层实例＋打开⛔ 聚焦来处 | `collectInstanceHits({all})` 深层进账（`宿主::实例` 前缀键，写回按表层相对折键）＋focus 直达行；R157④⑤ |
+| ⑥ | 绑定⛔ 再是"像加文件一样的内部页面" | **基座无 modal WebviewPanel API**（vscode.d.ts 与 mainThreadWebviewPanels 双查无，上游公开 API 至今没有） | 退役标签页面板，改 **QuickInput 弹窗会话**（VS Code 设置/齿轮同款）：一级实例→二级部件→写前校验→回清单保聚焦；singleton |
+
+## 二、弹窗化的取舍账（为什么⛔ 画布内 DOM 浮层）
+- 画布内浮层（PartSearchDialog 同族）要求画布已开：`.v` 入口就得先弹编译面板——**又回到"加一颗页签"**，与用户裁决相违。
+- QuickInput 是⛔ 新增任何页签、⛔ 依赖画布、全入口（树右键/层次树/命令面板）同形的唯一原生弹层。
+- 语义零丢：逐项解析状态标注（已录/自动同名/未绑定）、深层行、清除绑定、写前校验、表层折键、聚焦、打开配置直达（`$(gear)` 行）全在册；批量编辑退化为逐颗即写即生效（QuickPick 交互本性，注释在册）。
+
+## 三、判据迁移与桩的教训
+- 台架**十格**面板判据（`panels.find(viewType==='verilogViz.binding')` 族）迁成弹窗会话判据；stub 补**有状态 createQuickPick 假件**（items/activeItems/accept/hide/dispose + quickPicks 台账）。
+- ⚠ 新教训：**扩展侧 tsc 的 `vscode` 类型走的就是这颗桩**（tsconfig paths）——桩缺 `QuickPickItem`/`QuickPick` 类型＝被测文件红（TS2694/TS2558）。类型面与假件同批补。
+- ⚠ 判据形状教训：弹窗**只能选在册项**——旧面板判据往 save 里塞 `ghost/missing.djs`（盘上没有）在弹窗世界不可达；改成"在册但语义错"（r50_counter.v）与"开弹窗后删盘制造 stale"两形，校验语义原样保住（⛔ 删判据骗绿）。
+
+## 四、本卷提交账
+- `13e1f7e` fix(R157 绑定链①-⑤)——五修+台架五格+前端 override 格（275 基线的前身 274/274 在册）。
+- `8db83b4` feat(R157⑥ 绑定弹窗化)——openBindingPicker/binding.html 退役/判据十格迁移/stub 假件。
+- 本卷账＋CHANGELOG R157 条目（docs 束）。
+- 验证读数：ext:check exit 0 · vite build 两入口 ✓ · vitest **275/275**。
+- ⚠ 遗留（承前不阻塞）：`test_files/新文件夹/` 用户真机遗物⛔ 动；`docs/mem.txt` 永不入册；push 欠账继续累计。

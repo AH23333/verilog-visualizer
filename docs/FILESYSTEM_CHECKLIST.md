@@ -48,7 +48,7 @@
 | C4 | 创建副本 | ✅ uniqueName (n) | 同目录 `(n)` 序号；.djs 副本=部件（角色不随）；**复制后要刷树（X5）** | [ ] |
 | C5 | 删除·文件 | ✅ sandboxFiles.ts:316-343 | 模态确认→回收站→各层绑定值/前缀键/circuits 清 | [ ] |
 | C6 | 部件角色 | ✅ togglePartRole | 切 circuits⇄部件（根表）+「部件」树联动 | [ ] |
-| C7 | 部件绑定… | ✅ | .djs 与 .v 均开绑定面板 | [ ] |
+| C7 | 部件绑定… | ✅ | .djs 与 .v 均开绑定弹窗（R157⑥：QuickInput 会话，⛔ 标签页面板） | [ ] |
 | C8 | 绑定四件套 | ✅ | audit/complete/openBindingConfig（编译域无 materialize——差异留） | [ ] |
 | C9 | 移动到… | ✅ 编码完 | QuickPick 选目标目录（含根），走 G1 迁移引擎 | 编码完✓轮 |
 | C10 | 复制路径 | ✅ 编码完 | 剪贴板=绝对路径（平台惯例），告示亮根相对（裁决见补记⑤） | 编码完✓轮 |
@@ -208,7 +208,7 @@ GUI 用 Computer Use 点，读数取屏幕 + 盘上审计账（两路成对）�
 | 资源管理器 | `probe-ws` 下 `.vv/`、`.verilogviz.json`、7 颗 `.djs`、4 颗 `.v`、`probe.sv`、`probe.vh` 全列出，图标按域分（`.djs` 与 `.v` 不同符） | 通（A3/B1/B2 上屏） |
 | 编译面板空态 | 「还没有电路」+「在 .v 编辑器标题栏点『编译并查看电路』（Ctrl+F5），电路会显示在这里。」——**整句中文** | 通（V2 那族已修的形状） |
 | 点 `adder.v` → Ctrl+F5 | 文件在原生文本编辑器打开（标题 `adder.v`），资源管理器那一行右侧亮 **1** 的错误角标，状态栏 `✕ 1` | 通 |
-| Problems 面板 | 一行：`[BINDING_MISSING] 模块「full_adder」（在 adder.v）未录入绑定配置：右键「写全配置」或用绑定面板录制。` 源＝`Verilog Viz`，位置＝行 15 列 1 | 通（R152 绑定权威上屏＋**补救话**＋**行列精确**） |
+| Problems 面板 | 一行：`[BINDING_MISSING] 模块「full_adder」（在 adder.v）未录入绑定配置：右键「写全配置」或用「部件绑定」弹窗录制。` 源＝`Verilog Viz`，位置＝行 15 列 1 | 通（R152 绑定权威上屏＋**补救话**＋**行列精确**） |
 | 点 `adder.djs` | 自定义编辑器（⛔ 文本态）：画布真渲染出门/线/IO/子电路实例，左palette 九组、工具条 暂停/单步/速度/波形/保存/自定义门/表达式生成/SVG/综合网表/JSON | 通（B2/C2 上屏） |
 | 画布上的绑定提示条 | 「4 个子部件实例靠同名兜底解析，未录入绑定配置：full_adder、full_adder、full_adder、full_adder」旁边**就有一颗「写全配置」按钮** | 通（补救动作⛔ 要用户手改表——他那条"⛔ 额外步骤"规矩的形状） |
 | 沙盒编辑三板块 | 文件＝7 颗 `.djs`（带 KB）；部件 Parts＝同 7 颗；层次结构 Hierarchy＝`full_adder  adder.djs` | 通（H 域上屏） |
