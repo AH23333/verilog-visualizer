@@ -1,7 +1,6 @@
 import * as vscode from 'vscode';
-import { projectRoot, registerWebviewSink, unregisterWebviewSink } from './dispatch';
+import { projectRoot } from './dispatch';
 import { vscodeFs } from './dispatch';
-import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 import { bindingsForFile, setBinding, META_FILE, openBindingConfig, collectInstanceHits, relFrom } from './sandboxFiles';
 import { closureOf, scanDefs } from './compilePanel';
 import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
@@ -138,136 +137,108 @@ export async function bindingDataFor(context: vscode.ExtensionContext, uri: vsco
   }
 }
 
-let panel: vscode.WebviewPanel | undefined;
-let panelUri: vscode.Uri | undefined;
-let panelContext: vscode.ExtensionContext | undefined;
-// 最近一次"从哪颗实例来的"（层次树点击/右键带上）——每次推 data 后跟着推 focus，
-// 面板复用/重显都保持定位（用户 2026-10-18 实锤：点 alu_top 打开后满表找不着那颗行）。
-let panelFocus: string | undefined;
+/* ============ R157⑥ 弹窗会话（用户裁决：⛔ 标签页内部页面） ============ */
+// 基座**没有** modal WebviewPanel API（vscode.d.ts/实现层双查无——上游公开 API 至今没有这颗），
+// "像加文件一样的页签"改不掉；原生弹窗里能承载"实例清单→部件清单→写表→回清单"完整闭环的
+// 只有 QuickInput（VS Code 设置/齿轮菜单同款弹层）。WebviewPanel 壳（binding.html）就此退役。
+// 语义全保留：一级逐项标注当前生效解析（已录/自动同名/未绑定）、深层行（宿主::前缀键）、
+// 写前校验（同一把尺）、表层相对折键、聚焦行（activeItems）、singleton（新会话顶掉旧会话）。
 
-/** **Webview is disposed 事故绳**（真机实证：面板关闭/复用竞态里 postMessage/改 title 会把
- *  "Webview is disposed" 冒成命令错误）。可抛面收拢成三件：①复用先探测活尸（探到就当无）；
- *  ②一切 webview 触碰走 pushSafe（吞掉 disposed＝面板没了，用户重开就有）；③探尸用「读 html」
- *  这颗 guaranteed-throw 的标准方法。 */
-function livePanel(p: vscode.WebviewPanel | undefined): boolean {
-  if (!p) return false;
-  try { void p.webview.html; return true; } catch { return false; }
+interface BindingPick extends vscode.QuickPickItem {
+  key?: string;
+  cfg?: boolean;
+  clear?: boolean;
 }
 
-async function pushSafe(p: vscode.WebviewPanel | undefined, msg: unknown): Promise<void> {
-  if (!p) return;
-  try { await p.webview.postMessage(msg); } catch { /* 面板没了＝消息自然没处投 */ }
-}
+/** 会话主人（singleton）：新开的弹窗先 dispose 上一颗——⛔ 叠第二颗让人 Esc 两次才退净。 */
+let currentQp: vscode.QuickPick<BindingPick> | undefined;
 
-/** 一条完整"喂数据"：data 之后**必跟** focus 解析推送（若有）——2026-10-18 实锤：
- *  面板复用路当时只补推了 data 忘推 focus，第二次点层次树行聚焦静默丢。两路共用这颗主人。 */
-async function pushDataAndFocus(context: vscode.ExtensionContext, p: vscode.WebviewPanel | undefined, uri: vscode.Uri) {
-  if (!p) return;
-  const data = await bindingDataFor(context, uri);
-  if (!livePanel(p)) return;                       // 数据途中面板关了 ⇒ ⛔ 再去摸 title/postMessage
-  try { p.title = `部件绑定：${basename(data.docRel)}`; } catch { return; }
-  await pushSafe(p, { vvh: 'binding', op: 'data', data });
-  // 聚焦行换到**写回主键**口径：顶层＝裸名；深层＝`宿主::实例`（BindingApp 同一把尺查行）
-  if (panelFocus) {
-    const key = data.instances.find((i) => i.name === panelFocus || i.key === panelFocus)?.key ?? panelFocus;
-    await pushSafe(p, { vvh: 'binding', op: 'focus', name: key });
+/** 写前校验的一颗主人（原面板 save 路的语义原样搬）：
+ *  编译域目标（.v/.sv/.vh）必须真定义该模块、部件域（.djs/.gate）必须存在——违规⛔ 落表。 */
+async function validateBindingTarget(context: vscode.ExtensionContext, instName: string, value: string): Promise<string[]> {
+  const absOf = (s: string): vscode.Uri => vscode.Uri.joinPath(projectRoot(context), ...s.split('/'));
+  if (isVerilogPath(value)) {
+    let mods: string[] | null = null;
+    try {
+      mods = parseVerilogModules(new TextDecoder().decode(await then(vscode.workspace.fs.readFile(absOf(value)))));
+    } catch { /* 读失败也要报 */ }
+    if (!mods) return [`「${instName}」→ ${value}：文件读取失败，先确认路径存在。`];
+    if (!mods.includes(instName)) return [`「${instName}」→ ${value}：该文件里没有名为「${instName}」的模块（它定义的是：${mods.slice(0, 4).join('、') || '无'}${mods.length > 4 ? '…' : ''}）。`];
+  } else if (/\.(djs|gate)$/i.test(value)) {
+    try { await then(vscode.workspace.fs.stat(absOf(value))); }
+    catch { return [`「${instName}」→ ${value}：部件文件不存在。`]; }
   }
+  return [];
 }
 
-export async function openBindingPanel(context: vscode.ExtensionContext, uri: vscode.Uri, focus?: string): Promise<void> {
-  panelUri = uri;
-  // focus ⛔ 粘到下一颗文档：每次打开以当次为准（没带＝这轮⛔ 硬聚焦别档的旧行）
-  panelFocus = focus;
-  if (livePanel(panel)) {
-    // 复用路也走同一颗主人：data + focus 一起补——旧版手写一份只推 data，第二次点行聚焦静默丢（2026-10-18 实锤）
-    const p = panel!;
-    p.reveal(vscode.ViewColumn.Active);
-    await pushDataAndFocus(context, p, uri);
-    return;
-  }
-  panel = undefined;                                // 尸体（dispose 事件还没走到的窗口期）就地清掉——再走新建
-  panelContext = context;
-  panel = vscode.window.createWebviewPanel(
-    'verilogViz.binding',
-    `部件绑定：${basename(rel(projectRoot(context), uri))}`,
-    vscode.ViewColumn.Active,
-    {
-      enableScripts: true,
-      localResourceRoots: webviewRoots(context),
-      retainContextWhenHidden: true,
-    },
-  );
-  registerWebviewSink(panel.webview);
+export async function openBindingPicker(context: vscode.ExtensionContext, uri: vscode.Uri, focus?: string): Promise<void> {
+  let data = await bindingDataFor(context, uri);
+  // 面板深层行的 key＝根相对前缀（`sub/ctrl.djs::adder`，读侧折叠后的形状）；**进表必须换成
+  //   表层目录相对**（`ctrl.djs::adder`）——bindingsForFile 折叠语义按层相对写，两把尺⛔ 混。
+  const dirNow = data.docRel.includes('/') ? data.docRel.slice(0, data.docRel.lastIndexOf('/')) : '';
+  const tableKey = (k: string): string =>
+    k.includes('::') ? `${relFrom(dirNow, k.slice(0, k.lastIndexOf('::')))}${k.slice(k.lastIndexOf('::'))}` : k;
 
-  const html = await loadWebviewHtml(context, panel.webview, 'binding.html');
-  panel.webview.html = html ?? '<h1>找不到 binding.html（先 pnpm build）</h1>';
+  currentQp?.dispose();
+  const qp = vscode.window.createQuickPick<BindingPick>();
+  currentQp = qp;
+  qp.title = `部件绑定：${basename(data.docRel)}`;
+  qp.placeholder = '选实例改绑定；Esc＝完成';
+  qp.matchOnDescription = true;
+  qp.matchOnDetail = true;
+  const fill = (): void => {
+    qp.items = [
+      ...data.instances.map((i): BindingPick => ({
+        label: i.name,
+        description: i.ctx ? `在 ${basename(i.ctx)} 内` : (typeof i.count === 'number' ? `×${i.count}` : ''),
+        detail: i.recorded ? `已录 → ${i.recorded}`
+          : i.auto ? `自动同名 → ${i.auto}（未录入；选部件即固化）`
+          : '未绑定——选一个部件文件写入绑定表',
+        key: i.key ?? i.name,
+      })),
+      { label: '$(gear) 打开绑定配置（.verilogviz.json 手改）', detail: data.meta, cfg: true },
+    ];
+  };
+  fill();
 
-  panel.onDidDispose(() => {
-    unregisterWebviewSink(panel!.webview);
-    panel = undefined;
-    panelUri = undefined;
-  });
-
-  panel.webview.onDidReceiveMessage(async (msg: any) => {
-    if (msg?.vvh !== 'binding') return;
-    const p = panel;                                  // 本消息所属代次；处理途中面板被关＝pushSafe 自然吞
-    if (msg.op === 'ready') {
-      return void pushDataAndFocus(context, p, uri);
-    }
-    if (msg.op === 'save') {
-      const changes = msg.changes || msg.bindings || {};
-      // 写前校验：编译域目标（.v/.sv/.vh，一颗主人给名单）必须真的定义了该模块（真机惨案：实例 counter 记到 r50_counter.v，
-      // 该文件定义的其实是 r50_counter——"绑定完成"却注定 [BINDING_UNRESOLVED_RECORD]。
-      // 零件清单只是文件名维度，语义校验只能在这里把关——改错时把该文件内实际定义一并报出来。
-      const errors: string[] = [];
-      for (const [name, part] of Object.entries(changes)) {
-        if (!name) continue;
-        const inst = name.includes('::') ? name.slice(name.lastIndexOf('::') + 2) : name;  // 深层行＝前缀键，模块名在 :: 后
-        const v = part as string | null;
-        // 候选值口径＝**根相对**（parts 清单直接交来的名字、completeFromHits 交的 file 同一尺；
-        //   裸旧值按根解——面板⛔ 产裸相对值，别在这里发明第二把尺）。
-        const absOf = (s: string): vscode.Uri => vscode.Uri.joinPath(projectRoot(context), ...s.split('/'));
-        if (v && isVerilogPath(v.trim())) {
-          let mods: string[] | null = null;
-          try {
-            mods = parseVerilogModules(new TextDecoder().decode(await then(vscode.workspace.fs.readFile(absOf(v.trim())))));
-          } catch { /* 读失败也要报 */ }
-          if (!mods) errors.push(`「${inst}」→ ${v}：文件读取失败，先确认路径存在。`);
-          else if (!mods.includes(inst)) errors.push(`「${inst}」→ ${v}：该文件里没有名为「${inst}」的模块（它定义的是：${mods.slice(0, 4).join('、') || '无'}${mods.length > 4 ? '…' : ''}）。`);
-        } else if (v && /\.(djs|gate)$/i.test(v.trim())) {
-          try { await then(vscode.workspace.fs.stat(absOf(v.trim()))); }
-          catch { errors.push(`「${inst}」→ ${v}：部件文件不存在。`); }
-        }
+  qp.onDidAccept(() => {
+    const sel = qp.activeItems[0];
+    if (!sel) return;
+    if (sel.cfg) { void openBindingConfig(context, uri); return; }
+    const key = sel.key!;
+    const inst = data.instances.find((i) => (i.key ?? i.name) === key);
+    const cur = inst?.recorded || inst?.auto || '';
+    const partQp = vscode.window.createQuickPick<BindingPick>();
+    partQp.title = `「${sel.label}」绑定到部件`;
+    partQp.placeholder = cur ? `当前生效：${cur}；Esc 返回实例清单` : '选部件文件；Esc 返回实例清单';
+    partQp.matchOnDescription = true;
+    partQp.matchOnDetail = true;
+    partQp.items = [
+      ...(inst?.recorded
+        ? [{ label: '$(trash) 清除绑定', detail: `删掉记录「${inst.recorded}」（回落同名兜底/未绑定）`, clear: true } as BindingPick]
+        : []),
+      ...data.parts.map((p): BindingPick => ({ label: p, description: p === cur ? '当前生效' : '' })),
+    ];
+    if (cur) partQp.activeItems = partQp.items.filter((it) => it.label === cur);
+    partQp.onDidAccept(async () => {
+      const s = partQp.activeItems[0];
+      partQp.hide();
+      if (!s) return;
+      const value = s.clear ? null : s.label;
+      if (value) {
+        const errs = await validateBindingTarget(context, sel.label, value);
+        if (errs.length) { void vscode.window.showErrorMessage(`绑定未写入：${errs.join('；')}`); return; }
       }
-      if (errors.length) { await pushSafe(p, { vvh: 'binding', op: 'saveError', errors }); return; }
-      let written = 0;
-      // 面板深层行的 key＝根相对前缀（`sub/ctrl.djs::adder`，读侧折叠后的形状）；**进表必须换成
-      //   表层目录相对**（`ctrl.djs::adder`）——bindingsForFile 折叠语义按层相对写，两把尺⛔ 混。
-      const docRelNow = rel(projectRoot(context), uri);
-      const dirNow = docRelNow.includes('/') ? docRelNow.slice(0, docRelNow.lastIndexOf('/')) : '';
-      const tableKey = (k: string): string =>
-        k.includes('::') ? `${relFrom(dirNow, k.slice(0, k.lastIndexOf('::')))}${k.slice(k.lastIndexOf('::'))}` : k;
-      for (const [name, part] of Object.entries(changes)) {
-        if (!name) continue;
-        const v = part as string | null;
-        if (v && v.trim()) { await setBinding(context, tableKey(name), v.trim(), uri); written++; }
-        else { await setBinding(context, tableKey(name), null, uri); }
-      }
-      await pushDataAndFocus(context, p, uri);
-      await pushSafe(p, { vvh: 'binding', op: 'saved', written });
-      return;
-    }
-    if (msg.op === 'openConfig') {
-      await openBindingConfig(context, uri);
-      return;
-    }
+      await setBinding(context, tableKey(key), value, uri);
+      data = await bindingDataFor(context, uri);
+      fill();
+      qp.activeItems = qp.items.filter((it) => it.key === key);   // 编辑中的那颗行保持选中
+    });
+    partQp.onDidHide(() => partQp.dispose());
+    partQp.show();
   });
-
-  await pushDataAndFocus(context, panel, uri);
-}
-
-export function notifyBindingPanelBindingsChanged(): void {
-  if (livePanel(panel) && panelContext && panelUri) {
-    void pushDataAndFocus(panelContext, panel!, panelUri);
-  }
+  qp.onDidHide(() => { if (currentQp === qp) currentQp = undefined; qp.dispose(); });
+  // 聚焦行（层次树点进来）：resolve 到写回主键口径——顶层＝裸名；深层＝`宿主::实例`
+  if (focus) qp.activeItems = qp.items.filter((it) => it.key === focus || it.label === focus);
+  qp.show();
 }

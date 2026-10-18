@@ -326,6 +326,29 @@ export interface WebviewPanelSerializer {
   deserializeWebviewPanel(webviewPanel: WebviewPanel, state?: any): Promise<void> | ThenableLike<void>;
 }
 
+/** R157⑥ QuickInput 类型面（bindingPanel 弹窗会话用；字段与真 vscode.d.ts 同形）。
+ *  ⚠ 扩展侧 tsc 的 `vscode` 类型走的就是这颗桩（tsconfig paths）——桩缺类型＝被测文件红。 */
+export interface QuickPickItem {
+  label: string;
+  description?: string;
+  detail?: string;
+  picked?: boolean;
+  alwaysShow?: boolean;
+}
+export interface QuickPick<T extends QuickPickItem> extends Disposable {
+  title: string | undefined;
+  placeholder: string | undefined;
+  items: T[];
+  activeItems: T[];
+  matchOnDescription: boolean;
+  matchOnDetail: boolean;
+  show(): void;
+  hide(): void;
+  readonly onDidAccept: Event<void>;
+  readonly onDidHide: Event<void>;
+  dispose(): void;
+}
+
 /** 流水账字段（真宿主没这些，测试靠它们看"到底发生了什么"）——用交叉类型接上 */
 export type PanelWithLedger = WebviewPanel & FakePanel;
 
@@ -385,6 +408,8 @@ export interface FakeMachine {
    *  ⚠ 多级 QuickPick（bindParts：选实例 → 选部件）用 **队列**：shift 逐个消费，空了回落 quickPickResult */
   quickPickResult: any;
   quickPickQueue: any[];
+  /** R157⑥：createQuickPick 假件的创建台账（按序；测试从这拿会话驱动 accept/hide） */
+  quickPicks: any[];
   inputBoxResult: string | undefined;
   /** 片 5-B：showWarningMessage 模态确认的预设答案（undefined＝关掉） */
     /** 模态确认（showWarningMessage）的预设答案：非模态用法（audit 的三钮）也从这颗拿；undefined＝关掉 */
@@ -404,7 +429,7 @@ export const state: FakeMachine = {
   treeProviders: {}, webviewViews: {}, watchers: [], diagnostics: new Map(), outputText: '',
   editors: [], openWithCalls: [], activeEditor: undefined, workspaceFolderListeners: [], activeEditorListeners: [],
   configValues: {}, configListeners: [], saveListeners: [], customEditorProviders: {},
-  quickPickResult: undefined, quickPickQueue: [], inputBoxResult: undefined, modalChoice: undefined, warnMessages: [], deleteCalls: [], activeTab: undefined,
+  quickPickResult: undefined, quickPickQueue: [], quickPicks: [], inputBoxResult: undefined, modalChoice: undefined, warnMessages: [], deleteCalls: [], activeTab: undefined,
 };
 
 export function resetMachine(patch: Partial<FakeMachine> = {}) {
@@ -437,6 +462,7 @@ export function resetMachine(patch: Partial<FakeMachine> = {}) {
   state.customEditorProviders = {};
   state.quickPickResult = undefined;
   state.quickPickQueue = [];
+  state.quickPicks = [];
   state.inputBoxResult = undefined;
   state.modalChoice = undefined;
   state.warnMessages = [];
@@ -671,6 +697,25 @@ export const window = {
   },
   /** 活动标签（compilePanel 的退路判别；测试直接赋 state.activeTab） */
   get tabGroups() { return { activeTabGroup: { activeTab: state.activeTab } }; },
+  /** R157⑥ 弹窗会话的**有状态假件**（真 API 同形：items/activeItems/show/hide/dispose/onDidAccept/onDidHide）。
+   *  每颗都进 state.quickPicks 台账（按创建序）；测试替用户行动：置 activeItems 后 accept()，Esc＝hide()。 */
+  createQuickPick: <T extends QuickPickItem>(): QuickPick<T> => {
+    const qp: any = {
+      title: undefined, placeholder: undefined, matchOnDescription: false, matchOnDetail: false,
+      items: [] as any[], activeItems: [] as any[],
+      shown: false, hidden: false, disposed: false,
+      _onAccept: [] as any[], _onHide: [] as any[],
+      show() { qp.shown = true; },
+      hide() { if (!qp.hidden) { qp.hidden = true; for (const f of qp._onHide) f(); } },
+      dispose() { qp.disposed = true; },
+      onDidAccept(f: any) { qp._onAccept.push(f); return { dispose() { } }; },
+      onDidHide(f: any) { qp._onHide.push(f); return { dispose() { } }; },
+      /** 测试驱动：模拟用户在当前 activeItems 上按回车 */
+      accept() { for (const f of qp._onAccept) f(); },
+    };
+    state.quickPicks.push(qp);
+    return qp;
+  },
   showTextDocument: (docOrUri: TextDocumentLike | Uri, _o?: any): ThenableLike<TextEditorLike> => {
     if (docOrUri instanceof Uri) {
       const doc = makeDoc(docOrUri);

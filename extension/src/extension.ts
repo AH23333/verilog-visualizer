@@ -23,7 +23,7 @@ import {
   collectInstanceHits, completeFromHits, normalizeBindingsDisk, META_FILE,
   scanDirChoices, importFilters, describeDeletion, ensureDirsMeta
 } from './sandboxFiles';
-import { openBindingPanel } from './bindingPanel';
+import { openBindingPicker } from './bindingPanel';
 import { loadApiContract, loadProjectApiOverride } from './apiSurface';
 import { loadProjectGrants } from './apiGrants';
 import { initProject } from './vvProject';
@@ -227,11 +227,11 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
       // 层次树行（点击 command 带第二参＝实例名 / 右键传行 Node{label}，本层⛔ 挂文件 uri）
-      //   ⇒ 面板打开后**定位到那一条**（修用户实锤"点 alu_top 弹到别的、找不到那颗行"）。
+      //   ⇒ 弹窗打开后**定位到那一条**（修用户实锤"点 alu_top 弹到别的、找不到那颗行"）。
       const focus = typeof focusArg === 'string' && focusArg
         ? focusArg
         : (!menuUri(arg) && typeof arg?.label === 'string' ? arg.label : undefined);
-      await openBindingPanel(context, uri, focus);
+      await openBindingPicker(context, uri, focus);
     }),
 
     // R144「固化绑定」：机械体已上账为 bindings.materialize 工具（批次二）——命令=薄壳+告示。
