@@ -77,6 +77,29 @@ initialize→tools/list(12)→sys.getStatus(真根)→bindings.get(真表)→bin
 - vitest **294/294** · 真宿主 harness **failed=0（9 步）** · D1 预演钉改判（mcp 已开＝ready，关闸取证位换 cli）。
 
 ---
+## [未发布 Unreleased] — R160 批次四：API 颗粒度扩容（进行中·四-1/四-2 已交付，2026-10-19 暂停收尾）
+
+> 设计正本＝`API_GRANULARITY_DESIGN.md`（十病灶→L0~L6 阶梯→六颗只读新工具→错误契约 v2→分期验收，§八 四板裁决）。
+> 用户 2026-10-19 令暂停开发；交接边界与待办＝`HANDOFF.md`。
+
+### Added（四-1 `e8b3ae2`）
+- `activationTrail.ts` 航行记录仪（activate 六检查点＋markFail——P1 半活假象终结者）＋`hostState.ts` 单向小格。
+- `sys.ping`（L0 活体探针：alive/检查点/桥态含 skipped 原因）＋`sys.ctxSnapshot`（L2 隐式态如实转述——P3）
+  ＋`sys.getStatus` 扩容活体四格。台架 4 钉 298/298×3 · harness 11/11 · e2e 两枪。
+
+### Added（四-2 `7caab8b`）
+- `bindings.explain`（L4 主枪：逐层试键轨迹＝closureOf 合并查表镜像，verdict＋hint 给可照打实参）
+  ＋`res.readBindingTables`（L3 逐层表原文＋extraKeys＋32KB 帽）。台架 7 钉 305/305×2 · harness 13/13 · e2e resolved 轨迹实读。
+
+### TODO（恢复开发即开工，见 HANDOFF §六）
+- 四-3：`res.parseFile`（main/lite 双解析器并呈＋对账钉）＋`compile.hierarchy`（与 HierarchyTree 同一把主人）。
+- 四-4：`project.doctor`（全复用内核聚合，info 级 `deep:true` 才开）＋错误契约 v2 hint（含存量收编）。
+- 四-5：文档再生成＋账本卷七十第八节＋本段收口。
+
+### 验证（暂停点复验）
+- vitest **305/305**（2026-10-19 收尾亲跑）· harness 13 步 failed=0（四-2 提交时）· e2e 桥直调全绿。
+
+---
 ## [未发布 Unreleased] — R159：真宿主集成测试上线 + "越修越坏"四刀（2026-10-18 夜）
 
 > 用户令"穷尽所有测试手段"。台架全绿而真机断裂的根因＝**假件与真宿主语义分岔**——本批把
