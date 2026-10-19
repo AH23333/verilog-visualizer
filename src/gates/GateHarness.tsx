@@ -7,6 +7,7 @@
 // SandboxCanvas 自带 data-sandbox-sidebar / data-gate 部件库 / [data-fs-dialog] 新建 /
 // __sandboxPaper / 文件树（SandboxFileTree data-sbfile）/ 部件绑定工具条 —— 夹具其余锚点都在它里面。
 import { useState } from 'react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import SandboxCanvas from '../components/SandboxCanvas';
 import { useVscodeTheme } from '../hooks/useVscodeTheme';
 
@@ -33,7 +34,7 @@ export default function GateHarness() {
         <button data-activity="hierarchy" style={btnStyle} onClick={() => setPanel('hierarchy')}>层次</button>
         <button data-activity="sandbox" style={btnStyle} onClick={() => { /* 外壳恒在沙盒 */ }}>沙盒</button>
         <button data-activity="主题" style={btnStyle}
-          title="主题" onClick={() => document.body.classList.toggle('vscode-dark')}>主题</button>
+          title={t('主题')} onClick={() => document.body.classList.toggle('vscode-dark')}>{t('主题')}</button>
       </div>
       <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
         <SandboxCanvas theme={theme} leftPanel={panel} />

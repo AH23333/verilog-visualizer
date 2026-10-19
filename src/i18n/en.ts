@@ -518,6 +518,7 @@ export const EN: Record<string, string> = {
   '当前绑定：{name}': 'Currently bound: {name}',
   '绑定到 {name}': 'Bind to {name}',
   '关闭波形图': 'Close waveform',
+  '主题': 'Theme',
   '名称不能为空。': 'Name cannot be empty.',
   '名称不能包含 \\ / : * ? " < > |': 'Name cannot contain \\ / : * ? " < > |',
 
