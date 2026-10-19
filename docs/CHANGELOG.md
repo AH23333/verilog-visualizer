@@ -25,7 +25,10 @@
 - **S1 深测轮**：webview 语言只认宿主 meta（设计 §一修订——无头闸门 navigator=en-US 会把验收 UI 翻面，无 meta→zh-CN）；
   r19 [2a] 命令面断言升级为双语 nls 解析；产物级检查（bundle 英文表在包、基座 nls 对账零缺零孤儿）；
   r84 变异台账/r137 CSP 闸全过；i18n 敏感面抽跑 qc-paused/qc-audit/qc-realuser/r46/r50/r91 全绿。
-- 欠账（S2）：SandboxCanvas 深串/单元菜单/器件目录/各弹窗/doc、gates 长文/扩展运行时消息；API 契约串另议。
+- **S2 推进（同日）**：器件右键菜单 ~120 串（SHARED_VOCAB 动态键登记制上线）＋器件目录/连线 DRC/侧栏显示点
+  （catalog 数据表零 t()、显示点包 t；词表扩到 65 键；完备性闸升级转义还原）；
+  全量闸门 74 格 GREEN=71（3 红＝1 已修断言过期＋2 中段编辑瞬态，单跑清红；跑批期间⛔ 编辑 src 入册）。欠账余：SandboxCanvas 深串/各弹窗/doc、gates 长文/扩展运行时消息。
+- 欠账（S2 余）：SandboxCanvas 深串/各弹窗/doc、gates 长文/扩展运行时消息；API 契约串另议。
 
 ---
 ## [未发布 Unreleased] — R160 API 深度战役（两波：`3a0af2f` 四族 · `f42942f` 第五族类型闸）（2026-10-19）
