@@ -1820,3 +1820,26 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
 - **在册欠账（⛔ 本批遗忘）**：doctor hosts 预算 60 外需 dir 分批（读数已带提醒）；files.parseErrors 对 .v 恒空是
   "正则内核不抛"的如实而非能力——语义级 verilog 报错住 bindings/closure 两段，下批若做"编译前哨"再收；
   双解析器收敛（P5 正业）仍挂独立战役。
+
+## 九、第九节 · API 深度测试战役（2026-10-19，用户令「自行深度测试，尽可能覆盖大量场景」）
+
+**覆盖面**（真 mcp 管道 @基座 D:\vv-it-manual）：
+- 轴一 统一坏载荷 8 形 × 45 颗＝360 枪（空参/字符串代对象/null/空串/数字/数组/对象套/boolean）；
+- 轴二 边界 22 枪（date 穿越/星号/巨串、limit 0/负/1e12、路径穿越/绝对/目录当文件、depth 0/999、自引用表读、unicode 名…）；
+- 轴三 协议面（烂行 N 发/缺 tool/args 非对象/未知字段/id 回显/单连接批六枪配对）；
+- 轴四 幂等对拍 10 颗（同参两读 deepEqual）；轴五 写面合法参动态拒收。
+**读数**：一役 400+ 枪，二波验证 24 枪（23 绿 + 1 判分笔误非产品）。全部红点走三向归因。
+
+**真缺陷四族（修 `3a0af2f`，永久证人四臂同 commit）**：
+1. 路径族归责反转 ×4（parseFile/hierarchy/doctor.dir/readProjectFile）——sanitizeRel 内核英文裸抛溜 HANDLER_ERROR；
+   收编 relOrBadArgs 一把尺 BAD_ARGS＋hint；**教训：自家新立的 v2 规矩，自己消费面漏了四处**（v2 只修了 readProjectFile 一处）。
+2. sys.readAudit date 无白名单——exists ＝工程内任意 .jsonl 探雷器、星号/问号非法字符裸抛 EPERM；收日档两形白名单。
+3. readProjectFile 喂目录 EISDIR 裸炸——补 type==Directory ⇒ BAD_ARGS 指路。
+4. **测试口径洞**：既有 mcp 写面拒收全用空参测＝落闸①b BAD_ARGS，从没证过闸②面本身——补七枪合法参动态拒收＋零动盘旁证。
+
+**归档不修（如实）**：无参工具吃未知字段整体成功＝RPC 协议正当容忍；一役唯一 ❌＝判分函数少写 .result（用例笔误）。
+
+**环境插曲（在册）**：基座映像名猜错（真名 "Verilog Visualizer.exe"）致两轮 kill 空转、旧桥双开让位把新 bundle
+挡在门外——修复验证前**必先探桥读一个新版独有行为**（本次＝BAD_ARGS 归位枪）再宣生效；apply-brand 后不重启＝白装。
+
+**终读数**：台架 323/323 · root/ext tsc 0 · lint 0 error。欠账：文案收口版 bundle 未再同步基座（随下一批统一 harness/e2e）。
