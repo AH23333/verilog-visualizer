@@ -1799,7 +1799,7 @@ describe('R146/R147 绑定完整性（配置不齐＝可见、可一键写全、
     } });
     const hier = vscode.state.treeProviders['verilogViz.hierarchy'];
     vscode.state.activeEditor = { document: await vscode.workspace.openTextDocument(vscode.Uri.file('D:/p/top.v')), viewColumn: 1, revealRange: () => { } };
-    hier.refresh();                                        // 编辑器活着时事件过一遍（视图藏着，getChildren 从未被调）
+    hier.refresh?.();                                      // 编辑器活着时事件过一遍（视图藏着，getChildren 从未被调）
     vscode.state.activeEditor = undefined;                 // webview/custom editor 激活 ⇒ activeTextEditor=undefined
     const nodes = await hier.getChildren();
     expect((await hier.getTreeItem(nodes[0])).contextValue).toBe('hierarchyItem');   // 粘滞吃到＝出实例节点；⛔ 退 welcome 提示

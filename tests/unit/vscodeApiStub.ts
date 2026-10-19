@@ -220,6 +220,8 @@ export interface OutputChannel {
 export interface TextDocumentLike {
   readonly uri: Uri;
   readonly fileName: string;
+  /** 真宿主恒有（R160 四-3 片0 追根 tsc 现形补齐）；桩的 makeDoc 暂不填＝undefined——ctxSnapshot 臂如实读到 undefined 也是真话 */
+  readonly languageId?: string;
   getText(): string;
   positionAt(offset: number): { line: number; character: number };
 }
@@ -359,6 +361,8 @@ export type TreeProviderLike = {
   onDidChangeTreeData?: Event<any>;
   getTreeItem(el: any): any;
   getChildren(el?: any): Promise<any[]> | any[];
+  /** 六树类的自挂刷新钮（非 vscode 接口面，真身全在场——R160 四-3 片0 类型面补齐） */
+  refresh?: () => void;
 };
 
 /** 一次测试里的"这台机器"：内存盘 + 面板/消息/对话框/树/诊断的流水账 */
