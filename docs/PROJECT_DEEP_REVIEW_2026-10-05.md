@@ -1959,4 +1959,13 @@ e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿�
   MemoryView/FileTree/Waveform）——双引号锚对替换时把属性引号一起吃掉；批量正则 `=t\('…'\)` →
   `={t('…')}` 修复。②EN 表 '无' 双写（cellMenu 的 none 与目录下拉撞键）——保 sentence 形。
 - 读数：台架 341/341 · build 0 · lint 0 error · r55 13/0 · r53 11/0 · r117 8/0 · qc-audit 5/0。
-- S2 余量：doc、gates 长文/扩展运行时消息/API 契约串另议。
+- S2 余量：dispatch.ts（RPC 层 47 串）/API 契约串另议；console 日志按既定口径保留中文（开发者日志非 UI）。
+
+**S2-5 扩展侧运行时消息（同日续，`a17c0ce`）**：
+- 87 串·5 文件：extension.ts 38 组（导入/移动/删除确认/固化/写全/初始化/复制路径/移动 QuickPick/
+  API 覆盖与授权告警/绑定盘归一/打不开窗口）、trees 10、compilePanel 8（Problems 绑定错误四码）、
+  bindingPanel 17（两级 QuickPick 全量）、customEditors 3。EXT_EN 补 ~70 键。
+- **按钮标签与比较处同步 t**（写全配置/打开绑定配置/删除——marker 复用串纪律在扩展侧同样执行）。
+- 插曲：四文件 import 路径误写 ../i18n（webview 形）——tsc TS2307 当场点名列改 ./i18n；
+  console 日志按既定口径保留中文；「无」双表同形（webview none / 扩展 none）。
+- 读数：台架 341/341 · ext tsc 0 · root build 0 · lint 0 error。基座已同步 S2 累计 bundle。
