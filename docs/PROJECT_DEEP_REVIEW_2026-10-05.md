@@ -2085,3 +2085,30 @@ fs.delete 留 HITL，其余无审批＝用户原话"全部放开"如实）；nls
   GateHarness＝夹具面。
 - 归属与处置：迁移是代理战线在做的活（最后一笔距本质检 ~70 分钟），F1 补漏属 S2 兑现尾活——**名单已落账，动手与否候用户裁决**
   （本线随时可接：约 38 + 3 串，含建表入 EN + 包壳 + F2 新闸一并落）。
+## 十四、第十四节 · S2-7 质检接管兑现批（原代理中断，用户令本线直接修复——2026-10-19 深夜）
+
+**范围**：第十三节 F1/F2/F3 三发现一次收口。
+
+### F1 包壳兑现（38+16 处 → 双闸全绿）
+- webview 九文件全部上屏串过 t()：SandboxSidebar 24（含 onRenameCommit 参数 t→tgt 除蔽）、BusWidthDialog 9（TOTALS.map 参数除蔽 + `{n} 位` 插值键化）、
+  FsmTableModal 12、ExprGenDialog 5、MemoryViewModal 5、RebindDialog 6（**整档首迁**——此前完全没人扫过）、SandboxExpandModal 5、
+  SandboxFileTree/DocApp/SandboxFileBindingDialog/DffPorts/SandboxCanvas 空态各 1-2、useHostCompile 诊断 3（编译 Problems 出口＝可见面）。
+- **模板串改插值静态键**（`已移动文件夹 ${path}` → t('已移动文件夹 {from} → {to}')）：message-as-key 下运行时动态拼键⛔ 查表，
+  zh 渲染逐字不变是铁律（EG 语法提示一颗曾被我顺手改词形——回正为渲染原文，同批自查）。
+- 表补齐：webview en.ts +63 键、extension i18n.en.ts +3（sandboxFiles 通知三颗：绑定配置＝…/重命名失败/目录移动拒绝）。
+- 扩展侧 import 链：sandboxFiles/DocApp/useHostCompile 各挂 t 的 import。
+
+### F2 新闸「可见面直出差闸」（治结构性盲区：完备闸只管包了的、⛔ 管该包的）
+- i18n.test.ts 新 describe：七个 sink 形状（toast/原生弹窗/message 字段/JSX 属性/状态位/宿主通知/t(`template 键）逐判，
+  外加 JSX 文本节点单行包夹形与多行纯文形；多行判定＝上一非空行以 > 或 } 收尾 + 本行汉字且残余无代码符号。
+- **豁免从"文件白名单"改为"行标 i18n-exempt + 理由"制**（粒度小、不可悄悄扩大）；夹具面 GateHarness 用 i18n-exempt-file 首行标 + 理由。
+- 迭代自纠三笔（全在册）：v1 行级 t( 过滤放走了同行混排；v2 stripComments 块注释吞行致**行号错位**（豁免窗看错行）；
+  v4 判定行改走原文＋注释行双数组，行号对齐；「生成钮」一颗是**虚警**（本就已包，规则首跑误报逐条人工分辨后才动刀）。
+- 闸的已知残余盲区（如实）：`>汉字 {插值} 尾巴<` 三段混排行靠首跑人工清单兜过；全自动判「该包未包」本质不可判定，此闸＝高置信捕手⛔ 神网。
+
+### F3 遮蔽清扫
+- BusWidthDialog TOTALS.map(t= 改 tw、SandboxSidebar onRenameCommit(t 改 tgt——t 撞 i18n 函数名的第三、四踩（前两次 ab59c41/ff04c00 都炸过运行时）。
+- 差闸的 template-key 钉（t(`…`) 当场红）从机制上断后路。
+
+### 验证
+- 三件套终读数：台架 vitest **342/342** · 全量闸门 **73/74，唯一红 r48 干净单跑转绿＝有效 74/74**（红因＝本人在跑批窗口写 src 触发 HMR 打断该格——自伤在册，教训：批在途⛔ 一切 src 落盘）· harness **18/18 failed=0** · root/ext tsc 0 · vite+esbuild 0 · lint 0 error（38w 基线内）· 真机英文截图点验留用户（语言随宿主 display language，闸门面 zh 缺省零回归）

@@ -45,13 +45,31 @@
   （默认文件名也走 i18n；示例名入词表）；全量闸门 74 格 GREEN=71（3 红＝1 已修断言过期＋2 中段编辑瞬态，单跑清红；
   跑批期间⛔ 编辑 src 入册）；**drc 局部 t 遮蔽事故**（t2 is not a function——any 让 tsc 沉默，r13 真宿主闸当场咬红，
   追补修复；迁移前扫遮蔽入纪律）。欠账余：各弹窗/doc、gates 长文/扩展运行时消息。
-- **S2 全量完成（同日续）**：**弹窗家族 119 串·17 文件**（MemPorts/DffPorts/Expand/Fsm/MemoryView/IOPanel/
+- **S2 全量完成（同日续；⚠ 后被 S2-7 质检证伪折价，见下段定稿）**：**弹窗家族 119 串·17 文件**（MemPorts/DffPorts/Expand/Fsm/MemoryView/IOPanel/
   BusWidth/ExprGen/PartSearch/Rebind/Waveform/FileTree）＋**扩展侧运行时消息 87 串·5 文件**（extension.ts 通知与
   确认框/trees 树提示/compilePanel Problems 四码/bindingPanel 两级 QuickPick 全量/customEditors）＋GateHarness 主题
   ——**UI 可见面全量英文可用**。SHARED_VOCAB 84 键；完备性闸又揪两类笔误（JSX 裸 =t 丢花括号 10 处、EN '无' 双写）；
   drc/Canvas 双料 t 遮蔽事故（any 让 tsc 沉默，真宿主闸当场咬红）修复并入册。欠账余：dispatch.ts（RPC 契约层元数据）/API 契约串另议。
 
 ---
+## [未发布 Unreleased] — R161 S2-7 质检接管兑现批（原代理中断，本线修复完成；2026-10-19 深夜）
+
+### Fixed
+- 深度质检（卷七十第十三节）证伪「S2 全量完成」：可见面 sink 精查实测 **54 处英文模式直出**
+  ——RebindDialog 整档未迁、SandboxSidebar 图标题/toast 16 串、BusWidth/Fsm/Memory/ExprGen/Expand 弹窗族尾巴、
+  编译 Problems 诊断（useHostCompile）、扩展侧文件操作通知（sandboxFiles）、DocApp/FileTree 空态。
+  全部过 t() 包壳（模板串一律改 {var} 插值静态键，zh 渲染逐字不变）；en.ts +63 键、i18n.en.ts +3 键。
+- **新常驻「可见面直出差闸」**（i18n.test.ts）：toast/原生弹窗/message 字段/JSX 属性/状态位/宿主通知/模板键 +
+  JSX 文本节点（单行/多行）逐判——治完备闸「只管包了的、不管该包的」结构性盲区；豁免走逐行 `i18n-exempt: 理由`
+  登记制（GateHarness 夹具面文件标）。差闸上线首跑即抓新真漏（ExpandModal 顶钮），此后「该包没包」当场红。
+- F3 遮蔽清扫：BusWidthDialog TOTALS.map(t→、SandboxSidebar onRenameCommit(t→ 参数改名——t 撞 i18n 函数名第三、四踩
+  （S2-3 已两炸同款）。
+
+### 验证（三件套终态）
+- vitest **342/342**（差闸＋14 项 i18n 全绿）· root tsc 0 · ext tsc 0 · vite build 0 · esbuild 0 · lint 0 error（38w 基线内）。
+- 全量闸门 **73/74 + r48 干净复跑转绿＝有效 74/74**（r48 唯一红＝跑批窗口写 src 触发 HMR 打断——自伤教训入册：批在途⛔ 一切 src 落盘）。
+- harness **18/18 failed=0**（新 bundle 已 apply-brand 同步基座）。真机英文截图点验留用户（语言随宿主 display language；闸门面 zh 缺省零回归）。
+
 ## [未发布 Unreleased] — R160 API 深度战役（两波：`3a0af2f` 四族 · `f42942f` 第五族类型闸）（2026-10-19）
 
 > 用户令「自行深度测试，尽可能覆盖大量场景」＋「继续完成上一个代理的工作和深度测试」。波次一对 45 颗工具
