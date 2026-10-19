@@ -10,6 +10,7 @@ import SandboxSidebar from './SandboxSidebar';
 import SandboxToolbar from './SandboxToolbar';
 import { buildInnerGraph } from '../lib/subcircuit';
 import { circuitJsonToCells } from '../lib/subcircuitView';
+import { t } from '../i18n';   // i18n：目录数据显示点（本文件深串 S2 另批渐进迁移）
 import { loadCells } from '../lib/sandboxLoad';
 import SandboxExpandModal from './SandboxExpandModal';
 import { sandboxStore, customGateStore, baseName, dirOfName, dirOf, type SandboxFile, type CustomGate } from '../store/sandboxStore';
@@ -1305,7 +1306,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     const cell = paper.model.getCell(cellId);
     if (!cell) return;
     const type = String(cell.get('type') || '');
-    const name = CN_NAME[type] || type;
+    const name = CN_NAME[type] ? t(CN_NAME[type]) : type;
     const selCount = selectionRef.current.size;
     const multi = selCount > 1 && selectionRef.current.has(cellId);
     const items = buildCellMenuItems({
@@ -1424,12 +1425,12 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
               setTimeout(() => openMenuAt(x, y, title, items), 0);
             const backItem: ContextMenuItem = { label: '← 返回分类', action: () => goto('放置部件', catItems) };
             const catItems: ContextMenuItem[] = PALETTE.map((g) => ({
-              label: g.group, hint: '▶',
+              label: t(g.group), hint: '▶',
               action: () => goto(g.group, [
                 backItem,
                 { label: '---' },
                 ...g.items.map((it) => ({
-                  label: it.label || CN_NAME[it.type] || it.type,
+                  label: it.label ? t(it.label) : (CN_NAME[it.type] ? t(CN_NAME[it.type]) : it.type),
                   hint: it.type,
                   action: () => placeAt(it, x, y),
                 })),
@@ -3159,7 +3160,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     return {
       links,
       groups: Array.from(byType.entries())
-        .map(([type, list]) => ({ type, label: CN_NAME[type] || type, list }))
+        .map(([type, list]) => ({ type, label: CN_NAME[type] ? t(CN_NAME[type]) : type, list }))
         .sort((a, b) => b.list.length - a.list.length),
     };
   })();

@@ -47,7 +47,8 @@ function collectTLiterals(rootDir: string): Map<string, string[]> {
     const code = stripComments(readFileSync(f, 'utf8'));
     const re = /\bt\(\s*('(?:[^'\\\r\n]|\\.)*'|"(?:[^"\\\r\n]|\\.)*")/g;
     for (const m of code.matchAll(re)) {
-      const key = m[1].slice(1, -1);
+      // 字面量按 JS 简单转义还原到运行时形状（\\n→换行、\\\\→\、\\"→"），与 EN 表的 TS 解析键同尺
+      const key = m[1].slice(1, -1).replace(/\\(.)/g, (_, c: string) => (({ n: '\n', t: '\t', r: '\r' } as Record<string, string>)[c] ?? c));
       if (!found.has(key)) found.set(key, []);
       found.get(key)!.push(f.replace(REPO + '\\', ''));
     }

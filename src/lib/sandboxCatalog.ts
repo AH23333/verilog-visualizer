@@ -3,11 +3,12 @@
 
 import { ANNOTATION_TYPE } from './annotationCell';
 import { serializePaperCells } from './sandboxSerialize';
+import { t } from '../i18n';   // i18n：仅函数体内的运行时串走 t（本文件的数据表先于 initLocale 加载，⛔ 表内调 t）
 
 /** 文件/文件夹名校验（与编译模式同名：`V_NAME_VALIDATE` 那一条规则，禁非法字符与空名） */
 export const V_SB_NAME = (v: string): string | null =>
-  !v.trim() ? '名称不能为空。'
-    : /[\\/:*?"<>|]/.test(v.replace(/^\/+|\/+$/g, '')) ? '名称不能包含 \\ / : * ? " < > |'
+  !v.trim() ? t('名称不能为空。')
+    : /[\\/:*?"<>|]/.test(v.replace(/^\/+|\/+$/g, '')) ? t('名称不能包含 \\ / : * ? " < > |')
     : null;
 
 /** 左栏视图标题（与 App 活动栏的三个按钮一一对应） */

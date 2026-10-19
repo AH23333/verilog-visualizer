@@ -1,5 +1,6 @@
 import { ChevronRight, PanelLeftClose, Plus, Undo2, FileText, FolderPlus, RefreshCw } from 'lucide-react';
 import { sandboxStore, type SandboxFile, type CustomGate } from '../store/sandboxStore';
+import { t } from '../i18n';   // i18n：目录数据显示点（数据表在 sandboxCatalog，先于 initLocale 加载 ⛔ 表内 t）
 import {
   SANDBOX_PANEL_TITLE, V_SB_NAME, PALETTE, CN_NAME, bitsSuffix, type PaletteItem,
 } from '../lib/sandboxCatalog';
@@ -72,7 +73,7 @@ function SandboxSidebar({
           display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0,
           background: 'var(--sidebar-bg)', paddingTop: 8,
         }}>
-          <button onClick={onToggleSidebar} title={`展开${SANDBOX_PANEL_TITLE[panel as keyof typeof SANDBOX_PANEL_TITLE] || '侧栏'}`}
+          <button onClick={onToggleSidebar} title={t('展开{what}', { what: t(SANDBOX_PANEL_TITLE[panel as keyof typeof SANDBOX_PANEL_TITLE] || '侧栏') })}
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)',
               cursor: 'pointer', padding: 4, lineHeight: 1, display: 'inline-flex' }}>
             <ChevronRight size={14} />
@@ -103,7 +104,7 @@ function SandboxSidebar({
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           position: 'relative', zIndex: 1 }}>
           <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase' }}>
-            {SANDBOX_PANEL_TITLE[panel as keyof typeof SANDBOX_PANEL_TITLE] || '文件'}
+            {t(SANDBOX_PANEL_TITLE[panel as keyof typeof SANDBOX_PANEL_TITLE] || '文件')}
           </span>
           {/* 文档模式：文件管理按钮组（导入/新建/文件夹/刷新/退出）整体摘除 */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -254,7 +255,7 @@ function SandboxSidebar({
                             {inner.map((x: any) => (
                               <div key={x.id} style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
                                 overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {CN_NAME[x.get('type')] || x.get('type')}
+                                {CN_NAME[x.get('type')] ? t(CN_NAME[x.get('type')]) : x.get('type')}
                               </div>
                             ))}
                             <div onClick={() => setInnerCell(c)} title="查看内部电路"
@@ -282,18 +283,18 @@ function SandboxSidebar({
                   fontSize: 'var(--fs-xs)', color: open ? 'var(--text)' : 'var(--text-muted)',
                   marginBottom: open ? 4 : 2, fontWeight: 600, cursor: 'pointer',
                   padding: '2px 4px', borderRadius: 3, background: open ? 'var(--surface-hover)' : 'transparent' }}
-                title={open ? '收起分组' : '展开分组'}
+                title={open ? t('收起分组') : t('展开分组')}
               >
-                <span>{group.group}</span>
+                <span>{t(group.group)}</span>
                 <span style={{ fontSize: '0.625rem', transform: open ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }}>▸</span>
               </div>
               {open && group.items.map(it => (
                 <button key={it.label || it.type} onClick={() => doAddCell(it)} data-gate={it.type}
-                  title={`放置${it.label || CN_NAME[it.type] || it.type}（${it.type}）`}
+                  title={t('放置{what}（{type}）', { what: it.label ? t(it.label) : (CN_NAME[it.type] ? t(CN_NAME[it.type]) : it.type), type: it.type })}
                   style={{ display: 'flex', width: '100%', alignItems: 'center', justifyContent: 'space-between',
                     gap: 4, padding: '3px 6px', marginBottom: 1, fontSize: 'var(--fs-xs)', background: 'transparent',
                     border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
-                  <span>{it.label || CN_NAME[it.type] || it.type}</span>
+                  <span>{it.label ? t(it.label) : (CN_NAME[it.type] ? t(CN_NAME[it.type]) : it.type)}</span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.5625rem' }}>{it.type}</span>
                 </button>
               ))}
