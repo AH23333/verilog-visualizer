@@ -52,4 +52,6 @@ export const SHARED_VOCAB: ReadonlySet<string> = new Set([
   // 调色板分组名（PALETTE.group）与沙盒侧栏面板标题（SANDBOX_PANEL_TITLE 值）
   '逻辑门', '输入 / 输出', '时序', '运算', '比较', '选择 / 移位', '总线', '存储', '显示',
   '文件', '部件', '层次结构', '侧栏', '寄存器 EN/RST',
+  // 内置示例名（SandboxCanvas 插入示例 toast 动态插值）
+  '半加器', '4 位二进制计数器', '数字钟（计数器 + 译码 + 数码管）',
 ]);

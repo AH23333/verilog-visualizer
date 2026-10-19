@@ -561,13 +561,13 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
   const ensureSimRunning = useCallback(() => {
     const circuit = circuitRef.current;
     if (!runningRef.current) {
-      showToast('仿真未在运行——点顶栏「运行」后再交互（当前交互不传输信号）');
+      showToast(t('仿真未在运行——点顶栏「运行」后再交互（当前交互不传输信号）'));
       return;
     }
     // 用户意图是运行中，但引擎实际已停（digitaljs 在连线 warning 时会 stop 整个引擎）
     if (circuit?._engine && !circuit._engine.running && !(paperRef.current?.model?._warnings > 0)) {
       try { circuit.start(); } catch { /* ignore */ }
-      showToast('引擎此前被连线告警停止，已自动恢复运行');
+      showToast(t('引擎此前被连线告警停止，已自动恢复运行'));
     }
   }, [showToast]);
 
@@ -792,7 +792,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       const circuit = circuitRef.current;
       if (runningRef.current && circuit?._engine && !circuit._engine.running && !(paper.model._warnings > 0)) {
         circuit.start();
-        showToast('引擎此前被连线告警停止，已自动恢复运行');
+        showToast(t('引擎此前被连线告警停止，已自动恢复运行'));
       }
     } catch { /* best effort */ }
     const h = historyRef.current;
@@ -830,7 +830,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
 
   const undo = useCallback(() => {
     const h = historyRef.current;
-    if (h.idx <= 0) { showToast('没有更早的操作了'); return; }
+    if (h.idx <= 0) { showToast(t('没有更早的操作了')); return; }
     h.idx -= 1;
     rebuildFromJson(h.stack[h.idx]);
     forceUpdate(n => n + 1);
@@ -838,7 +838,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
 
   const redo = useCallback(() => {
     const h = historyRef.current;
-    if (h.idx >= h.stack.length - 1) { showToast('没有可重做的操作'); return; }
+    if (h.idx >= h.stack.length - 1) { showToast(t('没有可重做的操作')); return; }
     h.idx += 1;
     rebuildFromJson(h.stack[h.idx]);
     forceUpdate(n => n + 1);
@@ -1291,7 +1291,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     const groups = Array.from({ length: n }, () => busGroupW);
     reconfigureCell(busDlg.cellId, { groups });
     setBusDlg(null);
-    showToast(`${busDlg.type === 'BusGroup' ? '合线器' : '分线器'}：${n} 组 × ${busGroupW} 位 = ${n * busGroupW} 位`);
+    showToast(t('{kind}：{count} 组 × {width} 位 = {total} 位', { kind: busDlg.type === 'BusGroup' ? t('合线器') : t('分线器'), count: n, width: busGroupW, total: n * busGroupW }));
   }, [busDlg, busTotal, busGroupW, reconfigureCell, showToast]);
 
   const openMenuAt = useCallback((x: number, y: number, title: string, items: ContextMenuItem[]) => {
@@ -1329,11 +1329,11 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
         try {
           const sg = c.get('subcircuitGraph');
           cells = (sg?.cells?.length) ? sg : serializeGraphCells(c.get('graph'));
-        } catch { showToast('保存失败：内部电路无法序列化'); return; }
-        if (!cells?.cells?.some((x: any) => !x.isLink)) { showToast('内部电路为空，无法保存'); return; }
+        } catch { showToast(t('保存失败：内部电路无法序列化')); return; }
+        if (!cells?.cells?.some((x: any) => !x.isLink)) { showToast(t('内部电路为空，无法保存')); return; }
         const r = saveGateFromCellsToFolder(nm, cells, scopeRef.current);
         refreshGates();
-        showToast(`已保存部件「${nm}」为可编辑电路${r.nested ? `，${r.nested} 个子部件已递归入库绑定` : ''}，可在部件面板与右键菜单中放置`);
+        showToast(t('已保存部件「{name}」为可编辑电路{extra}，可在部件面板与右键菜单中放置', { name: nm, extra: r.nested ? t('，{count} 个子部件已递归入库绑定', { count: r.nested }) : '' }));
       },
     });
     openMenuAt(x, y, multi ? `${name} +${selCount - 1}` : name, items);
@@ -1345,9 +1345,9 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     if (!paper) return;
     const link = paper.model.getCell(linkId);
     if (!link) return;
-    openMenuAt(x, y, '连线', [
-      { label: '删除连线', hint: 'Delete', danger: true, action: () => { setSelectionRef.current([linkId]); deleteSelection(); } },
-      { label: '网络名', input: { value: String(link.get('netname') || ''), placeholder: 'net name', onCommit: (v) => {
+    openMenuAt(x, y, t('连线'), [
+      { label: t('删除连线'), hint: 'Delete', danger: true, action: () => { setSelectionRef.current([linkId]); deleteSelection(); } },
+      { label: t('网络名'), input: { value: String(link.get('netname') || ''), placeholder: 'net name', onCommit: (v) => {
         try { link.set('netname', v); link.label(0, { attrs: { label: { text: v } } }); } catch {}
         commitRef.current();
       } } },
@@ -1414,16 +1414,16 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       const raw = localStorage.getItem('verilog-viz-import-clipboard');
       if (raw) importClip = JSON.parse(raw);
     } catch { /* ignore */ }
-    openMenuAt(x, y, '画布', [
+    openMenuAt(x, y, t('画布'), [
       {
-        label: '放置部件', hint: '▶', action: () => {
+        label: t('放置部件'), hint: '▶', action: () => {
           // 延后一帧：ContextMenu 点击项后会立即 onClose()，同步 setMenu 会被它覆盖掉，
           // 所以放到下一个宏任务里再打开二级菜单。
           // 问题 4/5：两级分组导航（分组 → 组内部件），并纳入「自定义门」组。
           setTimeout(() => {
             const goto = (title: string, items: ContextMenuItem[]) =>
               setTimeout(() => openMenuAt(x, y, title, items), 0);
-            const backItem: ContextMenuItem = { label: '← 返回分类', action: () => goto('放置部件', catItems) };
+            const backItem: ContextMenuItem = { label: t('← 返回分类'), action: () => goto(t('放置部件'), catItems) };
             const catItems: ContextMenuItem[] = PALETTE.map((g) => ({
               label: t(g.group), hint: '▶',
               action: () => goto(g.group, [
@@ -1438,57 +1438,57 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
             }));
             if (gatesRef.current.length) {
               catItems.push({
-                label: '自定义门', hint: '▶',
-                action: () => goto('自定义门', [
+                label: t('自定义门'), hint: '▶',
+                action: () => goto(t('自定义门'), [
                   backItem,
                   { label: '---' },
-                  ...gatesRef.current.map((g) => ({ label: g.name, hint: '自定义', action: () => placeCustomGateAt(g, { x, y }) })),
+                  ...gatesRef.current.map((g) => ({ label: g.name, hint: t('自定义'), action: () => placeCustomGateAt(g, { x, y }) })),
                 ]),
               });
             }
-            openMenuAt(x, y, '放置部件', catItems);
+            openMenuAt(x, y, t('放置部件'), catItems);
           }, 0);
         },
       },
       {
-        label: '插入示例', hint: '▶', action: () => {
+        label: t('插入示例'), hint: '▶', action: () => {
           setTimeout(() => {
-            openMenuAt(x, y, '插入示例', SANDBOX_EXAMPLES.map((e) => ({
+            openMenuAt(x, y, t('插入示例'), SANDBOX_EXAMPLES.map((e) => ({
               label: e.name,
-              action: () => { insertCellsAt(e.cells, x, y, `已插入示例：${e.name}`); setTimeout(() => zoomToFit(), 60); },
+              action: () => { insertCellsAt(e.cells, x, y, t('已插入示例：{name}', { name: t(e.name) })); setTimeout(() => zoomToFit(), 60); },
             })));
           }, 0);
         },
       },
       ...(importClip && importClip.cells && importClip.cells.length ? [{
-        label: '粘贴复制的电路', hint: '复制到沙盒', action: () => {
+        label: t('粘贴复制的电路'), hint: t('复制到沙盒'), action: () => {
           const cells = importClip!.cells as any[];
           // R37：粘贴前先按内嵌快照补齐缺失的门定义（递归入库绑定），
           // 之后 loadCells / 持久化剥离都能走绑定路径
           try { ensureDefsFromCells(cells); refreshGates(); } catch { /* ignore */ }
-          insertCellsAt(cells, x, y, '已粘贴复制的电路');
+          insertCellsAt(cells, x, y, t('已粘贴复制的电路'));
           try { localStorage.removeItem('verilog-viz-import-clipboard'); } catch { /* ignore */ }
           setTimeout(() => zoomToFit(), 80);
         },
       }] : []),
-      { label: '粘贴', hint: 'Ctrl+V', disabled: !hasClip, action: pasteClipboard },
-      { label: '全选', hint: 'Ctrl+A', action: selectAll },
+      { label: t('粘贴'), hint: 'Ctrl+V', disabled: !hasClip, action: pasteClipboard },
+      { label: t('全选'), hint: 'Ctrl+A', action: selectAll },
       { label: '---' },
-      { label: '撤销', hint: 'Ctrl+Z', action: undo },
-      { label: '重做', hint: 'Ctrl+Shift+Z', action: redo },
+      { label: t('撤销'), hint: 'Ctrl+Z', action: undo },
+      { label: t('重做'), hint: 'Ctrl+Shift+Z', action: redo },
       { label: '---' },
-      { label: '放大', hint: 'Ctrl+滚轮', action: () => zoomBy(1.2) },
-      { label: '缩小', action: () => zoomBy(1 / 1.2) },
-      { label: '适应窗口', hint: 'Shift+F', action: zoomToFit },
-      { label: '重置缩放', hint: 'Ctrl+0', action: resetView },
+      { label: t('放大'), hint: 'Ctrl+滚轮', action: () => zoomBy(1.2) },
+      { label: t('缩小'), action: () => zoomBy(1 / 1.2) },
+      { label: t('适应窗口'), hint: 'Shift+F', action: zoomToFit },
+      { label: t('重置缩放'), hint: 'Ctrl+0', action: resetView },
       { label: '---' },
       // 导出：与编译模式同一组词、同样落在画布右键菜单里（动作仍走左栏那三个
       // 处理函数，不另开一份实现）
-      { label: '导出 SVG', action: () => handleExportSvg() },
-      { label: '导出综合网表 (.v)', action: () => handleExportNetlist() },
-      { label: '导出 JSON', action: () => { if (activeFile) handleExportDjs(activeFile); } },
+      { label: t('导出 SVG'), action: () => handleExportSvg() },
+      { label: t('导出综合网表 (.v)'), action: () => handleExportNetlist() },
+      { label: t('导出 JSON'), action: () => { if (activeFile) handleExportDjs(activeFile); } },
       { label: '---' },
-      { label: '清除选择', action: () => setSelectionRef.current([]) },
+      { label: t('清除选择'), action: () => setSelectionRef.current([]) },
     ]);
   }, [openMenuAt, pasteClipboard, placeAt, redo, resetView, selectAll, undo, zoomBy, zoomToFit, spawnCell, commit, showToast, ensureSimRunning,
       // gates 不能进依赖（见 gatesRef 注释）：自定义门列表经 gatesRef.current 读取，
@@ -1845,13 +1845,13 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
         : spawnCell('BusSlice', spot.x, spot.y, undefined, { slice: { first: 0, count: tBits, total: sBits } });
       if (!conv) {
         dropTempWire(tempLink);
-        showToast(`位宽不匹配（${sBits} vs ${tBits}）：自动插入转换器失败`);
+        showToast(t('位宽不匹配（{a} vs {b}）：自动插入转换器失败', { a: sBits, b: tBits }));
         return;
       }
       dropTempWire(tempLink);
       mkWire(sId, sPort, String(conv.id), 'in');
       mkWire(String(conv.id), 'out', tId, tPort);
-      showToast(`位宽 ${sBits} → ${tBits}：已自动插入${sBits < tBits ? '零扩展' : '总线切片'}`);
+      showToast(t('位宽 {a} → {b}：已自动插入{kind}', { a: sBits, b: tBits, kind: sBits < tBits ? t('零扩展') : t('总线切片') }));
       ensureSimRunning();
       scheduleDrc();
       commit();
@@ -1927,7 +1927,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     paper.on('blank:pointerdblclick', (evt: any, x: number, y: number) => {
       if (evt.button !== 0) return;
       const cell = makeAnnotationCell(digitaljs, snapVal(x - NOTE_DEFAULT_W / 2), snapVal(y - NOTE_DEFAULT_H / 2));
-      if (!cell) { showToast('注释功能不可用（digitaljs 命名空间缺失）'); return; }
+      if (!cell) { showToast(t('注释功能不可用（digitaljs 命名空间缺失）')); return; }
       paper.model.addCell(cell);
       startNoteEditRef.current?.(cell, true);
     });
@@ -2134,7 +2134,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
           }
           if (err) {
             dropTempWire(tempLink);
-            showToast(`连接被拒绝：${err}`);
+            showToast(t('连接被拒绝：{err}', { err }));
             return;
           }
           // 最终源端确定后（反向起线时源在另一端），按真实源端口重设线宽
@@ -2412,8 +2412,8 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     let finalName = (name || '').trim();
     if (!finalName) {
       let n = files.length + 1;
-      finalName = `电路_${n}.djs`;
-      while (files.some(f => f.name === finalName)) { n++; finalName = `电路_${n}.djs`; }
+      finalName = t('电路_{n}.djs', { n });
+      while (files.some(f => f.name === finalName)) { n++; finalName = t('电路_{n}.djs', { n }); }
     }
     const f = sandboxStore.create(finalName);
     sandboxStore.setActiveId(f.id);
@@ -2482,10 +2482,10 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
   const handleExportSvg = () => {
     if (!paperRef.current) return;
     clearSelectionForExport();
-    const name = activeFile ? activeFile.name.replace(/\.djs$/i, '') : '电路';
+    const name = activeFile ? activeFile.name.replace(/\.djs$/i, '') : t('电路');
     exportSvg(paperRef.current, `${name}.svg`).catch((e) => {
       console.error('SVG 导出失败', e);
-      showToast('SVG 导出失败：' + String(e?.message || e).slice(0, 60));
+      showToast(t('SVG 导出失败：') + String(e?.message || e).slice(0, 60));
     });
   };
 
@@ -2502,9 +2502,9 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       a.href = url; a.download = `${name}.v`;
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
-      showToast('综合网表已导出：' + name + '.v');
+      showToast(t('综合网表已导出：') + name + '.v');
     } catch (e: any) {
-      showToast('综合网表导出失败：' + String(e?.message || e).slice(0, 60));
+      showToast(t('综合网表导出失败：') + String(e?.message || e).slice(0, 60));
     }
   };
 
@@ -2519,11 +2519,11 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
   const rebindSubcircuitCell = useCallback((cellId: string, newName: string) => {
     const paper = paperRef.current;
     const digitaljs = (window as any).digitaljs;
-    if (!paper || !digitaljs) { showToast('画布尚未就绪'); return; }
+    if (!paper || !digitaljs) { showToast(t('画布尚未就绪')); return; }
     const old = paper.model.getCell(cellId);
     if (!old || old.get('type') !== 'Subcircuit') return;
     const cellsSnap = resolveDefCells(newName, scopeRef.current);
-    if (!cellsSnap?.cells?.length) { showToast(`部件「${newName}」没有可用定义，换绑取消`); return; }
+    if (!cellsSnap?.cells?.length) { showToast(t('部件「{name}」没有可用定义，换绑取消', { name: newName })); return; }
     const linkSpecs: any[] = [];
     for (const link of paper.model.getConnectedLinks(old)) {
       const s = link.get('source'), t = link.get('target');
@@ -2565,7 +2565,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     }
     scheduleDrcRef.current();
     commitRef.current();
-    showToast(`已换绑到「${newName}」${dropped ? `，${dropped} 条连线因新定义没有对应端口被断开` : ''}`);
+    showToast(t('已换绑到「{name}」{extra}', { name: newName, extra: dropped ? t('，{count} 条连线因新定义没有对应端口被断开', { count: dropped }) : '' }));
   }, [showToast]);
 
   /** 在指定屏幕坐标处放置自定义门（右键菜单二级导航用）；placeCustomGate 走视口中心。
@@ -2574,7 +2574,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
   const placeCustomGateAt = useCallback((gate: CustomGate, pos: { x: number; y: number }) => {
     const paper = paperRef.current;
     const digitaljs = (window as any).digitaljs;
-    if (!paper || !digitaljs) { showToast('画布尚未就绪，无法放置自定义门'); return; }
+    if (!paper || !digitaljs) { showToast(t('画布尚未就绪，无法放置自定义门')); return; }
     // 环检测（用户报障 2026-10-11）：把 X 放进 X 自己的定义文件、或 X 的依赖闭包
     // 回指当前部件文件 ⇒ 必成循环依赖——展开渲染会靠断环空壳兜底，但那是退化态，
     // 放置当场就该拒绝并说清环路径。
@@ -2583,18 +2583,18 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       ? baseName(cur.name).replace(/\.(djs|gate|json)$/i, '') : '';
     if (curPartName) {
       if (gate.name === curPartName) {
-        showToast(`不能把部件「${curPartName}」放进它自己的定义里（自嵌套循环）`);
+        showToast(t('不能把部件「{name}」放进它自己的定义里（自嵌套循环）', { name: curPartName }));
         return;
       }
       const cyc = findPartCycle(gate.name, scopeRef.current);
       if (cyc && cyc.includes(curPartName)) {
-        showToast(`循环依赖：放置后将形成 ${[curPartName, ...cyc].join(' → ')}，已阻止`);
+        showToast(t('循环依赖：放置后将形成 {chain}，已阻止', { chain: [curPartName, ...cyc].join(' → ') }));
         return;
       }
     }
     const cellsSnap = resolveDefCells(gate.name, scopeRef.current);
     if (!cellsSnap?.cells?.length) {
-      showToast(`部件「${gate.name}」内容为空或已损坏，请打开编辑后重新保存`);
+      showToast(t('部件「{name}」内容为空或已损坏，请打开编辑后重新保存', { name: gate.name }));
       return;
     }
     try {
@@ -2639,7 +2639,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       recordPartBinding(gate.name, gate.id);
     } catch (e) {
       console.warn('[自定义门] 放置失败:', e);
-      showToast(`自定义门「${gate.name}」放置失败：${String((e as any)?.message || e).slice(0, 80)}`);
+      showToast(t('自定义门「{name}」放置失败：{err}', { name: gate.name, err: String((e as any)?.message || e).slice(0, 80) }));
     }
   }, [snapVal, showToast, recordPartBinding]);
 
@@ -2654,11 +2654,11 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     const hasIn = cells.some((c: any) => c.get('type') === 'Input');
     const hasOut = cells.some((c: any) => c.get('type') === 'Output');
     if (!hasIn || !hasOut) {
-      setGateError('至少需要 1 个输入引脚和 1 个输出引脚');
+      setGateError(t('至少需要 1 个输入引脚和 1 个输出引脚'));
       return;
     }
     const name = gateName.trim();
-    if (!name) { setGateError('请输入自定义门名称'); return; }
+    if (!name) { setGateError(t('请输入自定义门名称')); return; }
     // R39 绑定入库：整图存为**可编辑部件文件**（.djs，同文件夹）；画布上已放置的
     // 绑定式子部件递归入库并按名绑定 —— 与「复制到沙盒」递归迁移同语义。
     const r = saveGateFromCellsToFolder(name, serializePaper(paper), scopeRef.current);
@@ -2667,12 +2667,12 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     try {
       const cyc = findPartCycle(name, scopeRef.current);
       setCycleWarn(cyc);
-      if (cyc) showToast(`部件「${name}」存在循环依赖：${cyc.join(' → ')}（展开将显示空壳⟲）`);
+      if (cyc) showToast(t('部件「{name}」存在循环依赖：{chain}（展开将显示空壳⟲）', { name, chain: cyc.join(' → ') }));
     } catch { /* ignore */ }
     setSavingGate(false);
     setGateName('');
     setGateError(null);
-    showToast(`已保存部件「${name}」为可编辑电路${r.nested ? `（${r.nested} 个子部件已递归入库绑定）` : ''}`);
+    showToast(t('已保存部件「{name}」为可编辑电路{extra}', { name, extra: r.nested ? t('（{count} 个子部件已递归入库绑定）', { count: r.nested }) : '' }));
     forceUpdate(n => 1 + n);
   };
 
@@ -2685,7 +2685,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     refreshGates();
     refreshList();
     refreshFolders();
-    showToast(`已删除部件「${g.name}」；画布上已放置的同名实例将无法展开（内嵌快照可兜底显示）`);
+    showToast(t('已删除部件「{name}」；画布上已放置的同名实例将无法展开（内嵌快照可兜底显示）', { name: g.name }));
   };
 
   // 删除确认改由右键菜单直接执行（与 IDE 文件系统一致），旧的 × 两步确认已移除
@@ -2721,7 +2721,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     if (activeFile && ids.includes(activeFile.id)) setActiveFile(null);
     setFileSelIds(new Set());
     syncAfterFsOp();
-    showToast(`已删除 ${ids.length} 个文件`);
+    showToast(t('已删除 {count} 个文件', { count: ids.length }));
   };
 
   /** 扫描电路 JSON 里引用的自定义门（Subcircuit.celltype）名称集合（顶层扫描；
@@ -2796,7 +2796,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     a.download = baseName(cur.name);
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-    showToast(carried ? `已导出 ${baseName(cur.name)}（含 ${carried} 个部件定义）` : `已导出 ${baseName(cur.name)}`);
+    showToast(carried ? t('已导出 {name}（含 {count} 个部件定义）', { name: baseName(cur.name), count: carried }) : t('已导出 {name}', { name: baseName(cur.name) }));
   };
 
   const handlePasteInto = (folder: string) => {
@@ -2807,10 +2807,10 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       const carried = carryPartDefsAfterMove(cb.ids, folder);
       setFileClipboard(null);
       syncAfterFsOp();
-      showToast(`已移动 ${cb.ids.length} 个文件${carried ? `，随行补齐 ${carried} 个部件定义` : ''}`);
+      showToast(t('已移动 {count} 个文件{extra}', { count: cb.ids.length, extra: carried ? t('，随行补齐 {count} 个部件定义', { count: carried }) : '' }));
     } else {
       for (const id of cb.ids) sandboxStore.copyFile(id, folder);
-      showToast(`已粘贴 ${cb.ids.length} 个文件`);
+      showToast(t('已粘贴 {count} 个文件', { count: cb.ids.length }));
     }
     if (activeFile?.id) setActiveFile(sandboxStore.get(activeFile.id));
     syncAfterFsOp();
@@ -2848,7 +2848,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       }
       refreshGates();
       syncAfterFsOp();
-      showToast(`已重命名为「${base}」${n || live ? `，${n} 处存储引用 + ${live} 个画布实例已重绑定` : ''}`);
+      showToast(t('已重命名为「{name}」{extra}', { name: base, extra: n || live ? t('，{refCount} 处存储引用 + {liveCount} 个画布实例已重绑定', { refCount: n, liveCount: live }) : '' }));
       return;
     }
     const dir = dirOf(f);
@@ -2872,13 +2872,13 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     if (t.kind === 'folder') {
       const base = t.folder ? t.folder + '/' + name : name;
       sandboxStore.createFolder(base);
-      showToast(`已创建文件夹 ${base}`);
+      showToast(t('已创建文件夹 {name}', { name: base }));
     } else {
       const fullName = uniqueDjsName(files, t.folder ? t.folder + '/' + name : name);
       const f = sandboxStore.create(fullName);
       sandboxStore.setActiveId(f.id);
       setActiveFile(f);
-      showToast(`已创建 ${fullName}`);
+      showToast(t('已创建 {name}', { name: fullName }));
     }
     syncAfterFsOp();
   };
@@ -2912,7 +2912,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     const carried = carryPartDefsAfterMove(ids, folder);
     if (activeFile?.id && ids.includes(activeFile.id)) setActiveFile(sandboxStore.get(activeFile.id));
     syncAfterFsOp();
-    showToast(`已移动 ${ids.length} 个文件${folder ? ' 到 ' + folder : ' 到根目录'}${carried ? `，随行补齐 ${carried} 个部件定义` : ''}`);
+    showToast(t('已移动 {count} 个文件{dest}{extra}', { count: ids.length, dest: folder ? t(' 到 ') + folder : t(' 到根目录'), extra: carried ? t('，随行补齐 {count} 个部件定义', { count: carried }) : '' }));
   };
 
   const handleImportDjsFiles = async (list: FileList | null) => {
@@ -2964,11 +2964,11 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
         sandboxStore.save(f.id, stripBoundInlineJson(JSON.stringify(obj), dir));
         imported++;
       } catch {
-        showToast(`导入失败：${file.name} 不是有效的电路文件`);
+        showToast(t('导入失败：{name} 不是有效的电路文件', { name: file.name }));
       }
     }
-    if (partsCarried) { refreshGates(); showToast(`已从文件导入 ${partsCarried} 个部件定义`); }
-    if (imported) showToast(`已导入 ${imported} 个电路文件`);
+    if (partsCarried) { refreshGates(); showToast(t('已从文件导入 {count} 个部件定义', { count: partsCarried })); }
+    if (imported) showToast(t('已导入 {count} 个电路文件', { count: imported }));
     syncAfterFsOp();
   };
 
@@ -2984,35 +2984,35 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     if (f.kind === 'gate' && !multi) {
       // R101：与编译模式一样**点完弹窗再填**（原来是菜单里直接内联输入框）
       openMenuAt(e.clientX, e.clientY, '', [
-        { label: '重命名（引用将重绑定）', action: async () => {
-          const v = await askFs({ title: '重命名门定义', label: '名称', defaultValue: baseName(f.name).replace(/\.gate$/i, ''), confirmLabel: '重命名', validate: V_SB_NAME });
+        { label: t('重命名（引用将重绑定）'), action: async () => {
+          const v = await askFs({ title: t('重命名门定义'), label: t('名称'), defaultValue: baseName(f.name).replace(/\.gate$/i, ''), confirmLabel: t('重命名'), validate: V_SB_NAME });
           if (v) handleFileRenameCommit({ kind: 'file', key: f.id }, v);
         } },
-        { label: '导出 JSON', action: () => handleExportDjs(f) },
+        { label: t('导出 JSON'), action: () => handleExportDjs(f) },
         { label: '---' },
-        { label: '删除门定义', danger: true, action: () => handleDeleteFiles([f.id]) },
+        { label: t('删除门定义'), danger: true, action: () => handleDeleteFiles([f.id]) },
       ]);
       return;
     }
     const items: ContextMenuItem[] = multi ? [
-      { label: '复制', action: () => { setFileClipboard({ ids, cut: false }); showToast(`已复制 ${ids.length} 个文件`); } },
-      { label: '剪切', action: () => { setFileClipboard({ ids, cut: true }); showToast(`已剪切 ${ids.length} 个文件`); } },
-      { label: '绑定...', action: () => setFileBindingId(f.id) },
-      { label: `删除 ${ids.length} 个文件`, danger: true, action: () => handleDeleteFiles(ids) },
+      { label: t('复制'), action: () => { setFileClipboard({ ids, cut: false }); showToast(t('已复制 {count} 个文件', { count: ids.length })); } },
+      { label: t('剪切'), action: () => { setFileClipboard({ ids, cut: true }); showToast(t('已剪切 {count} 个文件', { count: ids.length })); } },
+      { label: t('绑定...'), action: () => setFileBindingId(f.id) },
+      { label: t('删除 {count} 个文件', { count: ids.length }), danger: true, action: () => handleDeleteFiles(ids) },
     ] : [
-      { label: '打开', action: () => { const cur = sandboxStore.get(f.id); if (cur) handleFileOpen(cur); } },
+      { label: t('打开'), action: () => { const cur = sandboxStore.get(f.id); if (cur) handleFileOpen(cur); } },
       // R100：与编译模式一致的文件级「绑定...」（子电路实例按 celltype 名绑定部件文件）
-      { label: '绑定...', action: () => setFileBindingId(f.id) },
+      { label: t('绑定...'), action: () => setFileBindingId(f.id) },
       // R101：编译模式的文案就是「重命名」，点击后弹 PromptDialog
-      { label: '重命名', action: async () => {
-        const v = await askFs({ title: '重命名文件', label: '文件名', defaultValue: baseName(f.name), confirmLabel: '重命名', validate: V_SB_NAME });
+      { label: t('重命名'), action: async () => {
+        const v = await askFs({ title: t('重命名文件'), label: t('文件名'), defaultValue: baseName(f.name), confirmLabel: t('重命名'), validate: V_SB_NAME });
         if (v) handleFileRenameCommit({ kind: 'file', key: f.id }, v);
       } },
-      { label: '创建副本', action: () => { const c = sandboxStore.duplicate(f.id); syncAfterFsOp(); if (c) showToast(`已创建副本 ${baseName(c.name)}`); } },
-      { label: '复制', action: () => { setFileClipboard({ ids, cut: false }); showToast('已复制到剪贴板'); } },
-      { label: '剪切', action: () => { setFileClipboard({ ids, cut: true }); showToast('已剪切到剪贴板'); } },
+      { label: t('创建副本'), action: () => { const c = sandboxStore.duplicate(f.id); syncAfterFsOp(); if (c) showToast(t('已创建副本 {name}', { name: baseName(c.name) })); } },
+      { label: t('复制'), action: () => { setFileClipboard({ ids, cut: false }); showToast(t('已复制到剪贴板')); } },
+      { label: t('剪切'), action: () => { setFileClipboard({ ids, cut: true }); showToast(t('已剪切到剪贴板')); } },
       { label: '---' },
-      { label: '导出 JSON', action: () => handleExportDjs(f) },
+      { label: t('导出 JSON'), action: () => handleExportDjs(f) },
       { label: '删除', danger: true, action: () => handleDeleteFiles(ids) },
     ];
     openMenuAt(e.clientX, e.clientY, '', items);
@@ -3021,37 +3021,37 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
   const handleFolderCtx = (e: React.MouseEvent, path: string) => {
     e.preventDefault();
     const items: ContextMenuItem[] = [
-      { label: '新建文件...', action: async () => {
-        const v = await askFs({ title: `新建文件 in ${path}`, label: '文件名', defaultValue: 'new_circuit.djs', confirmLabel: '创建', validate: V_SB_NAME });
+      { label: t('新建文件...'), action: async () => {
+        const v = await askFs({ title: t('新建文件 in {path}', { path }), label: t('文件名'), defaultValue: 'new_circuit.djs', confirmLabel: t('创建'), validate: V_SB_NAME });
         if (v) handleCreateCommit({ kind: 'file', folder: path }, v);
       } },
-      { label: '新建文件夹...', action: async () => {
-        const v = await askFs({ title: `新建子文件夹 in ${path}`, label: '文件夹名称', defaultValue: 'child', confirmLabel: '创建', validate: V_SB_NAME });
+      { label: t('新建文件夹...'), action: async () => {
+        const v = await askFs({ title: t('新建子文件夹 in {path}', { path }), label: t('文件夹名称'), defaultValue: 'child', confirmLabel: t('创建'), validate: V_SB_NAME });
         if (v) handleCreateCommit({ kind: 'folder', folder: path }, v);
       } },
-      { label: '粘贴', disabled: !fileClipboard, action: () => handlePasteInto(path) },
+      { label: t('粘贴'), disabled: !fileClipboard, action: () => handlePasteInto(path) },
       { label: '---' },
-      { label: '重命名文件夹', action: async () => {
-        const v = await askFs({ title: '重命名文件夹', label: '文件夹名称', defaultValue: baseName(path), confirmLabel: '重命名', validate: V_SB_NAME });
+      { label: t('重命名文件夹'), action: async () => {
+        const v = await askFs({ title: t('重命名文件夹'), label: t('文件夹名称'), defaultValue: baseName(path), confirmLabel: t('重命名'), validate: V_SB_NAME });
         if (v) handleFolderRenameCommit({ kind: 'folder', key: path }, v);
       } },
       // R101：照抄编译模式——**连同内部文件一起删除**，且删除前弹确认把话说清楚
       // （旧实现是"文件移回根目录"，与编译模式的 deleteFolder 语义不一致）
-      { label: '删除文件夹', danger: true, action: async () => {
+      { label: t('删除文件夹'), danger: true, action: async () => {
         const n = sandboxStore.countFilesUnder(path);
         const yes = await askFsConfirm({
-          title: '删除文件夹', danger: true, confirmLabel: '删除',
-          message: `确定删除文件夹「${path}」吗？`,
-          detail: n ? `文件夹内的 ${n} 个文件（含子文件夹）会一并删除，此操作无法撤销。` : '文件夹内的文件会一并删除，此操作无法撤销。',
+          title: t('删除文件夹'), danger: true, confirmLabel: t('删除'),
+          message: t('确定删除文件夹「{path}」吗？', { path }),
+          detail: n ? t('文件夹内的 {count} 个文件（含子文件夹）会一并删除，此操作无法撤销。', { count: n }) : t('文件夹内的文件会一并删除，此操作无法撤销。'),
         });
         if (!yes) return;
         sandboxStore.removeFolder(path);
         if (activeFile?.id) setActiveFile(sandboxStore.get(activeFile.id));
         syncAfterFsOp();
-        showToast(`已删除文件夹 ${path}${n ? `，同时删除其中 ${n} 个文件` : ''}`);
+        showToast(t('已删除文件夹 {path}{extra}', { path, extra: n ? t('，同时删除其中 {count} 个文件', { count: n }) : '' }));
       } },
       { label: '---' },
-      { label: '刷新', action: () => { refreshFolders(); syncAfterFsOp(); showToast('已刷新文件列表'); } },
+      { label: t('刷新'), action: () => { refreshFolders(); syncAfterFsOp(); showToast(t('已刷新文件列表')); } },
     ];
     openMenuAt(e.clientX, e.clientY, '', items);
   };
@@ -3062,18 +3062,18 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     e.stopPropagation();
     // 顺序与编译模式空白区菜单一致：新建文件 / 新建文件夹 / 导入文件… / — / 粘贴 / 刷新
     const items: ContextMenuItem[] = [
-      { label: '新建文件', action: async () => {
-        const v = await askFs({ title: '新建文件', label: '文件名', defaultValue: 'new_circuit.djs', confirmLabel: '创建', validate: V_SB_NAME });
+      { label: t('新建文件'), action: async () => {
+        const v = await askFs({ title: t('新建文件'), label: t('文件名'), defaultValue: 'new_circuit.djs', confirmLabel: t('创建'), validate: V_SB_NAME });
         if (v) handleCreateCommit({ kind: 'file', folder: '' }, v);
       } },
-      { label: '新建文件夹', action: async () => {
-        const v = await askFs({ title: '新建文件夹', label: '文件夹名称', defaultValue: 'my_folder', confirmLabel: '创建', validate: V_SB_NAME });
+      { label: t('新建文件夹'), action: async () => {
+        const v = await askFs({ title: t('新建文件夹'), label: t('文件夹名称'), defaultValue: 'my_folder', confirmLabel: t('创建'), validate: V_SB_NAME });
         if (v) handleCreateCommit({ kind: 'folder', folder: '' }, v);
       } },
-      { label: '导入文件...', action: () => importInputRef.current?.click() },
+      { label: t('导入文件...'), action: () => importInputRef.current?.click() },
       { label: '---' },
-      { label: '粘贴', disabled: !fileClipboard, action: () => handlePasteInto('') },
-      { label: '刷新', action: () => { refreshFolders(); syncAfterFsOp(); showToast('已刷新文件列表'); } },
+      { label: t('粘贴'), disabled: !fileClipboard, action: () => handlePasteInto('') },
+      { label: t('刷新'), action: () => { refreshFolders(); syncAfterFsOp(); showToast(t('已刷新文件列表')); } },
     ];
     openMenuAt(e.clientX, e.clientY, '', items);
   };
@@ -3083,15 +3083,15 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
   const handleModulesCtx = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    openMenuAt(e.clientX, e.clientY, '部件', [
-      { label: '展开全部分组', action: () => setOpenGroups(new Set(PALETTE.map(g => g.group))) },
-      { label: '折叠全部分组', action: () => setOpenGroups(new Set()) },
+    openMenuAt(e.clientX, e.clientY, t('部件'), [
+      { label: t('展开全部分组'), action: () => setOpenGroups(new Set(PALETTE.map(g => g.group))) },
+      { label: t('折叠全部分组'), action: () => setOpenGroups(new Set()) },
       { label: '---' },
-      { label: '新建部件（保存当前电路）', action: () => setSavingGate(true) },
-      { label: '放置部件', hint: '▶', action: () => {
-        setTimeout(() => openMenuAt(e.clientX, e.clientY, '放置部件', gates.length
-          ? gates.map(g => ({ label: g.name, hint: '部件', action: () => placeCustomGate(g) }))
-          : [{ label: '（暂无自定义门）', disabled: true }]), 0);
+      { label: t('新建部件（保存当前电路）'), action: () => setSavingGate(true) },
+      { label: t('放置部件'), hint: '▶', action: () => {
+        setTimeout(() => openMenuAt(e.clientX, e.clientY, t('放置部件'), gates.length
+          ? gates.map(g => ({ label: g.name, hint: t('部件'), action: () => placeCustomGate(g) }))
+          : [{ label: t('（暂无自定义门）'), disabled: true }]), 0);
       } },
     ]);
   };
@@ -3106,11 +3106,11 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
         .filter((c: any) => !c.isLink() && c.get('type') === 'Subcircuit')
         .map((c: any) => String(c.id));
     })();
-    openMenuAt(e.clientX, e.clientY, '层次结构', [
-      { label: '展开全部子电路', disabled: !subIds.length, action: () => setExpandedSubs(new Set(subIds)) },
-      { label: '收起全部子电路', disabled: !subIds.length, action: () => setExpandedSubs(new Set()) },
+    openMenuAt(e.clientX, e.clientY, t('层次结构'), [
+      { label: t('展开全部子电路'), disabled: !subIds.length, action: () => setExpandedSubs(new Set(subIds)) },
+      { label: t('收起全部子电路'), disabled: !subIds.length, action: () => setExpandedSubs(new Set()) },
       { label: '---' },
-      { label: '刷新', action: () => forceUpdate(n => n + 1) },
+      { label: t('刷新'), action: () => forceUpdate(n => n + 1) },
     ]);
   };
 
@@ -3353,7 +3353,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
             background: 'var(--vscode-editorWarning-background, rgba(217,119,6,0.95))',
             color: 'var(--vscode-editorWarning-foreground, var(--text))', padding: '6px 12px', borderRadius: 6,
             fontSize: 'var(--fs-xs)', zIndex: 29, maxWidth: '84%', boxShadow: '0 6px 18px var(--vscode-widget-shadow, rgba(0,0,0,.28))' }}>
-            部件循环依赖：{cycleWarn.join(' → ')} —— 回边层已按空壳⟲渲染，请进部件定义删除嵌套实例
+            {t('部件循环依赖：{chain} —— 回边层已按空壳⟲渲染，请进部件定义删除嵌套实例', { chain: cycleWarn.join(' → ') })}
           </div>
         )}
         {/* R146/R150 绑定完整性提示条（doc 模式）：⚠ 未录入绑定配置的子部件实例（不管解析过没解析过，
@@ -3370,8 +3370,8 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
               color: 'var(--vscode-editorInfo-foreground, #fff)', padding: '6px 12px', borderRadius: 6,
               fontSize: 'var(--fs-xs)', zIndex: 29, maxWidth: '84%', display: 'flex', gap: 10, alignItems: 'center',
               boxShadow: '0 6px 18px var(--vscode-widget-shadow, rgba(0,0,0,.28))' }}>
-              <span>⚠ {hits.length} 个子部件实例靠<b>同名兜底</b>解析、未录入绑定配置：{hits.slice(0, 4).map((h) => h.name).join('、')}{hits.length > 4 ? ` …（共 ${hits.length}）` : ''}</span>
-              <button onClick={() => doc.onFixBindings!(hits)} style={{ cursor: 'pointer', border: '1px solid currentColor', borderRadius: 4, background: 'transparent', color: 'inherit', padding: '2px 8px', fontSize: 'inherit' }}>写全配置</button>
+              <span>⚠ {t('{count} 个子部件实例靠', { count: hits.length })}<b>{t('同名兜底')}</b>{t('解析、未录入绑定配置：')}{hits.slice(0, 4).map((h) => h.name).join(t('、'))}{hits.length > 4 ? t(' …（共 {count}）', { count: hits.length }) : ''}</span>
+              <button onClick={() => doc.onFixBindings!(hits)} style={{ cursor: 'pointer', border: '1px solid currentColor', borderRadius: 4, background: 'transparent', color: 'inherit', padding: '2px 8px', fontSize: 'inherit' }}>{t('写全配置')}</button>
             </div>
           );
         })()}
@@ -3424,8 +3424,8 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
               const rebuilt = reconfigureCell(memPortsDlg, patch);
               setMemPortsDlg(null);
               showToast(rebuilt
-                ? `存储器已重建：${patch.rdports.length} 个读口、${patch.wrports.length} 个写口、${patch.bits}×${patch.abits}${patch.words ? ` / ${patch.words} 字` : ''}`
-                : '存储器重建失败');
+                ? t('存储器已重建：{reads} 个读口、{writes} 个写口、{bits}×{abits}{words}', { reads: patch.rdports.length, writes: patch.wrports.length, bits: patch.bits, abits: patch.abits, words: patch.words ? t(' / {count} 字', { count: patch.words }) : '' })
+                : t('存储器重建失败'));
             }}
           />
         )}
@@ -3440,8 +3440,8 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
               // 说的就是画布上真的长出来的脚，用户能当场核对低有效那一脚有没有多出 ain。
               const ids = rebuilt && rebuilt.getPorts ? rebuilt.getPorts().map((p: any) => p.id).join(' ') : '';
               showToast(rebuilt
-                ? `寄存器已重建：${patch.bits} 位、polarity=${JSON.stringify(patch.polarity)}、端口 ${ids}`
-                : '寄存器重建失败');
+                ? t('寄存器已重建：{bits} 位、polarity={polarity}、端口 {ports}', { bits: patch.bits, polarity: JSON.stringify(patch.polarity), ports: ids })
+                : t('寄存器重建失败'));
             }}
           />
         )}
@@ -3453,14 +3453,14 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
               const rebuilt = reconfigureCell(fsmDlg, patch);
               setFsmDlg(null);
               showToast(rebuilt
-                ? `状态机已重建：${patch.states} 个状态、${patch.trans_table.length} 条转移（初始 ${patch.init_state}）`
-                : '状态机重建失败（器件类型不认识？）');
+                ? t('状态机已重建：{states} 个状态、{transitions} 条转移（初始 {init}）', { states: patch.states, transitions: patch.trans_table.length, init: patch.init_state })
+                : t('状态机重建失败（器件类型不认识？）'));
             }}
           />
         )}
         {busDlg && (
           <BusWidthDialog
-            mode={busDlg.type === 'BusGroup' ? '合线器' : '分线器'}
+            mode={busDlg.type === 'BusGroup' ? t('合线器') : t('分线器')}
             total={busTotal} groupWidth={busGroupW}
             onTotal={setBusTotal} onGroupWidth={setBusGroupW}
             onApply={applyBusDialog}
@@ -3474,7 +3474,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
             onPick={(name) => {
               rebindSubcircuitCell(rebindDlg.cellId, name);
               setRebindDlg(null);
-              showToast(`已把实例绑定到「${name}」`);
+              showToast(t('已把实例绑定到「{name}」', { name }));
             }}
             onClose={() => setRebindDlg(null)}
           />
@@ -3500,14 +3500,14 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
                   refreshGates();
                   const g = customGateStore.list().find((x) => x.name === asGate);
                   if (g) placeCustomGate(g);
-                  showToast(`已存为部件「${asGate}」并放置实例`);
+                  showToast(t('已存为部件「{name}」并放置实例', { name: asGate }));
                   setTimeout(() => zoomToFit(), 60);
-                } catch (e) { showToast(`存部件失败：${String((e as Error)?.message || e)}`); }
+                } catch (e) { showToast(t('存部件失败：{err}', { err: String((e as Error)?.message || e) })); }
                 return;
               }
               const wrap = document.querySelector('[data-sandbox-wrapper]');
               const r = wrap ? wrap.getBoundingClientRect() : { left: 400, top: 400, width: 600, height: 400 };
-              if (insertCellsAt(res.cells, r.left + r.width / 2, r.top + r.height / 2, `已生成表达式：${expr}`)) setTimeout(() => zoomToFit(), 60);
+              if (insertCellsAt(res.cells, r.left + r.width / 2, r.top + r.height / 2, t('已生成表达式：{expr}', { expr }))) setTimeout(() => zoomToFit(), 60);
             }}
             onCancel={() => setExprGenOpen(false)}
           />
@@ -3519,7 +3519,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
               label={fsPrompt.label}
               defaultValue={fsPrompt.defaultValue || ''}
               placeholder={fsPrompt.placeholder}
-              confirmLabel={fsPrompt.confirmLabel || '确定'}
+              confirmLabel={fsPrompt.confirmLabel || t('确定')}
               validate={fsPrompt.validate}
               onAccept={(v) => closeFsPrompt(v)}
               onCancel={() => closeFsPrompt(null)}
@@ -3531,7 +3531,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
             title={fsConfirm.title}
             message={fsConfirm.message}
             detail={fsConfirm.detail}
-            confirmLabel={fsConfirm.confirmLabel || '确定'}
+            confirmLabel={fsConfirm.confirmLabel || t('确定')}
             danger={fsConfirm.danger}
             onAccept={() => closeFsConfirm(true)}
             onCancel={() => closeFsConfirm(false)}
@@ -3584,12 +3584,12 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
                     const f = src.find((x) => x.id === fid) ?? sandboxStore.get(fid);
                     if (f) docRef.current?.onBind?.(ct, f.name);
                   }
-                  showToast(`已保存「${baseName(fb.name)}」的绑定（文档模式：本会话内生效）。`);
+                  showToast(t('已保存「{name}」的绑定（文档模式：本会话内生效）。', { name: baseName(fb.name) }));
                 } else {
                   sandboxStore.setPartBindings(fb.id, bindings);
                   if (activeFileRef.current?.id === fb.id) setActivePartBindings(bindings);
                   syncAfterFsOp();
-                  showToast(`已保存「${baseName(fb.name)}」的绑定，重新打开文件后生效。`);
+                  showToast(t('已保存「{name}」的绑定，重新打开文件后生效。', { name: baseName(fb.name) }));
                 }
                 setFileBindingId(null);
               }}
