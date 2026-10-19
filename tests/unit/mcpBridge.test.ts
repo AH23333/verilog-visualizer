@@ -64,15 +64,17 @@ describe('MCP 桥·协议与闸行为（caller 固化 mcp/agent/非交互）', (
     expect(r.result.bindings['top.v::adder']).toBe('adder.v');
     expect(r.id).toBe(1);
   });
-  it('写工具在 mcp 面拒（批次三第一档＝agent 只读；闸②逐颗 surfaces 判）', async () => {
+  it('写工具在 mcp 面**执行**（2026-10-19 拍板写面放开；闸②开放后走全闸链，执行单同样带调用号）', async () => {
     const r = await line({ id: 2, tool: 'bindings.set', args: { celltype: 'adder', part: 'adder.v' } });
-    expect(r.ok).toBe(false);
-    expect(r.code).toBe('SURFACE_DENIED');
-    expect(r.traceId).toBeTruthy();          // 拒单必须带调用号（拿着它能查到账上那一行）
+    expect(r.ok).toBe(true);
+    // 成功回包不带 traceId（traceId 在审计账上，错误回包才带）——写了要看得见：回读绑定表
+    const g = await line({ id: 21, tool: 'bindings.get', args: { doc: 'top.v' } });
+    expect(g.ok).toBe(true);
+    expect(JSON.stringify(g.result)).toContain('adder.v');
   });
-  it('fs.delete（ui-only+HITL）在 mcp 面同样 SURFACE_DENIED——审批闸根本轮不到', async () => {
+  it('fs.delete（HITL）在 mcp 面：面闸开放后审批闸生效——非交互调用＝NOT_APPROVED', async () => {
     const r = await line({ id: 3, tool: 'fs.delete', args: { uri: 'D:/p/x.v' } });
-    expect(r.code).toBe('SURFACE_DENIED');
+    expect(r.code).toBe('NOT_APPROVED');
   });
   it('未登记工具＝NOT_REGISTERED（registry∧契约双查）', async () => {
     const r = await line({ id: 4, tool: 'nope.such', args: {} });

@@ -2,52 +2,526 @@
   "schemaVersion": "0.3.1",
   "apiVersion": "0.1.0",
   "sources": "builtin",
-  "surfacesGlobal": { "ui": true, "rpc": true, "mcp": true, "cli": false },
+  "surfacesGlobal": {
+    "ui": true,
+    "rpc": true,
+    "mcp": true,
+    "cli": false
+  },
   "tools": {
-    "host.appendOutput":        { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "appendOutput", "idempotent": true, "since": "0.1.0", "description": "webview→输出面板日志行（无副作用的转述）" },
-    "host.copyToSandbox":      { "perm": "file-write", "sideEffects": "file-write",   "surfaces": ["rpc"], "ref": "copyToSandbox", "requiresApproval": false, "since": "0.1.0", "description": "编译图→沙盒 .djs 落盘（子部件逐条显式绑定，M5）" },
-    "host.getAllBindings":     { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "getAllBindings", "idempotent": true, "since": "0.1.0" },
-    "host.getConfig":          { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "getConfig", "idempotent": true, "since": "0.1.0" },
-    "host.importLegacyData":   { "perm": "file-write", "sideEffects": "file-write",   "surfaces": ["rpc"], "ref": "importLegacyData", "requiresApproval": true, "since": "0.1.0", "description": "localStorage 旧档一次性搬运（幂等由文件不覆盖保证）" },
-    "host.jumpToSource":       { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "jumpToSource", "idempotent": true, "since": "0.1.0" },
-    "host.publishProblems":    { "perm": "read",       "sideEffects": "none",         "surfaces": ["rpc"], "ref": "publishProblems", "idempotent": true, "since": "0.1.0" },
-    "host.saveExportFile":     { "perm": "file-write", "sideEffects": "file-write",   "surfaces": ["rpc"], "ref": "saveExportFile", "since": "0.1.0", "description": "用户已选目标路径才抵达＝审批隐含在原生保存弹窗" },
-    "host.setDocBindings":     { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["rpc"], "ref": "setDocBindings", "since": "0.1.0", "description": "绑定链写+撞名/改名随迁；watcher 广播回灌＝同权即时生效" },
-    "compile.auditBindings":   { "perm": "read",       "sideEffects": "none",         "surfaces": ["ui"], "ref": "verilogViz.auditBindings", "idempotent": true, "since": "0.1.0" },
-    "compile.completeBindings":{ "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "verilogViz.completeBindings", "since": "0.1.0" },
-    "compile.compileAndShow":  { "perm": "process",    "sideEffects": "process",      "surfaces": ["ui"],  "ref": "verilogViz.compileAndShow", "idempotent": false, "since": "0.1.0" },
-    "fs.rename":          { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.renameFile", "since": "0.2.0", "description": "重命名文件/目录；绑定随迁（G1）；输入消毒" },
-    "fs.move":            { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.moveTo", "since": "0.2.0", "description": "移动文件/目录；(n) 去重、自环拒、绑定随迁" },
-    "fs.delete":          { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.deleteFile", "requiresApproval": true, "since": "0.2.0", "description": "删除（回收站）；绑定/电路名单随清；非交互调用方须 HITL" },
-    "fs.duplicateFile":   { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.duplicateFile", "since": "0.2.0", "description": "(n) 副本；角色不随" },
-    "fs.duplicateFolder": { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.duplicateFolder", "since": "0.2.0", "description": "递归复制 x→x 副本 (n)；含 .djs 自动配表" },
-    "fs.import":          { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.importFiles", "since": "0.2.0", "description": "外部文件复制进目标目录：域过滤+(n)+落表；对话框在调用方" },
-    "fs.copyPath":        { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui"], "ref": "verilogViz.copyPath", "idempotent": true, "since": "0.2.0", "description": "绝对路径进剪贴板" },
-    "fs.revealInOS":      { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui"], "ref": "verilogViz.revealInOS", "idempotent": true, "since": "0.2.0", "description": "工作台 revealFileInOS 定位" },
-    "fs.createFile":      { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.newVerilogFile", "since": "0.2.0", "description": "新建 .v（模板）或 .djs（空画布+落表）；消毒+(n)；编辑器打开归调用方" },
-    "fs.createFolder":    { "perm": "file-write",   "sideEffects": "file-write",   "surfaces": ["ui"], "ref": "verilogViz.newSandboxFolder", "since": "0.2.0", "description": "段级消毒+递归建目录" },
-    "bindings.get":        { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "bindings.get", "idempotent": true, "since": "0.2.0", "description": "链合并生效绑定（带 doc）或根表原文" },
-    "bindings.set":        { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "bindings.set", "since": "0.2.0", "description": "直写目录层表一条绑定（part=null=删）" },
-    "bindings.audit":      { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "bindings.audit", "idempotent": true, "since": "0.2.0", "description": "枚举未录入、靠同名兜底的实例" },
-    "bindings.complete":   { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "bindings.complete", "since": "0.2.0", "description": "audit+写全（v0.4：一律前缀键）；已录入不覆" },
-    "bindings.materialize":  { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "bindings.materialize", "since": "0.2.0", "description": "固化自动同名命中且未录入的解析" },
-    "bindings.explain":    { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "bindings.explain", "idempotent": true, "since": "0.4.0", "description": "L4 单实例解析轨迹（逐层试键+终点检查+verdict+hint）" },
-    "circuits.list":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "circuits.list", "idempotent": true, "since": "0.2.0", "description": "根表 circuits 显式名单" },
-    "circuits.toggle":     { "perm": "config-write", "sideEffects": "config-write", "surfaces": ["ui"], "ref": "verilogViz.togglePartRole", "since": "0.2.0", "description": "翻转部件/电路角色（显式取消语义）" },
-    "res.readProjectFile": { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "res.readProjectFile", "idempotent": true, "since": "0.2.0", "description": "读工程根文本文件（穿越拒+2MB 帽）" },
-    "res.listProject":     { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "res.listProject", "idempotent": true, "since": "0.2.0", "description": "编译域工程树" },
-    "res.listSandbox":     { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "res.listSandbox", "idempotent": true, "since": "0.2.0", "description": "沙盒域工程树" },
-    "res.readBindingTables": { "perm": "read",       "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "res.readBindingTables", "idempotent": true, "since": "0.4.0", "description": "L3 链上逐层 .verilogviz.json 原文（含协议外键/truncated 帽）" },
-    "res.parseFile": { "perm": "read", "sideEffects": "none", "surfaces": ["ui","mcp"], "ref": "res.parseFile", "idempotent": true, "since": "0.4.0", "description": "L4 解析器原样双栏（main/lite 并呈+差集+分岔表，帽 256KB）" },
-    "project.doctor": { "perm": "read", "sideEffects": "none", "surfaces": ["ui","mcp"], "ref": "project.doctor", "idempotent": true, "since": "0.4.0", "description": "L5 工程语义体检聚合（内核搬运 verdicts；info 默认关 deep 开；probe 预演）" },
-    "compile.hierarchy": { "perm": "read", "sideEffects": "none", "surfaces": ["ui","mcp"], "ref": "compile.hierarchy", "idempotent": true, "since": "0.4.0", "description": "L4 实例层次树（树主人 BFS 平表，depth 帽 4，与 HierarchyTree 同尺）" },
-    "compile.closure":     { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "compile.closure", "idempotent": true, "since": "0.2.0", "description": ".v 依赖闭包（拓扑文件名单+顶层模块）" },
-    "sys.ping":          { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.ping", "idempotent": true, "since": "0.4.0", "description": "L0 活体探针：alive/激活检查点/桥态/uptime（半活假象终结者）" },
-    "sys.ctxSnapshot":   { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.ctxSnapshot", "idempotent": true, "since": "0.4.0", "description": "L2 宿主隐式态如实快照（编辑器/粘滞/Panel/活画布/页签）" },
-    "sys.listTools":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.listTools", "idempotent": true, "since": "0.2.0", "description": "discoverTools：权威工具清单+schema" },
-    "sys.getStatus":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.getStatus", "idempotent": true, "since": "0.2.0", "description": "契约版本/调用面/工具账规模/工程根" },
-    "sys.readAudit":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.readAudit", "idempotent": true, "since": "0.2.0", "description": "readLogs：审计 jsonl 最近 N 行" },
-    "sys.describeTool":    { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.describeTool", "idempotent": true, "since": "0.3.0", "description": "L1 深度：单颗工具全档＋闸前预演（⛔ 执行 handler＝零副作用）" },
-    "sys.selfCheck":       { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.selfCheck", "idempotent": true, "since": "0.3.0", "description": "L2 深度：整套调用层自检（契约/漂移/覆盖/档案/审计五张读数＋可选 probe）" }
+    "host.appendOutput": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "appendOutput",
+      "idempotent": true,
+      "since": "0.1.0",
+      "description": "webview→输出面板日志行（无副作用的转述）"
+    },
+    "host.copyToSandbox": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "copyToSandbox",
+      "requiresApproval": false,
+      "since": "0.1.0",
+      "description": "编译图→沙盒 .djs 落盘（子部件逐条显式绑定，M5）"
+    },
+    "host.getAllBindings": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "getAllBindings",
+      "idempotent": true,
+      "since": "0.1.0"
+    },
+    "host.getConfig": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "getConfig",
+      "idempotent": true,
+      "since": "0.1.0"
+    },
+    "host.importLegacyData": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "importLegacyData",
+      "requiresApproval": true,
+      "since": "0.1.0",
+      "description": "localStorage 旧档一次性搬运（幂等由文件不覆盖保证）"
+    },
+    "host.jumpToSource": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "jumpToSource",
+      "idempotent": true,
+      "since": "0.1.0"
+    },
+    "host.publishProblems": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "publishProblems",
+      "idempotent": true,
+      "since": "0.1.0"
+    },
+    "host.saveExportFile": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "saveExportFile",
+      "since": "0.1.0",
+      "description": "用户已选目标路径才抵达＝审批隐含在原生保存弹窗"
+    },
+    "host.setDocBindings": {
+      "perm": "config-write",
+      "sideEffects": "config-write",
+      "surfaces": [
+        "rpc"
+      ],
+      "ref": "setDocBindings",
+      "since": "0.1.0",
+      "description": "绑定链写+撞名/改名随迁；watcher 广播回灌＝同权即时生效"
+    },
+    "compile.auditBindings": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui"
+      ],
+      "ref": "verilogViz.auditBindings",
+      "idempotent": true,
+      "since": "0.1.0"
+    },
+    "compile.completeBindings": {
+      "perm": "config-write",
+      "sideEffects": "config-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.completeBindings",
+      "since": "0.1.0"
+    },
+    "compile.compileAndShow": {
+      "perm": "process",
+      "sideEffects": "process",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.compileAndShow",
+      "idempotent": false,
+      "since": "0.1.0"
+    },
+    "fs.rename": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.renameFile",
+      "since": "0.2.0",
+      "description": "重命名文件/目录；绑定随迁（G1）；输入消毒"
+    },
+    "fs.move": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.moveTo",
+      "since": "0.2.0",
+      "description": "移动文件/目录；(n) 去重、自环拒、绑定随迁"
+    },
+    "fs.delete": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.deleteFile",
+      "requiresApproval": true,
+      "since": "0.2.0",
+      "description": "删除（回收站）；绑定/电路名单随清；非交互调用方须 HITL"
+    },
+    "fs.duplicateFile": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.duplicateFile",
+      "since": "0.2.0",
+      "description": "(n) 副本；角色不随"
+    },
+    "fs.duplicateFolder": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.duplicateFolder",
+      "since": "0.2.0",
+      "description": "递归复制 x→x 副本 (n)；含 .djs 自动配表"
+    },
+    "fs.import": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.importFiles",
+      "since": "0.2.0",
+      "description": "外部文件复制进目标目录：域过滤+(n)+落表；对话框在调用方"
+    },
+    "fs.copyPath": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui"
+      ],
+      "ref": "verilogViz.copyPath",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "绝对路径进剪贴板"
+    },
+    "fs.revealInOS": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui"
+      ],
+      "ref": "verilogViz.revealInOS",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "工作台 revealFileInOS 定位"
+    },
+    "fs.createFile": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.newVerilogFile",
+      "since": "0.2.0",
+      "description": "新建 .v（模板）或 .djs（空画布+落表）；消毒+(n)；编辑器打开归调用方"
+    },
+    "fs.createFolder": {
+      "perm": "file-write",
+      "sideEffects": "file-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.newSandboxFolder",
+      "since": "0.2.0",
+      "description": "段级消毒+递归建目录"
+    },
+    "bindings.get": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "bindings.get",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "链合并生效绑定（带 doc）或根表原文"
+    },
+    "bindings.set": {
+      "perm": "config-write",
+      "sideEffects": "config-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "bindings.set",
+      "since": "0.2.0",
+      "description": "直写目录层表一条绑定（part=null=删）"
+    },
+    "bindings.audit": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "bindings.audit",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "枚举未录入、靠同名兜底的实例"
+    },
+    "bindings.complete": {
+      "perm": "config-write",
+      "sideEffects": "config-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "bindings.complete",
+      "since": "0.2.0",
+      "description": "audit+写全（v0.4：一律前缀键）；已录入不覆"
+    },
+    "bindings.materialize": {
+      "perm": "config-write",
+      "sideEffects": "config-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "bindings.materialize",
+      "since": "0.2.0",
+      "description": "固化自动同名命中且未录入的解析"
+    },
+    "bindings.explain": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "bindings.explain",
+      "idempotent": true,
+      "since": "0.4.0",
+      "description": "L4 单实例解析轨迹（逐层试键+终点检查+verdict+hint）"
+    },
+    "circuits.list": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "circuits.list",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "根表 circuits 显式名单"
+    },
+    "circuits.toggle": {
+      "perm": "config-write",
+      "sideEffects": "config-write",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "verilogViz.togglePartRole",
+      "since": "0.2.0",
+      "description": "翻转部件/电路角色（显式取消语义）"
+    },
+    "res.readProjectFile": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "res.readProjectFile",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "读工程根文本文件（穿越拒+2MB 帽）"
+    },
+    "res.listProject": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "res.listProject",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "编译域工程树"
+    },
+    "res.listSandbox": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "res.listSandbox",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "沙盒域工程树"
+    },
+    "res.readBindingTables": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "res.readBindingTables",
+      "idempotent": true,
+      "since": "0.4.0",
+      "description": "L3 链上逐层 .verilogviz.json 原文（含协议外键/truncated 帽）"
+    },
+    "res.parseFile": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "res.parseFile",
+      "idempotent": true,
+      "since": "0.4.0",
+      "description": "L4 解析器原样双栏（main/lite 并呈+差集+分岔表，帽 256KB）"
+    },
+    "project.doctor": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "project.doctor",
+      "idempotent": true,
+      "since": "0.4.0",
+      "description": "L5 工程语义体检聚合（内核搬运 verdicts；info 默认关 deep 开；probe 预演）"
+    },
+    "compile.hierarchy": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "compile.hierarchy",
+      "idempotent": true,
+      "since": "0.4.0",
+      "description": "L4 实例层次树（树主人 BFS 平表，depth 帽 4，与 HierarchyTree 同尺）"
+    },
+    "compile.closure": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp"
+      ],
+      "ref": "compile.closure",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": ".v 依赖闭包（拓扑文件名单+顶层模块）"
+    },
+    "sys.ping": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp",
+        "cli"
+      ],
+      "ref": "sys.ping",
+      "idempotent": true,
+      "since": "0.4.0",
+      "description": "L0 活体探针：alive/激活检查点/桥态/uptime（半活假象终结者）"
+    },
+    "sys.ctxSnapshot": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp",
+        "cli"
+      ],
+      "ref": "sys.ctxSnapshot",
+      "idempotent": true,
+      "since": "0.4.0",
+      "description": "L2 宿主隐式态如实快照（编辑器/粘滞/Panel/活画布/页签）"
+    },
+    "sys.listTools": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp",
+        "cli"
+      ],
+      "ref": "sys.listTools",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "discoverTools：权威工具清单+schema"
+    },
+    "sys.getStatus": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp",
+        "cli"
+      ],
+      "ref": "sys.getStatus",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "契约版本/调用面/工具账规模/工程根"
+    },
+    "sys.readAudit": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp",
+        "cli"
+      ],
+      "ref": "sys.readAudit",
+      "idempotent": true,
+      "since": "0.2.0",
+      "description": "readLogs：审计 jsonl 最近 N 行"
+    },
+    "sys.describeTool": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp",
+        "cli"
+      ],
+      "ref": "sys.describeTool",
+      "idempotent": true,
+      "since": "0.3.0",
+      "description": "L1 深度：单颗工具全档＋闸前预演（⛔ 执行 handler＝零副作用）"
+    },
+    "sys.selfCheck": {
+      "perm": "read",
+      "sideEffects": "none",
+      "surfaces": [
+        "ui",
+        "mcp",
+        "cli"
+      ],
+      "ref": "sys.selfCheck",
+      "idempotent": true,
+      "since": "0.3.0",
+      "description": "L2 深度：整套调用层自检（契约/漂移/覆盖/档案/审计五张读数＋可选 probe）"
+    }
   }
 }

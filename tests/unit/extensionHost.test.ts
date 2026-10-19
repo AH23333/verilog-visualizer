@@ -2480,7 +2480,7 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const mv = out.tools.find((t: any) => t.id === 'fs.move');
     expect(mv.schema.required).toEqual(['src', 'destDir']);
     expect(mv.perm).toBe('file-write');
-    expect(mv.surfaces).toEqual(['ui']);
+    expect(mv.surfaces).toEqual(['ui', 'mcp']);   // 2026-10-19 写面放开（拍板名单内）
     expect(mv.requiresApproval).toBe(false);
   });
 
@@ -3265,23 +3265,27 @@ describe('R160 API 深度战役证人（2026-10-19 真管道 400+ 枪揪出的�
     expect((await call('res.readProjectFile', { path: 'lib/adder.v' })).content).toContain('module adder');  // 文件照旧通
   });
 
-  it('写面合法实参 mcp 动态拒收六枪（闸①b 必填先于闸②——空参矩阵测不到面闸，真参才算证过）', async () => {
-    await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule', 'D:/p/main.djs': '{"cells":[]}' } });
+  ﻿it('写面合法实参 mcp **执行**五枪＋fs.delete HITL 拒（2026-10-19 拍板写面放开——旧拒收证人翻面；闸③授权先行＝须绑 mcp:agent 档案）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; endmodule', 'D:/p/main.djs': '{"cells":[]}',
+      'D:/p/.vv/api.grants.json': JSON.stringify({ subjects: { 'mcp:agent': 'w' }, profiles: { w: ['bindings.set', 'bindings.complete', 'bindings.materialize', 'circuits.toggle', 'fs.copyPath', 'fs.rename', 'fs.delete'] } }),
+    } });
     const shots: Array<[string, Record<string, unknown>]> = [
       ['bindings.set', { doc: 'top.v', celltype: 'x', part: 'main.djs' }],
       ['bindings.complete', { doc: 'top.v' }],
       ['bindings.materialize', { doc: 'top.v' }],
       ['circuits.toggle', { uri: 'D:/p/main.djs' }],
       ['fs.copyPath', { uri: 'D:/p/top.v' }],
-      ['fs.delete', { uri: 'D:/p/nothing.djs' }],
-      ['fs.rename', { uri: 'D:/p/nothing.djs', newName: 'x.djs' }],
     ];
     for (const [t, args] of shots) {
-      const err = await call(t, args, AGENT_MCP).catch((e: any) => e);
-      expect(err.code, t + ' 经 mcp 面').toBe('SURFACE_DENIED');       // 落 handler 之前＝盘一根毛都没动
-      expect(err.hint).toBeTruthy();
+      const r = await call(t, args, AGENT_MCP).catch((e: any) => e);
+      // 直连 executeTool＝handler 返回值原样（无桥的 {ok} 信封）——真执行＝返回真值且 ⛔ 抛错
+      expect(r, t + ' 经 mcp 面应真执行（走全闸链：面②→授权③→handler）').toBeTruthy();
     }
-    expect(has('D:/p/nothing.djs')).toBe(false);                        // 全程只拒不动盘（写面零执行旁证）
+    // fs.delete 仍挂 HITL（requiresApproval）：agent 非交互 ⇒ 审批闸拦下＝NOT_APPROVED，盘一根毛没动
+    const del = await call('fs.delete', { uri: 'D:/p/nothing.djs' }, AGENT_MCP).catch((e: any) => e);
+    expect(del.code, 'HITL 审批闸在面闸开放后接班').toBe('NOT_APPROVED');
+    expect(has('D:/p/nothing.djs')).toBe(false);                        // 审批拒＝不动盘（零执行旁证保持）
   });
 });
 

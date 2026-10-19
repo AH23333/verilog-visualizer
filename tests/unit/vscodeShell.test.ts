@@ -334,11 +334,15 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
       空surfaces: tools.filter(({ t }) => !t.surfaces.length).map(({ id }) => id),          // 全空＝没人可达的死登记
       重复surfaces: tools.filter(({ t }) => new Set(t.surfaces).size !== t.surfaces.length).map(({ id }) => id),
     }).toEqual({ perm: [], sideEffects: [], 空surfaces: [], 重复surfaces: [] });
-    // ⑤ R160 批次三第一档纪律：挂在 mcp 面上的工具⛔ 有副作用（agent 线＝只读；写面放开＝逐颗显式拍板，
-    //   不许顺着 surfaces 数组悄悄多挂一颗）。surfacesGlobal.mcp 的开闸事实源也在这颗锁里看得到。
+    // ⑤ 批次三第一档纪律（agent 线＝只读）→ 2026-10-19 用户拍板「写面全部放开」改写：
+    //    mcp 面的副作用工具必须**逐颗等于拍板名单**（14 颗——多一颗少一颗都是契约漂移，
+    //    ⛔ 顺着 surfaces 数组悄悄多挂一颗）。surfacesGlobal.mcp 的开闸事实源同颗锁可见。
     expect(api.surfacesGlobal.mcp).toBe(true);
+    const MCP_WRITE = ['bindings.complete', 'bindings.materialize', 'bindings.set', 'circuits.toggle',
+      'compile.compileAndShow', 'compile.completeBindings', 'fs.createFile', 'fs.createFolder',
+      'fs.delete', 'fs.duplicateFile', 'fs.duplicateFolder', 'fs.import', 'fs.move', 'fs.rename'];
     expect(tools.filter(({ t }) => t.surfaces.includes('mcp') && t.sideEffects !== 'none')
-      .map(({ id, t }) => `${id}.sideEffects=${t.sideEffects}`)).toEqual([]);
+      .map(({ id }) => id).sort()).toEqual(MCP_WRITE);
   });
 
   it('R160 API 层收编锁：UI 层（extension/bindingPanel）⛔ 直插 bindings 数据函数——一道门纪律的回潮哨', () => {

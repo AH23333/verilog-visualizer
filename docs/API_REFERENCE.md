@@ -15,24 +15,24 @@
 | 工具 id | 标题 | perm | sideEffects | surfaces | 审批 | ref（命令/rpc） | since |
 |---|---|---|---|---|---|---|---|
 | `bindings.audit` | 审计绑定完整性 | read | none | ui/mcp | — | `bindings.audit` | 0.2.0 |
-| `bindings.complete` | 写全绑定 | config-write | config-write | ui | — | `bindings.complete` | 0.2.0 |
+| `bindings.complete` | 写全绑定 | config-write | config-write | ui/mcp | — | `bindings.complete` | 0.2.0 |
 | `bindings.explain` | 单实例解析轨迹 | read | none | ui/mcp | — | `bindings.explain` | 0.4.0 |
 | `bindings.get` | 读绑定 | read | none | ui/mcp | — | `bindings.get` | 0.2.0 |
-| `bindings.materialize` | 固化自动绑定 | config-write | config-write | ui | — | `bindings.materialize` | 0.2.0 |
-| `bindings.set` | 写绑定 | config-write | config-write | ui | — | `bindings.set` | 0.2.0 |
+| `bindings.materialize` | 固化自动绑定 | config-write | config-write | ui/mcp | — | `bindings.materialize` | 0.2.0 |
+| `bindings.set` | 写绑定 | config-write | config-write | ui/mcp | — | `bindings.set` | 0.2.0 |
 | `circuits.list` | 读电路名单 | read | none | ui/mcp | — | `circuits.list` | 0.2.0 |
-| `circuits.toggle` | 翻转部件角色 | config-write | config-write | ui | — | `verilogViz.togglePartRole` | 0.2.0 |
+| `circuits.toggle` | 翻转部件角色 | config-write | config-write | ui/mcp | — | `verilogViz.togglePartRole` | 0.2.0 |
 | `compile.closure` | 依赖闭包 | read | none | ui/mcp | — | `compile.closure` | 0.2.0 |
 | `compile.hierarchy` | 实例层次树（与树同一把主人） | read | none | ui/mcp | — | `compile.hierarchy` | 0.4.0 |
 | `fs.copyPath` | 复制路径 | read | none | ui | — | `verilogViz.copyPath` | 0.2.0 |
-| `fs.createFile` | 新建文件 | file-write | file-write | ui | — | `verilogViz.newVerilogFile` | 0.2.0 |
-| `fs.createFolder` | 新建文件夹 | file-write | file-write | ui | — | `verilogViz.newSandboxFolder` | 0.2.0 |
-| `fs.delete` | 删除 | file-write | file-write | ui | **HITL** | `verilogViz.deleteFile` | 0.2.0 |
-| `fs.duplicateFile` | 创建文件副本 | file-write | file-write | ui | — | `verilogViz.duplicateFile` | 0.2.0 |
-| `fs.duplicateFolder` | 复制文件夹 | file-write | file-write | ui | — | `verilogViz.duplicateFolder` | 0.2.0 |
-| `fs.import` | 导入文件 | file-write | file-write | ui | — | `verilogViz.importFiles` | 0.2.0 |
-| `fs.move` | 移动 | file-write | file-write | ui | — | `verilogViz.moveTo` | 0.2.0 |
-| `fs.rename` | 重命名 | file-write | file-write | ui | — | `verilogViz.renameFile` | 0.2.0 |
+| `fs.createFile` | 新建文件 | file-write | file-write | ui/mcp | — | `verilogViz.newVerilogFile` | 0.2.0 |
+| `fs.createFolder` | 新建文件夹 | file-write | file-write | ui/mcp | — | `verilogViz.newSandboxFolder` | 0.2.0 |
+| `fs.delete` | 删除 | file-write | file-write | ui/mcp | **HITL** | `verilogViz.deleteFile` | 0.2.0 |
+| `fs.duplicateFile` | 创建文件副本 | file-write | file-write | ui/mcp | — | `verilogViz.duplicateFile` | 0.2.0 |
+| `fs.duplicateFolder` | 复制文件夹 | file-write | file-write | ui/mcp | — | `verilogViz.duplicateFolder` | 0.2.0 |
+| `fs.import` | 导入文件 | file-write | file-write | ui/mcp | — | `verilogViz.importFiles` | 0.2.0 |
+| `fs.move` | 移动 | file-write | file-write | ui/mcp | — | `verilogViz.moveTo` | 0.2.0 |
+| `fs.rename` | 重命名 | file-write | file-write | ui/mcp | — | `verilogViz.renameFile` | 0.2.0 |
 | `fs.revealInOS` | 在磁盘显示 | read | none | ui | — | `verilogViz.revealInOS` | 0.2.0 |
 | `host.appendOutput` | 写输出面板 | read | none | rpc | — | `appendOutput` | 0.1.0 |
 | `host.copyToSandbox` | 编译图落沙盒 | file-write | file-write | rpc | — | `copyToSandbox` | 0.1.0 |

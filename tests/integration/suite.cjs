@@ -96,8 +96,12 @@ async function run() {
         const g = await shot('sys.getStatus');
         ok('mcp-pipe-roundtrip', g.ok === true && !!(g.result && g.result.projectRoot),
           g.ok ? 'root=' + g.result.projectRoot : JSON.stringify(g));
+        // 2026-10-19 拍板写面放开：bindings.set 经 mcp 真**执行**（旧 mcp-write-denied 证人翻面）；
+        //   拒收路径的覆盖转由 host.*（rpc-only）继续把守——面闸的「关」与「开」两态都有证人。
         const d = await shot('bindings.set', { celltype: 'x', part: 'y.djs' });
-        ok('mcp-write-denied', d.ok === false && d.code === 'SURFACE_DENIED' && !!d.traceId, JSON.stringify(d).slice(0, 160));
+        ok('mcp-write-allowed', d.ok === true && !!d.result && !!d.result.dir, JSON.stringify(d).slice(0, 160));
+        const hst = await shot('host.copyToSandbox', { uri: 'y.djs' });
+        ok('mcp-host-rpc-denied', hst.ok === false && hst.code === 'SURFACE_DENIED' && !!hst.traceId, JSON.stringify(hst).slice(0, 160));
         // 四-1 活体探针：真宿主里 ping 必须报"活到底"（检查点全程＋桥 listening）；ctxSnapshot 如实转述（此窗必有工作区根）
         const p = await shot('sys.ping', {});
         ok('mcp-ping-alive', p.ok === true && p.result.alive === true && p.result.activation.done === true
