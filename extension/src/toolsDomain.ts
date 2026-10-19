@@ -28,6 +28,7 @@ import { parseVerilogInstances, parseVerilogModules, parseVerilogInstancesWithLi
 import * as mainParse from '../../shared/verilogParse';
 import { closureOf, scanDefs, lastJobInfo, getLastTextUri } from './compilePanel';
 import { apiOverrideSnapshot, canSurface, loadApiContract } from './apiSurface';
+import { t, tSchema } from './i18n';   // i18n：运行时错误串直译；注册表元数据存中文、渲染层 t(动态)（I18N_DESIGN §二）
 import { checkGrant, grantsSnapshot } from './apiGrants';
 import { auditChannelState } from './apiAudit';
 import { activationSnapshot } from './activationTrail';
@@ -718,10 +719,10 @@ export function registerDomainTools(): void {
       return {
         apiVersion: c.apiVersion,
         surfacesGlobal: c.surfacesGlobal ?? {},
-        tools: listTools().map((t) => {
-          const ct = c.tools[t.id];
+        tools: listTools().map((tool) => {
+          const ct = c.tools[tool.id];
           return {
-            id: t.id, title: t.title, description: t.description, schema: t.schema,
+            id: tool.id, title: t(tool.title), description: t(tool.description), schema: tSchema(tool.schema),   // i18n：元数据渲染层翻译（数据存中文）
             perm: ct?.perm, sideEffects: ct?.sideEffects, surfaces: ct?.surfaces,
             requiresApproval: !!ct?.requiresApproval, ref: ct?.ref, since: ct?.since,
           };
@@ -812,8 +813,8 @@ export function registerDomainTools(): void {
     handler: async (ctx, a, caller) => {
       const id = String(a.tool ?? '');
       const probeArgs = (a.args && typeof a.args === 'object') ? a.args as Record<string, unknown> : {};
-      const t = targetCaller(a, caller);
-      const gates = probeTool(id, probeArgs, t.probe);
+      const tgt = targetCaller(a, caller);
+      const gates = probeTool(id, probeArgs, tgt.probe);
       const c = loadApiContract();
       const def = getTool(id);
       const ct = c.tools[id];
@@ -824,9 +825,9 @@ export function registerDomainTools(): void {
         .map((l) => ({ ts: l.ts, verdict: l.verdict, subject: l.subject, channel: l.channel, ms: l.ms, note: l.note, traceId: l.traceId }));
       return {
         tool: id, ref,
-        asked: { surface: gates.surface, subject: gates.subject, askedSurface: t.askedSurface, surfaceFallback: t.surfaceFallback },
+        asked: { surface: gates.surface, subject: gates.subject, askedSurface: tgt.askedSurface, surfaceFallback: tgt.surfaceFallback },
         caller: { subject: caller.subject, surface: caller.surface, interactive: caller.interactive },
-        card: def ? { id: def.id, title: def.title, description: def.description, schema: def.schema } : null,
+        card: def ? { id: def.id, title: t(def.title), description: t(def.description), schema: tSchema(def.schema) } : null,   // i18n：元数据渲染层翻译
         contract: ct ? { perm: ct.perm, sideEffects: ct.sideEffects, surfaces: ct.surfaces, ref: ct.ref, requiresApproval: !!ct.requiresApproval, since: ct.since ?? null } : null,
         gates, recent,
         auditDate: day.date, auditExists: day.exists,

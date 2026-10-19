@@ -14,54 +14,54 @@
 
 | 工具 id | 标题 | perm | sideEffects | surfaces | 审批 | ref（命令/rpc） | since |
 |---|---|---|---|---|---|---|---|
-| `bindings.audit` | 审计绑定完整性 | read | none | ui/mcp | — | `bindings.audit` | 0.2.0 |
-| `bindings.complete` | 写全绑定 | config-write | config-write | ui/mcp | — | `bindings.complete` | 0.2.0 |
-| `bindings.explain` | 单实例解析轨迹 | read | none | ui/mcp | — | `bindings.explain` | 0.4.0 |
-| `bindings.get` | 读绑定 | read | none | ui/mcp | — | `bindings.get` | 0.2.0 |
-| `bindings.materialize` | 固化自动绑定 | config-write | config-write | ui/mcp | — | `bindings.materialize` | 0.2.0 |
-| `bindings.set` | 写绑定 | config-write | config-write | ui/mcp | — | `bindings.set` | 0.2.0 |
-| `circuits.list` | 读电路名单 | read | none | ui/mcp | — | `circuits.list` | 0.2.0 |
-| `circuits.toggle` | 翻转部件角色 | config-write | config-write | ui/mcp | — | `verilogViz.togglePartRole` | 0.2.0 |
-| `compile.closure` | 依赖闭包 | read | none | ui/mcp | — | `compile.closure` | 0.2.0 |
-| `compile.hierarchy` | 实例层次树（与树同一把主人） | read | none | ui/mcp | — | `compile.hierarchy` | 0.4.0 |
-| `fs.copyPath` | 复制路径 | read | none | ui | — | `verilogViz.copyPath` | 0.2.0 |
-| `fs.createFile` | 新建文件 | file-write | file-write | ui/mcp | — | `verilogViz.newVerilogFile` | 0.2.0 |
-| `fs.createFolder` | 新建文件夹 | file-write | file-write | ui/mcp | — | `verilogViz.newSandboxFolder` | 0.2.0 |
-| `fs.delete` | 删除 | file-write | file-write | ui/mcp | **HITL** | `verilogViz.deleteFile` | 0.2.0 |
-| `fs.duplicateFile` | 创建文件副本 | file-write | file-write | ui/mcp | — | `verilogViz.duplicateFile` | 0.2.0 |
-| `fs.duplicateFolder` | 复制文件夹 | file-write | file-write | ui/mcp | — | `verilogViz.duplicateFolder` | 0.2.0 |
-| `fs.import` | 导入文件 | file-write | file-write | ui/mcp | — | `verilogViz.importFiles` | 0.2.0 |
-| `fs.move` | 移动 | file-write | file-write | ui/mcp | — | `verilogViz.moveTo` | 0.2.0 |
-| `fs.rename` | 重命名 | file-write | file-write | ui/mcp | — | `verilogViz.renameFile` | 0.2.0 |
-| `fs.revealInOS` | 在磁盘显示 | read | none | ui | — | `verilogViz.revealInOS` | 0.2.0 |
-| `host.appendOutput` | 写输出面板 | read | none | rpc | — | `appendOutput` | 0.1.0 |
-| `host.copyToSandbox` | 编译图落沙盒 | file-write | file-write | rpc | — | `copyToSandbox` | 0.1.0 |
-| `host.getAllBindings` | 读绑定链 | read | none | rpc | — | `getAllBindings` | 0.1.0 |
-| `host.getConfig` | 读宿主配置 | read | none | rpc | — | `getConfig` | 0.1.0 |
-| `host.importLegacyData` | 旧档一次性搬运 | file-write | file-write | rpc | **HITL** | `importLegacyData` | 0.1.0 |
-| `host.jumpToSource` | 跳到源码行 | read | none | rpc | — | `jumpToSource` | 0.1.0 |
-| `host.publishProblems` | 发 Problems | read | none | rpc | — | `publishProblems` | 0.1.0 |
-| `host.saveExportFile` | 宿主另存为 | file-write | file-write | rpc | — | `saveExportFile` | 0.1.0 |
-| `host.setDocBindings` | 写一份文档的绑定表 | config-write | config-write | rpc | — | `setDocBindings` | 0.1.0 |
-| `project.doctor` | 工程语义体检（内核聚合） | read | none | ui/mcp | — | `project.doctor` | 0.4.0 |
-| `res.listProject` | 列编译域文件 | read | none | ui/mcp | — | `res.listProject` | 0.2.0 |
-| `res.listSandbox` | 列沙盒域文件 | read | none | ui/mcp | — | `res.listSandbox` | 0.2.0 |
-| `res.parseFile` | 解析器原样输出摊开（双栏并呈） | read | none | ui/mcp | — | `res.parseFile` | 0.4.0 |
-| `res.readBindingTables` | 逐层绑定表原文 | read | none | ui/mcp | — | `res.readBindingTables` | 0.4.0 |
-| `res.readProjectFile` | 读工程文件 | read | none | ui/mcp | — | `res.readProjectFile` | 0.2.0 |
-| `sys.ctxSnapshot` | 宿主隐式态快照（如实转述） | read | none | ui/mcp/cli | — | `sys.ctxSnapshot` | 0.4.0 |
-| `sys.describeTool` | 单颗工具深档（含闸门预演） | read | none | ui/mcp/cli | — | `sys.describeTool` | 0.3.0 |
-| `sys.getStatus` | 宿主状态 | read | none | ui/mcp/cli | — | `sys.getStatus` | 0.2.0 |
-| `sys.listTools` | 工具发现 | read | none | ui/mcp/cli | — | `sys.listTools` | 0.2.0 |
-| `sys.ping` | 活体探针 | read | none | ui/mcp/cli | — | `sys.ping` | 0.4.0 |
-| `sys.readAudit` | 读调用审计 | read | none | ui/mcp/cli | — | `sys.readAudit` | 0.2.0 |
-| `sys.selfCheck` | 调用层自检（agent 进门第一枪） | read | none | ui/mcp/cli | — | `sys.selfCheck` | 0.3.0 |
+| `bindings.audit` | Audit binding integrity | read | none | ui/mcp | — | `bindings.audit` | 0.2.0 |
+| `bindings.complete` | Write complete bindings | config-write | config-write | ui/mcp | — | `bindings.complete` | 0.2.0 |
+| `bindings.explain` | Single-instance resolution trace | read | none | ui/mcp | — | `bindings.explain` | 0.4.0 |
+| `bindings.get` | Read bindings | read | none | ui/mcp | — | `bindings.get` | 0.2.0 |
+| `bindings.materialize` | Persist auto-bindings | config-write | config-write | ui/mcp | — | `bindings.materialize` | 0.2.0 |
+| `bindings.set` | Write binding | config-write | config-write | ui/mcp | — | `bindings.set` | 0.2.0 |
+| `circuits.list` | Read circuits list | read | none | ui/mcp | — | `circuits.list` | 0.2.0 |
+| `circuits.toggle` | Toggle part role | config-write | config-write | ui/mcp | — | `verilogViz.togglePartRole` | 0.2.0 |
+| `compile.closure` | Dependency closure | read | none | ui/mcp | — | `compile.closure` | 0.2.0 |
+| `compile.hierarchy` | Instance hierarchy (same owner as the tree) | read | none | ui/mcp | — | `compile.hierarchy` | 0.4.0 |
+| `fs.copyPath` | Copy path | read | none | ui | — | `verilogViz.copyPath` | 0.2.0 |
+| `fs.createFile` | Create file | file-write | file-write | ui/mcp | — | `verilogViz.newVerilogFile` | 0.2.0 |
+| `fs.createFolder` | Create folder | file-write | file-write | ui/mcp | — | `verilogViz.newSandboxFolder` | 0.2.0 |
+| `fs.delete` | Delete | file-write | file-write | ui/mcp | **HITL** | `verilogViz.deleteFile` | 0.2.0 |
+| `fs.duplicateFile` | Duplicate file | file-write | file-write | ui/mcp | — | `verilogViz.duplicateFile` | 0.2.0 |
+| `fs.duplicateFolder` | Copy folder | file-write | file-write | ui/mcp | — | `verilogViz.duplicateFolder` | 0.2.0 |
+| `fs.import` | Import files | file-write | file-write | ui/mcp | — | `verilogViz.importFiles` | 0.2.0 |
+| `fs.move` | Move | file-write | file-write | ui/mcp | — | `verilogViz.moveTo` | 0.2.0 |
+| `fs.rename` | Rename | file-write | file-write | ui/mcp | — | `verilogViz.renameFile` | 0.2.0 |
+| `fs.revealInOS` | Reveal in file explorer | read | none | ui | — | `verilogViz.revealInOS` | 0.2.0 |
+| `host.appendOutput` | Write output panel | read | none | rpc | — | `appendOutput` | 0.1.0 |
+| `host.copyToSandbox` | Compile graph to sandbox | file-write | file-write | rpc | — | `copyToSandbox` | 0.1.0 |
+| `host.getAllBindings` | Read binding chain | read | none | rpc | — | `getAllBindings` | 0.1.0 |
+| `host.getConfig` | Read host config | read | none | rpc | — | `getConfig` | 0.1.0 |
+| `host.importLegacyData` | One-time legacy data migration | file-write | file-write | rpc | **HITL** | `importLegacyData` | 0.1.0 |
+| `host.jumpToSource` | Jump to source line | read | none | rpc | — | `jumpToSource` | 0.1.0 |
+| `host.publishProblems` | Publish Problems | read | none | rpc | — | `publishProblems` | 0.1.0 |
+| `host.saveExportFile` | Host save-as | file-write | file-write | rpc | — | `saveExportFile` | 0.1.0 |
+| `host.setDocBindings` | Write one document's binding table | config-write | config-write | rpc | — | `setDocBindings` | 0.1.0 |
+| `project.doctor` | Project semantic checkup (kernel aggregation) | read | none | ui/mcp | — | `project.doctor` | 0.4.0 |
+| `res.listProject` | List compile-domain files | read | none | ui/mcp | — | `res.listProject` | 0.2.0 |
+| `res.listSandbox` | List sandbox-domain files | read | none | ui/mcp | — | `res.listSandbox` | 0.2.0 |
+| `res.parseFile` | Parser raw output, side by side | read | none | ui/mcp | — | `res.parseFile` | 0.4.0 |
+| `res.readBindingTables` | Per-layer binding table verbatim | read | none | ui/mcp | — | `res.readBindingTables` | 0.4.0 |
+| `res.readProjectFile` | Read project file | read | none | ui/mcp | — | `res.readProjectFile` | 0.2.0 |
+| `sys.ctxSnapshot` | Host implicit-state snapshot (reported as-is) | read | none | ui/mcp/cli | — | `sys.ctxSnapshot` | 0.4.0 |
+| `sys.describeTool` | Single-tool deep card (with gate pre-run) | read | none | ui/mcp/cli | — | `sys.describeTool` | 0.3.0 |
+| `sys.getStatus` | Host status | read | none | ui/mcp/cli | — | `sys.getStatus` | 0.2.0 |
+| `sys.listTools` | Tool discovery | read | none | ui/mcp/cli | — | `sys.listTools` | 0.2.0 |
+| `sys.ping` | Liveness probe | read | none | ui/mcp/cli | — | `sys.ping` | 0.4.0 |
+| `sys.readAudit` | Read call audit | read | none | ui/mcp/cli | — | `sys.readAudit` | 0.2.0 |
+| `sys.selfCheck` | Calling-layer self-check (the agent's first shot) | read | none | ui/mcp/cli | — | `sys.selfCheck` | 0.3.0 |
 
 ## 工具详情（参数 schema）
 
-### `bindings.audit` — 审计绑定完整性
+### `bindings.audit` — Audit binding integrity
 
-枚举文档子部件实例中「表里没录、正靠同名兜底」的条目（盘上内容模拟画布解析链，BFS 带预算）。幂等只读。
+Lists a document's subpart instances that are not recorded in the table and currently resolve via same-name fallback (simulates the canvas resolution chain from disk content, BFS with budget). Idempotent read-only.
 
 ```json
 {
@@ -69,7 +69,7 @@
   "properties": {
     "doc": {
       "type": "string",
-      "description": "根相对文档路径"
+      "description": "Root-relative document path"
     }
   },
   "required": [
@@ -78,9 +78,9 @@
 }
 ```
 
-### `bindings.complete` — 写全绑定
+### `bindings.complete` — Write complete bindings
 
-audit+一键写全：把自动命中且未录入的实例按「顶层同源=裸键/深层=前缀」策略落文档目录表；已录入⛔ 覆写。
+audit + one-click complete: writes auto-matched unrecorded instances into the document directory table using the top-level-same-origin = bare-key / deeper-level = prefixed strategy; recorded entries are never overwritten.
 
 ```json
 {
@@ -96,9 +96,9 @@ audit+一键写全：把自动命中且未录入的实例按「顶层同源=裸�
 }
 ```
 
-### `bindings.explain` — 单实例解析轨迹
+### `bindings.explain` — Single-instance resolution trace
 
-L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解析成）。逐层轨迹＝与闭包同一把尺的镜像：前缀键先于裸键、近层压远层、键值都按层折叠（bindingsForFile 的 outKey 算法，⛔ 第二套判据）；终点检查（文件在否/含不含该模块/djs 可不可解析/在不在 circuits 名单）；verdict＋hint（下一步打哪颗带什么实参）。幂等只读。
+L4 main gun: why this instance resolves to that file (or why it does not). The layer-by-layer trace mirrors the closure's own ruler: prefixed keys before bare keys, near layers override far, keys and values both folded per layer (bindingsForFile's outKey algorithm — not a second ruler); endpoint checks (file exists / contains the module / djs parseable / in the circuits list); verdict + hint (which tool to fire next with which args). Idempotent read-only.
 
 ```json
 {
@@ -106,11 +106,11 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
   "properties": {
     "doc": {
       "type": "string",
-      "description": "根相对宿主文档"
+      "description": "Root-relative host document"
     },
     "instance": {
       "type": "string",
-      "description": "实例名/celltype"
+      "description": "Instance name / celltype"
     }
   },
   "required": [
@@ -120,9 +120,9 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
 }
 ```
 
-### `bindings.get` — 读绑定
+### `bindings.get` — Read bindings
 
-给 doc（根相对 .djs/.v 路径）＝该文档的链合并生效绑定（近层覆盖远层、值折回根相对）；不给 doc＝项目根表原文。幂等只读。
+For doc (root-relative .djs/.v path) = the merged effective bindings along that document's chain (near layers override far, values folded back to root-relative); without doc = the project-root table verbatim. Idempotent read-only.
 
 ```json
 {
@@ -130,15 +130,15 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
   "properties": {
     "doc": {
       "type": "string",
-      "description": "根相对文档路径（可省）"
+      "description": "Root-relative document path (optional)"
     }
   }
 }
 ```
 
-### `bindings.materialize` — 固化自动绑定
+### `bindings.materialize` — Persist auto-bindings
 
-把「未录入且能自动同名命中」的解析写进文档目录表（.djs=同目录/根同名打分，.v=依赖闭包）；已记录⛔ 动。返回固化条目。
+Writes unrecorded-but-auto-same-name-matched resolutions into the document directory table (.djs = same-folder/root name scoring, .v = dependency closure); recorded ones are never touched. Returns the persisted entries.
 
 ```json
 {
@@ -154,9 +154,9 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
 }
 ```
 
-### `bindings.set` — 写绑定
+### `bindings.set` — Write binding
 
-直写某目录层 `.verilogviz.json` 的一条绑定（part=null＝删该键）；值按层目录相对化落盘。手编内容珍贵的语义与 UI 同源。
+Directly writes one binding into a directory layer's `.verilogviz.json` (part=null = delete the key); values are stored relative to that directory. Same semantics as the UI — hand-edited content is precious.
 
 ```json
 {
@@ -164,18 +164,18 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
   "properties": {
     "dir": {
       "type": "string",
-      "description": "目录层（根相对；缺省=项目根表）"
+      "description": "Directory layer (root-relative; default = project-root table)"
     },
     "celltype": {
       "type": "string",
-      "description": "实例/键名"
+      "description": "Instance / key name"
     },
     "part": {
       "type": [
         "string",
         "null"
       ],
-      "description": "部件文件（根相对或相对该目录；null/空＝删）"
+      "description": "Part file (root-relative or relative to that directory; null/empty = delete)"
     }
   },
   "required": [
@@ -184,9 +184,9 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
 }
 ```
 
-### `circuits.list` — 读电路名单
+### `circuits.list` — Read circuits list
 
-根表 circuits 显式名单（取消部件表）；名单外的 .djs 全是部件。幂等只读。
+The root table's explicit circuits list (the un-parts list); .djs files outside it are all parts. Idempotent read-only.
 
 ```json
 {
@@ -195,9 +195,9 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
 }
 ```
 
-### `circuits.toggle` — 翻转部件角色
+### `circuits.toggle` — Toggle part role
 
-名单有=当前电路 → 翻回部件；没有 → 标为电路（显式取消语义）。树/画布联动由宿主订阅完成。
+In the list = currently a circuit → flip back to part; not in it → mark as circuit (explicit opt-out semantics). Tree/canvas sync is done by the host subscription.
 
 ```json
 {
@@ -213,9 +213,9 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
 }
 ```
 
-### `compile.closure` — 依赖闭包
+### `compile.closure` — Dependency closure
 
-.v 入口的编译依赖闭包（拓扑文件名单+顶层模块）。R152 绑定权威：未显式绑定的实例进 bindingErrors（配套 bindings.set 补录）。幂等只读；⛔ 文件内容（大）。
+Compile dependency closure of a .v entry (topological file list + top module). R152 binding authority: un-bound instances land in bindingErrors (use bindings.set to record). Idempotent read-only; no file contents (large).
 
 ```json
 {
@@ -223,7 +223,7 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
   "properties": {
     "uri": {
       "type": "string",
-      "description": "入口 .v（根相对或 fsPath）"
+      "description": "Entry .v (root-relative or fsPath)"
     }
   },
   "required": [
@@ -232,9 +232,9 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
 }
 ```
 
-### `compile.hierarchy` — 实例层次树（与树同一把主人）
+### `compile.hierarchy` — Instance hierarchy (same owner as the tree)
 
-L4（P3）：entry（根相对 .v）为根、depth（帽 4）全展开成平表——用的就是**层次树的下钻主人**（hierInstancesOf/buildHierDefIndex 抽自 HierarchyTree，环守卫同一把 chain 尺）；line＝parseVerilogInstancesWithLines 首现行（同判据两形，一把尺）。树显示什么，agent 就问到什么。预算 500 颗＋回包 64KB 帽（truncated+total 如实）。幂等只读。
+L4 (P3): entry (root-relative .v) as root, fully expanded into a flat table with depth (cap 4) — using the hierarchy tree's own drill-down owner (hierInstancesOf/buildHierDefIndex extracted from HierarchyTree, cycle guard on the same chain ruler); line = first current line of parseVerilogInstancesWithLines (same criteria, two shapes, one ruler). What the tree shows, the agent can ask. Budget 500 nodes + 64KB reply cap (truncated+total reported honestly). Idempotent read-only.
 
 ```json
 {
@@ -242,11 +242,11 @@ L4（P3）：entry（根相对 .v）为根、depth（帽 4）全展开成平表�
   "properties": {
     "entry": {
       "type": "string",
-      "description": "根相对 .v 入口"
+      "description": "Root-relative .v entry"
     },
     "depth": {
       "type": "number",
-      "description": "下钻深度（帽 4，缺省 4）"
+      "description": "Drill depth (cap 4, default 4)"
     }
   },
   "required": [
@@ -255,9 +255,9 @@ L4（P3）：entry（根相对 .v）为根、depth（帽 4）全展开成平表�
 }
 ```
 
-### `fs.copyPath` — 复制路径
+### `fs.copyPath` — Copy path
 
-绝对路径进剪贴板（幂等、无副作用）。
+Absolute path to the clipboard (idempotent, no side effects).
 
 ```json
 {
@@ -273,9 +273,9 @@ L4（P3）：entry（根相对 .v）为根、depth（帽 4）全展开成平表�
 }
 ```
 
-### `fs.createFile` — 新建文件
+### `fs.createFile` — Create file
 
-kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` 并落「目录有部件就有表」。编辑器打开归调用方。
+kind=verilog: minimal compilable template; kind=sandbox: empty canvas `{"cells":[]}` plus a folder binding table (folder with parts gets a table). Opening the editor is the caller's job.
 
 ```json
 {
@@ -283,11 +283,11 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "dir": {
       "type": "string",
-      "description": "落盘目录（缺省=项目根）"
+      "description": "Target folder on disk (default = project root)"
     },
     "name": {
       "type": "string",
-      "description": "文件名（可含子路径；后缀自动补）"
+      "description": "File name (may include a subpath; the extension is auto-appended)"
     },
     "kind": {
       "type": "string",
@@ -295,7 +295,7 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
         "verilog",
         "sandbox"
       ],
-      "description": "缺省 verilog"
+      "description": "default verilog"
     }
   },
   "required": [
@@ -304,9 +304,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `fs.createFolder` — 新建文件夹
+### `fs.createFolder` — Create folder
 
-段级消毒（`..` 逃逸死掉）+递归建目录（可含子路径）。
+Segment-level sanitization (.. escapes die) + recursive folder creation (may include subpaths).
 
 ```json
 {
@@ -317,7 +317,7 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
     },
     "name": {
       "type": "string",
-      "description": "可含子路径"
+      "description": "May include subpaths"
     }
   },
   "required": [
@@ -326,9 +326,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `fs.delete` — 删除
+### `fs.delete` — Delete
 
-删除文件/目录（进回收站）；指向被删内容的绑定/电路名单随清（G1 双路）。requiresApproval：非交互调用方（agent）须 HITL 批准。
+Deletes a file/folder (to trash); bindings/circuits lists pointing at the deleted content are cleaned along (G1 both paths). requiresApproval: non-interactive callers (agents) need HITL approval.
 
 ```json
 {
@@ -336,7 +336,7 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "uri": {
       "type": "string",
-      "description": "待删除的文件/目录"
+      "description": "The file/folder to delete"
     }
   },
   "required": [
@@ -345,9 +345,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `fs.duplicateFile` — 创建文件副本
+### `fs.duplicateFile` — Duplicate file
 
-同目录 (n) 序号复制；副本角色不随（默认 circuit）。
+Copies within the same folder with (n) numbering; the duplicate's role does not follow (defaults to circuit).
 
 ```json
 {
@@ -363,9 +363,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `fs.duplicateFolder` — 复制文件夹
+### `fs.duplicateFolder` — Copy folder
 
-递归复制 `x`→`x 副本 (n)`；副本含 .djs 时自动配绑定表。
+Recursively copies `x` → `x 副本 (n)`; when the copy contains .djs a binding table is created automatically.
 
 ```json
 {
@@ -381,9 +381,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `fs.import` — 导入文件
+### `fs.import` — Import files
 
-把给定的外部文件复制进目标目录：域过滤（exts）+ (n) 去重 + `.djs` 落表。文件选择对话框在调用方（agent 直接给 sources）。
+Copies the given external files into the target folder: domain filter (exts) + (n) dedup + .djs into the parts table. The file picker lives in the caller (agents pass sources directly).
 
 ```json
 {
@@ -391,21 +391,21 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "destDir": {
       "type": "string",
-      "description": "落盘目录"
+      "description": "Target folder on disk"
     },
     "sources": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "源文件（fsPath/file: uri）列表"
+      "description": "Source file (fsPath/file: uri) list"
     },
     "exts": {
       "type": "array",
       "items": {
         "type": "string"
       },
-      "description": "放行扩展（缺省 v/sv/djs）"
+      "description": "Allowed extensions (default v/sv/djs)"
     }
   },
   "required": [
@@ -415,9 +415,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `fs.move` — 移动
+### `fs.move` — Move
 
-移动文件/目录到目标目录；(n) 去重、自环拒、原地 no-op；绑定记录随迁（G1）。
+Moves a file/folder into the target folder; (n) dedup, self-loop rejected, in-place no-op; binding records move along (G1).
 
 ```json
 {
@@ -425,11 +425,11 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "src": {
       "type": "string",
-      "description": "源文件/目录"
+      "description": "Source file/folder"
     },
     "destDir": {
       "type": "string",
-      "description": "目标目录"
+      "description": "Target folder"
     }
   },
   "required": [
@@ -439,9 +439,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `fs.rename` — 重命名
+### `fs.rename` — Rename
 
-重命名文件或目录；绑定值/`宿主::`前缀键/根表 circuits 随迁（G1）。输入经单段消毒（`../` 无法逃出工作区）。名字无效/与现名相同/目标被占用 ⇒ 报错（⛔ 静默 ok:false）。
+Renames a file or folder; binding values / host:: prefixed keys / root circuits move along (G1). Input is single-segment sanitized (../ cannot escape the workspace). Invalid name / same name / target occupied = error (no silent ok:false).
 
 ```json
 {
@@ -449,11 +449,11 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "uri": {
       "type": "string",
-      "description": "目标文件/目录（fsPath 或 file: uri）"
+      "description": "Target file/folder (fsPath or file: uri)"
     },
     "newName": {
       "type": "string",
-      "description": "新名字（单段）"
+      "description": "New name (single segment)"
     }
   },
   "required": [
@@ -463,9 +463,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `fs.revealInOS` — 在磁盘显示
+### `fs.revealInOS` — Reveal in file explorer
 
-调用工作台 revealFileInOS 定位文件/目录（幂等）。
+Calls the workbench revealFileInOS to locate the file/folder (idempotent).
 
 ```json
 {
@@ -481,9 +481,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `host.appendOutput` — 写输出面板
+### `host.appendOutput` — Write output panel
 
-写输出面板
+Write output panel
 
 ```json
 {
@@ -491,15 +491,15 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "text": {
       "type": "string",
-      "description": "追加的原文（宿主不加工）"
+      "description": "The verbatim text to append (the host does not process it)"
     }
   }
 }
 ```
 
-### `host.copyToSandbox` — 编译图落沙盒
+### `host.copyToSandbox` — Compile graph to sandbox
 
-编译图落沙盒
+Compile graph to sandbox
 
 ```json
 {
@@ -507,17 +507,17 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "files": {
       "type": "array",
-      "description": "第 0 颗 = 主电路；其余为子部件（逐颗落 `<name>.djs` 并写所在目录绑定表）",
+      "description": "Item 0 = the main circuit; the rest are subparts (each written as `<name>.djs` with its folder's binding table)",
       "items": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "`folder/name`，⛔ 带 .djs 后缀（宿主统一补）"
+            "description": "`folder/name` — do not include the .djs suffix (the host appends it)"
           },
           "content": {
             "type": "string",
-            "description": "画布序列化串 {cells:[…]}"
+            "description": "Canvas serialization string {cells:[…]}"
           }
         }
       }
@@ -526,9 +526,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `host.getAllBindings` — 读绑定链
+### `host.getAllBindings` — Read binding chain
 
-读绑定链
+Read binding chain
 
 ```json
 {
@@ -536,15 +536,15 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "doc": {
       "type": "string",
-      "description": "根相对文档路径＝走目录链合并（近层覆盖）；不给＝项目根表原文"
+      "description": "Root-relative document path = merged along the directory chain (near layers override); without it = the project-root table verbatim"
     }
   }
 }
 ```
 
-### `host.getConfig` — 读宿主配置
+### `host.getConfig` — Read host config
 
-读宿主配置
+Read host config
 
 ```json
 {
@@ -553,9 +553,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `host.importLegacyData` — 旧档一次性搬运
+### `host.importLegacyData` — One-time legacy data migration
 
-旧档一次性搬运
+One-time legacy data migration
 
 ```json
 {
@@ -563,31 +563,31 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "items": {
       "type": "array",
-      "description": "旧 localStorage 档；X18 起可带身份三颗（key/role/bindings），带上就跟着落目录绑定表",
+      "description": "Legacy localStorage records; since X18 they may carry the identity trio (key/role/bindings) — when present, folder binding tables are written along",
       "items": {
         "type": "object",
         "properties": {
           "name": {
             "type": "string",
-            "description": "无扩展名的条目按 `.v` 落盘（源码那半颗的路径）"
+            "description": "Entries without an extension are written as `.v` (the source half's path)"
           },
           "content": {
             "type": "string"
           },
           "key": {
             "type": "string",
-            "description": "旧档批内 id——只当这批的连接键用"
+            "description": "Legacy batch-internal id — used only as this batch's linkage key"
           },
           "role": {
             "type": "string",
             "enum": [
               "part"
             ],
-            "description": "这颗是可编辑部件"
+            "description": "This one is an editable part"
           },
           "bindings": {
             "type": "object",
-            "description": "celltype → 同批里那颗部件的旧 id（⛔ 名字：重名/消毒会连错档）"
+            "description": "celltype → the legacy id of that part in the same batch (by name: duplicates/sanitization can link the wrong file)"
           }
         }
       }
@@ -596,9 +596,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `host.jumpToSource` — 跳到源码行
+### `host.jumpToSource` — Jump to source line
 
-跳到源码行
+Jump to source line
 
 ```json
 {
@@ -606,11 +606,11 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "file": {
       "type": "string",
-      "description": "根相对路径"
+      "description": "Root-relative path"
     },
     "line": {
       "type": "number",
-      "description": "0-based（编辑器口径）"
+      "description": "0-based (editor convention)"
     }
   },
   "required": [
@@ -619,9 +619,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `host.publishProblems` — 发 Problems
+### `host.publishProblems` — Publish Problems
 
-发 Problems
+Publish Problems
 
 ```json
 {
@@ -629,20 +629,20 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "items": {
       "type": "array",
-      "description": "一条 = 一行 Problems；line=null 表示给不出行（⛔ 冒充第 1 行）",
+      "description": "One item = one Problems entry; line=null means no line available (do not fake line 1)",
       "items": {
         "type": "object",
         "properties": {
           "fileName": {
             "type": "string",
-            "description": "工作区根相对路径"
+            "description": "Workspace-root-relative path"
           },
           "line": {
             "type": [
               "number",
               "null"
             ],
-            "description": "1-based；null = 未知"
+            "description": "1-based; null = unknown"
           },
           "message": {
             "type": "string"
@@ -661,9 +661,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `host.saveExportFile` — 宿主另存为
+### `host.saveExportFile` — Host save-as
 
-宿主另存为
+Host save-as
 
 ```json
 {
@@ -671,15 +671,15 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "base64": {
       "type": "string",
-      "description": "要写出去的字节（base64；消息过 JSON 通道 ⇒ ⛔ 直接交 Uint8Array）"
+      "description": "The bytes to write out (base64; messages travel the JSON channel — do not pass a Uint8Array directly)"
     },
     "defaultName": {
       "type": "string",
-      "description": "默认文件名（决定另存对话框的扩展名过滤器）"
+      "description": "Default file name (decides the save dialog's extension filter)"
     },
     "mime": {
       "type": "string",
-      "description": "调用方语义标注（当前仅用于日志/文档）"
+      "description": "Caller semantic annotation (currently only for logs/docs)"
     }
   },
   "required": [
@@ -689,9 +689,9 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 }
 ```
 
-### `host.setDocBindings` — 写一份文档的绑定表
+### `host.setDocBindings` — Write one document's binding table
 
-写一份文档的绑定表
+Write one document's binding table
 
 ```json
 {
@@ -699,19 +699,19 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
   "properties": {
     "docName": {
       "type": "string",
-      "description": "根相对文档路径；表落在它的目录层"
+      "description": "Root-relative document path; the table lands in its folder layer"
     },
     "bindings": {
       "type": "object",
-      "description": "只覆写**本文档**的条目（v0.4：别档前缀键⛔ 落本表、手编条目一颗不碰；本档一律产前缀键）"
+      "description": "Overwrites only this document's entries (v0.4: other files' prefixed keys do not land in this table, hand-edited entries are untouched; this document always produces prefixed keys)"
     }
   }
 }
 ```
 
-### `project.doctor` — 工程语义体检（内核聚合）
+### `project.doctor` — Project semantic checkup (kernel aggregation)
 
-L5：一枪回答"这份工程现在几处坏、各坏在哪、分别打哪颗修"——聚合层⛔ 第三把尺：missing＝collectInstanceHits 原样；unresolved＝各层表值经 readMetaAt+resolveLayerValue 折叠后现场核实（与 explain 终点同判据）；tables＝盘上 .verilogviz.json 逐份 parse/形状判；closure＝closureOf（缺省吃最近编译单 entry）；probe＝D1 闸前预演（⛔ 执行）。verdicts 按 error→warn→info 排序；**info 级默认收拢，deep:true 显式展**（裁决 §8.3）。宿主预算 60、帽 128KB（truncated+total）。幂等只读。
+L5: one shot answering how broken this project is, where, and which tool fixes each — the aggregation layer is not a third ruler: missing = collectInstanceHits verbatim; unresolved = each layer's table values verified on-site through readMetaAt+resolveLayerValue (same endpoint criteria as explain); tables = every .verilogviz.json on disk parsed and shape-checked; closure = closureOf (defaults to the latest compile job's entry); probe = D1 gate pre-run (no execution). Verdicts sorted error→warn→info; info level collapsed by default, deep:true expands it (ruling §8.3). Host budget 60, 128KB cap (truncated+total). Idempotent read-only.
 
 ```json
 {
@@ -719,34 +719,23 @@ L5：一枪回答"这份工程现在几处坏、各坏在哪、分别打哪颗�
   "properties": {
     "dir": {
       "type": "string",
-      "description": "只体检这个目录子树（根相对；缺省全工程）"
+      "description": "Check only this directory subtree (root-relative; default = whole project)"
     },
     "probe": {
       "type": "string",
-      "description": "顺带预演一颗工具的闸（名字=sys.listTools；⛔ 执行＝零副作用）"
+      "description": "Also pre-run one tool's gates (name = sys.listTools; no execution = zero side effects)"
     },
     "deep": {
       "type": "boolean",
-      "description": "true＝展开 info 级读数（默认只 error/warn）"
+      "description": "true = expand info-level findings (default: error/warn only)"
     }
   }
 }
 ```
 
-### `res.listProject` — 列编译域文件
+### `res.listProject` — List compile-domain files
 
-工程树（编译域 .v/.sv/.vh + 全量目录，跳过 node_modules/点开头；深度 16 护栏）。幂等只读。
-
-```json
-{
-  "type": "object",
-  "properties": {}
-}
-```
-
-### `res.listSandbox` — 列沙盒域文件
-
-工程树的沙盒那份（.djs）。幂等只读。
+Project tree (compile-domain .v/.sv/.vh + all folders, skipping node_modules and dot-prefixed; depth guard 16). Idempotent read-only.
 
 ```json
 {
@@ -755,9 +744,20 @@ L5：一枪回答"这份工程现在几处坏、各坏在哪、分别打哪颗�
 }
 ```
 
-### `res.parseFile` — 解析器原样输出摊开（双栏并呈）
+### `res.listSandbox` — List sandbox-domain files
 
-L4（P5）：同一份文件字节喂**两颗解析器**——main 栏＝主仓 shared/verilogParse（模块端口 parseModulePorts、例化端口连接 parseInstantiations，编译校验血统）；lite 栏＝扩展侧 verilogParseLite（树/编译面板血统）。divergence 报两套输出差集、primitivesIgnored 报三张原语跳表的差——分岔（dff 族一颗表跳一颗不跳＝r80 案底）**如实并呈**⛔ 掩盖，收敛＝独立战役（裁决 §八.1）。.djs 单栏（cells/subcircuits/inputs/outputs＝审计族同词表）。帽 256KB（截数组标 truncated）。幂等只读。
+The sandbox half of the project tree (.djs). Idempotent read-only.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### `res.parseFile` — Parser raw output, side by side
+
+L4 (P5): the same file bytes fed to two parsers — main column = the main-repo shared/verilogParse (module ports parseModulePorts, instantiation connections parseInstantiations, compile-verification lineage); lite column = the extension-side verilogParseLite (tree/compile-panel lineage). divergence reports the two outputs' diff sets, primitivesIgnored the diff of the three primitive-skip tables — divergences (the dff family skipped by one table but not the other = case r80) are reported side by side, never masked; convergence is a separate campaign (ruling §8.1). .djs is single-column (cells/subcircuits/inputs/outputs = the audit family's vocabulary). 256KB cap (truncated arrays marked). Idempotent read-only.
 
 ```json
 {
@@ -765,7 +765,7 @@ L4（P5）：同一份文件字节喂**两颗解析器**——main 栏＝主仓 
   "properties": {
     "path": {
       "type": "string",
-      "description": "根相对 .v/.sv/.vh 或 .djs"
+      "description": "Root-relative .v/.sv/.vh or .djs"
     }
   },
   "required": [
@@ -774,9 +774,9 @@ L4（P5）：同一份文件字节喂**两颗解析器**——main 栏＝主仓 
 }
 ```
 
-### `res.readBindingTables` — 逐层绑定表原文
+### `res.readBindingTables` — Per-layer binding table verbatim
 
-L3：给 doc（或 dir）＝从根到该目录链上每一层 `.verilogviz.json` 的**原文**（bindings.get 只给合并结果；这里看得见每层 circuits/bindings/协议外键）。单表 >32KB 截前 200 键并标 truncated。幂等只读。
+L3: for doc (or dir) = the verbatim content of every `.verilogviz.json` layer from root to that directory (bindings.get only gives the merged result; here you see each layer's circuits/bindings/extra keys). A single table over 32KB is truncated to the first 200 keys and marked truncated. Idempotent read-only.
 
 ```json
 {
@@ -784,19 +784,19 @@ L3：给 doc（或 dir）＝从根到该目录链上每一层 `.verilogviz.json`
   "properties": {
     "doc": {
       "type": "string",
-      "description": "根相对文档路径"
+      "description": "Root-relative document path"
     },
     "dir": {
       "type": "string",
-      "description": "或只给目录（该目录到根的链）"
+      "description": "or a directory only (that directory's chain to root)"
     }
   }
 }
 ```
 
-### `res.readProjectFile` — 读工程文件
+### `res.readProjectFile` — Read project file
 
-读工程根下的文本文件（sanitizeRel 拒 `..`/绝对路径穿越；>2MB 拒）。幂等只读。
+Reads a text file under the project root (sanitizeRel rejects ../ and absolute traversal; over 2MB rejected). Idempotent read-only.
 
 ```json
 {
@@ -804,7 +804,7 @@ L3：给 doc（或 dir）＝从根到该目录链上每一层 `.verilogviz.json`
   "properties": {
     "path": {
       "type": "string",
-      "description": "根相对路径"
+      "description": "Root-relative path"
     }
   },
   "required": [
@@ -813,9 +813,9 @@ L3：给 doc（或 dir）＝从根到该目录链上每一层 `.verilogviz.json`
 }
 ```
 
-### `sys.ctxSnapshot` — 宿主隐式态快照（如实转述）
+### `sys.ctxSnapshot` — Host implicit-state snapshot (reported as-is)
 
-L2「现场是什么」：活动编辑器/最后文本 uri/沙盒粘滞档/编译 Panel 与最近编译单/活画布清单/可见页签。专治 P3（隐式上下文劫持族）：agent ⛔ 猜"现在是谁"——一切写操作的目标仍须显式实参，这颗只供**看见**。全字段可 null，null 也是真话。
+L2 what is on stage: active editor / last text uri / sandbox sticky file / compile Panel and latest compile job / live canvas list / visible tabs. Built for P3 (the implicit-context hijack family): agents must not guess who is on stage — every write operation's target still needs explicit args; this tool is for seeing only. Every field can be null, and null is also the truth.
 
 ```json
 {
@@ -824,9 +824,9 @@ L2「现场是什么」：活动编辑器/最后文本 uri/沙盒粘滞档/编�
 }
 ```
 
-### `sys.describeTool` — 单颗工具深档（含闸门预演）
+### `sys.describeTool` — Single-tool deep card (with gate pre-run)
 
-深度 D1：一颗工具的**全部真相**＝registry 卡（标题/描述/参数 schema）+ 契约卡（perm/sideEffects/surfaces/ref/审批/since）+ 闸前预演（这一枪会不会被①②③④哪道拦、缺哪颗必填）+ 该工具最近的审计行（带 traceId）。⛔ 执行 handler＝零副作用。agent ⛔ 靠真打一枪来试签名。
+Depth D1: a tool's entire truth = registry card (title/description/parameter schema) + contract card (perm/sideEffects/surfaces/ref/approval/since) + gate pre-run (which of gates 1-4 would block this shot, which required args are missing) + the tool's latest audit rows (with traceId). Does not execute the handler = zero side effects. Agents must not probe signatures by really firing.
 
 ```json
 {
@@ -834,11 +834,11 @@ L2「现场是什么」：活动编辑器/最后文本 uri/沙盒粘滞档/编�
   "properties": {
     "tool": {
       "type": "string",
-      "description": "工具 id 逐字（`fs.rename`／`host.getConfig`…）；rpc 的 method 名⛔ 裸写，要带 `host.` 前缀"
+      "description": "Tool id verbatim (fs.rename / host.getConfig…); rpc method names must not be bare — prefix with host."
     },
     "args": {
       "type": "object",
-      "description": "打算交的实参（只用于验必填项，⛔ 落盘⛔ 执行）"
+      "description": "The args you intend to pass (only used to check required args — no writes, no execution)"
     },
     "surface": {
       "type": "string",
@@ -848,11 +848,11 @@ L2「现场是什么」：活动编辑器/最后文本 uri/沙盒粘滞档/编�
         "mcp",
         "cli"
       ],
-      "description": "按哪条端点判闸②（缺省＝调用方自己那条）。诊断工具挂在所有端点上，所以从 agent 线问\"画布那条线通不通\"是正当问题"
+      "description": "Which endpoint to judge gate 2 by (default = the caller's own). Diagnostic tools hang on all endpoints, so asking from the agent line whether the canvas line works is a legitimate question"
     },
     "subject": {
       "type": "string",
-      "description": "按哪个身份判闸③（缺省＝调用方自己）。⛔ 绕闸通道：只回一份判断，⛔ 执行"
+      "description": "Which subject to judge gate 3 by (default = the caller's own). Gate-bypass channel: returns a judgment only, no execution"
     }
   },
   "required": [
@@ -861,20 +861,9 @@ L2「现场是什么」：活动编辑器/最后文本 uri/沙盒粘滞档/编�
 }
 ```
 
-### `sys.getStatus` — 宿主状态
+### `sys.getStatus` — Host status
 
-契约版本/调用面/工具账规模/工程根＋活体三格（activation 检查点/bridge 桥态/openDocs 活画布/lastCompile 最近编译单）。幂等只读。
-
-```json
-{
-  "type": "object",
-  "properties": {}
-}
-```
-
-### `sys.listTools` — 工具发现
-
-§15 discoverTools：全部上账工具的 id/标题/描述/参数 schema/契约属性。agent 必须以它为准，⛔ 靠经验猜签名。
+Contract version/surfaces/tool ledger size/project root + three live gauges (activation checkpoints / bridge state / openDocs live canvases / lastCompile latest compile job). Idempotent read-only.
 
 ```json
 {
@@ -883,9 +872,9 @@ L2「现场是什么」：活动编辑器/最后文本 uri/沙盒粘滞档/编�
 }
 ```
 
-### `sys.ping` — 活体探针
+### `sys.listTools` — Tool discovery
 
-L0 半毫秒探针：扩展活着没、activate 活到哪一步（检查点账，半活假象终结者）、MCP 桥听没听、挂了多久。零实参零副作用，agent 进门第一枪。
+discoverTools: every registered tool's id/title/description/parameter schema/contract attributes. Agents must rely on this — do not guess signatures from experience.
 
 ```json
 {
@@ -894,9 +883,20 @@ L0 半毫秒探针：扩展活着没、activate 活到哪一步（检查点账�
 }
 ```
 
-### `sys.readAudit` — 读调用审计
+### `sys.ping` — Liveness probe
 
-§14/§15 readLogs：读 `.vv/audit/trace-YYYY-MM-DD.jsonl`（带连字符，与 apiAudit 落盘那颗串逐字一致）最近 N 行（缺省 50，帽 200）；未开户=空账。幂等只读。
+L0 sub-millisecond probe: is the extension alive, how far did activate get (checkpoint ledger — the half-alive illusion killer), is the MCP bridge listening, how long has it been up. Zero args, zero side effects — the agent's first shot.
+
+```json
+{
+  "type": "object",
+  "properties": {}
+}
+```
+
+### `sys.readAudit` — Read call audit
+
+readLogs: reads the last N lines of `.vv/audit/trace-YYYY-MM-DD.jsonl` (hyphenated, byte-identical to the apiAudit sink string; default 50, cap 200); no ledger = empty. Idempotent read-only.
 
 ```json
 {
@@ -904,19 +904,19 @@ L0 半毫秒探针：扩展活着没、activate 活到哪一步（检查点账�
   "properties": {
     "date": {
       "type": "string",
-      "description": "YYYY-MM-DD（缺省今天）。落盘名就是这颗串直接拼出来的，⛔ 另一种分隔——为免调用方猜，8 位纯数字（YYYYMMDD）也归一接受"
+      "description": "YYYY-MM-DD (default today). The sink filename is concatenated from this string directly — no other separators; to spare callers the guessing, 8-digit plain numbers (YYYYMMDD) are normalized too"
     },
     "limit": {
       "type": "number",
-      "description": "行数（缺省 50）"
+      "description": "Line count (default 50)"
     }
   }
 }
 ```
 
-### `sys.selfCheck` — 调用层自检（agent 进门第一枪）
+### `sys.selfCheck` — Calling-layer self-check (the agent's first shot)
 
-深度 D2：一枪回答"这套 API 现在能不能用、哪道闸在拦、拦了去哪查"——生效契约规模与调用面开关、registry∧契约**双向**漂移、工程覆盖 `.vv/api.json` 载入结果与被拒原因、授权档案在不在跑及其告警、审计通道三张脸（未开户/仍在缓冲/日文件为空）＋当日 verdict 统计与最近拒单（含 traceId）。可选 `probe` 顺带预演一颗工具。⛔ 任何写操作。
+Depth D2: one shot answering whether this API is usable right now, which gate is blocking, and where to look — effective contract size and surface switches, registry-vs-contract bidirectional drift, project override .vv/api.json load result and rejection reasons, grants profile liveness and its warnings, three faces of the audit channel (no ledger / still buffered / empty day file) + today's verdict stats and recent denials (with traceId). Optional probe pre-runs one tool. No write operations.
 
 ```json
 {
@@ -924,7 +924,7 @@ L0 半毫秒探针：扩展活着没、activate 活到哪一步（检查点账�
   "properties": {
     "probe": {
       "type": "object",
-      "description": "闸前预演一颗（与 sys.describeTool 同一把尺）；给了就顺带答\"这颗我现在能打吗\"",
+      "description": "Pre-runs one tool's gates (same ruler as sys.describeTool); if given, also answers whether you can fire it now",
       "properties": {
         "tool": {
           "type": "string"
@@ -940,11 +940,11 @@ L0 半毫秒探针：扩展活着没、activate 活到哪一步（检查点账�
             "mcp",
             "cli"
           ],
-          "description": "按哪条端点判（缺省＝调用方自己那条）"
+          "description": "Which endpoint to judge by (default = the caller's own)"
         },
         "subject": {
           "type": "string",
-          "description": "按哪个身份判闸③（缺省＝调用方自己）"
+          "description": "Which subject to judge gate 3 by (default = the caller's own)"
         }
       },
       "required": [

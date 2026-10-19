@@ -4,6 +4,7 @@
 // 由 apiDoc.test 生成并钉「无漂移」；有意变更=跑 pnpm api:doc 再生成后随代码一并提交。）
 // ============================================================================
 import { listTools } from './toolRegistry';
+import { tIn, tSchemaIn } from './i18n';   // i18n：API_REFERENCE 锁 en（I18N_DESIGN §二 B 方案）
 import { loadApiContract } from './apiSurface';
 import { AUDIT_VERDICTS } from './apiAudit';
 
@@ -31,20 +32,20 @@ export function renderApiReference(): string {
   for (const t of tools) {
     const ct = c.tools[t.id];
     if (!ct) { lines.push(`| \`${t.id}\` | ${t.title} | ⚠️ 契约缺账 | — | — | — | — | — |`); continue; }
-    lines.push(`| \`${t.id}\` | ${t.title} | ${ct.perm} | ${ct.sideEffects} | ${ct.surfaces.join('/')} | ${ct.requiresApproval ? '**HITL**' : '—'} | \`${ct.ref}\` | ${ct.since ?? '—'} |`);
+    lines.push(`| \`${t.id}\` | ${tIn('en', t.title)} | ${ct.perm} | ${ct.sideEffects} | ${ct.surfaces.join('/')} | ${ct.requiresApproval ? '**HITL**' : '—'} | \`${ct.ref}\` | ${ct.since ?? '—'} |`);
   }
   lines.push('');
   lines.push('## 工具详情（参数 schema）');
   for (const t of tools) {
     const ct = c.tools[t.id];
     lines.push('');
-    lines.push(`### \`${t.id}\` — ${t.title}`);
+    lines.push(`### \`${t.id}\` — ${tIn('en', t.title)}`);
     lines.push('');
-    lines.push(`${t.description}`);
+    lines.push(tIn('en', t.description));
     if (!ct) { lines.push(''); lines.push('> ⚠️ 契约缺账：本工具未上 vv-api.defaults.json（孤儿，闸会以 not-registered 拒）。'); continue; }
     lines.push('');
     lines.push('```json');
-    lines.push(JSON.stringify(t.schema, null, 2));
+    lines.push(JSON.stringify(tSchemaIn('en', t.schema), null, 2));
     lines.push('```');
   }
   lines.push('');

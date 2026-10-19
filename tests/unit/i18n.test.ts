@@ -123,17 +123,45 @@ describe('i18n 完备性闸：源码 t(…) 字面量 ↔ 英文表双向对齐'
     const orphans = Object.keys(WEB_EN).filter((k) => !used.has(k) && !SHARED_VOCAB.has(k));   // 动态键（SHARED_VOCAB 登记制）免孤儿
     expect(orphans, `英文表孤儿键（表里有、代码没人用＝漂移，删掉或补使用点）：\n${orphans.join('\n')}`).toEqual([]);
   });
-  it('扩展侧：使用点 ↔ 英文表双向对齐（当前 S1 尚未迁移扩展运行时串，两侧都应为空集）', () => {
-    const used = collectTLiterals(join(REPO, 'extension', 'src'));
-    const missing = [...used.keys()].filter((k) => !(k in EXT_EN));
-    expect(missing, `缺英文项：\n${missing.map((k) => `  ${k}  ← ${used.get(k)!.join(', ')}`).join('\n')}`).toEqual([]);
-    const orphans = Object.keys(EXT_EN).filter((k) => !used.has(k));
+  ﻿  it('扩展侧：注册表元数据全量有英文项（渲染层 t(动态) 的键＝运行时真身）＋字面量使用点照旧双向', async () => {
+    const { registerDomainTools } = await import('../../extension/src/toolsDomain');
+    try { registerDomainTools(); } catch { /* 幂等：同 worker 重复注册＝跳过 */ }
+    const { registerFilesystemTools: registerFsTools } = await import('../../extension/src/toolsFs');
+    try { registerFsTools(); } catch { /* 同上 */ }
+    try { (await import('../../extension/src/dispatch')).registerRpcTools(); } catch { /* 幂等：同 worker 重复注册＝跳过 */ }
+    const { listTools } = await import('../../extension/src/toolRegistry');
+    const cjk = /[\u4e00-\u9fa5]/;
+    const meta = new Set<string>();
+    for (const tool of listTools()) {
+      if (cjk.test(tool.title)) meta.add(tool.title);
+      if (cjk.test(tool.description)) meta.add(tool.description);
+      const walk = (o: any) => {
+        if (typeof o === 'string') return;
+        if (Array.isArray(o)) { o.forEach(walk); return; }
+        if (o && typeof o === 'object') {
+          for (const k of Object.keys(o)) {
+            if (k === 'description' && typeof o[k] === 'string' && cjk.test(o[k])) meta.add(o[k]);
+            else walk(o[k]);
+          }
+        }
+      };
+      walk(tool.schema);
+    }
+    const missing = [...meta].filter((k) => !(k in EXT_EN));
+    expect(missing, `注册表元数据缺英文项（I18N_DESIGN §二 B 方案：数据存中文、渲染层 t(动态)）：\n${missing.join('\n')}`).toEqual([]);
+    // 字面量使用点（t('…') 直译）照旧双向
+    const usedLit = collectTLiterals(join(REPO, 'extension', 'src'));
+    const missingLit = [...usedLit.keys()].filter((k) => !(k in EXT_EN));
+    expect(missingLit, `字面量缺英文项：\n${missingLit.join('\n')}`).toEqual([]);
+    // 孤儿：EN 表里有、字面量没用且不是注册表元数据＝漂移
+    const orphans = Object.keys(EXT_EN).filter((k) => !usedLit.has(k) && !meta.has(k));
     expect(orphans, `英文表孤儿键：\n${orphans.join('\n')}`).toEqual([]);
   });
-  it('英文面无 CJK（翻译表里漏翻的半成品当场红）', () => {
-    const webBad = Object.entries(WEB_EN).filter(([, v]) => CJK.test(v)).map(([k]) => k);
+  it('英文面无 CJK（翻译表里漏翻的半成品当场红；反引号字面量段豁免——代码/名字原文如 `x 副本 (n)`）', () => {
+    const stripCode = (s: string) => s.replace(/`[^`]*`/g, '');
+    const webBad = Object.entries(WEB_EN).filter(([, v]) => CJK.test(stripCode(v))).map(([k]) => k);
     expect(webBad, `前端英文表含 CJK：\n${webBad.join('\n')}`).toEqual([]);
-    const extBad = Object.entries(EXT_EN).filter(([, v]) => CJK.test(v)).map(([k]) => k);
+    const extBad = Object.entries(EXT_EN).filter(([, v]) => CJK.test(stripCode(v))).map(([k]) => k);
     expect(extBad, `扩展英文表含 CJK：\n${extBad.join('\n')}`).toEqual([]);
   });
 });

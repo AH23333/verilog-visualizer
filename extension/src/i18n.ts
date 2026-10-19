@@ -36,3 +36,33 @@ export function t(msg: string, vars?: Record<string, string | number>): string {
   if (vars) out = out.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
   return out;
 }
+
+/** 固定语种渲染（I18N_DESIGN §二/§四 B 方案）：API_REFERENCE 文档生成器锁 en——生成物不随宿主语言漂移。 */
+export function tIn(locale: Locale, msg: string, vars?: Record<string, string | number>): string {
+  let out = locale === 'en' ? (EN[msg] ?? msg) : msg;
+  if (vars) out = out.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
+  return out;
+}
+
+/** schema 深走查：嵌套 description 字段逐个按语种翻译（注册表数据存中文，渲染层翻译）。
+ *  ⛔ 只动 description——schema 其余部分是契约形状，动了就是另一个 API。 */
+export function tSchemaIn<T>(locale: Locale, schema: T): T {
+  const walk = (o: unknown): unknown => {
+    if (typeof o === 'string') return o;
+    if (Array.isArray(o)) return o.map(walk);
+    if (o && typeof o === 'object') {
+      const r: Record<string, unknown> = {};
+      for (const k of Object.keys(o as Record<string, unknown>)) {
+        r[k] = k === 'description' && typeof (o as Record<string, unknown>)[k] === 'string'
+          ? tIn(locale, (o as Record<string, string>)[k])
+          : walk((o as Record<string, unknown>)[k]);
+      }
+      return r;
+    }
+    return o;
+  };
+  return walk(schema) as T;
+}
+
+/** 运行时语种的 schema 翻译（sys.listTools/describeTool 渲染用）。 */
+export function tSchema<T>(schema: T): T { return tSchemaIn(getLocale(), schema); }
