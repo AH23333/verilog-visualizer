@@ -2026,3 +2026,62 @@ LLM 部分＝`vscode.lm.selectChatModels`（需 LM provider 扩展在场）或�
 - **E 段（机器面 i18n 端到端）**：zh 基座元数据中文（跟随宿主 ✓）· `--locale=en` 基座 42 颗
   title/description 全英文（41 直接 + 1 反引号字面量 `x 副本 (n)`＝代码真生成的名字）——
   **B 方案端到端验证通过**。
+
+## 十三、第十三节 · R161 交接质检（i18n S 系列 + 批次五写面，2026-10-19 本线任）
+
+**背书为真的部分（逐项实测，非采信账面）**：root tsc 0 · ext tsc 0 · vite build 0 · esbuild 0 · vitest **341/341** ·
+全量闸门 **74/74 GREEN（RED=0 ENVRED=0 无判成格 0）**。写面放开＝在册拍板（12 颗＝契约锁白名单，含深测修正收回 2 compile 族；
+fs.delete 留 HITL，其余无审批＝用户原话"全部放开"如实）；nls 三向对账 62 键 0 残留 0 孤儿；webview 语言只认宿主 meta 的
+设计修订正确（防闸门机环境翻面语言）；i18n 完备闸工艺精良（剥注释状态机/动态键白名单登记制/反引号段豁免）。
+
+**质检发现（F 编号在册）**：
+- **F1 兑现折价（真缺陷族·最大项）**：「S2 UI 可见面全量英文可用」claim ⚔ sink 精查实测 **38 处直出**——
+  结构根因＝完备闸只管"包了的都有译"，⛔ 管"该包的没包"（未包 t() 的可见串对闸完全隐形），且全部 UI 闸门跑 zh 回落档、
+  r87 等 DOM 证人语言无关——**三层防线一起瞎**。分布：canvas/useHostCompile.ts×1、components/BusWidthDialog.tsx×4、components/DffPortsModal.tsx×1、components/ExprGenDialog.tsx×3、components/FsmTableModal.tsx×5、components/MemoryViewModal.tsx×2、components/SandboxFileBindingDialog.tsx×1、components/SandboxSidebar.tsx×18、extension/sandboxFiles.ts×3。
+  逐处名单（extension 侧另含 sandboxFiles 通知 3 处）：
+  · src/canvas/useHostCompile.ts:103 诊断 message 直出: message: `缺少子模块 ${m}：在工作区补一个定义它的 .v 再保存`,
+  · src/components/BusWidthDialog.tsx:39 JSX 文本节点: <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>总线位宽</div>
+  · src/components/BusWidthDialog.tsx:46 JSX 文本节点: <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>每组位宽</div>
+  · src/components/BusWidthDialog.tsx:61 JSX 文本节点: background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 4
+  · src/components/BusWidthDialog.tsx:63 JSX 文本节点: background: 'var(--accent)', color: 'var(--vscode-button-foreground, #fff)', border: 'none', borderRadius: 4 }
+  · src/components/DffPortsModal.tsx:69 JSX 属性直出: <input value={v} placeholder={`如 ${'0'.repeat(bits)}`} style={{ ...boxStyle, width: 8 + 9 * Math.max(4, bits),
+  · src/components/ExprGenDialog.tsx:47 JSX 文本节点: <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>布尔表达式 → 电路图</span>
+  · src/components/ExprGenDialog.tsx:63 JSX 文本节点: <label style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', flexShrink: 0 }}>输出名</label>
+  · src/components/ExprGenDialog.tsx:98 JSX 文本节点: {!gateNameOk && <div data-expr-gate-err style={{ fontSize: 'var(--fs-sm)', color: 'var(--danger)' }}>部件名需以字母/下
+  · src/components/FsmTableModal.tsx:158 JSX 文本节点: <span style={{ width: 76 }}>源状态</span><span style={{ width: 116 }}>输入条件(0/1/x)</span>
+  · src/components/FsmTableModal.tsx:159 JSX 文本节点: <span style={{ width: 76 }}>目标状态</span><span style={{ width: 116 }}>输出值(0/1/x)</span><span />
+  · src/components/FsmTableModal.tsx:182 JSX 文本节点: borderRadius: 3, background: 'transparent', color: 'var(--danger, #b91c1c)' }}>删</button>
+  · src/components/FsmTableModal.tsx:194 JSX 文本节点: borderRadius: 'var(--radius-sm, 4px)', background: 'transparent', color: 'var(--text, #333)' }}>取消</button>
+  · src/components/FsmTableModal.tsx:197 JSX 文本节点: background: 'var(--accent, #2563eb)', color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600 }}>应用（重建
+  · src/components/MemoryViewModal.tsx:99 JSX 文本节点: border: '1px solid var(--border-subtle, #ccc)', borderRadius: 3, background: 'transparent' }}>清零</button>
+  · src/components/MemoryViewModal.tsx:102 JSX 文本节点: border: '1px solid var(--border-subtle, #ccc)', borderRadius: 3, background: 'transparent' }}>全置 1</button>
+  · src/components/SandboxFileBindingDialog.tsx:131 JSX 文本节点: <span style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-md)' }}>定义于</span>
+  · src/components/SandboxSidebar.tsx:90 JSX 属性直出: title="拖动调整宽度"
+  · src/components/SandboxSidebar.tsx:107 JSX 属性直出: <button onClick={onExitSandbox} data-sandbox-exit title="退出沙盒，返回电路 / 代码视图"
+  · src/components/SandboxSidebar.tsx:116 JSX 属性直出: <button onClick={() => importInputRef.current?.click()} title="导入文件"
+  · src/components/SandboxSidebar.tsx:127 JSX 属性直出: }} title="新建文件"
+  · src/components/SandboxSidebar.tsx:137 JSX 属性直出: }} title="新建文件夹"
+  · src/components/SandboxSidebar.tsx:144 toast 直出: <button onClick={() => { refreshFolders(); syncAfterFsOp(); showToast('已刷新文件列表'); }} title="刷新"
+  · src/components/SandboxSidebar.tsx:151 JSX 属性直出: <button onClick={onToggleSidebar} title="收起侧栏"
+  · src/components/SandboxSidebar.tsx:183 toast 直出: showToast(`已移动文件夹 ${path} → ${newPath}`);
+  · src/components/SandboxSidebar.tsx:201 JSX 属性直出: <button onClick={() => forceUpdate(n => n + 1)} title="刷新层次结构"
+  · src/components/SandboxSidebar.tsx:206 JSX 文本节点: <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>画布为空</div>
+  · src/components/SandboxSidebar.tsx:220 JSX 属性直出: title={`定位「${c.get('label') || c.get('celltype') || grp.label}」`}
+  · src/components/SandboxSidebar.tsx:248 JSX 属性直出: <div onClick={() => setInnerCell(c)} title="查看内部电路"
+  · src/components/SandboxSidebar.tsx:292 JSX 文本节点: <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>部件
+  · src/components/SandboxSidebar.tsx:296 JSX 属性直出: <button onClick={() => placeCustomGate(g)} title={`放置部件“${g.name}”（点击也可在文件面板打开编辑）`}
+  · src/components/SandboxSidebar.tsx:302 JSX 属性直出: <span onClick={(e) => { e.stopPropagation(); handleDeleteGate(g); }} title="删除部件"
+  · src/components/SandboxSidebar.tsx:311 JSX 文本节点: <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>把当前电路保存为部件后可复用；「复制到沙盒」的子部件也在此列出，均可打开编辑</
+  · src/components/SandboxSidebar.tsx:324 JSX 属性直出: title="点击定位该连线"
+  · src/components/SandboxSidebar.tsx:336 JSX 文本节点: <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>操作
+  · extension/src/sandboxFiles.ts:202 宿主通知直出: 项目根
+  · extension/src/sandboxFiles.ts:258 宿主通知直出: 重命名失败：${String(e instanceof Error ? e.message : e)}
+  · extension/src/sandboxFiles.ts:297 宿主通知直出: 不能把目录「${name}」移动到它自己或它的子目录里。
+
+- **F2 盲区补闸建议**：把本次 sink 精查规则固化进 i18n 闸（可见面 sink 直出＝当场红 + 豁免登记制：夹具/协议面/开发态缺档提示）。
+- **F3 遮蔽余味**：BusWidthDialog:48 `TOTALS.map(t =>…` 参数名再撞 i18n t（S2-3 已两踩同雷 ab59c41/ff04c00）——现无实炸（该作用域内
+  无 t() 调用）但建议改名 + 闸加 no-shadow 类检查。
+- **豁免在册（非缺陷）**：mcpBridge 协议 message（机器面，B 方案另议口径）；extension/customEditors 开发态缺档 HTML（面向开发者）；
+  GateHarness＝夹具面。
+- 归属与处置：迁移是代理战线在做的活（最后一笔距本质检 ~70 分钟），F1 补漏属 S2 兑现尾活——**名单已落账，动手与否候用户裁决**
+  （本线随时可接：约 38 + 3 串，含建表入 EN + 包壳 + F2 新闸一并落）。
