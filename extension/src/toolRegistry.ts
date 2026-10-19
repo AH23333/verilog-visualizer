@@ -130,6 +130,29 @@ export async function executeTool(
     return fail('BAD_ARGS', 'error', `[API_BAD_ARGS] ${id} 缺必填实参：${missing.join(', ')}`, `missing=${missing.join(',')}`,
       `补齐再打：sys.describeTool {"tool":"${id}"} 有参数 schema 全形（缺的是 ${missing.join(', ')}）`);
   }
+  // 深度战役二波修（2026-10-19 真管道实测）：实参**类型**闸——在场校验只防「没给」，防不了「给了但类型不对」：
+  //   path:42/["a"]/{} 经 String() 强转成 "42"/"a"/"[object Object]"，把「调用方递了非字符串」谎报成
+  //   ok:true NOT_FOUND（["a"] 还静默收首元素，最阴）；同族姊妹洞 readAudit limit:"abc" → Number()=NaN
+  //   → slice(-NaN)＝从头切 → 200 行帽被旁路整档倒出。schema 声明了 type 的实参（必填或在场的可选），
+  //   类型对不上当场 BAD_ARGS——错误契约 v2 的题中之义（归责调用方），类型这一维先收口，⛔ 借机铺全量校验。
+  //   未声明 type 的属性/未知字段照旧容忍（JSON-RPC 未知字段容忍＝协议正当语义，深度战役归档在册）。
+  const typeOk = (v: unknown, t: string | string[]): boolean => {
+    const one = (s: string): boolean =>
+      s === 'null' ? v === null                            // JSON Schema 的 null 类型：typeof null==='object'，必须单判
+        : s === 'array' ? Array.isArray(v)
+        : s === 'object' ? typeof v === 'object' && v !== null && !Array.isArray(v)
+          : typeof v === s;
+    return Array.isArray(t) ? t.some(one) : one(t);   // dispatch 域有 type:['number','null'] 数组形声明
+  };
+  const badTypes = Object.entries(def.schema.properties ?? {})
+    .filter(([k, p]) => args?.[k] !== undefined && (p as { type?: string | string[] })?.type
+      && !typeOk(args?.[k], (p as { type?: string | string[] }).type as string | string[]))
+    .map(([k]) => k);
+  if (badTypes.length) {
+    return fail('BAD_ARGS', 'error', `[API_BAD_ARGS] ${id} 实参类型不合：${badTypes.join(', ')}（schema 声明的类型对不上）`,
+      `badType=${badTypes.join(',')}`,
+      `类型逐字对上（字符串给字符串、数字给数字）；sys.describeTool {"tool":"${id}"} 看参数 schema 全形`);
+  }
   if (!canSurface(id, caller.surface)) {
     return fail('SURFACE_DENIED', 'surface-denied', `[API_SURFACE_DENIED] ${id}：端点未对 ${caller.surface} 开放（契约工具账）`, undefined,
       `这颗在 ${caller.surface} 面没开是契约裁的——sys.describeTool {"tool":"${id}","surface":"${caller.surface}"} 看账面；开面＝人类侧契约/覆盖文件改动，⛔ 绕面硬打`);

@@ -3276,3 +3276,59 @@ describe('R160 API 深度战役证人（2026-10-19 真管道 400+ 枪揪出的�
     expect(has('D:/p/nothing.djs')).toBe(false);                        // 全程只拒不动盘（写面零执行旁证）
   });
 });
+
+describe('R160 API 深度战役二波证人（2026-10-19 接手代理：第五族类型闸——String()/Number() 强转谎报 + NaN 帽旁路）', () => {
+  const call = async (id: string, args: Record<string, unknown>, caller?: any) => {
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    return executeTool(ctx(PROD) as never, caller ?? CALLER_UI, id, args) as Promise<any>;
+  };
+
+  it('必填 string 实参非字符串五形（null/42/{}/["a"]/true）→ BAD_ARGS（修前 String() 强转谎报 ok:true NOT_FOUND，["a"] 还静默收首元素）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/main.v': 'module main; endmodule' } });
+    for (const [tool, key] of [['res.parseFile', 'path'], ['compile.hierarchy', 'entry'], ['res.readProjectFile', 'path']] as const) {
+      for (const bad of [null, 42, {}, ['a'], true]) {
+        const err = await call(tool, { [key]: bad }).catch((e: any) => e);
+        expect(err.code, tool + ' ← ' + JSON.stringify(bad)).toBe('BAD_ARGS');
+        expect(String(err.traceId)).toMatch(/^[0-9a-f]{8}$/);
+        expect(String(err.hint)).toContain('sys.describeTool');
+        expect(String(err.message)).toContain('类型不合');
+      }
+    }
+    expect((await call('res.parseFile', { path: 'main.v' })).kind).toBe('verilog');    // 合法字符串照通
+  });
+
+  it('readAudit limit 非数字（"abc"/"50"）→ BAD_ARGS（修前 Number()=NaN → slice(-NaN)＝从头切，200 行帽旁路整档倒出）', async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    await boot({ folders: ['D:/w'], seed: {
+      'D:/w/.vv/project.json': '{"kind":"project"}',
+      'D:/w/.vv/api.grants.json': JSON.stringify({ subjects: { ui: 'x' }, profiles: { x: ['sys.readAudit'] } }),
+      [`D:/w/.vv/audit/trace-${day}.jsonl`]: Array.from({ length: 5 }, () => '{"verdict":"auto","tool":"sys.ping"}').join('\n') + '\n',
+    } });
+    for (const bad of ['abc', '50']) {
+      const err = await call('sys.readAudit', { date: day, limit: bad }).catch((e: any) => e);
+      expect(err.code, 'limit=' + bad).toBe('BAD_ARGS');                               // "50" 数字形字符串也拒：类型逐字对上
+    }
+    const ok = await call('sys.readAudit', { date: day, limit: 3 });
+    expect(ok.lines.length).toBe(3);                                                   // 数字照通且帽语义不变（尾部 3 行）
+  });
+
+  it('可选实参同样受类型闸（doctor.deep:"true" / hierarchy.depth:"4" 字符串拒）——schema 声明了 type 就逐字对上', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; sub u1(); endmodule',
+      'D:/p/sub.v': 'module sub; endmodule',
+      'D:/p/.verilogviz.json': JSON.stringify({ bindings: { sub: 'sub.v' } }),
+    } });
+    const d = await call('project.doctor', { deep: 'true' }).catch((e: any) => e);
+    expect(d.code).toBe('BAD_ARGS');
+    const h = await call('compile.hierarchy', { entry: 'top.v', depth: '4' }).catch((e: any) => e);
+    expect(h.code).toBe('BAD_ARGS');
+    const okH = await call('compile.hierarchy', { entry: 'top.v', depth: 4 });
+    expect(okH.total).toBeGreaterThanOrEqual(1);                                  // 数字形照通（有实例才有节点）
+  });
+
+  it('容忍面不回退：未知字段照旧放行（JSON-RPC 未知字段容忍＝协议正当语义，深度战役归档在册）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/main.v': 'module main; endmodule' } });
+    const ok = await call('res.listProject', { junk: 'x', another: 42 });              // 未知字段不在 schema.properties
+    expect(ok.files.length).toBeGreaterThan(0);
+  });
+});

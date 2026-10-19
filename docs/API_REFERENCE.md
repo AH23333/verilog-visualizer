@@ -171,7 +171,10 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
       "description": "实例/键名"
     },
     "part": {
-      "type": "string",
+      "type": [
+        "string",
+        "null"
+      ],
       "description": "部件文件（根相对或相对该目录；null/空＝删）"
     }
   },

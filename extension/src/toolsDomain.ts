@@ -133,7 +133,9 @@ export function registerDomainTools(): void {
       properties: {
         dir: { type: 'string', description: '目录层（根相对；缺省=项目根表）' },
         celltype: { type: 'string', description: '实例/键名' },
-        part: { type: 'string', description: '部件文件（根相对或相对该目录；null/空＝删）' },
+        // part 的 null＝删键是合法语义（拆表），但声明只写 string——深度战役二波类型闸当场揪出声明不实，
+        // 归位数组形（与 dispatch 域 line: ['number','null'] 同款先例）：闸读声明，声明就得把真语义说全。
+        part: { type: ['string', 'null'], description: '部件文件（根相对或相对该目录；null/空＝删）' },
       },
       required: ['celltype'],
     },
