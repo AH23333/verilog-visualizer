@@ -53,7 +53,7 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
         {/* Header —— 与编译模式 BindingDialog 同结构 */}
         <div style={{ marginBottom: 16, flexShrink: 0 }}>
           <h2 style={{ margin: 0, fontSize: 'var(--fs-xl)', fontWeight: 600, color: 'var(--text)' }}>
-            绑定子电路实例
+            {t('绑定子电路实例')}
           </h2>
           <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-md)', color: 'var(--text-secondary)' }}>
             {parts.length > 0
@@ -101,7 +101,7 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
                   </span>
                 ) : (
                   <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                    绑定
+                    {t('绑定')}
                   </span>
                 )}
               </div>
@@ -109,7 +109,7 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
           })}
           {!parts.length && (
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-lg)' }}>
-              没有可绑定的部件文件。
+              {t('没有可绑定的部件文件。')}
             </div>
           )}
         </div>
@@ -128,7 +128,7 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
               fontSize: 'var(--fs-md)',
               fontWeight: 500,
             }}>
-            取消
+            {t('取消')}
           </button>
           <button
             onClick={onClose}
@@ -137,7 +137,7 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
               background: 'var(--accent)', color: 'var(--vscode-button-foreground, #fff)', cursor: 'pointer',
               fontSize: 'var(--fs-md)', fontWeight: 600,
             }}>
-            确定
+            {t('确定')}
           </button>
         </div>
       </div>

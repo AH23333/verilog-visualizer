@@ -209,3 +209,52 @@ describe('html.ts locale 注入（I18N_DESIGN §一：CSP 下用 meta，⛔ 内�
     expect(/<html[^>]*lang="zh-CN"/.test(out)).toBe(true);
   });
 });
+
+describe('i18n 可见面直出差闸 v4（R161 质检 F2：治「该包的没包」——原文逐行判定，多行 JSX 文本节点与模板键全管）', () => {
+  const SINKS: Array<[RegExp, string]> = [
+    [/\bshowToast\(\s*['"`][^'"`\n]*[\u4e00-\u9fa5]/, 'toast 字面直出'],
+    [/(?:^|[^.\w])(?:window\.)?(?:alert|confirm)\(\s*['"`][^'"`\n]*[\u4e00-\u9fa5]/, '原生弹窗直出'],
+    [/message:\s*['"`][^'"`\n]*[\u4e00-\u9fa5]/, '诊断/回包 message 直出'],
+    [/(title|aria-label|placeholder|tooltip)=\{?\s*(['"])[^'"\n]*[\u4e00-\u9fa5]/, 'JSX 属性字面直出'],
+    [/set(Notice|Status|Hint|Msg)s?\(\s*['"`][^'"`\n]*[\u4e00-\u9fa5]/, '状态位直出'],
+    [/show(Information|Warning|Error|Success)Message\(\s*['"`][^'"`\n]*[\u4e00-\u9fa5]/, '宿主通知直出'],
+    [/\bt\(\s*`/, 'template 键不可查表（动态拼键进不了 EN 表——必须改 {var} 插值静态键）'],
+  ];
+  const JSX_INLINE = /(^|>)\s*[^<>{}*\n]*[\u4e00-\u9fa5][^<>{}*\n]*<\//;
+  const scan = (dir: string, acc: string[]) => {
+    for (const e of readdirSync(join(REPO, dir), { withFileTypes: true })) {
+      const rel = dir + '/' + e.name;
+      if (e.isDirectory()) { if (!/node_modules|dist/.test(rel)) scan(rel, acc); continue; }
+      if (!/\.(ts|tsx)$/.test(e.name) || /i18n|\.test\.|vscodeApiStub/.test(rel)) continue;
+      const orig = readFileSync(join(REPO, rel), 'utf8');
+      if (orig.slice(0, 400).includes('i18n-exempt-file')) continue;
+      const lines = orig.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const raw = lines[i];
+        const probe = raw.replace(/\/\/.*$/, '');
+        if (!/[\u4e00-\u9fa5]/.test(probe)) continue;
+        const t0 = raw.trim();
+        if (/^(\/\/|\/\*|\*|\{\/\*|<!--)/.test(t0) || t0 === '') continue;         // 整行/JSX 注释行
+        if (/\bt\(\s*['"`]/.test(probe) && !/\bt\(\s*`/.test(probe)) continue;      // 包了静态键 t() 的行放行（template 键另有钉）
+        if (lines.slice(Math.max(0, i - 2), i + 1).join('\n').includes('i18n-exempt')) continue;
+        let hit: string | null = null;
+        for (const [re, why] of SINKS) if (re.test(probe)) { hit = why; break; }
+        if (!hit) {
+          if (JSX_INLINE.test(probe)) hit = 'JSX 文本节点直出(单行)';
+          else {
+            let j = i - 1; while (j >= 0 && !lines[j].trim()) j--;
+            const prev = (lines[j] || '').replace(/\/\/.*$/, '').trim();
+            if ((/[>\}]$/.test(prev) && /^\s*[\u4e00-\u9fa5][\u4e00-\u9fa5\d\s，。：（）\-—…、《》！？a-zA-Z0-9_.{}'"×·+/%（]*$/.test(probe) && !/[=;<{})]/.test(probe.replace(/[\u4e00-\u9fa5]/g, '').replace(/[，。：（）…、《》！？·×＋+\/%\-—]/g, ''))) || /^\s*[\u4e00-\u9fa5][^<>{}]*<\/\s*$/.test(probe)) hit = 'JSX 文本节点直出(多行)';
+          }
+        }
+        if (hit) acc.push(rel + ':' + (i + 1) + ' ' + hit + ': ' + t0.slice(0, 80));
+      }
+    }
+  };
+  it('可见面中文字面量必须过 t()（sink/属性/文本节点/模板键四形全管）', () => {
+    const hits: string[] = [];
+    scan('src', hits);
+    scan('extension/src', hits);
+    expect(hits, '可见面直出/非法键（包 t()+进表；确属豁免行请标 i18n-exempt 并写理由）：\n' + hits.join('\n')).toEqual([]);
+  });
+});

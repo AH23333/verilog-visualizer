@@ -57,6 +57,7 @@ export async function handleMcpLine(context: vscode.ExtensionContext, line: stri
     req = JSON.parse(line);
     if (!req || typeof req !== 'object' || typeof req.tool !== 'string') throw new Error('缺 tool 字段');
   } catch (e) {
+    // i18n-exempt: 协议机器面——文案给 agent 读，B 方案裁协议层⛔ 进人用翻译表（账本§十四）
     return reply(null, false, { code: 'BAD_REQUEST', message: `请求不是合法的一枪 JSON（{id,tool,args}）：${String(e instanceof Error ? e.message : e)}`,
       hint: '协议一行一枪：{"id":<任意>,"tool":"<sys.listTools 的名字>","args":{…}}（≤1MB/行；mcp/mcp-server.cjs 是参考实现）' });
   }
@@ -119,7 +120,8 @@ export async function startMcpBridge(context: vscode.ExtensionContext): Promise<
       for (const raw of lines) {
         const line = raw.trim();
         if (!line) continue;
-        if (line.length > MAX_LINE) { sock.write(JSON.stringify({ id: null, ok: false, code: 'BAD_REQUEST', message: `单行超 ${MAX_LINE}B 帽` }) + '\n'); continue; }
+        // i18n-exempt: 协议机器面（同上）
+      if (line.length > MAX_LINE) { sock.write(JSON.stringify({ id: null, ok: false, code: 'BAD_REQUEST', message: `单行超 ${MAX_LINE}B 帽` }) + '\n'); continue; }
         // 逐枪串行回包（⛔ 并发乱序——协议简单性的代价，读侧工具本就毫秒级）
         void handleMcpLine(context, line).then((out) => { if (!sock.destroyed) sock.write(out + '\n'); });
       }

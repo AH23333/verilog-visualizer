@@ -8,6 +8,7 @@
 // role 的消费方：customEditors._siblings（init 带 role）→ DocApp → gateSystem 部件打分。
 import * as vscode from 'vscode';
 import { projectRoot } from './dispatch';
+import { t } from './i18n';   // S2-7：文件操作通知＝用户可见面
 import { uniqueName, uniqueFolderName, sanitizeNameInput } from './naming';
 import { findSandboxUris, isSandboxPath, rootRel } from './verilogDomain';
 
@@ -251,7 +252,7 @@ export async function openBindingConfig(context: vscode.ExtensionContext, docUri
   }
   const doc = await vscode.workspace.openTextDocument(uri);
   await vscode.window.showTextDocument(doc, { preview: false });
-  void vscode.window.showInformationMessage(`绑定配置＝「${dirRel || '项目根'}」目录的 ${META_FILE}（改完保存即生效；部件文件路径写该目录内或 ../ 相对）。`);
+  void vscode.window.showInformationMessage(t('绑定配置＝「{dir}」目录的 {file}（改完保存即生效；部件文件路径写该目录内或 ../ 相对）。', { dir: dirRel || t('项目根'), file: META_FILE }));
 }
 
 /** 一批落盘名（根相对）里 .djs 所在的各目录 ensure 配置表——「目录有部件就有表」。 */
@@ -316,7 +317,7 @@ async function performRename(context: vscode.ExtensionContext, uri: vscode.Uri, 
   // 目标占用与重名顺延：overwrite:false 语义（重名会失败并具体告知——G8）
   try { await then(vscode.workspace.fs.rename(uri, target, { overwrite: false })); }
   catch (e) {
-    void vscode.window.showErrorMessage(`重命名失败：${String(e instanceof Error ? e.message : e)}`);
+    void vscode.window.showErrorMessage(t('重命名失败：{reason}', { reason: String(e instanceof Error ? e.message : e) }));
     return false;
   }
   // target 串可能带未折的 `../`（桩/极端 joinPath 形状；真宿主会归一）——过 resolveLayerValue 折死，双保险
@@ -364,7 +365,7 @@ export async function moveToFile(context: vscode.ExtensionContext, srcUri: vscod
   let isDir = false;
   try { isDir = (await then(vscode.workspace.fs.stat(srcUri)) as any).type === 2; } catch { /* 少见；当文件处理 */ }
   if (isDir && (destRel === srcFull || destRel.startsWith(`${srcFull}/`))) {
-    void vscode.window.showErrorMessage(`不能把目录「${name}」移动到它自己或它的子目录里。`);
+    void vscode.window.showErrorMessage(t('不能把目录「{name}」移动到它自己或它的子目录里。', { name }));
     return null;
   }
   // 原地"移动"＝no-op（⛔ 白跑 (n) 顺延把 parts 改成「parts (2)」——审查缺陷 #5，2026-10-17）

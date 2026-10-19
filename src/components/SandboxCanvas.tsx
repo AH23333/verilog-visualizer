@@ -3345,7 +3345,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
         {!activeFile && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
             color: 'var(--text-muted)', fontSize: 'var(--fs-sm)' }}>
-            点击 + 新建沙盒文件
+            {t('点击 + 新建沙盒文件')}
           </div>
         )}
         {cycleWarn && (

@@ -220,4 +220,9 @@ export const EN: Record<string, string> = {
   '闸前预演一颗（与 sys.describeTool 同一把尺）；给了就顺带答"这颗我现在能打吗"': 'Pre-runs one tool\'s gates (same ruler as sys.describeTool); if given, also answers whether you can fire it now',
   '按哪条端点判（缺省＝调用方自己那条）': 'Which endpoint to judge by (default = the caller\'s own)',
   '按哪个身份判闸③（缺省＝调用方自己）': 'Which subject to judge gate 3 by (default = the caller\'s own)',
+
+  // ===== S2-7 质检补漏（sandboxFiles 文件操作通知）=====
+  '绑定配置＝「{dir}」目录的 {file}（改完保存即生效；部件文件路径写该目录内或 ../ 相对）。': 'Binding configuration = {file} in the "{dir}" folder (save to apply; part file paths are folder-local or ../ relative).',
+  '重命名失败：{reason}': 'Rename failed: {reason}',
+  '不能把目录「{name}」移动到它自己或它的子目录里。': 'Folder "{name}" cannot be moved into itself or one of its own subfolders.',
 };

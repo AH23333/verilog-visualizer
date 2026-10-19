@@ -5,7 +5,7 @@
 // normalizeIoLabels / renameAutoCells / new Circuit({elkjs}) 渲染。
 //
 // R35b 修复（用户报告「展开图加载卡顿且无内容」）：
-//  - 卡顿：elk 自动布局是主线程同步计算。弹窗先渲染骨架（「正在布局…」占位）
+//  - 卡顿：elk 自动布局是主线程同步计算。弹窗先渲染骨架（「{t('正在布局…')}」占位）
 //    再跑管线，点击立即有反馈；默认值改由 shouldAutoLayout 判定。
 //  - 无内容：坏连线曾让 new Circuit 抛 TypeError → 弹窗永久白屏；已降级容错。
 //
@@ -117,7 +117,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
     setRendering(true);
     setFailMsg(null);
     // 先让弹窗骨架上屏（下一帧），再跑同步布局管线 —— 大图 elk 秒级阻塞
-    // 期间用户看到的是「正在布局…」而不是冻结的空白
+    // 期间用户看到的是「{t('正在布局…')}」而不是冻结的空白
     timer = window.setTimeout(() => {
       if (disposed) return;
       host.innerHTML = '';
@@ -276,7 +276,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
           padding: '9px 14px', borderBottom: '1px solid var(--border)' }}>
           <span style={{ fontSize: 'var(--fs-sm)', color: 'var(--text)', fontWeight: 600, display: 'flex',
             alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-            内部电路：
+            {t('内部电路：')}
             {stack.map((s, i) => (
               <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 {i > 0 && <span style={{ color: 'var(--text-muted)' }}>›</span>}
@@ -294,7 +294,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
               <button onClick={() => setStack(stack.slice(0, 1))} title={t('回到最外层')}
                 style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 4,
                   color: 'var(--text-muted)', cursor: 'pointer', fontSize: 'var(--fs-xs)', padding: '1px 5px' }}>
-                ⤒ 顶层
+                {t('⤒ 顶层')}
               </button>
             )}
           </span>
@@ -311,7 +311,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
               <span style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid var(--border)',
                 borderTopColor: 'var(--text-secondary)', display: 'inline-block',
                 animation: 'spin 0.8s linear infinite' }} />
-              正在布局…
+              {t('正在布局…')}
             </div>
           )}
           {failMsg && (
@@ -320,7 +320,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
               fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', textAlign: 'center', padding: 20 }}>
               <span>{failMsg.includes(t('渲染失败')) ? failMsg : t('内部电路渲染失败：{msg}', { msg: failMsg })}</span>
               <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-                电路数据可能已损坏；可尝试重新放置该部件。
+                {t('电路数据可能已损坏；可尝试重新放置该部件。')}
               </span>
             </div>
           )}
@@ -351,7 +351,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
           <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', whiteSpace: 'nowrap' }}>
             <input type="checkbox" checked={autoLayout}
               onChange={(e) => setAutoLayout(e.target.checked)} />
-            自动整理布局
+            {t('自动整理布局')}
           </label>
         </div>
       </div>

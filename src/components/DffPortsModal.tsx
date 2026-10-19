@@ -92,7 +92,7 @@ export function DffPortsModal({ cell, onApply, onClose }: Props) {
     border: '1px solid var(--border, #ccc)', borderRadius: 3,
     background: 'var(--surface, #fff)', color: 'var(--text, #222)' };
   const valueInput = (v: string, set: (s: string) => void) => (
-    <input value={v} placeholder={`如 ${'0'.repeat(bits)}`} style={{ ...boxStyle, width: 8 + 9 * Math.max(4, bits),
+    <input value={v} placeholder={t('如 {v}', { v: '0'.repeat(bits) })} style={{ ...boxStyle, width: 8 + 9 * Math.max(4, bits),
       fontFamily: 'ui-monospace, monospace' }} onChange={(e) => set(e.target.value.trim())} />
   );
 

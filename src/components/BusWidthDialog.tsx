@@ -37,37 +37,37 @@ export default function BusWidthDialog({ mode, total, groupWidth, onTotal, onGro
       <div style={{ background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10,
         padding: 18, minWidth: 340, boxShadow: '0 12px 32px var(--vscode-widget-shadow, rgba(0,0,0,.32))' }}>
         <div style={{ fontSize: 'var(--fs-lg)', fontWeight: 500, color: 'var(--text)', marginBottom: 4 }}>
-          {mode}位宽方案
+          {t('{mode}位宽方案', { mode: t(mode) })}
         </div>
         <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
           {mode === t('分线器') ? t('一条总线拆成若干组（每组可取 1/2/4/8 位）') : t('若干组合成一条总线')}
         </div>
 
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>总线位宽</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>{t('总线位宽')}</div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-          {TOTALS.map(t => (
-            <button key={t} onClick={() => { onTotal(t); if (t % groupWidth !== 0) onGroupWidth(1); }} style={btn(t === total)}>{t} 位</button>
+          {TOTALS.map(tw => (   // 参数⛔ 叫 t（遮蔽 i18n t——F3 清扫）
+            <button key={tw} onClick={() => { onTotal(tw); if (tw % groupWidth !== 0) onGroupWidth(1); }} style={btn(tw === total)}>{t('{n} 位', { n: tw })}</button>
           ))}
         </div>
 
-        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>每组位宽</div>
+        <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>{t('每组位宽')}</div>
         <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
           {widths.map(w => (
-            <button key={w} onClick={() => onGroupWidth(w)} style={btn(w === groupWidth)}>{w} 位 ×{Math.floor(total / w)}</button>
+            <button key={w} onClick={() => onGroupWidth(w)} style={btn(w === groupWidth)}>{t('{n} 位 ×{count}', { n: w, count: Math.floor(total / w) })}</button>
           ))}
         </div>
 
         <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginBottom: 14,
           background: 'var(--surface-hover)', borderRadius: 6, padding: '6px 10px' }}>
-          结果：{n} 组 × {groupWidth} 位 = {n * groupWidth} 位
+          {t('结果：{n} 组 × {gw} 位 = {total} 位', { n, gw: groupWidth, total: n * groupWidth })}
           <span style={{ opacity: .8 }}>（端口 {mode === t('分线器') ? `out0…out${n - 1} / in` : `in0…in${n - 1} / out`}）</span>
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <button onClick={onClose} style={{ padding: '6px 14px', fontSize: 'var(--fs-sm)', cursor: 'pointer',
-            background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 4 }}>取消</button>
+            background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border-subtle)', borderRadius: 4 }}>{t('取消')}</button>
           <button onClick={onApply} style={{ padding: '6px 14px', fontSize: 'var(--fs-sm)', cursor: 'pointer',
-            background: 'var(--accent)', color: 'var(--vscode-button-foreground, #fff)', border: 'none', borderRadius: 4 }}>应用</button>
+            background: 'var(--accent)', color: 'var(--vscode-button-foreground, #fff)', border: 'none', borderRadius: 4 }}>{t('应用')}</button>
         </div>
       </div>
     </div>

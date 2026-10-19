@@ -8,6 +8,7 @@
 // siblings = 工作区里同目录（全仓）其它 .djs 文档，是部件解析的唯一真源
 // （gateSystem.setPartFileSource 顶替 localStorage 里的 sandboxStore 旧档）。
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { t } from '../i18n';   // S2-7：载入态文案上屏
 import SandboxCanvas from '../components/SandboxCanvas';
 import { useVscodeTheme } from '../hooks/useVscodeTheme';
 import { setPartFileSource, clearAutoHits, setBindingPolicy } from '../lib/gateSystem';
@@ -175,7 +176,7 @@ export default function DocApp() {
         width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
         color: 'var(--text-muted)', fontSize: 'var(--fs-sm)', background: 'var(--canvas-bg)',
       }}>
-        正在载入电路文档…
+        {t('正在载入电路文档…')}
       </div>
     );
   }

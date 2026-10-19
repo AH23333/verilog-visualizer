@@ -297,7 +297,7 @@ export default function SandboxFileTree({
       {rootFiles.map((f) => fileRow(f, 0))}
       {isEmpty && (
         <div data-sidebar-empty style={{ padding: 16, fontSize: 'var(--fs-md)', color: 'var(--text-muted)', textAlign: 'center' }}>
-          暂无文件（右键空白处新建）
+          {t('暂无文件（右键空白处新建）')}
         </div>
       )}
       <div style={{ minHeight: 48 }} />

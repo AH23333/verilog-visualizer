@@ -12,6 +12,7 @@ import {
   compileVerilog, MissingModulesError, YosysCompileError, validateModuleInterfaces,
 } from '../lib/verilog';
 import { hostFire, type ProblemItem } from '../lib/host/host';
+import { t } from '../i18n';   // S2-7：诊断 message 进面板＝可见面
 
 /** 宿主推送的编译单（extension/src/compilePanel.ts CompileJob 的形状） */
 export interface CompileJob {
@@ -103,7 +104,7 @@ export function useHostCompile() {
         // 多驱动冲突：已剥掉多余驱动照常出图，但必须说出来（行号给不出就 null）
         const parsed: ProblemItem[] = result.netConflicts.map((c) => ({
           fileName: c.module, line: null, severity: 'warning' as const,
-          message: `net「${c.net}」有 ${c.drivers.length} 个驱动（${c.drivers.join(' + ')}），已保留 ${c.drivers[0]}，其余驱动未画入`,
+          message: t('net「{net}」有 {count} 个驱动（{list}），已保留 {keep}，其余驱动未画入', { net: String(c.net ?? ''), count: c.drivers.length, list: c.drivers.join(' + '), keep: String(c.drivers[0] ?? '') }),
         }));
         setProblems(parsed);
         hostFire('Failed to publish problems', (h) => h.publishProblems(parsed));
@@ -122,11 +123,11 @@ export function useHostCompile() {
       const parsed: ProblemItem[] = err instanceof MissingModulesError
         ? err.missingModules.map((m) => ({
             fileName: job.entryName, line: null, severity: 'error' as const,
-            message: `缺少子模块 ${m}：在工作区补一个定义它的 .v 再保存`,
+            message: t('缺少子模块 {name}：在工作区补一个定义它的 .v 再保存', { name: m }),
           }))
         : [{
             fileName: job.entryName, line: null, severity: 'error' as const,
-            message: err?.message || '编译失败',
+            message: err?.message || t('编译失败'),
           }];
       setProblems(parsed);
       hostFire('Failed to publish problems', (h) => h.publishProblems(parsed));

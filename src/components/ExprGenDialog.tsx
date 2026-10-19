@@ -49,7 +49,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
         onClick={(e) => e.stopPropagation()}
         role="dialog" aria-modal="true" aria-label={t('布尔表达式生成电路')}>
         <div className="px-5 pt-4 pb-2">
-          <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>布尔表达式 → 电路图</span>
+          <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>{t('布尔表达式 → 电路图')}</span>
         </div>
         <div className="px-5 pb-4 flex flex-col gap-2">
           <input
@@ -65,7 +65,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
             }}
           />
           <div className="flex items-center gap-2">
-            <label style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', flexShrink: 0 }}>输出名</label>
+            <label style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', flexShrink: 0 }}>{t('输出名')}</label>
             <input value={outName} onChange={(e) => setOutName(e.target.value)} data-expr-outname
               style={{ ...box, width: 72, padding: '3px 8px' }} disabled={ok && (preview as ExprGenResult).outputs.length > 1}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
@@ -76,7 +76,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
           <div className="flex items-center gap-2" data-expr-gate-row>
             <label className="flex items-center gap-1.5" style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', cursor: 'pointer' }}>
               <input type="checkbox" checked={gateMode} data-expr-gatemode onChange={(e) => setGateMode(e.target.checked)} />
-              直接存为部件
+              {t('直接存为部件')}
             </label>
             {gateMode && (
               <input value={gateName} onChange={(e) => setGateName(e.target.value)} placeholder={t('部件名，如 half_adder')} data-expr-gatename
@@ -95,16 +95,16 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
             ))}
           </div>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-            支持 &amp;(与) |(或) ^(异或) !(非)，括号；切片 a[3:0]；拼接 {'{'}a, b{'}'}（左高右低）；常量 0/1；多输出用分号，后续语句可引用前面的输出名
+            {t('支持 &(与) |(或) ^(异或) !(非)，括号；切片 a[3:0]；拼接 {a, b}（左高右低）；常量 0/1；多输出用分号，后续语句可引用前面的输出名')}
           </div>
           {ok
             ? <div data-expr-preview style={{ fontSize: 'var(--fs-sm)', color: 'var(--success, #22c55e)' }}>✓ {summary}</div>
             : <div data-expr-error style={{ fontSize: 'var(--fs-sm)', color: 'var(--danger)' }}>{preview.error}</div>}
-          {!gateNameOk && <div data-expr-gate-err style={{ fontSize: 'var(--fs-sm)', color: 'var(--danger)' }}>部件名需以字母/下划线/中文开头，仅含字母数字下划线中划线</div>}
+          {!gateNameOk && <div data-expr-gate-err style={{ fontSize: 'var(--fs-sm)', color: 'var(--danger)' }}>{t('部件名需以字母/下划线/中文开头，仅含字母数字下划线中划线')}</div>}
           <div className="flex justify-end gap-2 mt-2">
             <button onClick={onCancel}
               style={{ padding: '0 14px', height: 28, borderRadius: 'var(--radius-md)', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 'var(--fs-md)' }}>
-              取消
+              {t('取消')}
             </button>
             <button onClick={submit} disabled={!ok || !gateNameOk} data-expr-go
               style={{ padding: '0 14px', height: 28, borderRadius: 'var(--radius-md)', border: 'none', background: ok && gateNameOk ? 'var(--accent)' : 'var(--surface-hover)', color: ok && gateNameOk ? 'var(--vscode-button-foreground, #fff)' : 'var(--text-muted)', cursor: ok && gateNameOk ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-md)', fontWeight: 600 }}>

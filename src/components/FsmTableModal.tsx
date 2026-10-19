@@ -148,7 +148,7 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
           color: 'var(--text, #222)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
           borderBottom: '1px solid var(--border-subtle, #ddd)', fontSize: 'var(--fs-sm, 12px)', fontWeight: 700 }}>
-          <span>状态机转移表 — {label}</span>
+          <span>{t('状态机转移表 — {label}', { label })}</span>
           <span style={{ flex: 1 }} />
           <span data-fsm-cur="" style={{ fontWeight: 600, color: 'var(--accent, #2563eb)', fontSize: 'var(--fs-xs, 11px)' }}>
             {cur == null ? t('当前状态 —') : t('当前状态 {state}', { state: cur })}
@@ -161,27 +161,27 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
         <div style={{ display: 'flex', gap: 14, alignItems: 'center', padding: '6px 12px',
           fontSize: 'var(--fs-xs, 11px)', color: 'var(--text-secondary, #666)',
           borderBottom: '1px solid var(--border-subtle, #eee)', flexWrap: 'wrap' }}>
-          <span>状态数 {input('states', String(states), (s) => setStates(Number(s) || 0), 1, 64)}</span>
-          <span>初始 {input('init', String(init), (s) => setInit(Number(s) || 0), 0, states - 1)}</span>
-          <span>输入位 {input('in', String(inBits), (s) => setInBits(Number(s) || 0), 1, 16)}</span>
-          <span>输出位 {input('out', String(outBits), (s) => setOutBits(Number(s) || 0), 1, 16)}</span>
+          <span>{t('状态数')} {input('states', String(states), (s) => setStates(Number(s) || 0), 1, 64)}</span>
+          <span>{t('初始')} {input('init', String(init), (s) => setInit(Number(s) || 0), 0, states - 1)}</span>
+          <span>{t('输入位')} {input('in', String(inBits), (s) => setInBits(Number(s) || 0), 1, 16)}</span>
+          <span>{t('输出位')} {input('out', String(outBits), (s) => setOutBits(Number(s) || 0), 1, 16)}</span>
           <span style={{ flex: 1 }} />
           <button data-fsm-add="" onClick={() => setRows((rs) => [...rs, { state_in: 0, ctrl_in: '', state_out: 0, ctrl_out: '' }])}
             style={{ padding: '2px 8px', cursor: 'pointer', border: '1px solid var(--accent, #2563eb)',
               borderRadius: 3, background: 'transparent', color: 'var(--accent, #2563eb)', fontWeight: 600 }}>
-            + 添加转移
+            {t('+ 添加转移')}
           </button>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <div style={{ display: 'flex', gap: 6, padding: '4px 12px', fontSize: 'var(--fs-xs, 11px)',
             color: 'var(--text-muted, #888)', borderBottom: '1px solid var(--border-subtle, #eee)' }}>
-            <span style={{ width: 76 }}>源状态</span><span style={{ width: 116 }}>输入条件(0/1/x)</span>
-            <span style={{ width: 76 }}>目标状态</span><span style={{ width: 116 }}>输出值(0/1/x)</span><span />
+            <span style={{ width: 76 }}>{t('源状态')}</span><span style={{ width: 116 }}>{t('输入条件(0/1/x)')}</span>
+            <span style={{ width: 76 }}>{t('目标状态')}</span><span style={{ width: 116 }}>{t('输出值(0/1/x)')}</span><span />
           </div>
           {!rows.length && (
             <div style={{ padding: '10px 12px', fontSize: 'var(--fs-xs, 11px)', color: 'var(--text-muted, #888)' }}>
-              还没有转移：点「+ 添加转移」。空表时器件输出恒为 x。
+              {t('还没有转移：点「+ 添加转移」。空表时器件输出恒为 x。')}
             </div>
           )}
           {rows.map((r, i) => (
@@ -200,7 +200,7 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
               <span style={{ flex: 1 }} />
               <button data-fsm-del={i} onClick={() => setRows((rs) => rs.filter((_, k) => k !== i))}
                 style={{ padding: '1px 7px', cursor: 'pointer', border: '1px solid var(--border-subtle, #ccc)',
-                  borderRadius: 3, background: 'transparent', color: 'var(--danger, #b91c1c)' }}>删</button>
+                  borderRadius: 3, background: 'transparent', color: 'var(--danger, #b91c1c)' }}>{t('删')}</button>
             </div>
           ))}
         </div>
@@ -212,10 +212,10 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
           </span>
           <button data-fsm-cancel="" onClick={onClose}
             style={{ padding: '3px 12px', cursor: 'pointer', border: '1px solid var(--border, #ccc)',
-              borderRadius: 'var(--radius-sm, 4px)', background: 'transparent', color: 'var(--text, #333)' }}>取消</button>
+              borderRadius: 'var(--radius-sm, 4px)', background: 'transparent', color: 'var(--text, #333)' }}>{t('取消')}</button>
           <button data-fsm-apply="" onClick={apply}
             style={{ padding: '3px 14px', cursor: 'pointer', border: 'none', borderRadius: 'var(--radius-sm, 4px)',
-              background: 'var(--accent, #2563eb)', color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600 }}>应用（重建器件）</button>
+              background: 'var(--accent, #2563eb)', color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600 }}>{t('应用（重建器件）')}</button>
         </div>
       </div>
     </div>

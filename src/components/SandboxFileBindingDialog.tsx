@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
 import { baseName, dirOf, type SandboxFile } from '../store/sandboxStore';
+import { t } from '../i18n';   // S2-7：可见面文案过 t()（弹窗标题区两处直出被质检揪出）
 
 /**
  * 沙盒「绑定...」文件级对话框（R100）—— 样式与编译模式 BindingDialog **完全一致**
@@ -130,7 +131,7 @@ export default function SandboxFileBindingDialog({
                 fontSize: 'var(--fs-md)', fontWeight: 600, color: 'var(--text-muted)',
                 marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px',
               }}>
-                已定义部件 (1)
+                {t('已定义部件 (1)')}
               </div>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 12,
@@ -142,7 +143,7 @@ export default function SandboxFileBindingDialog({
                 }}>
                   {fileName.replace(/\.djs$/i, '')}
                 </code>
-                <span style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-md)' }}>定义于</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 'var(--fs-md)' }}>{t('定义于')}</span>
                 <span style={{ fontSize: 'var(--fs-md)', color: 'var(--text)' }}>{fileName}</span>
               </div>
             </div>
@@ -221,7 +222,7 @@ export default function SandboxFileBindingDialog({
 
           {celltypes.length === 0 && (
             <div style={{ padding: 16, textAlign: 'center', color: 'var(--text-muted)', fontSize: 'var(--fs-lg)' }}>
-              没有可绑定的子电路实例。
+              {t('没有可绑定的子电路实例。')}
             </div>
           )}
         </div>
@@ -241,7 +242,7 @@ export default function SandboxFileBindingDialog({
               fontWeight: 500,
             }}
           >
-            取消
+            {t('取消')}
           </button>
           <button
             onClick={() => onConfirm(bindings)}

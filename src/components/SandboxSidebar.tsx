@@ -93,7 +93,7 @@ function SandboxSidebar({
             按钮点击不被拦截；手柄只在未被内容盖住的右缘空隙接收事件。 */}
         <div
           onMouseDown={onSidebarWDragStart}
-          title="拖动调整宽度"
+          title={t('拖动调整宽度')}
           style={{ position: 'absolute', top: 0, right: -3, width: 6, height: '100%',
             cursor: 'col-resize' }}
           onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--accent)'; }}
@@ -110,7 +110,7 @@ function SandboxSidebar({
           <div style={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {!docMode && (<>
             {onExitSandbox && (
-              <button onClick={onExitSandbox} data-sandbox-exit title="退出沙盒，返回电路 / 代码视图"
+              <button onClick={onExitSandbox} data-sandbox-exit title={t('退出沙盒，返回电路 / 代码视图')}
                 style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
                   cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
                 onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
@@ -120,9 +120,10 @@ function SandboxSidebar({
             )}
             {/* R101：标题栏按钮组**照抄编译模式 Sidebar**——导入文件 / 新建文件 /
                 新建文件夹 / 刷新 / 收起侧栏（同一套 padding、hover 与 lucide 图标）。
+                // i18n-exempt: JSX 注释内引用测试夹具锚点原词，非上屏文案
                 ⚠ `button[title="新建文件"]` 是 `tests/_ui.cjs#newSandboxFile` 的夹具锚点：
                 它点完就期望文件已建好，所以这颗**不走弹窗**（弹窗版在右键菜单里）。 */}
-            <button onClick={() => importInputRef.current?.click()} title="导入文件"
+            <button onClick={() => importInputRef.current?.click()} title={t('导入文件')}
               style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
                 cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
@@ -133,9 +134,9 @@ function SandboxSidebar({
                 用户点的是"新建"却没机会起名。⚠ 测试夹具 `_ui.cjs#newSandboxFile` 已同步
                 改成"点按钮 → 填弹窗 → 确认"，两边必须一起改。 */}
             <button onClick={async () => {
-              const v = await askFs({ title: '新建文件', label: '文件名', defaultValue: 'new_circuit', confirmLabel: '创建', validate: V_SB_NAME });
+              const v = await askFs({ title: t('新建文件'), label: t('文件名'), defaultValue: 'new_circuit', confirmLabel: t('创建'), validate: V_SB_NAME });
               if (v) handleNew(v);
-            }} title="新建文件"
+            }} title={t('新建文件')}
               style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
                 cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
@@ -143,23 +144,23 @@ function SandboxSidebar({
               <FileText size={14} />
             </button>
             <button onClick={async () => {
-              const v = await askFs({ title: '新建文件夹', label: '文件夹名称', defaultValue: 'my_folder', confirmLabel: '创建', validate: V_SB_NAME });
+              const v = await askFs({ title: t('新建文件夹'), label: t('文件夹名称'), defaultValue: 'my_folder', confirmLabel: t('创建'), validate: V_SB_NAME });
               if (v) handleCreateCommit({ kind: 'folder', folder: '' }, v);
-            }} title="新建文件夹"
+            }} title={t('新建文件夹')}
               style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
                 cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}>
               <FolderPlus size={14} />
             </button>
-            <button onClick={() => { refreshFolders(); syncAfterFsOp(); showToast('已刷新文件列表'); }} title="刷新"
+            <button onClick={() => { refreshFolders(); syncAfterFsOp(); showToast(t('已刷新文件列表')); }} title={t('刷新')}
               style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
                 cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'transparent'; (e.currentTarget as HTMLElement).style.color = 'var(--text-secondary)'; }}>
               <RefreshCw size={13} />
             </button>
-            <button onClick={onToggleSidebar} title="收起侧栏"
+            <button onClick={onToggleSidebar} title={t('收起侧栏')}
               style={{ background: 'transparent', border: 'none', color: 'var(--text-secondary)',
                 cursor: 'pointer', padding: '2px 4px', lineHeight: 1, display: 'inline-flex', borderRadius: 4 }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--surface-hover)'; (e.currentTarget as HTMLElement).style.color = 'var(--text)'; }}
@@ -193,11 +194,11 @@ function SandboxSidebar({
                   sandboxStore.moveFolder(path, newPath);
                   if (activeFile?.id) setActiveFile(sandboxStore.get(activeFile.id));
                   syncAfterFsOp();
-                  showToast(`已移动文件夹 ${path} → ${newPath}`);
+                  showToast(t('已移动文件夹 {from} → {to}', { from: path, to: newPath }));
                 }}
-                onRenameCommit={(t, name) => t.kind === 'file'
-                  ? handleFileRenameCommit(t, name)
-                  : handleFolderRenameCommit(t, name)}
+                onRenameCommit={(tgt, name) => tgt.kind === 'file'
+                  ? handleFileRenameCommit(tgt, name)
+                  : handleFolderRenameCommit(tgt, name)}   // F3 清扫：参数名 t⛔ 遮蔽 i18n t（本文件现在满屏 t()，遮蔽由无害转有害）
               />
               <input ref={importInputRef} type="file" accept=".djs,.json" multiple
                 style={{ display: 'none' }}
@@ -209,19 +210,19 @@ function SandboxSidebar({
             <div style={{ padding: 8 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                 <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-                  当前电路（{hierarchyTree.groups.reduce((n, g) => n + g.list.length, 0)} 器件 / {hierarchyTree.links} 连线）
+                  {t('当前电路（{cells} 器件 / {links} 连线）', { cells: hierarchyTree.groups.reduce((n, g) => n + g.list.length, 0), links: hierarchyTree.links })}
                 </span>
-                <button onClick={() => forceUpdate(n => n + 1)} title="刷新层次结构"
+                <button onClick={() => forceUpdate(n => n + 1)} title={t('刷新层次结构')}
                   style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 3,
                     color: 'var(--text-muted)', cursor: 'pointer', fontSize: 'var(--fs-xs)', padding: '0 4px' }}>⟳</button>
               </div>
               {hierarchyTree.groups.length === 0 && (
-                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>画布为空</div>
+                <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>{t('画布为空')}</div>
               )}
               {hierarchyTree.groups.map(grp => (
                 <div key={grp.type} style={{ marginBottom: 5 }}>
                   <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', marginBottom: 2 }}>
-                    {grp.label} <span style={{ opacity: .7 }}>×{grp.list.length}</span>
+                    {t(grp.label)} <span style={{ opacity: .7 }}>×{grp.list.length}</span>
                   </div>
                   {grp.list.map((c: any) => {
                     const isSub = c.get('type') === 'Subcircuit';
@@ -230,7 +231,7 @@ function SandboxSidebar({
                     return (
                       <div key={c.id}>
                         <div onClick={() => focusCell(String(c.id))}
-                          title={`定位「${c.get('label') || c.get('celltype') || grp.label}」`}
+                          title={t('定位「{name}」', { name: c.get('label') || c.get('celltype') || t(grp.label) })}
                           style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '2px 6px', borderRadius: 3,
                             cursor: 'pointer', fontSize: 'var(--fs-xs)', color: 'var(--text)' }}>
                           {isSub ? (
@@ -241,7 +242,7 @@ function SandboxSidebar({
                             }); }} style={{ color: 'var(--text-muted)' }}>{open ? '▾' : '▸'}</span>
                           ) : <span style={{ width: 8 }} />}
                           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {c.get('label') || c.get('celltype') || grp.label}
+                            {c.get('label') || c.get('celltype') || t(grp.label)}
                           </span>
                           <span style={{ marginLeft: 'auto', color: 'var(--text-muted)', fontSize: '0.5625rem' }}>
                             {bitsSuffix(c)}
@@ -250,7 +251,7 @@ function SandboxSidebar({
                         {isSub && open && (
                           <div style={{ marginLeft: 14, borderLeft: '1px solid var(--border-subtle)', paddingLeft: 6 }}>
                             {inner.length === 0 && (
-                              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>（空）</div>
+                              <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>{t('（空）')}</div>
                             )}
                             {inner.map((x: any) => (
                               <div key={x.id} style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)',
@@ -258,9 +259,9 @@ function SandboxSidebar({
                                 {CN_NAME[x.get('type')] ? t(CN_NAME[x.get('type')]) : x.get('type')}
                               </div>
                             ))}
-                            <div onClick={() => setInnerCell(c)} title="查看内部电路"
+                            <div onClick={() => setInnerCell(c)} title={t('查看内部电路')}
                               style={{ fontSize: 'var(--fs-xs)', color: 'var(--accent)', cursor: 'pointer' }}>
-                              查看内部电路…
+                              {t('查看内部电路…')}
                             </div>
                           </div>
                         )}
@@ -302,17 +303,17 @@ function SandboxSidebar({
             );
           })}
 
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>部件（可编辑电路）</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>{t('部件（可编辑电路）')}</div>
           {gates.map(g => (
             <div key={g.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between',
               marginBottom: 1, fontSize: 'var(--fs-xs)' }}>
-              <button onClick={() => placeCustomGate(g)} title={`放置部件“${g.name}”（点击也可在文件面板打开编辑）`}
+              <button onClick={() => placeCustomGate(g)} title={t('放置部件“{name}”（点击也可在文件面板打开编辑）', { name: g.name })}
                 style={{ flex: 1, textAlign: 'left', padding: '3px 6px', background: 'transparent',
                   border: '1px solid var(--border-subtle)', borderRadius: 3, cursor: 'pointer', color: 'var(--text)' }}>
                 {g.name}
                 {g.folder ? <span style={{ color: 'var(--text-muted)', marginLeft: 4, fontSize: '0.5625rem' }}>{g.folder}/</span> : null}
               </button>
-              <span onClick={(e) => { e.stopPropagation(); handleDeleteGate(g); }} title="删除部件"
+              <span onClick={(e) => { e.stopPropagation(); handleDeleteGate(g); }} title={t('删除部件')}
                 style={{ cursor: 'pointer', marginLeft: 4,
                   color: deleteGateId === g.id ? 'var(--error, #ef4444)' : 'var(--text-muted)',
                   fontWeight: deleteGateId === g.id ? 700 : 400 }}>
@@ -321,7 +322,7 @@ function SandboxSidebar({
             </div>
           ))}
           {gates.length === 0 && (
-            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>把当前电路保存为部件后可复用；「复制到沙盒」的子部件也在此列出，均可打开编辑</div>
+            <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>{t('把当前电路保存为部件后可复用；「复制到沙盒」的子部件也在此列出，均可打开编辑')}</div>
           )}
           </div>)}
 
@@ -330,11 +331,11 @@ function SandboxSidebar({
           {drc.length > 0 && (
             <div style={{ marginTop: 8, border: '1px solid var(--danger)', borderRadius: 4, padding: 6 }}>
               <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--danger)', fontWeight: 700, marginBottom: 3 }}>
-                ⚠ {drc.length} 处非法连接
+                {t('⚠ {count} 处非法连接', { count: drc.length })}
               </div>
               {drc.slice(0, 4).map((iss, i) => (
                 <div key={i} onClick={() => { setSelectionRef.current?.([iss.linkId]); focusCell(iss.linkId); }}
-                  title="点击定位该连线"
+                  title={t('点击定位该连线')}
                   style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', cursor: 'pointer',
                     lineHeight: 1.35, marginBottom: 2 }}>
                   · {iss.msg}
@@ -346,7 +347,7 @@ function SandboxSidebar({
             </div>
           )}
 
-          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>操作提示</div>
+          <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', margin: '8px 0 4px', fontWeight: 600 }}>{t('操作提示')}</div>
           <div style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)', lineHeight: 1.45 }}>
             · 拖端口连线：靠近端口自动吸附，不必精准对准<br/>
             · 位宽不同的两端相连会自动插入转换器<br/>

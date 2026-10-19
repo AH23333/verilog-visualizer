@@ -107,22 +107,22 @@ export function MemoryViewModal({ cell, onClose }: Props) {
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           padding: '8px 12px', borderBottom: '1px solid var(--border-subtle, #ddd)' }}>
           <span style={{ fontSize: 'var(--fs-sm, 13px)', fontWeight: 600 }}>
-            存储器内容 · {bits} 位 × {1 << abits} 字{capped < abits ? t('（仅显示前 256 字）') : ''}
+            {t('存储器内容 · {bits} 位 × {words} 字', { bits, words: 1 << abits })}{capped < abits ? t('（仅显示前 256 字）') : ''}
           </span>
           <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
             <button data-mem-fill="0" onClick={() => fillAll('0')} title={t('全部写 0')}
               style={{ padding: '2px 8px', fontSize: 'var(--fs-xs, 11px)', cursor: 'pointer',
-                border: '1px solid var(--border-subtle, #ccc)', borderRadius: 3, background: 'transparent' }}>清零</button>
+                border: '1px solid var(--border-subtle, #ccc)', borderRadius: 3, background: 'transparent' }}>{t('清零')}</button>
             <button data-mem-fill="1" onClick={() => fillAll('1')} title={t('全部写 1')}
               style={{ padding: '2px 8px', fontSize: 'var(--fs-xs, 11px)', cursor: 'pointer',
-                border: '1px solid var(--border-subtle, #ccc)', borderRadius: 3, background: 'transparent' }}>全置 1</button>
+                border: '1px solid var(--border-subtle, #ccc)', borderRadius: 3, background: 'transparent' }}>{t('全置 1')}</button>
             <button onClick={onClose} title={t('关闭')} style={{ border: 'none', background: 'transparent',
               cursor: 'pointer', fontSize: 16, lineHeight: 1 }}>×</button>
           </div>
         </div>
         <div style={{ padding: '4px 12px', fontSize: 'var(--fs-xs, 11px)', color: 'var(--text-muted, #888)',
           borderBottom: '1px solid var(--border-subtle, #ddd)' }}>
-          点击数值编辑：输入十进制（0–{(1 << bits) - 1}）、等长二进制（如 {bits === 4 ? '0101' : '1'}）或 x。
+          {t('点击数值编辑：输入十进制（0–{max}）、等长二进制（如 {hint}）或 x。', { max: (1 << bits) - 1, hint: bits === 4 ? '0101' : '1' })}
           {mem ? t('修改立即写入运行中的电路。') : t('（引擎未运行，仅展示）')}
         </div>
         <div style={{ flex: 1, overflowY: 'auto' }}>
@@ -150,7 +150,7 @@ export function MemoryViewModal({ cell, onClose }: Props) {
                   style={{ padding: '1px 8px', fontSize: 'var(--fs-xs, 11px)', cursor: 'pointer',
                     border: '1px solid var(--border-subtle, #ccc)', borderRadius: 3,
                     background: 'transparent', color: 'var(--text, #333)' }}>
-                  编辑
+                  {t('编辑')}
                 </button>
               )}
             </div>
