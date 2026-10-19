@@ -10,6 +10,7 @@
 // 真源语义（F1）：沙盒正文从 localStorage 迁到工作区真文件——打开=读盘，保存=宿主写盘
 // （webview ⛔ 参与写盘，只负责把最新 content 推上来），Explorer/git/侧边栏沙盒树看到的就是真文件。
 import * as vscode from 'vscode';
+import { t } from './i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import { dispatchAndReply, projectRoot, registerWebviewSink, unregisterWebviewSink, broadcastBindingsChanged, vscodeFs } from './dispatch';
 import { clearActiveCanvas, setActiveCanvas } from './activeCanvas';
 import { ensureDirsMeta, getCircuitsSet, completeFromHits } from './sandboxFiles';
@@ -56,7 +57,7 @@ export class VvCircuitDocument implements vscode.CustomDocument {
     };
     fire({
       document: this,
-      label: '编辑电路',
+      label: t('编辑电路'),
       undo: async () => {
         const prev = this._history.pop();
         if (prev !== undefined) await apply(prev);
@@ -127,7 +128,7 @@ export class VvDocProvider implements vscode.CustomEditorProvider<VvCircuitDocum
           await document.pushToWebview({ vvh: 'doc', op: 'bindingsWritten', written: done.length });
           broadcastBindingsChanged();
         } catch (e) {
-          void vscode.window.showErrorMessage(`写全绑定失败：${String(e instanceof Error ? e.message : e)}`);
+          void vscode.window.showErrorMessage(t('写全绑定失败：{err}', { err: String(e instanceof Error ? e.message : e) }));
         }
         return;
       }

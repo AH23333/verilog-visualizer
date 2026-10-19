@@ -10,6 +10,7 @@ import * as path from 'path';
 import { projectRoot } from './dispatch';
 import { bindingsForFile } from './sandboxFiles';
 import { parseVerilogModules, parseVerilogInstances, parseVerilogInstancesWithLines } from './verilogParseLite';
+import { t } from './i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import { findVerilogUris, isVerilogPath, rootRel, stripVerilogExt } from './verilogDomain';
 import { djsToVerilog } from './djsVerilog';
 
@@ -102,7 +103,7 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
       // R145 多层精控：`宿主文档::实例名` 前缀键只约束那一层；无命中回落裸键。⛔ 无同名兜底。
       const ov = ovs[`${item.name}::${inst}`] ?? ovs[`${item.ownerRel}::${inst}`] ?? ovs[inst];
       if (!ov) {
-        bindingErrors.push(`[BINDING_MISSING] 模块「${inst}」（在 ${item.name}）未录入绑定配置：右键「写全绑定配置」或用「部件绑定」弹窗录制`);
+        bindingErrors.push(t('[BINDING_MISSING] 模块「{inst}」（在 {file}）未录入绑定配置：右键「写全绑定配置」或用「部件绑定」弹窗录制', { inst, file: item.name }));
         anchors.push(anchorOf(inst));
         continue;
       }
@@ -113,12 +114,12 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
           const defText = await readText(def);
           const defMods = parseVerilogModules(defText);
           if (!defMods.includes(inst)) {
-            bindingErrors.push(`[BINDING_UNRESOLVED_RECORD] 模块「${inst}」按记录取「${ov}」，但该文件里没有它（recorded → ${ov}；该文件内定义的是：${defMods.slice(0, 4).join('、') || '无'}${defMods.length > 4 ? '…' : ''}）`);
+            bindingErrors.push(t('[BINDING_UNRESOLVED_RECORD] 模块「{inst}」按记录取「{ov}」，但该文件里没有它（recorded → {ov}；该文件内定义的是：{defs}{more}）', { inst, ov, defs: defMods.slice(0, 4).join('、') || t('无'), more: defMods.length > 4 ? '…' : '' }));
             anchors.push(anchorOf(inst));
             continue;
           }
         } catch {
-          bindingErrors.push(`[BINDING_UNRESOLVED_RECORD] 模块「${inst}」按记录取「${ov}」，但文件不存在（recorded → ${ov}）`);
+          bindingErrors.push(t('[BINDING_UNRESOLVED_RECORD] 模块「{inst}」按记录取「{ov}」，但文件不存在（recorded → {ov}）', { inst, ov }));
           anchors.push(anchorOf(inst));
           continue;
         }
@@ -136,7 +137,7 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
         try {
           cells = (JSON.parse(await readText(vscode.Uri.joinPath(root, ...ov.split('/')))) || {}).cells;
         } catch {
-          bindingErrors.push(`[UNRESOLVED_REF] 模块「${inst}」按记录取部件「${ov}」，但文件不存在或不是合法电路 json（recorded → ${ov}）`);
+          bindingErrors.push(t('[UNRESOLVED_REF] 模块「{inst}」按记录取部件「{ov}」，但文件不存在或不是合法电路 json（recorded → {ov}）', { inst, ov }));
           anchors.push(anchorOf(inst));
           continue;
         }
@@ -144,7 +145,7 @@ export async function closureOf(context: vscode.ExtensionContext, entry: vscode.
         if (conv.errors.length) { bindingErrors.push(...conv.errors.map((e) => `（${ov}）${e}`)); anchors.push(...conv.errors.map(() => anchorOf(inst))); continue; }
         queue.push({ name: genName, content: conv.verilog, ownerRel: ov });
       } else {
-        bindingErrors.push(`[SCHEMA_INVALID] 模块「${inst}」绑定为「${ov}」：不支持的绑定目标（只认编译域 .v/.sv/.vh 定义或 .djs/.gate 部件）`);
+        bindingErrors.push(t('[SCHEMA_INVALID] 模块「{inst}」绑定为「{ov}」：不支持的绑定目标（只认编译域 .v/.sv/.vh 定义或 .djs/.gate 部件）', { inst, ov }));
         anchors.push(anchorOf(inst));
       }
     }
@@ -165,7 +166,7 @@ function reportBindingErrors(job: CompileJob, quiet: boolean): void {
   if (!errs.length) { lastErrSig = ''; return; }
   if (quiet || sig === lastErrSig) return;
   lastErrSig = sig;
-  void vscode.window.showErrorMessage(`绑定记录解析失败：${errs[0]}${errs.length > 1 ? `（共 ${errs.length} 条）` : ''}`);
+  void vscode.window.showErrorMessage(t('绑定记录解析失败：{first}{more}', { first: errs[0], more: errs.length > 1 ? t('（共 {count} 条）', { count: errs.length }) : '' }));
 }
 
 /** 面板开着时的"最近一次编译"——保存自动重编译的锚；也是 ready 握手的挂起单 */
@@ -211,7 +212,7 @@ export async function compileAndShow(context: vscode.ExtensionContext, argUri: v
   }
   if (!uri || !isVerilogPath(uri.fsPath)) {
     // X8 结案（片 C2）：这道门从前写死 `/\.(v|sv)$/`，`.vh` 右键"编译查看"被当场挡回＝挂账的根因。
-    void vscode.window.showInformationMessage('先打开一个 Verilog 源码文件（.v/.sv/.vh），再编译查看电路。');
+    void vscode.window.showInformationMessage(t('先打开一个 Verilog 源码文件（.v/.sv/.vh），再编译查看电路。'));
     return;
   }
   const job = await closureOf(context, uri);

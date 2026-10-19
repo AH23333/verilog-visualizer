@@ -13,6 +13,7 @@ import { broadcastConfigChanged, broadcastBindingsChanged, dispatchAndReply, pro
 import { clearActiveCanvas, pushToActiveCanvas, setActiveCanvas } from './activeCanvas';
 import { loadWebviewHtml, webviewRoots } from './webviewAssets';
 import { AUTOOPEN_ENV, isBuiltIntoThisApp, shouldAutoOpen } from './startupPolicy';
+import { t } from './i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import { ModuleTree, HierarchyTree, SandboxTree, FileTreeDragAndDrop, openAtModule, getActiveSandboxDocUri,
   CodeFilesTree, SandboxPartsTree, SandboxHierarchyTree, onActiveSandboxDocChange } from './trees';
 import { DOC_VIEW_TYPE, VvDocProvider, refreshAllDocSiblings } from './customEditors';
@@ -108,16 +109,16 @@ export function activate(context: vscode.ExtensionContext) {
       const isDir = await then(vscode.workspace.fs.stat(uri)).then((s) => (s as any).type === 2, () => false);
       dir = isDir ? uri : vscode.Uri.joinPath(uri, '..');   // 目录右键＝落进目录；文件右键＝落进它所在目录
     }
-    const picked = await vscode.window.showOpenDialog({ canSelectMany: true, openLabel: '导入', filters: importFilters(exts) as any });
+    const picked = await vscode.window.showOpenDialog({ canSelectMany: true, openLabel: t('导入'), filters: importFilters(exts) as any });
     if (!picked || !picked.length) return;
     const result = await executeTool(context, CALLER_UI, 'fs.import', { destDir: dir.fsPath, sources: picked.map((u) => u.fsPath), exts }) as { written: string[]; skipped: number };
     if (result.written.length) {
       refreshAllTrees();
       void vscode.window.showInformationMessage(
-        `已导入 ${result.written.length} 个文件：${result.written.slice(0, 3).join('、')}${result.written.length > 3 ? '…' : ''}` +
-        (result.skipped ? `（另有 ${result.skipped} 个非本域文件已跳过）` : ''));
+        t('已导入 {count} 个文件：{list}', { count: result.written.length, list: result.written.slice(0, 3).join('、') }) + (result.written.length > 3 ? '…' : '') +
+        (result.skipped ? t('（另有 {count} 个非本域文件已跳过）', { count: result.skipped }) : ''));
     } else if (result.skipped) {
-      void vscode.window.showInformationMessage('没有可导入的文件：所选文件都不属于本视图的域（编译域＝.v/.sv/.vh，沙盒域＝.djs）。');
+      void vscode.window.showInformationMessage(t('没有可导入的文件：所选文件都不属于本视图的域（编译域＝.v/.sv/.vh，沙盒域＝.djs）。'));
     }
   };
 
@@ -138,9 +139,9 @@ export function activate(context: vscode.ExtensionContext) {
       catch { /* 单颗失败不拦整批（错误已告示/已审计） */ }
     }
     if (moved || skipped) {
-      const destName = rel(projectRoot(context), destDir) || '项目根';
-      const note = skipped ? `；另有 ${skipped} 个非本域文件被域限制拦下` : '';
-      void vscode.window.showInformationMessage(`已移动 ${moved} 项到「${destName}」${note}（绑定记录随迁）。`);
+      const destName = rel(projectRoot(context), destDir) || t('项目根');
+      const note = skipped ? t('；另有 {count} 个非本域文件被域限制拦下', { count: skipped }) : '';
+      void vscode.window.showInformationMessage(t('已移动 {count} 项到「{dest}」{note}（绑定记录随迁）。', { count: moved, dest: destName, note }));
     }
   };
   const writeDropped = async (files: Array<{ name: string; bytes: Uint8Array }>, destDir: vscode.Uri, skipped: number) => {
@@ -154,7 +155,7 @@ export function activate(context: vscode.ExtensionContext) {
     await ensureDirsMeta(context, written);          // 「目录有部件就有表」与 E6 导入同口径
     if (written.length) refreshAllTrees();
     if (written.length || skipped) {
-      void vscode.window.showInformationMessage(`已拖入 ${written.length} 个文件${skipped ? `（另有 ${skipped} 个非本域文件已跳过）` : ''}。`);
+      void vscode.window.showInformationMessage(t('已拖入 {count} 个文件{extra}。', { count: written.length, extra: skipped ? t('（另有 {count} 个非本域文件已跳过）', { count: skipped }) : '' }));
     }
   };
   const codeDrop = new FileTreeDragAndDrop('verilogViz.codeFiles', ['v', 'sv', 'vh'], moveDropped, writeDropped);
@@ -209,7 +210,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('verilogViz.renameFile', async (arg: any) => {
       const uri = menuUri(arg); if (!uri) return;
       const name = uri.path.split('/').pop() || uri.fsPath;
-      const next = await vscode.window.showInputBox({ prompt: '重命名', value: name });
+      const next = await vscode.window.showInputBox({ prompt: t('重命名'), value: name });
       if (!next || next === name) return;
       await executeTool(context, CALLER_UI, 'fs.rename', { uri: uri.fsPath, newName: next }).catch(() => undefined);
     }),
@@ -219,9 +220,9 @@ export function activate(context: vscode.ExtensionContext) {
       const { isDir, files } = await describeDeletion(context, uri);
       // X7/G6：目录删除的确认要亮出规模（子的规模 + 绑定记录将同葬的警告——不让人盲删）
       const pick = isDir
-        ? await vscode.window.showWarningMessage(`删除目录「${name}」？其中含 ${files} 个文件；指向目录内文件的部件记录与绑定将一并清除。`, { modal: true }, '删除')
-        : await vscode.window.showWarningMessage(`删除「${name}」？`, { modal: true }, '删除');
-      if (pick !== '删除') return;
+        ? await vscode.window.showWarningMessage(t('删除目录「{name}」？其中含 {count} 个文件；指向目录内文件的部件记录与绑定将一并清除。', { name, count: files }), { modal: true }, t('删除'))
+        : await vscode.window.showWarningMessage(t('删除「{name}」？', { name }), { modal: true }, t('删除'));
+      if (pick !== t('删除')) return;
       await executeTool(context, CALLER_UI, 'fs.delete', { uri: uri.fsPath }).catch(() => undefined);
     }),
     vscode.commands.registerCommand('verilogViz.duplicateFile', async (arg: any) => {
@@ -242,9 +243,9 @@ export function activate(context: vscode.ExtensionContext) {
     //   ⛔ 再出现"表看不见、行为却正常"的暗魔法。
     vscode.commands.registerCommand('verilogViz.bindParts', async (arg: any, focusArg?: any) => {
       const uri = bindTargetUri(arg);
-      if (!uri) { void vscode.window.showInformationMessage('先在文件（.djs 或 .v/.sv/.vh）上右键。'); return; }
+      if (!uri) { void vscode.window.showInformationMessage(t('先在文件（.djs 或 .v/.sv/.vh）上右键。')); return; }
       if (!isBindablePath(uri.fsPath)) {
-        void vscode.window.showInformationMessage('只能在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上打开部件绑定。');
+        void vscode.window.showInformationMessage(t('只能在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上打开部件绑定。'));
         return;
       }
       // 层次树行（点击 command 带第二参＝实例名 / 右键传行 Node{label}，本层⛔ 挂文件 uri）
@@ -259,12 +260,12 @@ export function activate(context: vscode.ExtensionContext) {
     // 已录入的条目⛔ 覆盖（手编内容珍贵）；固化后行为不变——变的是"文件说的和画布做的终于对得上"。
     vscode.commands.registerCommand('verilogViz.materializeBindings', async (arg: any) => {
       const uri = bindTargetUri(arg);
-      if (!uri) { void vscode.window.showInformationMessage('先在文件（.djs 或 .v）上右键。'); return; }
+      if (!uri) { void vscode.window.showInformationMessage(t('先在文件（.djs 或 .v）上右键。')); return; }
       const docRel = rel(projectRoot(context), uri);
       const r = await executeTool(context, CALLER_UI, 'bindings.materialize', { doc: docRel }).catch(() => undefined) as { done: string[] } | undefined;
       void vscode.window.showInformationMessage(r?.done.length
-        ? `已固化 ${r.done.length} 条自动绑定进该目录的 ${META_FILE}：${r.done.slice(0, 3).join('、')}${r.done.length > 3 ? '…' : ''}`
-        : '没有需要固化的自动绑定（未录入的要么已按记录走，要么无同名可解）。');
+        ? t('已固化 {count} 条自动绑定进该目录的 {file}：{list}', { count: r.done.length, file: META_FILE, list: r.done.slice(0, 3).join('、') }) + (r.done.length > 3 ? '…' : '')
+        : t('没有需要固化的自动绑定（未录入的要么已按记录走，要么无同名可解）。'));
     }),
 
     // R146 绑定完整性·核查：全层枚举「⛔ 表里没录、靠同名兜底」的实例——配置不齐当场可见。
@@ -273,18 +274,18 @@ export function activate(context: vscode.ExtensionContext) {
     //   刷树由 onToolExecuted 订阅、广播在 handler 内——命令层⛔ 再各自刷。
     vscode.commands.registerCommand('verilogViz.auditBindings', async (arg: any) => {
       const uri = bindTargetUri(arg);
-      if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。'); return; }
+      if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage(t('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。')); return; }
       const docRel = rel(projectRoot(context), uri);
       const { hits } = await executeTool(context, CALLER_UI, 'bindings.audit', { doc: docRel }) as { hits: Array<{ ctx: string; name: string; file: string }> };
-      if (!hits.length) { void vscode.window.showInformationMessage(`「${docRel}」的绑定配置是完整的：全部子部件实例都有记录（或本就无实例）。`); return; }
+      if (!hits.length) { void vscode.window.showInformationMessage(t('「{name}」的绑定配置是完整的：全部子部件实例都有记录（或本就无实例）。', { name: docRel })); return; }
       const sample = hits.slice(0, 4).map((h) => `${h.ctx === docRel ? '' : `${h.ctx}::`}${h.name}→${h.file}`).join('、');
       const act = await vscode.window.showWarningMessage(
-        `「${docRel}」有 ${hits.length} 个子部件实例⛔ 录入绑定配置，正靠同名兜底解析：${sample}${hits.length > 4 ? ' …' : ''}`,
-        '写全配置', '打开绑定配置');
-      if (act === '写全配置') {
+        t('「{name}」有 {count} 个子部件实例⛔ 录入绑定配置，正靠同名兜底解析：{sample}{more}', { name: docRel, count: hits.length, sample, more: hits.length > 4 ? ' …' : '' }),
+        t('写全配置'), t('打开绑定配置'));
+      if (act === t('写全配置')) {
         const { written } = await executeTool(context, CALLER_UI, 'bindings.complete', { doc: docRel }) as { written: string[] };
-        void vscode.window.showInformationMessage(`已写全 ${written.length} 条：绑定配置现在是这张电路的完整图景（可打开核对/手改）。`);
-      } else if (act === '打开绑定配置') await openBindingConfig(context, uri);
+        void vscode.window.showInformationMessage(t('已写全 {count} 条：绑定配置现在是这张电路的完整图景（可打开核对/手改）。', { count: written.length }));
+      } else if (act === t('打开绑定配置')) await openBindingConfig(context, uri);
     }),
 
     // R146 绑定完整性·写全：一键把全层自动命中落进文档目录的 .verilogviz.json
@@ -292,12 +293,12 @@ export function activate(context: vscode.ExtensionContext) {
     // R160 API 层收编：机械体＝bindings.complete 工具（audit+写全+广播），命令只余目标解析与告示。
     vscode.commands.registerCommand('verilogViz.completeBindings', async (arg: any) => {
       const uri = bindTargetUri(arg);
-      if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。'); return; }
+      if (!uri || !isBindablePath(uri.fsPath)) { void vscode.window.showInformationMessage(t('先在编译域（.v/.sv/.vh）或沙盒域（.djs）文件上右键。')); return; }
       const docRel = rel(projectRoot(context), uri);
       const { written } = await executeTool(context, CALLER_UI, 'bindings.complete', { doc: docRel }) as { written: string[] };
       void vscode.window.showInformationMessage(written.length
-        ? `已写全 ${written.length} 条绑定进「${docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '项目根'}」的 ${META_FILE}。`
-        : `无需写全：${docRel} 的实例解析记录已是完整状态。`);
+        ? t('已写全 {count} 条绑定进「{dir}」的 {file}。', { count: written.length, dir: docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : t('项目根'), file: META_FILE })
+        : t('无需写全：{name} 的实例解析记录已是完整状态。', { name: docRel }));
     }),
 
     // 审计通道催落（测试收口/排障手催；正常运行靠 30 行/5 秒批量自动）
@@ -307,8 +308,8 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('verilogViz.initProject', async (arg: any) => {
       const r = await initProject(context);
       void vscode.window.showInformationMessage(r.created.length
-        ? `已初始化 .vv/：${r.created.map((p) => p.split('/').pop()).join(' + ')}${r.kept.length ? `（${r.kept.length} 个已存在，保持原样）` : ''}`
-        : '工程配置就绪，无需初始化（.vv/project.json 与规则表都在位）。');
+        ? t('已初始化 .vv/：{created}{kept}', { created: r.created.map((p) => p.split('/').pop()).join(' + '), kept: r.kept.length ? t('（{count} 个已存在，保持原样）', { count: r.kept.length }) : '' })
+        : t('工程配置就绪，无需初始化（.vv/project.json 与规则表都在位）。'));
       void arg;
     }),
 
@@ -326,11 +327,11 @@ export function activate(context: vscode.ExtensionContext) {
     // C9「移动到…」：QuickPick 选目标目录（含「项目根」）→ fs.move 工具（(n) 去重 + G1 随迁）
     vscode.commands.registerCommand('verilogViz.moveTo', async (arg: any) => {
       const uri = menuUri(arg);
-      if (!uri) { void vscode.window.showInformationMessage('先在文件/目录上右键再选「移动到…」。'); return; }
+      if (!uri) { void vscode.window.showInformationMessage(t('先在文件/目录上右键再选「移动到…」。')); return; }
       const dirs = await scanDirChoices(context);
       const pick = await vscode.window.showQuickPick(
-        dirs.map((d) => ({ label: d.rel || '项目根（磁盘顶层）', description: d.rel || undefined, dir: d })),
-        { placeHolder: '移动到哪个目录？（绑定记录随迁）' },
+        dirs.map((d) => ({ label: d.rel || t('项目根（磁盘顶层）'), description: d.rel || undefined, dir: d })),
+        { placeHolder: t('移动到哪个目录？（绑定记录随迁）') },
       );
       if (!pick) return;
       await executeTool(context, CALLER_UI, 'fs.move', { src: uri.fsPath, destDir: pick.dir.uri.fsPath }).catch(() => undefined);
@@ -339,7 +340,7 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('verilogViz.copyPath', async (arg: any) => {
       const uri = menuUri(arg); if (!uri) return;
       const r = await executeTool(context, CALLER_UI, 'fs.copyPath', { uri: uri.fsPath }) as { path: string };
-      void vscode.window.showInformationMessage(`已复制路径：${rel(projectRoot(context), uri)}（绝对＝${r.path}）`);
+      void vscode.window.showInformationMessage(t('已复制路径：{rel}（绝对＝{abs}）', { rel: rel(projectRoot(context), uri), abs: r.path }));
     }),
     vscode.commands.registerCommand('verilogViz.revealInOS', (arg: any) => {
       const uri = menuUri(arg);
@@ -359,7 +360,7 @@ export function activate(context: vscode.ExtensionContext) {
       try { await vscode.workspace.fs.createDirectory(root); } catch { /* 已存在也算成功 */ }
       try { await vscode.commands.executeCommand('revealFileInOS', root); } catch { /* 某些平台不支持 ⇒ 下面仍给路径 */ }
       await vscode.env.clipboard.writeText(root.fsPath);
-      void vscode.window.showInformationMessage(`项目根目录：${root.fsPath}（路径已复制）`);
+      void vscode.window.showInformationMessage(t('项目根目录：{path}（路径已复制）', { path: root.fsPath }));
     }),
   );
 
@@ -412,7 +413,7 @@ export function activate(context: vscode.ExtensionContext) {
   // 协议⑤：工程层 .vv/api.json 契约覆盖（只收窄/只关开关；固有属性越权＝整份拒）。
   void loadProjectApiOverride(context).then((rejects) => {
     if (rejects.length) {
-      void vscode.window.showWarningMessage("API 工程覆盖被拒绝：" + rejects.join("；") + "（已沿用默认账）");
+      void vscode.window.showWarningMessage(t('API 工程覆盖被拒绝：') + rejects.join('；') + t('（已沿用默认账）'));
     }
   }).catch(() => { /* 读不到工程覆盖＝默认账，常态 */ }).then(() => {
     // 批次三 A 案：MCP 活编辑器桥——契约落定后才决定开不开门（surfacesGlobal.mcp 且开了文件夹）。
@@ -425,7 +426,7 @@ export function activate(context: vscode.ExtensionContext) {
   // 协议⑨闸③：工程授权档案 .vv/api.grants.json（可选提交；缺席＝闸不生效——activate 一次性加载，热更新需重启窗口）
   void loadProjectGrants(context).then((notes) => {
     if (notes.length) {
-      void vscode.window.showWarningMessage("API 授权档案告警：" + notes.join("；") + "（该条不生效，详见 .vv/api.grants.json）");
+      void vscode.window.showWarningMessage(t('API 授权档案告警：') + notes.join('；') + t('（该条不生效，详见 .vv/api.grants.json）'));
     }
   }).catch(() => { /* 读档案失败＝无闸；闸 1/2 照办 */ });
 
@@ -435,7 +436,7 @@ export function activate(context: vscode.ExtensionContext) {
     if (!r.files.length && !r.tables.length) return;
     broadcastBindingsChanged(); refreshAllTrees();
     void vscode.window.showInformationMessage(
-      `绑定盘归一：${r.files.length} 个双后缀文件已裁尾、${r.tables.length} 张配置表值已归一（记录语义不变）。`);
+      t('绑定盘归一：{files} 个双后缀文件已裁尾、{tables} 张配置表值已归一（记录语义不变）。', { files: r.files.length, tables: r.tables.length }));
   }).catch(() => { /* 后台清扫失败不拦启动；表值读取侧本就归一，功能不受阻 */ });
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
@@ -525,7 +526,7 @@ function wirePanel(context: vscode.ExtensionContext, panel: vscode.WebviewPanel)
     </body></html>`;
     setActiveCanvas(webview, 'panel');
     registerWebviewSink(webview);
-  })().catch((e) => void vscode.window.showErrorMessage(`打不开 Verilog 可视化窗口：${String(e instanceof Error ? e.message : e)}`));
+  })().catch((e) => void vscode.window.showErrorMessage(t('打不开 Verilog 可视化窗口：{err}', { err: String(e instanceof Error ? e.message : e) })));
 
   panel.webview.onDidReceiveMessage(async (msg: any) => {
     if (!msg || typeof msg.vvh !== 'string') return;

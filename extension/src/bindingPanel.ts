@@ -7,6 +7,7 @@ import { scanDefs } from './compilePanel';
 import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
 import { ProjectStore } from './projectStore';
 import { isBindingTargetValue, isVerilogPath, rootRel } from './verilogDomain';
+import { t } from './i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 
 const then = <T>(t: { then(onOk: (v: T) => void, onErr?: (e: unknown) => void): void }): Promise<T> =>
   new Promise<T>((res, rej) => t.then(res, (e) => rej(e)));
@@ -149,11 +150,11 @@ async function validateBindingTarget(context: vscode.ExtensionContext, instName:
     try {
       mods = parseVerilogModules(new TextDecoder().decode(await then(vscode.workspace.fs.readFile(absOf(value)))));
     } catch { /* 读失败也要报 */ }
-    if (!mods) return [`「${instName}」→ ${value}：文件读取失败，先确认路径存在。`];
-    if (!mods.includes(instName)) return [`「${instName}」→ ${value}：该文件里没有名为「${instName}」的模块（它定义的是：${mods.slice(0, 4).join('、') || '无'}${mods.length > 4 ? '…' : ''}）。`];
+    if (!mods) return [t('「{inst}」→ {value}：文件读取失败，先确认路径存在。', { inst: instName, value })];
+    if (!mods.includes(instName)) return [t('「{inst}」→ {value}：该文件里没有名为「{inst}」的模块（它定义的是：{defs}{more}）。', { inst: instName, value, defs: mods.slice(0, 4).join('、') || t('无'), more: mods.length > 4 ? '…' : '' })];
   } else if (/\.(djs|gate)$/i.test(value)) {
     try { await then(vscode.workspace.fs.stat(absOf(value))); }
-    catch { return [`「${instName}」→ ${value}：部件文件不存在。`]; }
+    catch { return [t('「{inst}」→ {value}：部件文件不存在。', { inst: instName, value })]; }
   }
   return [];
 }
@@ -179,33 +180,33 @@ export async function openBindingPicker(context: vscode.ExtensionContext, uri: v
 
   const renderInst = (): void => {
     level = { kind: 'inst' };
-    qp.title = `部件绑定：${basename(data.docRel)}`;
-    qp.placeholder = '选实例改绑定；Esc＝完成';
+    qp.title = t('部件绑定：{name}', { name: basename(data.docRel) });
+    qp.placeholder = t('选实例改绑定；Esc＝完成');
     qp.value = '';
     qp.items = [
       ...data.instances.map((i): BindingPick => ({
         label: i.name,
-        description: i.ctx ? `在 ${basename(i.ctx)} 内` : (typeof i.count === 'number' ? `×${i.count}` : ''),
+        description: i.ctx ? t('在 {file} 内', { file: basename(i.ctx) }) : (typeof i.count === 'number' ? `×${i.count}` : ''),
         detail: i.recorded
-          ? `${i.recordedScope === 'global' ? '已录（全局裸键）' : '已录（本文件）'} → ${i.recorded}`
-          : i.auto ? `自动同名 → ${i.auto}（未录入；选部件即固化为本文件记录）`
-          : '未绑定——选一个部件文件写入本文件记录',
+          ? t('{scope} → {recorded}', { scope: i.recordedScope === 'global' ? t('已录（全局裸键）') : t('已录（本文件）'), recorded: i.recorded })
+          : i.auto ? t('自动同名 → {name}（未录入；选部件即固化为本文件记录）', { name: i.auto })
+          : t('未绑定——选一个部件文件写入本文件记录'),
         key: i.key ?? `${data.docRel}::${i.name}`,
       })),
-      { label: '$(gear) 打开绑定配置（.verilogviz.json 手改）', detail: data.meta, cfg: true },
+      { label: t('$(gear) 打开绑定配置（.verilogviz.json 手改）'), detail: data.meta, cfg: true },
     ];
   };
   const renderPart = (instKey: string, instName: string, cur: string, recorded: string | null): void => {
     level = { kind: 'part', instKey, instName, cur };
-    qp.title = `「${instName}」绑定到部件`;
-    qp.placeholder = cur ? `当前生效：${cur}；Esc/返回行＝回实例清单` : '选部件文件；Esc/返回行＝回实例清单';
+    qp.title = t('「{inst}」绑定到部件', { inst: instName });
+    qp.placeholder = cur ? t('当前生效：{cur}；Esc/返回行＝回实例清单', { cur }) : t('选部件文件；Esc/返回行＝回实例清单');
     qp.value = '';
     qp.items = [
-      { label: '$(arrow-left) 返回实例清单', back: true },
+      { label: t('$(arrow-left) 返回实例清单'), back: true },
       ...(recorded
-        ? [{ label: '$(trash) 清除绑定', detail: `删掉记录「${recorded}」（回落同名兜底/未绑定）`, clear: true } as BindingPick]
+        ? [{ label: t('$(trash) 清除绑定'), detail: t('删掉记录「{recorded}」（回落同名兜底/未绑定）', { recorded }), clear: true } as BindingPick]
         : []),
-      ...data.parts.map((p): BindingPick => ({ label: p, description: p === cur ? '当前生效' : '' })),
+      ...data.parts.map((p): BindingPick => ({ label: p, description: p === cur ? t('当前生效') : '' })),
     ];
     if (cur) qp.activeItems = qp.items.filter((it) => it.label === cur);
   };
@@ -228,7 +229,7 @@ export async function openBindingPicker(context: vscode.ExtensionContext, uri: v
     void (async () => {
       if (value) {
         const errs = await validateBindingTarget(context, partLevel.instName, value);
-        if (errs.length) { void vscode.window.showErrorMessage(`绑定未写入：${errs.join('；')}`); return; }   // 留在二级清单，可改选
+        if (errs.length) { void vscode.window.showErrorMessage(t('绑定未写入：{errs}', { errs: errs.join('；') })); return; }   // 留在二级清单，可改选
       }
       // R160 API 层收编：写走 bindings.set 工具（同 setBinding 的落表语义＝目录层表＋广播；
       //   dir 由文档路径现算，与旧 setBinding 内部同一把尺）。

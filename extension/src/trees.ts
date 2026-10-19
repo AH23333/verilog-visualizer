@@ -10,6 +10,7 @@
 // 刷新时机：.v/.djs 增删改 + 工作区切换 + 活动编辑器变化（extension.ts 的监听）+ 命令 verilogVisualizer.refreshTrees。
 import * as vscode from 'vscode';
 import * as path from 'path';
+import { t } from './i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import { parseVerilogModules, parseVerilogInstances } from './verilogParseLite';
 import { ProjectStore } from './projectStore';
 import { findVerilogUris, isVerilogPath } from './verilogDomain';
@@ -64,9 +65,9 @@ export class ModuleTree implements vscode.TreeDataProvider<Node> {
   getTreeItem(n: Node): vscode.TreeItem {
     const cmd = !n.uri ? undefined
       : n.kind === 'module' ? {
-        command: 'verilogViz.openModuleAt', title: '打开定义', arguments: [n.uri, n.label],
+        command: 'verilogViz.openModuleAt', title: t('打开定义'), arguments: [n.uri, n.label],
       } : {
-        command: 'verilogViz.openFile', title: '打开文件', arguments: [n.uri],
+        command: 'verilogViz.openFile', title: t('打开文件'), arguments: [n.uri],
       };
     const item = makeItem(n, cmd);
     // 右键菜单（view/item/context）的 when 依赖 contextValue：模块树项=module、文件项=moduleFile
@@ -127,7 +128,7 @@ export async function hierInstancesOf(file: vscode.Uri, chain: string, defMap: M
       const uri = defMap.get(mod) ?? null;
       return {
         label: mod,
-        desc: uri ? path.basename(uri.fsPath) : '未找到定义',
+        desc: uri ? path.basename(uri.fsPath) : t('未找到定义'),
         uri,
         chain: chain ? `${chain}/${mod}` : mod,
         kind: 'instance' as const,
@@ -154,7 +155,7 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
 
   getTreeItem(n: Node): vscode.TreeItem {
     const item = makeItem(n, n.uri ? {
-      command: 'verilogViz.openModuleAt', title: '打开定义', arguments: [n.uri, n.label],
+      command: 'verilogViz.openModuleAt', title: t('打开定义'), arguments: [n.uri, n.label],
     } : undefined);
     // 右键菜单（view/item/context）的 when 靠它点亮：找到定义的实例才给菜单（提示节点/找不到定义的⛔ 冒充）
     item.contextValue = n.uri ? 'hierarchyItem' : undefined;
@@ -170,7 +171,7 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
       if (!editor && uri) this._lastVerilogUri = uri;          // 粘滞：只在编辑器活着时更新
       if (editor && isVerilogPath(editor.document.fileName)) this._lastVerilogUri = editor.document.uri;
       if (!uri) {
-        return [{ label: '打开一个 Verilog 源码文件（.v/.sv/.vh）以查看层次结构', desc: '', kind: 'hint' }];
+        return [{ label: t('打开一个 Verilog 源码文件（.v/.sv/.vh）以查看层次结构'), desc: '', kind: 'hint' }];
       }
       return this._instancesOf(uri, '');
     }
@@ -247,7 +248,7 @@ export class CodeFilesTree implements vscode.TreeDataProvider<Node> {
     if (n.dir !== undefined) return dirItemOf(n, 'codeDir');
     if (!n.name) return makeItem(n);   // 空态提示节点（审查缺陷 #1：uriOfRel(n.name!) 对 undefined.split 当场崩）
     const uri = uriOfRel(n.name);
-    const item = makeItem(n, { command: 'verilogViz.openFile', title: '打开文件', arguments: [uri] });
+    const item = makeItem(n, { command: 'verilogViz.openFile', title: t('打开文件'), arguments: [uri] });
     item.resourceUri = uri;
     item.contextValue = 'codeFile';
     return item;
@@ -256,7 +257,7 @@ export class CodeFilesTree implements vscode.TreeDataProvider<Node> {
   async getChildren(el?: Node): Promise<Node[]> {
     let tree;
     try { tree = await this._store().listTree(); }
-    catch { return [{ label: '项目目录还没就绪（先打开一个文件夹）', desc: '', kind: 'hint' as const }]; }
+    catch { return [{ label: t('项目目录还没就绪（先打开一个文件夹）'), desc: '', kind: 'hint' as const }]; }
     return childrenOfLayer(tree, el?.dir ?? '', { sizes: true });
   }
 }
@@ -272,7 +273,7 @@ export class SandboxPartsTree implements vscode.TreeDataProvider<Node> {
 
   getTreeItem(n: Node): vscode.TreeItem {
     const item = makeItem(n, n.uri ? {
-      command: 'vscode.openWith', title: '打开电路画布', arguments: [n.uri, 'verilogViz.doc'],
+      command: 'vscode.openWith', title: t('打开电路画布'), arguments: [n.uri, 'verilogViz.doc'],
     } : undefined);
     // 右键菜单的 when 靠它点亮；提示节点（沙盒目录还没建）⛔ 顶名——顶了菜单就会把 TreeItem 当 Uri 传进命令
     item.contextValue = n.uri ? 'sandboxFile' : undefined;
@@ -282,7 +283,7 @@ export class SandboxPartsTree implements vscode.TreeDataProvider<Node> {
   async getChildren(): Promise<Node[]> {
     let tree;
     try { tree = await this._store().listSandboxTree(); }
-    catch { return [{ label: '沙盒目录尚未创建', desc: '进沙盒保存一个电路即可', kind: 'hint' }]; }
+    catch { return [{ label: t('沙盒目录尚未创建'), desc: t('进沙盒保存一个电路即可'), kind: 'hint' }]; }
     const circuits = await this._circuits();
     return tree.files
       .filter((f) => !circuits.has(f.name))
@@ -331,7 +332,7 @@ export class SandboxHierarchyTree implements vscode.TreeDataProvider<Node> {
   getTreeItem(n: Node): vscode.TreeItem {
     // 点层次树项 = 直奔该子电路的部件绑定（带活动文档 uri + **实例名**：面板打开后聚焦那一行）
     const cmd = n.kind === 'instance' && activeSandboxDoc.name ? {
-      command: 'verilogViz.bindParts', title: '部件绑定',
+      command: 'verilogViz.bindParts', title: t('部件绑定'),
       arguments: [vscode.Uri.joinPath(
         vscode.workspace.workspaceFolders?.[0]?.uri ?? vscode.Uri.file('.'),
         ...activeSandboxDoc.name.split('/')), n.label],
@@ -343,7 +344,7 @@ export class SandboxHierarchyTree implements vscode.TreeDataProvider<Node> {
 
   async getChildren(): Promise<Node[]> {
     if (!activeSandboxDoc.name) {
-      return [{ label: '打开一个 .djs 电路画布以查看层次结构', desc: '', kind: 'hint' }];
+      return [{ label: t('打开一个 .djs 电路画布以查看层次结构'), desc: '', kind: 'hint' }];
     }
     return activeSandboxDoc.instances.map((celltype) => ({
       label: celltype, desc: activeSandboxDoc.name, kind: 'instance' as const,
@@ -375,7 +376,7 @@ export class SandboxTree implements vscode.TreeDataProvider<Node> {
   async getChildren(el?: Node): Promise<Node[]> {
     let tree;
     try { tree = await this._store().listSandboxTree(); }
-    catch { return [{ label: '沙盒目录尚未创建', desc: '进沙盒保存一个电路即可', kind: 'hint' }]; }
+    catch { return [{ label: t('沙盒目录尚未创建'), desc: t('进沙盒保存一个电路即可'), kind: 'hint' }]; }
     const nodes = childrenOfLayer(tree, el?.dir ?? '', { sizes: true });
     if (this._circuits) {
       const circuits = await this._circuits();
