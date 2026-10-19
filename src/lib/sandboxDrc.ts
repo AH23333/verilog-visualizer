@@ -14,20 +14,20 @@ export function runCanvasDrc(paper: any): DrcIssue[] {
   const byTarget = new Map<string, string[]>();
   for (const l of links) {
     const s = l.get('source') || {};
-    const t = l.get('target') || {};
-    if (!s.id || !s.port || !t.id || !t.port) { issues.push({ linkId: l.id, msg: t('悬空连线：端点未接在端口上') }); continue; }
+    const tgt = l.get('target') || {};
+    if (!s.id || !s.port || !tgt.id || !tgt.port) { issues.push({ linkId: l.id, msg: t('悬空连线：端点未接在端口上') }); continue; }
     const sc = paper.model.getCell(s.id);
-    const tc = paper.model.getCell(t.id);
+    const tc = paper.model.getCell(tgt.id);
     if (!sc || !tc) { issues.push({ linkId: l.id, msg: t('连线指向已删除的部件') }); continue; }
     const sp = typeof sc.getPort === 'function' ? sc.getPort(s.port) : null;
-    const tp = typeof tc.getPort === 'function' ? tc.getPort(t.port) : null;
-    if (!sp || !tp) { issues.push({ linkId: l.id, msg: t('连线端口不存在：{from} → {to}', { from: s.port, to: t.port }) }); continue; }
-    if (s.id === t.id) issues.push({ linkId: l.id, msg: t('自环连线（部件连到自己）') });
+    const tp = typeof tc.getPort === 'function' ? tc.getPort(tgt.port) : null;
+    if (!sp || !tp) { issues.push({ linkId: l.id, msg: t('连线端口不存在：{from} → {to}', { from: s.port, to: tgt.port }) }); continue; }
+    if (s.id === tgt.id) issues.push({ linkId: l.id, msg: t('自环连线（部件连到自己）') });
     if (sp.dir !== 'out' || tp.dir !== 'in') {
       issues.push({ linkId: l.id, msg: t('方向非法：{from} → {to}（必须 输出 → 输入）', { from: sp.dir, to: tp.dir }) });
     }
     if (sp.bits !== tp.bits) issues.push({ linkId: l.id, msg: t('位宽不匹配：{from} → {to}', { from: sp.bits, to: tp.bits }) });
-    const key = `${t.id}:${t.port}`;
+    const key = `${tgt.id}:${tgt.port}`;
     if (!byTarget.has(key)) byTarget.set(key, []);
     byTarget.get(key)!.push(l.id);
   }
