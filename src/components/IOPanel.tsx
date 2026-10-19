@@ -8,6 +8,7 @@
 // 200ms 轮询（与旧 InputPanel 同频）：仿真一跑起来值就跟着变，不用手动刷新。
 import { useState, useEffect, useCallback } from 'react';
 import { Square, Clock, Eye, X } from 'lucide-react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 
 export interface IOItem {
   id: string; label: string; type: string; value: string;
@@ -66,7 +67,7 @@ export default function IOPanel({ host, open, onClose, inputsTitle = 'Inputs', o
             key={k}
             data-io-bit={`${it.id}:${bitIndex}`}
             onClick={(e) => { e.stopPropagation(); (host.toggleInputBit || host.toggleInput)(it.id, bitIndex); }}
-            title={`翻转第 ${bitIndex} 位`}
+            title={t('翻转第 {index} 位', { index: bitIndex })}
             style={{
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
               width: 15, height: 15, marginLeft: 2, borderRadius: 2, cursor: 'pointer',
@@ -85,7 +86,7 @@ export default function IOPanel({ host, open, onClose, inputsTitle = 'Inputs', o
       data-io-row={it.id}
       data-io-kind={interactive ? 'input' : 'output'}
       onClick={() => { if (interactive) host.toggleInput(it.id); }}
-      title={interactive ? (it.type === 'Clock' ? '点击切换时钟电平（0/1）' : '点击切换该输入的状态') : '输出值只读（由电路计算得出）'}
+      title={interactive ? (it.type === 'Clock' ? t('点击切换时钟电平（0/1）') : t('点击切换该输入的状态')) : t('输出值只读（由电路计算得出）')}
       style={{
         width: '100%', display: 'flex', alignItems: 'center', gap: 6,
         padding: '6px 8px', marginBottom: 2,
@@ -145,8 +146,8 @@ export default function IOPanel({ host, open, onClose, inputsTitle = 'Inputs', o
         </button>
       </div>
       <div style={{ flex: 1, overflowY: 'auto', padding: 6 }}>
-        {section(inputsTitle, ins, true, 'No inputs. 放一个输入引脚/时钟即可在此切换。')}
-        {section(outputsTitle, outs, false, 'No outputs. 放一个灯/数码管/数值显示即可在此观察。')}
+        {section(inputsTitle, ins, true, t('No inputs. 放一个输入引脚/时钟即可在此切换。'))}
+        {section(outputsTitle, outs, false, t('No outputs. 放一个灯/数码管/数值显示即可在此观察。'))}
       </div>
     </div>
   );

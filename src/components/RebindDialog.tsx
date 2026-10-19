@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { ArrowRight, Check } from 'lucide-react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 
 /**
  * 沙盒子电路实例的「绑定...」对话框（R100 重写）—— 样式与编译模式 BindingDialog
@@ -56,8 +57,8 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
           </h2>
           <p style={{ margin: '6px 0 0', fontSize: 'var(--fs-md)', color: 'var(--text-secondary)' }}>
             {parts.length > 0
-              ? `发现 ${parts.length} 个部件文件。点选一行即把实例换绑过去（重建并按端口接回连线）。`
-              : '还没有部件文件：先「保存为部件」建一个。'}
+              ? t('发现 {count} 个部件文件。点选一行即把实例换绑过去（重建并按端口接回连线）。', { count: parts.length })
+              : t('还没有部件文件：先「保存为部件」建一个。')}
           </p>
         </div>
 
@@ -80,7 +81,7 @@ export function RebindDialog({ cur, parts, onPick, onClose }: Props) {
                   background: isCur ? 'color-mix(in srgb, var(--success) 5%, transparent)' : 'color-mix(in srgb, var(--warning) 8%, transparent)',
                   border: isCur ? '1px solid color-mix(in srgb, var(--success) 15%, transparent)' : '1px solid color-mix(in srgb, var(--warning) 20%, transparent)',
                 }}
-                title={isCur ? `当前绑定：${p.name}` : `绑定到 ${p.name}`}>
+                title={isCur ? t('当前绑定：{name}', { name: p.name }) : t('绑定到 {name}', { name: p.name })}>
                 <code style={{
                   fontFamily: 'monospace', fontSize: 'var(--fs-lg)',
                   color: isCur ? 'var(--success)' : 'var(--warning)',

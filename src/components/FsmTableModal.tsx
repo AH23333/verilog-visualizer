@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 
 /**
  * 状态机（digitaljs 的 FSM 器件）转移表编辑器。
@@ -101,20 +102,20 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
     setRows((rs) => rs.map((r, k) => (k === i ? { ...r, ...patch } : r)));
 
   const apply = () => {
-    if (states < 1 || states > 64) { setErr('状态数必须落在 1–64'); return; }
-    if (init < 0 || init >= states) { setErr(`初始状态必须在 0–${states - 1}`); return; }
+    if (states < 1 || states > 64) { setErr(t('状态数必须落在 1–64')); return; }
+    if (init < 0 || init >= states) { setErr(t('初始状态必须在 0–{max}', { max: states - 1 })); return; }
     for (const [i, r] of rows.entries()) {
-      if (r.state_in < 0 || r.state_in >= states) { setErr(`第 ${i + 1} 行：源状态超出范围`); return; }
-      if (r.state_out < 0 || r.state_out >= states) { setErr(`第 ${i + 1} 行：目标状态超出范围`); return; }
-      if (r.ctrl_in && !BIN_RE.test(r.ctrl_in)) { setErr(`第 ${i + 1} 行：输入条件只能是 0/1/x`); return; }
-      if (r.ctrl_out && !BIN_RE.test(r.ctrl_out)) { setErr(`第 ${i + 1} 行：输出值只能是 0/1/x`); return; }
+      if (r.state_in < 0 || r.state_in >= states) { setErr(t('第 {row} 行：源状态超出范围', { row: i + 1 })); return; }
+      if (r.state_out < 0 || r.state_out >= states) { setErr(t('第 {row} 行：目标状态超出范围', { row: i + 1 })); return; }
+      if (r.ctrl_in && !BIN_RE.test(r.ctrl_in)) { setErr(t('第 {row} 行：输入条件只能是 0/1/x', { row: i + 1 })); return; }
+      if (r.ctrl_out && !BIN_RE.test(r.ctrl_out)) { setErr(t('第 {row} 行：输出值只能是 0/1/x', { row: i + 1 })); return; }
     }
     // 同一源状态下两条完全相同的输入条件 = 引擎按顺序取第一条匹配（FSM.mjs 的
     // next_trans），出图上会画出两条一样的弧，看着像冲突。这里只拦完全重复的。
     const seen = new Set<string>();
     for (const [i, r] of rows.entries()) {
       const key = `${r.state_in}|${fitBin(r.ctrl_in, inBits)}`;
-      if (seen.has(key)) { setErr(`第 ${i + 1} 行：源状态 ${r.state_in} 已有同样条件的转移`); return; }
+      if (seen.has(key)) { setErr(t('第 {row} 行：源状态 {state} 已有同样条件的转移', { row: i + 1, state: r.state_in })); return; }
       seen.add(key);
     }
     onApply({
@@ -126,7 +127,7 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
     });
   };
 
-  const label = String(cell.get('label') || cell.get('celltype') || '状态机');
+  const label = String(cell.get('label') || cell.get('celltype') || t('状态机'));
   const num = (v: string) => (v === '' ? '' : String(Number(v)));
   const input = (aria: string, value: string, set: (s: string) => void, min: number, max: number) => (
     <input data-fsm-meta={aria} value={value}
@@ -150,7 +151,7 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
           <span>状态机转移表 — {label}</span>
           <span style={{ flex: 1 }} />
           <span data-fsm-cur="" style={{ fontWeight: 600, color: 'var(--accent, #2563eb)', fontSize: 'var(--fs-xs, 11px)' }}>
-            {cur == null ? '当前状态 —' : `当前状态 ${cur}`}
+            {cur == null ? t('当前状态 —') : t('当前状态 {state}', { state: cur })}
           </span>
           <button data-fsm-close="" onClick={onClose}
             style={{ padding: '1px 8px', cursor: 'pointer', border: '1px solid var(--border, #ccc)',
@@ -207,7 +208,7 @@ export function FsmTableModal({ cell, onApply, onClose }: Props) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px',
           borderTop: '1px solid var(--border-subtle, #ddd)', fontSize: 'var(--fs-xs, 11px)' }}>
           <span style={{ color: err ? 'var(--danger, #b91c1c)' : 'var(--text-muted, #888)', flex: 1 }}>
-            {err || `条件串按 ${inBits} / ${outBits} 位对齐；同一源状态里输入条件相同的两条转移只有一条会生效`}
+            {err || t('条件串按 {inBits} / {outBits} 位对齐；同一源状态里输入条件相同的两条转移只有一条会生效', { inBits, outBits })}
           </span>
           <button data-fsm-cancel="" onClick={onClose}
             style={{ padding: '3px 12px', cursor: 'pointer', border: '1px solid var(--border, #ccc)',

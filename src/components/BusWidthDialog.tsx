@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import type { CSSProperties } from 'react';
 
 /**
@@ -39,7 +40,7 @@ export default function BusWidthDialog({ mode, total, groupWidth, onTotal, onGro
           {mode}位宽方案
         </div>
         <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.5 }}>
-          {mode === '分线器' ? '一条总线拆成若干组（每组可取 1/2/4/8 位）' : '若干组合成一条总线'}
+          {mode === t('分线器') ? t('一条总线拆成若干组（每组可取 1/2/4/8 位）') : t('若干组合成一条总线')}
         </div>
 
         <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', marginBottom: 6 }}>总线位宽</div>
@@ -59,7 +60,7 @@ export default function BusWidthDialog({ mode, total, groupWidth, onTotal, onGro
         <div style={{ fontSize: 'var(--fs-sm)', color: 'var(--text-muted)', marginBottom: 14,
           background: 'var(--surface-hover)', borderRadius: 6, padding: '6px 10px' }}>
           结果：{n} 组 × {groupWidth} 位 = {n * groupWidth} 位
-          <span style={{ opacity: .8 }}>（端口 {mode === '分线器' ? `out0…out${n - 1} / in` : `in0…in${n - 1} / out`}）</span>
+          <span style={{ opacity: .8 }}>（端口 {mode === t('分线器') ? `out0…out${n - 1} / in` : `in0…in${n - 1} / out`}）</span>
         </div>
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

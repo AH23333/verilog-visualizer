@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）；CONTROLS 的 name/desc 动态键在 SHARED_VOCAB
 
 /**
  * 寄存器（D 触发器）端口／极性配置窗。
@@ -98,8 +99,8 @@ export function DffPortsModal({ cell, onApply, onClose }: Props) {
   const bothEnSrst = on.enable && on.srst;
 
   const apply = () => {
-    if (bits < 1 || bits > 32) { setErr('位宽必须 1–32'); return; }
-    if (!BIN.test(initial) || initial.length > bits) { setErr(`输出初值只能是 0/1/x，且不长于 ${bits} 位`); return; }
+    if (bits < 1 || bits > 32) { setErr(t('位宽必须 1–32')); return; }
+    if (!BIN.test(initial) || initial.length > bits) { setErr(t('输出初值只能是 0/1/x，且不长于 {bits} 位', { bits })); return; }
     const polarity: Record<string, boolean> = {};
     for (const c of CONTROLS) if (on[c.key]) polarity[c.key] = high[c.key];
     const patch: DffPatch = { bits, initial, polarity };
@@ -108,7 +109,7 @@ export function DffPortsModal({ cell, onApply, onClose }: Props) {
       const v = c.valueKey === 'arst_value' ? arstValue : srstValue;
       if (v === '') continue;   // 留空＝交给 digitaljs 建器件时补全 0（dff.mjs:35-39）
       if (!BIN.test(v) || v.length > bits) {
-        setErr(`${c.name}值只能是 0/1/x，且不长于 ${bits} 位`); return;
+        setErr(t('{name}值只能是 0/1/x，且不长于 {bits} 位', { name: t(c.name), bits })); return;
       }
       patch[c.valueKey] = v;
     }
@@ -129,7 +130,7 @@ export function DffPortsModal({ cell, onApply, onClose }: Props) {
           borderRadius: 'var(--radius-md, 8px)', boxShadow: '0 12px 40px var(--vscode-widget-shadow, rgba(0,0,0,.35))', color: 'var(--text, #222)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
           borderBottom: '1px solid var(--border-subtle, #ddd)', fontSize: 'var(--fs-sm, 12px)', fontWeight: 700 }}>
-          <span>寄存器端口配置 — {String(cell.get('label') || cell.get('net') || cell.id).slice(0, 24)}</span>
+          <span>{t('寄存器端口配置 — {name}', { name: String(cell.get('label') || cell.get('net') || cell.id).slice(0, 24) })}</span>
           <span style={{ flex: 1 }} />
           <button data-dffports-close="" onClick={onClose}
             style={{ padding: '1px 8px', cursor: 'pointer', border: '1px solid var(--border, #ccc)',
@@ -139,9 +140,9 @@ export function DffPortsModal({ cell, onApply, onClose }: Props) {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '6px 12px',
           fontSize: 'var(--fs-xs, 11px)', color: 'var(--text-secondary, #666)',
           borderBottom: '1px solid var(--border-subtle, #eee)' }}>
-          <span>位宽 <input data-dffports-f="bits" value={String(bits)} style={{ ...boxStyle, width: 44 }}
+          <span>{t('位宽')} <input data-dffports-f="bits" value={String(bits)} style={{ ...boxStyle, width: 44 }}
             onChange={(e) => setBits(Number(e.target.value) || 0)} /></span>
-          <span>输出初值 <input data-dffports-f="initial" value={initial} placeholder="0 / x"
+          <span>{t('输出初值')} <input data-dffports-f="initial" value={initial} placeholder="0 / x"
             style={{ ...boxStyle, width: 70, fontFamily: 'ui-monospace, monospace' }}
             onChange={(e) => setInitial(e.target.value.trim())} /></span>
         </div>
@@ -149,23 +150,23 @@ export function DffPortsModal({ cell, onApply, onClose }: Props) {
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {CONTROLS.map((c) => (
             <div key={c.key} data-dffports-row={c.key} style={{ ...rowStyle, opacity: on[c.key] ? 1 : 0.75 }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 5, width: 96, cursor: 'pointer' }} title={c.desc}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 5, width: 96, cursor: 'pointer' }} title={t(c.desc)}>
                 <input data-dffports-on={c.key} type="checkbox" checked={!!on[c.key]}
                   onChange={(e) => setOn((s) => ({ ...s, [c.key]: e.target.checked }))} />
-                <span style={{ fontWeight: 600 }}>{c.name}</span>
+                <span style={{ fontWeight: 600 }}>{t(c.name)}</span>
               </label>
-              <span style={{ color: 'var(--text-muted, #888)', width: 52 }}>端口 {c.portId}{c.extraPortId ? `＋${c.extraPortId}` : ''}</span>
+              <span style={{ color: 'var(--text-muted, #888)', width: 52 }}>{t('端口')} {c.portId}{c.extraPortId ? `＋${c.extraPortId}` : ''}</span>
               <select data-dffports-pol={c.key} value={high[c.key] ? '1' : '0'} disabled={!on[c.key]}
                 style={{ ...boxStyle, opacity: on[c.key] ? 1 : 0.4 }}
                 onChange={(e) => setHigh((s) => ({ ...s, [c.key]: e.target.value === '1' }))}>
-                <option value="1">高有效 ↑</option>
-                <option value="0">低有效 ↓（画上带横线）</option>
+                <option value="1">{t('高有效 ↑')}</option>
+                <option value="0">{t('低有效 ↓（画上带横线）')}</option>
               </select>
-              {c.wide ? <span style={{ color: 'var(--text-muted, #888)' }}>{bits} 位</span> : <span style={{ color: 'var(--text-muted, #888)' }}>1 位</span>}
+              {c.wide ? <span style={{ color: 'var(--text-muted, #888)' }}>{t('{bits} 位', { bits })}</span> : <span style={{ color: 'var(--text-muted, #888)' }}>{t('1 位')}</span>}
               <span style={{ flex: 1 }} />
               {c.valueKey && on[c.key] && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: 4, color: 'var(--text-secondary, #666)' }}>
-                  {c.name}值
+                  {t('{name}值', { name: t(c.name) })}
                   <span data-dffports-value={c.valueKey}>{valueInput(c.valueKey === 'arst_value' ? arstValue : srstValue,
                     c.valueKey === 'arst_value' ? setArstValue : setSrstValue)}</span>
                 </label>
@@ -175,20 +176,20 @@ export function DffPortsModal({ cell, onApply, onClose }: Props) {
 
           <div data-dffports-row="enable_srst" style={{ ...rowStyle, opacity: bothEnSrst ? 1 : 0.5 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
-              title="勾选＝使能无效时连同步复位也拦住（dff.mjs:105，$_SDFFCE_ 那一族就是这一种）；不勾＝同步复位只看有效边沿">
+              title={t('勾选＝使能无效时连同步复位也拦住（dff.mjs:105，$_SDFFCE_ 那一族就是这一种）；不勾＝同步复位只看有效边沿')}>
               <input data-dffports-enable-srst="" type="checkbox" checked={enableSrSt} disabled={!bothEnSrst}
                 onChange={(e) => setEnableSrSt(e.target.checked)} />
-              <span style={{ fontWeight: 600 }}>使能也管住同步复位</span>
+              <span style={{ fontWeight: 600 }}>{t('使能也管住同步复位')}</span>
             </label>
-            <span style={{ color: 'var(--text-muted, #888)' }}>需要同时有时钟使能与同步复位</span>
+            <span style={{ color: 'var(--text-muted, #888)' }}>{t('需要同时有时钟使能与同步复位')}</span>
           </div>
 
           <div data-dffports-row="no_data" style={rowStyle}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}
-              title="去掉 D 端口：只剩置位／清零（$_SR_ 那一族），或不带时钟时当作纯延时线用">
+              title={t('去掉 D 端口：只剩置位／清零（$_SR_ 那一族），或不带时钟时当作纯延时线用')}>
               <input data-dffports-no-data="" type="checkbox" checked={noData}
                 onChange={(e) => setNoData(e.target.checked)} />
-              <span style={{ fontWeight: 600 }}>不要 D 端口（纯置位／复位锁存）</span>
+              <span style={{ fontWeight: 600 }}>{t('不要 D 端口（纯置位／复位锁存）')}</span>
             </label>
           </div>
         </div>
@@ -196,14 +197,14 @@ export function DffPortsModal({ cell, onApply, onClose }: Props) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px',
           borderTop: '1px solid var(--border-subtle, #ddd)', fontSize: 'var(--fs-xs, 11px)' }}>
           <span style={{ color: err ? 'var(--danger, #b91c1c)' : 'var(--text-muted, #888)', flex: 1 }}>
-            {err || '改这些项都要重建器件；原有连线只在重建后仍有同名端口时才接回（关掉某一脚，它的连线会被丢弃）。'}
+            {err || t('改这些项都要重建器件；原有连线只在重建后仍有同名端口时才接回（关掉某一脚，它的连线会被丢弃）。')}
           </span>
           <button data-dffports-cancel="" onClick={onClose}
             style={{ padding: '3px 12px', cursor: 'pointer', border: '1px solid var(--border, #ccc)',
-              borderRadius: 'var(--radius-sm, 4px)', background: 'transparent', color: 'var(--text, #333)' }}>取消</button>
+              borderRadius: 'var(--radius-sm, 4px)', background: 'transparent', color: 'var(--text, #333)' }}>{t('取消')}</button>
           <button data-dffports-apply="" onClick={apply}
             style={{ padding: '3px 14px', cursor: 'pointer', border: 'none', borderRadius: 'var(--radius-sm, 4px)',
-              background: 'var(--accent, #2563eb)', color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600 }}>应用（重建器件）</button>
+              background: 'var(--accent, #2563eb)', color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600 }}>{t('应用（重建器件）')}</button>
         </div>
       </div>
     </div>

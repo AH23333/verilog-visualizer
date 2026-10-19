@@ -31,6 +31,7 @@ import {
   type SubcircuitViewHandle,
 } from '../lib/subcircuitView';
 import { resolveDefCells } from '../lib/gateSystem';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import { serializeGraphCells } from '../lib/sandboxSerialize';
 
 type StackEntry =
@@ -56,7 +57,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
   //  - def：沙盒部件文件（cells，按名绑定）
   //  - inline：旧档内嵌快照（兜底）
   const [stack, setStack] = useState<StackEntry[]>(() => {
-    if (initialCircuit?.devices) return [{ kind: 'circuit', name: initialName || '子部件', circuit: initialCircuit }];
+    if (initialCircuit?.devices) return [{ kind: 'circuit', name: initialName || t('子部件'), circuit: initialCircuit }];
     if (gateName) return [{ kind: 'def', name: gateName }];
     if (initialInline?.cells?.length) return [{ kind: 'inline', cells: initialInline }];
     return [];
@@ -100,7 +101,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
       try { setStack(s => [...s, { kind: 'inline', cells: serializeGraphCells(g) }]); return; } catch {}
     }
     // 既无绑定定义也无内嵌子图 —— 该子部件是空壳
-    setFailMsg('该子部件没有可渲染的内部电路（定义已删除或内嵌快照缺失）');
+    setFailMsg(t('该子部件没有可渲染的内部电路（定义已删除或内嵌快照缺失）'));
   };
 
   useEffect(() => {
@@ -137,7 +138,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
         } else if (top?.kind === 'def') {
           const defCells = resolveDefCells(top.name, scope);
           if (defCells) { setSource('def'); handle = renderSubcircuitView(digitaljs, mount, defCells, { autoLayout }); }
-          else { setSource('inline'); setFailMsg(`部件定义「${top.name}」不存在或已删除`); }
+          else { setSource('inline'); setFailMsg(t('部件定义「{name}」不存在或已删除', { name: top.name })); }
         } else if (top?.kind === 'inline') {
           setSource('inline');
           handle = renderSubcircuitView(digitaljs, mount, top.cells, { autoLayout });
@@ -262,7 +263,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
     try { pw.scale(1, 1); pw.translate(0, 0); setZoomPct(100); } catch { /* ignore */ }
   };
 
-  const crumbLabel = (s: StackEntry) => (s.kind === 'inline' ? '内嵌子电路' : s.name);
+  const crumbLabel = (s: StackEntry) => (s.kind === 'inline' ? t('内嵌子电路') : s.name);
 
   return (
     <div onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
@@ -280,7 +281,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
               <span key={i} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 {i > 0 && <span style={{ color: 'var(--text-muted)' }}>›</span>}
                 <button onClick={() => setStack(stack.slice(0, i + 1))}
-                  title="返回该层"
+                  title={t('返回该层')}
                   style={{ background: i === stack.length - 1 ? 'var(--accent)' : 'transparent',
                     color: i === stack.length - 1 ? 'var(--vscode-button-foreground, #fff)' : 'var(--text)',
                     border: '1px solid var(--border-subtle)', borderRadius: 4, cursor: 'pointer',
@@ -290,14 +291,14 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
               </span>
             ))}
             {stack.length > 1 && (
-              <button onClick={() => setStack(stack.slice(0, 1))} title="回到最外层"
+              <button onClick={() => setStack(stack.slice(0, 1))} title={t('回到最外层')}
                 style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 4,
                   color: 'var(--text-muted)', cursor: 'pointer', fontSize: 'var(--fs-xs)', padding: '1px 5px' }}>
                 ⤒ 顶层
               </button>
             )}
           </span>
-          <button onClick={onClose} title="关闭"
+          <button onClick={onClose} title={t('关闭')}
             style={{ width: 24, height: 24, border: '1px solid var(--border)', borderRadius: 4,
               background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', lineHeight: 1 }}>×</button>
         </div>
@@ -317,7 +318,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
             <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center', gap: 6,
               fontSize: 'var(--fs-sm)', color: 'var(--text-secondary)', textAlign: 'center', padding: 20 }}>
-              <span>{failMsg.includes('渲染失败') ? failMsg : `内部电路渲染失败：${failMsg}`}</span>
+              <span>{failMsg.includes(t('渲染失败')) ? failMsg : t('内部电路渲染失败：{msg}', { msg: failMsg })}</span>
               <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
                 电路数据可能已损坏；可尝试重新放置该部件。
               </span>
@@ -328,18 +329,18 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
           display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
           fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {skipped > 0 ? `⚠ ${skipped} 条连线无法还原（端口不匹配已跳过） · ` : ''}
-            {skippedDevs > 0 ? `⚠ ${skippedDevs} 个器件无法识别已跳过 · ` : ''}
-            {skipped === 0 && skippedDevs === 0 ? '完整还原 · ' : ''}
-            {source === 'def' ? '绑定门定义渲染 · 与编译模式钻取同一管线' : '旧档内嵌快照渲染（定义缺失兜底）'}
-            {stack.length > 1 ? ' · 已钻取子部件' : ''}
+            {skipped > 0 ? t('⚠ {count} 条连线无法还原（端口不匹配已跳过） · ', { count: skipped }) : ''}
+            {skippedDevs > 0 ? t('⚠ {count} 个器件无法识别已跳过 · ', { count: skippedDevs }) : ''}
+            {skipped === 0 && skippedDevs === 0 ? t('完整还原 · ') : ''}
+            {source === 'def' ? t('绑定门定义渲染 · 与编译模式钻取同一管线') : t('旧档内嵌快照渲染（定义缺失兜底）')}
+            {stack.length > 1 ? t(' · 已钻取子部件') : ''}
           </span>
           {/* 放大查看：按钮 + ctrl/⌘+滚轮（弹窗只读，不禁缩放平移） */}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
-            {([['−', () => zoomBy(1 / 1.25), '缩小'], ['+', () => zoomBy(1.25), '放大'],
-              ['适应', zoomFit, '缩放到整张图可见'], ['1:1', zoomActual, '按实际大小显示']] as [string, () => void, string][])
+            {([['−', () => zoomBy(1 / 1.25), t('缩小')], ['+', () => zoomBy(1.25), t('放大')],
+              ['适应', zoomFit, t('缩放到整张图可见')], ['1:1', zoomActual, t('按实际大小显示')]] as [string, () => void, string][])
               .map(([txt, fn, tip]) => (
-              <button key={txt} data-xz={txt} onClick={fn} title={`${tip}（滚轮以光标为中心缩放，Shift+滚轮左右平移）`}
+              <button key={txt} data-xz={txt} onClick={fn} title={t('{tip}（滚轮以光标为中心缩放，Shift+滚轮左右平移）', { tip })}
                 style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 4,
                   color: 'var(--text)', cursor: 'pointer', fontSize: 'var(--fs-xs)', padding: '1px 7px', lineHeight: '16px' }}>
                 {txt}

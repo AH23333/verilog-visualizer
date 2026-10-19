@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Search, X } from 'lucide-react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import type { PartSearchSource } from '../lib/partSearch';
 
 /**
@@ -84,13 +85,13 @@ export default function PartSearchDialog({ open, onClose, getSource }: Props) {
                 if (first) jump(first.id);
               }
             }}
-            placeholder="输入部件名称（label / 类型 / 绑定名 / 网络）"
+            placeholder={t('输入部件名称（label / 类型 / 绑定名 / 网络）')}
             style={{
               flex: 1, background: 'transparent', border: 'none', outline: 'none',
               color: 'var(--text)', fontSize: 'var(--fs-md)',
             }}
           />
-          <button onClick={onClose} title="关闭" style={{
+          <button onClick={onClose} title={t('关闭')} style={{
             background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)',
             display: 'flex', alignItems: 'center', padding: 2,
           }}>
@@ -98,7 +99,7 @@ export default function PartSearchDialog({ open, onClose, getSource }: Props) {
           </button>
         </div>
         <div style={{ padding: '6px 12px', fontSize: 'var(--fs-sm)', color: 'var(--text-muted)' }}>
-          {hits.length > 0 ? `匹配 ${hits.length} 个部件` : source ? '没有匹配的部件' : '当前没有可搜索的画布'}
+          {hits.length > 0 ? t('匹配 {count} 个部件', { count: hits.length }) : source ? t('没有匹配的部件') : t('当前没有可搜索的画布')}
         </div>
         <div style={{ flex: 1, overflowY: 'auto', minHeight: 0, padding: '0 6px 8px' }}>
           {hits.map((h) => (

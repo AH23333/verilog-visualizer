@@ -11,6 +11,7 @@
 //
 // 纯展示组件：数据与动作全部由 SandboxCanvas 注入。
 import { useState, useRef } from 'react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText, Pencil, Check } from 'lucide-react';
 import type { SandboxFile } from '../store/sandboxStore';
 import { baseName } from '../store/sandboxStore';
@@ -197,7 +198,7 @@ export default function SandboxFileTree({
         {!isRenaming && (
           <button
             onClick={(e) => { e.stopPropagation(); setLocalRename({ key: f.id, value: f.name }); }}
-            title="重命名"
+            title={t('重命名')}
             className="sb-rename-btn"
             style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0 2px', opacity: 0.5, flexShrink: 0, display: 'inline-flex' }}>
             <Pencil size={12} />

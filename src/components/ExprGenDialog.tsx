@@ -3,6 +3,7 @@
 //   arbitrary-value 类是死类（卷十七教训），只有布局 utility 类可用。
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { expressionToCells, type ExprGenResult } from '../lib/exprToCircuit';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 
 interface ExprGenDialogProps {
   onGenerate: (res: ExprGenResult, expr: string, asGate: string | null) => void;
@@ -24,8 +25,8 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
   const ok = !preview.error;
   const gateNameOk = !gateMode || /^[A-Za-z_\u4e00-\u9fff][\w\u4e00-\u9fff-]*$/.test(gateName.trim());
   const summary = ok
-    ? `输入 ${(preview as ExprGenResult).vars.map((v) => (preview as ExprGenResult).varBits[v] > 1 ? `${v}[${(preview as ExprGenResult).varBits[v]}b]` : v).join(' ')} · 门 ${Object.values((preview as ExprGenResult).gateCounts).reduce((a, b) => a + b, 0)} · 输出 ${(preview as ExprGenResult).outputs.length}`
-      + (((preview as ExprGenResult).shared || 0) > 0 ? ` · 共享 ${(preview as ExprGenResult).shared} 门` : '')
+    ? `${t('输入 ')}${(preview as ExprGenResult).vars.map((v) => (preview as ExprGenResult).varBits[v] > 1 ? `${v}[${(preview as ExprGenResult).varBits[v]}b]` : v).join(' ')}${t(' · 门 ')}${Object.values((preview as ExprGenResult).gateCounts).reduce((a, b) => a + b, 0)}${t(' · 输出 ')}${(preview as ExprGenResult).outputs.length}`
+      + (((preview as ExprGenResult).shared || 0) > 0 ? `${t(' · 共享 ')}${(preview as ExprGenResult).shared}${t(' 门')}` : '')
     : '';
 
   const submit = () => {
@@ -46,7 +47,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
       <div className="animate-fade-in w-[460px] max-w-[92vw] rounded-xl border shadow-2xl"
         style={{ background: 'var(--menu-bg)', borderColor: 'var(--border)' }}
         onClick={(e) => e.stopPropagation()}
-        role="dialog" aria-modal="true" aria-label="布尔表达式生成电路">
+        role="dialog" aria-modal="true" aria-label={t('布尔表达式生成电路')}>
         <div className="px-5 pt-4 pb-2">
           <span style={{ fontSize: 'var(--fs-lg)', fontWeight: 600, color: 'var(--text)' }}>布尔表达式 → 电路图</span>
         </div>
@@ -54,7 +55,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
           <input
             ref={inputRef}
             value={expr}
-            placeholder="如：a & b | !c"
+            placeholder={t('如：a & b | !c')}
             style={box}
             data-expr-input
             onChange={(e) => setExpr(e.target.value)}
@@ -69,7 +70,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
               style={{ ...box, width: 72, padding: '3px 8px' }} disabled={ok && (preview as ExprGenResult).outputs.length > 1}
               onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit(); } }} />
             <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--text-muted)' }}>
-              {ok && (preview as ExprGenResult).outputs.length > 1 ? '多输出语句自带名字：y = a&b; z = a|b' : '（成为 Output 端口名，导出 Verilog 同名）'}
+              {ok && (preview as ExprGenResult).outputs.length > 1 ? t('多输出语句自带名字：y = a&b; z = a|b') : t('（成为 Output 端口名，导出 Verilog 同名）')}
             </span>
           </div>
           <div className="flex items-center gap-2" data-expr-gate-row>
@@ -78,7 +79,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
               直接存为部件
             </label>
             {gateMode && (
-              <input value={gateName} onChange={(e) => setGateName(e.target.value)} placeholder="部件名，如 half_adder" data-expr-gatename
+              <input value={gateName} onChange={(e) => setGateName(e.target.value)} placeholder={t('部件名，如 half_adder')} data-expr-gatename
                 style={{ ...box, flex: 1, padding: '3px 8px', borderColor: gateNameOk ? 'var(--input-border)' : 'var(--danger)' }} />
             )}
           </div>
@@ -107,7 +108,7 @@ export default function ExprGenDialog({ onGenerate, onCancel }: ExprGenDialogPro
             </button>
             <button onClick={submit} disabled={!ok || !gateNameOk} data-expr-go
               style={{ padding: '0 14px', height: 28, borderRadius: 'var(--radius-md)', border: 'none', background: ok && gateNameOk ? 'var(--accent)' : 'var(--surface-hover)', color: ok && gateNameOk ? 'var(--vscode-button-foreground, #fff)' : 'var(--text-muted)', cursor: ok && gateNameOk ? 'pointer' : 'not-allowed', fontSize: 'var(--fs-md)', fontWeight: 600 }}>
-              {gateMode ? '存为部件并放置' : '生成到画布'}
+              {gateMode ? t('存为部件并放置') : t('生成到画布')}
             </button>
           </div>
         </div>

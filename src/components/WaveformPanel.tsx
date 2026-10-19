@@ -1,5 +1,6 @@
 ﻿// Live waveform viewer — samples named nets from the running digitaljs engine
 import { X } from 'lucide-react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 // (poll link.get('signal') + circuit.tick) and renders a scrolling digital
 // waveform. Self-drawn canvas; no joint/MonitorView coupling (per feasibility doc).
 
@@ -151,7 +152,7 @@ export default function WaveformPanel({ getChannels, getSample, resetKey, onClos
           style={{ color: 'var(--text-muted)' }}>
           Waveform {channels.length === 0 && '— no named nets'}
         </span>
-        <button onClick={onClose} title="关闭波形图"
+        <button onClick={onClose} title={t('关闭波形图')}
           className="border-0 cursor-pointer px-2 py-0.5 rounded text-[var(--fs-md)]"
           style={{ background: 'transparent', color: 'var(--text-muted)' }}><X size={14} /></button>
       </div>

@@ -1,4 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 
 /**
  * 存储器（RAM/ROM）端口配置窗。
@@ -63,7 +64,7 @@ export function MemPortsModal({ cell, onApply, onClose }: Props) {
   const sel = (opts: Sel[], value: string, set: (v: string) => void, title: string) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-secondary, #666)' }} title={title}>
       <select value={value} onChange={(e) => set(e.target.value)} style={boxStyle}>
-        {opts.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {opts.map((o) => <option key={o.value} value={o.value}>{t(o.label)}</option>)},// 动态键：选项值在 SHARED_VOCAB
       </select>
     </label>
   );
@@ -71,7 +72,7 @@ export function MemPortsModal({ cell, onApply, onClose }: Props) {
   const binField = (value: string | undefined, set: (v: string | undefined) => void, width: number, title: string) => (
     <label style={{ display: 'flex', alignItems: 'center', gap: 3, color: 'var(--text-secondary, #666)' }} title={title}>
       {title}
-      <input value={value ?? ''} placeholder={`${'0'.repeat(width)} / 留空`}
+      <input value={value ?? ''} placeholder={`${'0'.repeat(width)}${t(' / 留空')}`}
         onChange={(e) => { const v = e.target.value.trim(); set(v === '' ? undefined : v); }}
         style={{ ...boxStyle, width: 8 + 9 * Math.max(4, width), fontFamily: 'ui-monospace, monospace' }} />
     </label>
@@ -83,23 +84,23 @@ export function MemPortsModal({ cell, onApply, onClose }: Props) {
     setWr((list) => list.map((p, k) => { if (k !== i) return p; const n = { ...p }; fn(n); return n; }));
 
   const apply = () => {
-    if (bits < 1 || bits > 32) { setErr('数据位宽必须 1–32'); return; }
-    if (abits < 1 || abits > 16) { setErr('地址位宽必须 1–16'); return; }
+    if (bits < 1 || bits > 32) { setErr(t('数据位宽必须 1–32')); return; }
+    if (abits < 1 || abits > 16) { setErr(t('地址位宽必须 1–16')); return; }
     const words = wordsStr === '' ? undefined : Number(wordsStr);
     if (wordsStr !== '' && (!Number.isFinite(words) || (words as number) < 1 || (words as number) > 65536)) {
-      setErr('字数留空即可（按地址位宽 2^abits），或填 1–65536'); return;
+      setErr(t('字数留空即可（按地址位宽 2^abits），或填 1–65536')); return;
     }
     const offset = offsetStr === '' ? undefined : Number(offsetStr);
-    if (offsetStr !== '' && !Number.isFinite(offset)) { setErr('地址偏移必须是数字'); return; }
+    if (offsetStr !== '' && !Number.isFinite(offset)) { setErr(t('地址偏移必须是数字')); return; }
     for (const [i, p] of rd.entries()) {
       for (const k of ['init_value', 'srst_value', 'arst_value'] as const) {
         const v = p[k];
-        if (v != null && (!BIN.test(String(v)) || String(v).length > bits)) { setErr(`读口 ${i} 的${k === 'init_value' ? '输出初值' : k === 'srst_value' ? '同步复位值' : '异步复位值'}只能是 0/1/x，且不长于 ${bits} 位`); return; }
+        if (v != null && (!BIN.test(String(v)) || String(v).length > bits)) { setErr(t('读口 {index} 的{kind}只能是 0/1/x，且不长于 {bits} 位', { index: i, kind: k === 'init_value' ? t('输出初值') : k === 'srst_value' ? t('同步复位值') : t('异步复位值'), bits })); return; }
       }
       if (!('srst_polarity' in p) && p.srst_value != null) delete p.srst_value;
       if (!('arst_polarity' in p) && p.arst_value != null) delete p.arst_value;
     }
-    if (!rd.length && !wr.length) { setErr('至少要有一个读口或写口'); return; }
+    if (!rd.length && !wr.length) { setErr(t('至少要有一个读口或写口')); return; }
     onApply({ bits, abits, words, offset, rdports: rd.map((p) => ({ ...p })), wrports: wr.map((p) => ({ ...p })) });
   };
 
@@ -113,7 +114,7 @@ export function MemPortsModal({ cell, onApply, onClose }: Props) {
           borderRadius: 'var(--radius-md, 8px)', boxShadow: '0 12px 40px var(--vscode-widget-shadow, rgba(0,0,0,.35))', color: 'var(--text, #222)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px',
           borderBottom: '1px solid var(--border-subtle, #ddd)', fontSize: 'var(--fs-sm, 12px)', fontWeight: 700 }}>
-          <span>存储器端口配置 — {String(cell.get('label') || cell.get('net') || cell.id).slice(0, 24)}</span>
+          <span>{t('存储器端口配置 — {name}', { name: String(cell.get('label') || cell.get('net') || cell.id).slice(0, 24) })}</span>
           <span style={{ flex: 1 }} />
           <button data-memports-close="" onClick={onClose}
             style={{ padding: '1px 8px', cursor: 'pointer', border: '1px solid var(--border, #ccc)',
@@ -123,33 +124,33 @@ export function MemPortsModal({ cell, onApply, onClose }: Props) {
         <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '6px 12px',
           fontSize: 'var(--fs-xs, 11px)', color: 'var(--text-secondary, #666)',
           borderBottom: '1px solid var(--border-subtle, #eee)' }}>
-          <span>数据位宽 <input data-memports-f="bits" value={String(bits)} style={{ ...boxStyle, width: 44 }}
+          <span>{t('数据位宽')} <input data-memports-f="bits" value={String(bits)} style={{ ...boxStyle, width: 44 }}
             onChange={(e) => setBits(Number(e.target.value) || 0)} /></span>
-          <span>地址位宽 <input data-memports-f="abits" value={String(abits)} style={{ ...boxStyle, width: 44 }}
+          <span>{t('地址位宽')} <input data-memports-f="abits" value={String(abits)} style={{ ...boxStyle, width: 44 }}
             onChange={(e) => setAbits(Number(e.target.value) || 0)} /></span>
-          <span>字数 <input data-memports-f="words" value={wordsStr} placeholder={`默认 ${1 << Math.min(abits, 16)}`}
+          <span>{t('字数')} <input data-memports-f="words" value={wordsStr} placeholder={t('默认 {count}', { count: 1 << Math.min(abits, 16) })}
             style={{ ...boxStyle, width: 70 }} onChange={(e) => setWordsStr(e.target.value)} /></span>
-          <span>地址偏移 <input data-memports-f="offset" value={offsetStr} placeholder="0"
+          <span>{t('地址偏移')} <input data-memports-f="offset" value={offsetStr} placeholder="0"
             style={{ ...boxStyle, width: 56 }} onChange={(e) => setOffsetStr(e.target.value)} /></span>
         </div>
 
         <div style={{ flex: 1, overflowY: 'auto' }}>
           <div style={{ padding: '6px 12px 2px', fontSize: 'var(--fs-xs, 11px)', fontWeight: 700, color: 'var(--text-secondary, #666)' }}>
-            读口（{rd.length}）
+            {t('读口（{count}）', { count: rd.length })}
             <button data-memports-add-rd="" style={{ marginLeft: 8, cursor: 'pointer', border: '1px solid var(--accent, #2563eb)',
               borderRadius: 3, background: 'transparent', color: 'var(--accent, #2563eb)', fontSize: 'var(--fs-xs, 11px)', padding: '0 6px' }}
-              onClick={() => setRd((l) => [...l, { clock_polarity: 1 }])}>+ 加读口</button>
+              onClick={() => setRd((l) => [...l, { clock_polarity: 1 }])}>{t('+ 加读口')}</button>
           </div>
           {rd.map((p, i) => (
             <div key={`rd${i}`} data-memports-rd={i} style={rowStyle}>
               <span style={{ width: 42, color: 'var(--text-muted, #888)' }}>rd{i}</span>
-              {sel(CLK_OPTS, getSel(p, 'clock_polarity'), (v) => patchRd(i, (n) => setSel(n, 'clock_polarity', v)), '时钟')}
-              {sel(EN_OPTS, getSel(p, 'enable_polarity'), (v) => patchRd(i, (n) => setSel(n, 'enable_polarity', v)), '使能')}
-              {sel(RST_OPTS, getSel(p, 'srst_polarity'), (v) => patchRd(i, (n) => setSel(n, 'srst_polarity', v)), '同步复位')}
-              {sel(RST_OPTS, getSel(p, 'arst_polarity'), (v) => patchRd(i, (n) => setSel(n, 'arst_polarity', v)), '异步复位')}
-              {binField(p.init_value, (v) => patchRd(i, (n) => { if (v == null) delete n.init_value; else n.init_value = v; }), bits, '初值')}
+              {sel(CLK_OPTS, getSel(p, 'clock_polarity'), (v) => patchRd(i, (n) => setSel(n, 'clock_polarity', v)), t('时钟'))}
+              {sel(EN_OPTS, getSel(p, 'enable_polarity'), (v) => patchRd(i, (n) => setSel(n, 'enable_polarity', v)), t('使能'))}
+              {sel(RST_OPTS, getSel(p, 'srst_polarity'), (v) => patchRd(i, (n) => setSel(n, 'srst_polarity', v)), t('同步复位'))}
+              {sel(RST_OPTS, getSel(p, 'arst_polarity'), (v) => patchRd(i, (n) => setSel(n, 'arst_polarity', v)), t('异步复位'))}
+              {binField(p.init_value, (v) => patchRd(i, (n) => { if (v == null) delete n.init_value; else n.init_value = v; }), bits, t('初值'))}
               <span style={{ flex: 1 }} />
-              <label style={{ display: 'flex', alignItems: 'center', gap: 3 }} title="同址读写">
+              <label style={{ display: 'flex', alignItems: 'center', gap: 3 }} title={t('同址读写')}>
                 <select data-memports-hazard={i} value={'transparent' in p ? 'T' : 'collision' in p ? 'X' : 'none'}
                   style={boxStyle}
                   onChange={(e) => patchRd(i, (n) => {
@@ -157,40 +158,40 @@ export function MemPortsModal({ cell, onApply, onClose }: Props) {
                     if (e.target.value === 'T') n.transparent = true;
                     if (e.target.value === 'X') n.collision = true;
                   })}>
-                  <option value="none">同址写：读到旧值</option>
-                  <option value="T">同址写：透明（读到新值）</option>
-                  <option value="X">同址写：冲突（输出 x）</option>
+                  <option value="none">{t('同址写：读到旧值')}</option>
+                  <option value="T">{t('同址写：透明（读到新值）')}</option>
+                  <option value="X">{t('同址写：冲突（输出 x）')}</option>
                 </select>
               </label>
               <button data-memports-del-rd={i} onClick={() => setRd((l) => l.filter((_, k) => k !== i))}
                 style={{ padding: '1px 7px', cursor: 'pointer', border: '1px solid var(--border-subtle, #ccc)',
-                  borderRadius: 3, background: 'transparent', color: 'var(--danger, #b91c1c)' }}>删</button>
+                  borderRadius: 3, background: 'transparent', color: 'var(--danger, #b91c1c)' }}>{t('删')}</button>
             </div>
           ))}
 
           <div style={{ padding: '8px 12px 2px', fontSize: 'var(--fs-xs, 11px)', fontWeight: 700, color: 'var(--text-secondary, #666)' }}>
-            写口（{wr.length}）
+            {t('写口（{count}）', { count: wr.length })}
             <button data-memports-add-wr="" style={{ marginLeft: 8, cursor: 'pointer', border: '1px solid var(--accent, #2563eb)',
               borderRadius: 3, background: 'transparent', color: 'var(--accent, #2563eb)', fontSize: 'var(--fs-xs, 11px)', padding: '0 6px' }}
-              onClick={() => setWr((l) => [...l, { clock_polarity: 1 }])}>+ 加写口</button>
+              onClick={() => setWr((l) => [...l, { clock_polarity: 1 }])}>{t('+ 加写口')}</button>
           </div>
           {wr.map((p, i) => (
             <div key={`wr${i}`} data-memports-wr={i} style={rowStyle}>
               <span style={{ width: 42, color: 'var(--text-muted, #888)' }}>wr{i}</span>
-              {sel(CLK_OPTS, getSel(p, 'clock_polarity'), (v) => patchWr(i, (n) => setSel(n, 'clock_polarity', v)), '时钟')}
-              {sel(EN_OPTS, getSel(p, 'enable_polarity'), (v) => patchWr(i, (n) => setSel(n, 'enable_polarity', v)), '使能')}
-              <label title="写使能粒度">
+              {sel(CLK_OPTS, getSel(p, 'clock_polarity'), (v) => patchWr(i, (n) => setSel(n, 'clock_polarity', v)), t('时钟'))}
+              {sel(EN_OPTS, getSel(p, 'enable_polarity'), (v) => patchWr(i, (n) => setSel(n, 'enable_polarity', v)), t('使能'))}
+              <label title={t('写使能粒度')}>
                 <select data-memports-bitenable={i} style={boxStyle}
                   value={p.no_bit_enable ? 'byte' : 'bit'}
                   onChange={(e) => patchWr(i, (n) => { if (e.target.value === 'bit') delete n.no_bit_enable; else n.no_bit_enable = true; })}>
-                  <option value="bit">逐位写使能（{bits} 位）</option>
-                  <option value="byte">整字写使能（1 位）</option>
+                  <option value="bit">{t('逐位写使能（{bits} 位）', { bits })}</option>
+                  <option value="byte">{t('整字写使能（1 位）')}</option>
                 </select>
               </label>
               <span style={{ flex: 1 }} />
               <button data-memports-del-wr={i} onClick={() => setWr((l) => l.filter((_, k) => k !== i))}
                 style={{ padding: '1px 7px', cursor: 'pointer', border: '1px solid var(--border-subtle, #ccc)',
-                  borderRadius: 3, background: 'transparent', color: 'var(--danger, #b91c1c)' }}>删</button>
+                  borderRadius: 3, background: 'transparent', color: 'var(--danger, #b91c1c)' }}>{t('删')}</button>
             </div>
           ))}
         </div>
@@ -198,14 +199,14 @@ export function MemPortsModal({ cell, onApply, onClose }: Props) {
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '8px 12px',
           borderTop: '1px solid var(--border-subtle, #ddd)', fontSize: 'var(--fs-xs, 11px)' }}>
           <span style={{ color: err ? 'var(--danger, #b91c1c)' : 'var(--text-muted, #888)', flex: 1 }}>
-            {err || '端口按这里的配置重建；改位宽或增删口后，原有连线只在该端口仍存在时才接回。'}
+            {err || t('端口按这里的配置重建；改位宽或增删口后，原有连线只在该端口仍存在时才接回。')}
           </span>
           <button data-memports-cancel="" onClick={onClose}
             style={{ padding: '3px 12px', cursor: 'pointer', border: '1px solid var(--border, #ccc)',
-              borderRadius: 'var(--radius-sm, 4px)', background: 'transparent', color: 'var(--text, #333)' }}>取消</button>
+              borderRadius: 'var(--radius-sm, 4px)', background: 'transparent', color: 'var(--text, #333)' }}>{t('取消')}</button>
           <button data-memports-apply="" onClick={apply}
             style={{ padding: '3px 14px', cursor: 'pointer', border: 'none', borderRadius: 'var(--radius-sm, 4px)',
-              background: 'var(--accent, #2563eb)', color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600 }}>应用（重建器件）</button>
+              background: 'var(--accent, #2563eb)', color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600 }}>{t('应用（重建器件）')}</button>
         </div>
       </div>
     </div>
