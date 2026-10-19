@@ -70,8 +70,11 @@ export function mergeProduct(base, overrides) {
  * vsce 只收 `extension/` 目录，所以它才需要那份副本；内置装载这条路由基座自己扫 `extensions/<id>/package.json`，⛔ 我们的目录）。
  */
 export function builtinExtFiles(extSrcDir, repoDistDir, fsImpl = fs) {
+  // i18n（I18N_DESIGN §二）：manifest 串全是 %key%，双语解析表 package.nls(.zh-cn).json 漏装＝
+  //   基座里命令面板/视图名/设置页全是裸 %key%（与 grammars/schemas 同一族「声明在、文件缺＝静默失踪」）。
   const need = ['package.json', path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'),
-    path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json')];
+    path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json'),
+    'package.nls.json', 'package.nls.zh-cn.json'];
   const missing = need.filter((f) => !fsImpl.existsSync(path.join(extSrcDir, f)));
   let webviewSrc = null;
   if (repoDistDir && fsImpl.existsSync(path.join(repoDistDir, 'index.html'))) webviewSrc = repoDistDir;
@@ -160,6 +163,8 @@ export function main(argv = process.argv.slice(2)) {
   fs.rmSync(dst, { recursive: true, force: true });
   fs.mkdirSync(path.join(dst, 'dist'), { recursive: true });
   fs.copyFileSync(path.join(extSrc, 'package.json'), path.join(dst, 'package.json'));
+  for (const nls of ['package.nls.json', 'package.nls.zh-cn.json'])   // i18n：%key% 的双语解析表（need 清单同源）
+    fs.copyFileSync(path.join(extSrc, nls), path.join(dst, nls));
   fs.copyFileSync(path.join(extSrc, 'dist', 'extension.cjs'), path.join(dst, 'dist', 'extension.cjs'));
   copyTree(path.join(extSrc, 'media'), path.join(dst, 'media'));         // 活动栏图标（manifest viewsContainers 引用）
   copyTree(path.join(extSrc, 'grammars'), path.join(dst, 'grammars'));   // TextMate 语法（manifest contributes.grammars 引用；漏了＝高亮永不生效）

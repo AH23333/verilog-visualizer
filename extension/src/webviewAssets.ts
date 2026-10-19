@@ -32,5 +32,6 @@ export async function loadWebviewHtml(context: vscode.ExtensionContext, webview:
     assetUri: (rel) => webview.asWebviewUri(rel ? vscode.Uri.joinPath(found.root, ...rel.split('/')) : found.root).toString(),
     cspSource: webview.cspSource,
     nonce,
+    locale: (vscode as { env?: { language?: string } }).env?.language,   // i18n：宿主显示语言进 meta（I18N_DESIGN §一）
   });
 }

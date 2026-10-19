@@ -16,6 +16,7 @@ import SandboxExpandModal from '../components/SandboxExpandModal';
 import InputPanel from '../components/InputPanel';
 import WaveformPanel from '../components/WaveformPanel';
 import CanvasToolbar from './CanvasToolbar';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import { useHostCompile, type CompileJob } from './useHostCompile';
 import { settingsStore } from '../store/settingsStore';
 import { buildViewJson } from '../lib/verilog';
@@ -122,17 +123,17 @@ export default function CanvasApp() {
   const entryBase = entryName.replace(/\.(v|sv|vh)$/i, '') || 'circuit';
   const doExportSvg = useCallback(() => {
     exportSVG(canvasContainerRef.current, entryBase).then((ok) => {
-      if (!ok) flash('画布上没有电路可导出。');
+      if (!ok) flash(t('画布上没有电路可导出。'));
     });
   }, [entryBase, flash]);
   const doExportJson = useCallback(() => {
     exportCircuitJSON(circuitJson, entryBase).then((ok) => {
-      if (!ok) flash('画布上没有电路可导出。');
+      if (!ok) flash(t('画布上没有电路可导出。'));
     });
   }, [circuitJson, entryBase, flash]);
   const doExportNetlist = useCallback(() => {
     exportNetlistVerilog(netlistVerilog, entryBase).then((ok) => {
-      if (!ok) flash('这份编译没有产出综合网表，无法导出。');
+      if (!ok) flash(t('这份编译没有产出综合网表，无法导出。'));
     });
   }, [netlistVerilog, entryBase, flash]);
 
@@ -140,7 +141,7 @@ export default function CanvasApp() {
   //      子模块实例按 celltype 名绑定（同文件夹解析）——语义照抄旧 handleCopyToSandbox ----
   const handleCopyToSandbox = useCallback(async () => {
     const graphJson = canvasRef.current?.getGraphJson();
-    if (!graphJson || !circuitJson) { flash('先编译出电路，再复制到沙盒。'); return; }
+    if (!graphJson || !circuitJson) { flash(t('先编译出电路，再复制到沙盒。')); return; }
     try {
       const folder = entryBase;
       const partFiles = await collectToFiles(circuitJson, folder);   // elk 坐标固化（0.4-0.8s/个）
@@ -149,9 +150,9 @@ export default function CanvasApp() {
         { name: `${folder}/${entryBase}_sandbox`, content: storedJson },
         ...partFiles,
       ]);
-      flash(`已复制到沙盒文件夹「${folder}/」：主电路 + ${written.length - 1} 个子部件，双击即可编辑。`);
+      flash(t('已复制到沙盒文件夹「{folder}/」：主电路 + {count} 个子部件，双击即可编辑。', { folder, count: written.length - 1 }));
     } catch (e) {
-      flash('复制到沙盒失败：' + String((e as Error)?.message || e).slice(0, 80));
+      flash(t('复制到沙盒失败：') + String((e as Error)?.message || e).slice(0, 80));
     }
   }, [circuitJson, entryBase, flash]);
 
@@ -163,9 +164,9 @@ export default function CanvasApp() {
       // 墓碑按**真落盘的那批**的名字分半颗封（⛔ 拿请求当结果：一颗都没落时⛔ 封档）
       markLegacyMigrated(written);
       setLegacyItems([]);
-      flash(`已把 ${written.length} 个旧档落成工作区文件（重名的自动加了编号）。`);
+      flash(t('已把 {count} 个旧档落成工作区文件（重名的自动加了编号）。', { count: written.length }));
     } catch (e) {
-      flash('迁移失败：' + String((e as Error)?.message || e).slice(0, 80));
+      flash(t('迁移失败：') + String((e as Error)?.message || e).slice(0, 80));
     }
   }, [legacyItems, flash]);
 
@@ -210,9 +211,9 @@ export default function CanvasApp() {
   const handleCanvasRunningChange = useCallback((running: boolean) => {
     if (running) {
       // 引擎报"在跑"就抹掉"没起来"的提示；编译错误不归这里管（在 Problems 里）
-      setNotice((n) => (n?.sticky && n.text.includes('未启动仿真') ? null : n));
+      setNotice((n) => (n?.sticky && n.text.includes(t('未启动仿真')) ? null : n));
     } else {
-      setNotice({ text: '电路存在悬空/成环的连线——未启动仿真。', sticky: true });
+      setNotice({ text: t('电路存在悬空/成环的连线——未启动仿真。'), sticky: true });
     }
   }, []);
 
@@ -250,15 +251,15 @@ export default function CanvasApp() {
       items: [
         ...drillItems,
         // 视图那一组与沙盒画布菜单同序同词（放大/缩小/适应窗口/重置缩放）
-        { label: '放大', hint: 'Ctrl+滚轮', action: () => canvasRef.current?.zoomBy(1.2) },
-        { label: '缩小', hint: 'Ctrl+滚轮', action: () => canvasRef.current?.zoomBy(1 / 1.2) },
-        { label: '适应窗口', hint: 'Shift+F', action: () => canvasRef.current?.fitToWindow() },
-        { label: '重置缩放', action: () => canvasRef.current?.resetZoom() },
+        { label: t('放大'), hint: 'Ctrl+滚轮', action: () => canvasRef.current?.zoomBy(1.2) },
+        { label: t('缩小'), hint: 'Ctrl+滚轮', action: () => canvasRef.current?.zoomBy(1 / 1.2) },
+        { label: t('适应窗口'), hint: 'Shift+F', action: () => canvasRef.current?.fitToWindow() },
+        { label: t('重置缩放'), action: () => canvasRef.current?.resetZoom() },
         { label: '---', disabled: true, action: () => {} },
-        { label: '复制到沙盒', action: () => { void handleCopyToSandbox(); } },
-        { label: '导出 SVG', action: () => doExportSvg() },
-        { label: '导出电路 JSON', action: () => doExportJson() },
-        { label: '导出综合网表', action: () => doExportNetlist() },
+        { label: t('复制到沙盒'), action: () => { void handleCopyToSandbox(); } },
+        { label: t('导出 SVG'), action: () => doExportSvg() },
+        { label: t('导出电路 JSON'), action: () => doExportJson() },
+        { label: t('导出综合网表'), action: () => doExportNetlist() },
       ],
     });
   }, [hasCircuit, handleCopyToSandbox, doExportSvg, doExportJson, doExportNetlist]);
@@ -325,12 +326,12 @@ export default function CanvasApp() {
                 : <TriangleAlert size={48} strokeWidth={1} style={{ color: 'var(--text)' }} />}
             </div>
             <div className="text-base font-medium" style={{ color: 'var(--text)' }}>
-              {compiling ? '正在编译…' : '还没有电路'}
+              {compiling ? t('正在编译…') : t('还没有电路')}
             </div>
             <div className="text-sm max-w-[420px] text-center leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
               {compiling
-                ? 'yosys 综合中，稍候画布会自动出现电路。'
-                : '在 .v 编辑器标题栏点『编译并查看电路』（Ctrl+F5），电路会显示在这里。'}
+                ? t('yosys 综合中，稍候画布会自动出现电路。')
+                : t('在 .v 编辑器标题栏点『编译并查看电路』（Ctrl+F5），电路会显示在这里。')}
             </div>
           </div>
         )}
@@ -366,7 +367,7 @@ export default function CanvasApp() {
             onClick={() => setViewPath([])}
             className="border-0 cursor-pointer p-0.5 rounded hover:opacity-80"
             style={{ background: 'transparent', color: 'var(--accent)', display: 'inline-flex' }}
-            title="返回顶层模块"
+            title={t('返回顶层模块')}
           ><ArrowLeft size={14} /></button>
           <button
             onClick={() => setViewPath([])}
@@ -442,17 +443,17 @@ export default function CanvasApp() {
           background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)',
           fontSize: 'var(--fs-sm)', boxShadow: '0 6px 18px var(--vscode-widget-shadow, rgba(0,0,0,.28))',
         }}>
-          <span>检测到 {legacyItems.length} 个旧版本地文件（存于浏览器 localStorage）。迁移后它们会成为工作区里的真文件（.v / .djs）。</span>
+          <span>{t('检测到 {count} 个旧版本地文件（存于浏览器 localStorage）。迁移后它们会成为工作区里的真文件（.v / .djs）。', { count: legacyItems.length })}</span>
           <button onClick={handleMigrateLegacy} style={{
             padding: '4px 12px', border: 'none', borderRadius: 6, cursor: 'pointer',
             background: 'var(--vscode-button-background, var(--accent))',
             color: 'var(--vscode-button-foreground, #fff)', fontWeight: 600, fontSize: 'var(--fs-sm)',
-          }}>迁移到工作区</button>
+          }}>{t('迁移到工作区')}</button>
           <button onClick={() => { dismissLegacyMigration(); setLegacyItems([]); }} style={{
             padding: '4px 10px', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer',
             background: 'var(--vscode-button-secondaryBackground, transparent)',
             color: 'var(--vscode-button-secondaryForeground, var(--text-secondary))', fontSize: 'var(--fs-sm)',
-          }}>不再提示</button>
+          }}>{t('不再提示')}</button>
         </div>
       )}
 

@@ -84,20 +84,22 @@ describe('内置扩展要落的那几颗文件', () => {
   it('缺 dist/extension.cjs 时要报出来（先编再装，⛔ 把源码目录整个塞进基座）', () => {
     const r = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json']));
     expect(r.missing).toEqual([path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'),
-      path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json')]);
+      path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json'),
+      'package.nls.json', 'package.nls.zh-cn.json']);
     expect(r.hasWebview).toBe(false);
   });
 
   it('media/icon.svg、grammars/ 与 schemas/ 都是必需品（图标/高亮/JSON 校验——三样都是"声明在、文件缺＝静默失踪"那一族）', () => {
     const BUNDLE = ['package.json', path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'),
-      path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json')];
+      path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json'),
+      'package.nls.json', 'package.nls.zh-cn.json'];
     const withIcon = builtinExtFiles('/ext', '/repo/dist', fakeFs([...BUNDLE, 'index.html']));
     expect(withIcon.missing).toEqual([]);
-    const noIcon = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json', path.join('dist', 'extension.cjs'), path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json'), 'index.html']));
+    const noIcon = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json', path.join('dist', 'extension.cjs'), path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json'), 'package.nls.json', 'package.nls.zh-cn.json', 'index.html']));
     expect(noIcon.missing).toEqual([path.join('media', 'icon.svg')]);
-    const noGrammar = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json', path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'), path.join('schemas', 'vv-bind.schema.json'), 'index.html']));
+    const noGrammar = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json', path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'), path.join('schemas', 'vv-bind.schema.json'), 'package.nls.json', 'package.nls.zh-cn.json', 'index.html']));
     expect(noGrammar.missing).toEqual([path.join('grammars', 'verilog.tmLanguage.json')]);
-    const noSchema = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json', path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'), path.join('grammars', 'verilog.tmLanguage.json'), 'index.html']));
+    const noSchema = builtinExtFiles('/ext', '/repo/dist', fakeFs(['package.json', path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'), path.join('grammars', 'verilog.tmLanguage.json'), 'package.nls.json', 'package.nls.zh-cn.json', 'index.html']));
     expect(noSchema.missing).toEqual([path.join('schemas', 'vv-bind.schema.json')]);
   });
 
@@ -105,6 +107,7 @@ describe('内置扩展要落的那几颗文件', () => {
     const r = builtinExtFiles('/ext', '/repo/dist', fakeFs([
       'package.json', path.join('dist', 'extension.cjs'), path.join('media', 'icon.svg'),
       path.join('grammars', 'verilog.tmLanguage.json'), path.join('schemas', 'vv-bind.schema.json'),
+      'package.nls.json', 'package.nls.zh-cn.json',
     ]));
     expect(r.missing).toEqual([]);          // 缺的是 webview，⛔ 是 bundle——报错要分得开
     expect(r.hasWebview).toBe(false);

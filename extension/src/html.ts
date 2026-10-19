@@ -10,6 +10,7 @@
  */
 
 export interface HtmlRewriteInput {
+
   /** Vite 产出的 index.html 原文 */
   rawHtml: string;
   /** 把 dist 内的相对路径（`assets/index-xxx.js`）换成宿主能读的 URI 字符串 */
@@ -18,6 +19,8 @@ export interface HtmlRewriteInput {
   cspSource: string;
   /** 每次装载新生成的 nonce（只有带它的 <script> 能跑） */
   nonce: string;
+  /** 宿主显示语言（vscode.env.language）→ `<meta name="vv-locale">`＋`<html lang>`（i18n：CSP 下不注内联脚本，前端读 meta） */
+  locale?: string;
 }
 
 /**
@@ -67,12 +70,19 @@ export function rewriteWebviewHtml(input: HtmlRewriteInput): string {
   // <base> 是关键：emscripten/joint 在运行时拼的是相对路径（wasm、图片、字体），
   // 而 webview 的文档基址不是 dist 目录——没有它，`yosys.wasm` 这类按需加载会 404 且只在壳里复现。
   const baseTag = `<base href="${base.endsWith('/') ? base : base + '/'}">`;
+  // i18n（I18N_DESIGN §一）：宿主语言进 <meta name="vv-locale">（CSP 下内联脚本必被拦，meta 是唯一无害通道），
+  // <html lang> 同步——浏览器辅助功能与字体选择都读它。缺省 zh-CN＝存量 html 原文的样子（浏览器预览不受影响）。
+  const locale = input.locale ? String(input.locale).trim().toLowerCase() : '';
+  const localeTag = locale ? `<meta name="vv-locale" content="${locale}">` : '';
+  const langAttr = locale ? ` lang="${locale}"` : '';
   const head = '<head>';
   if (html.includes(head)) {
-    html = html.replace(head, `${head}\n${csp}\n${baseTag}`);
+    html = html.replace(head, `${head}\n${csp}\n${baseTag}${localeTag ? '\n' + localeTag : ''}`);
   } else {
-    html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${csp}\n${baseTag}`);
+    html = html.replace(/<head[^>]*>/i, (m) => `${m}\n${csp}\n${baseTag}${localeTag ? '\n' + localeTag : ''}`);
   }
+  html = html.replace(/<html\b([^>]*)>/i, (m, attrs: string) =>
+    (/\blang=/i.test(attrs) ? m.replace(/\blang="[^"]*"/i, `lang="${locale || 'zh-CN'}"`) : `<html${attrs}${langAttr}>`));
   // 官方 sample 用 nonce 白名单放行脚本：构建产物里那颗 module script 要挂上它，
   // ⛔ 为了省事改用 script-src 'unsafe-inline'（那等于把 CSP 关掉）。
   // 一条正则覆盖"有无 src 都一样"，⛔ 分两条写（第一版那么写时 nonce 落在 src 前还是后

@@ -3,6 +3,7 @@
 // 「复制到沙盒」、「导出」下拉（SVG / 电路 JSON / 网表，落盘走 host.saveExportFile）。
 // 样式照旧全部走 CSS 变量（与旧 TabBar leftSlot 同一套令牌）。
 import { useEffect, useRef, useState } from 'react';
+import { t } from '../i18n';   // i18n：中文原文即键（I18N_DESIGN §二）
 import { Play, Pause, StepForward, AudioWaveform, SlidersHorizontal, Copy, Download, ChevronDown } from 'lucide-react';
 
 const MIN_SPEED_MS = 5, MAX_SPEED_MS = 200;
@@ -57,7 +58,7 @@ export default function CanvasToolbar({
       <button
         onClick={onTogglePause}
         data-testid="sim-pause-toggle"
-        title={simPaused ? '继续运行' : '暂停仿真（定格当前波形，R103）'}
+        title={simPaused ? t('继续运行') : t('暂停仿真（定格当前波形，R103）')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
           padding: '4px 10px', border: '1px solid var(--border)',
@@ -66,7 +67,7 @@ export default function CanvasToolbar({
           color: simPaused ? 'var(--vscode-button-foreground, #fff)' : 'var(--vscode-button-secondaryForeground, var(--text))',
           fontWeight: 600, fontSize: 'var(--fs-sm)',
         }}
-      >{simPaused ? <><Play size={13} /> 运行</> : <><Pause size={13} /> 暂停</>}</button>
+      >{simPaused ? <><Play size={13} /> {t('运行')}</> : <><Pause size={13} /> {t('暂停')}</>}</button>
       <button
         onClick={onStepOnce}
         disabled={!simPaused}
@@ -80,14 +81,14 @@ export default function CanvasToolbar({
           fontSize: 'var(--fs-xs)', fontWeight: 600,
           opacity: simPaused ? 1 : 0.4,
         }}
-      ><StepForward size={13} /> 单步</button>
+      ><StepForward size={13} /> {t('单步')}</button>
       {simPaused && debugTick > 0 && (
         <span style={{ fontSize: 'var(--fs-xs)', color: 'var(--accent)', fontWeight: 600, padding: '0 4px' }}>
           tick={debugTick}
         </span>
       )}
       <label style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 'var(--fs-xs)', color: 'var(--text-secondary)' }}>
-        速度
+        {t('速度')}
         {/* range value = "fastness": low ms = fast engine tick */}
         <input
           type="range" min={0} max={1} step={0.01}
@@ -103,7 +104,7 @@ export default function CanvasToolbar({
       <button
         onClick={onToggleWave}
         data-testid="wave-toggle"
-        title="切换命名信号的实时波形"
+        title={t('切换命名信号的实时波形')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
           padding: '4px 10px', border: '1px solid var(--border)',
@@ -111,10 +112,10 @@ export default function CanvasToolbar({
           background: waveOpen ? 'var(--vscode-button-background, var(--accent))' : 'transparent',
           color: waveOpen ? 'var(--vscode-button-foreground, #fff)' : 'var(--text)',
         }}
-      ><AudioWaveform size={13} /> 波形</button>
+      ><AudioWaveform size={13} /> {t('波形')}</button>
       <button
         onClick={onToggleInputs}
-        title="切换输入开关面板"
+        title={t('切换输入开关面板')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 5,
           padding: '4px 10px', border: '1px solid var(--border)',
@@ -122,30 +123,30 @@ export default function CanvasToolbar({
           background: inputsOpen ? 'var(--vscode-button-background, var(--accent))' : 'transparent',
           color: inputsOpen ? 'var(--vscode-button-foreground, #fff)' : 'var(--text)',
         }}
-      ><SlidersHorizontal size={13} /> 输入</button>
+      ><SlidersHorizontal size={13} /> {t('输入')}</button>
       <span style={{ width: 1, height: 16, background: 'var(--border)' }} />
       <button
         onClick={onCopyToSandbox}
-        title="把当前电路落成工作区里的一颗新 .djs，进行自由二次编辑"
+        title={t('把当前电路落成工作区里的一颗新 .djs，进行自由二次编辑')}
         style={{
           display: 'inline-flex', alignItems: 'center', gap: 6,
           padding: '4px 10px', border: '1px solid var(--border)',
           borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--fs-sm)',
           background: 'var(--surface)', color: 'var(--text)',
         }}
-      ><Copy size={13} /> 复制到沙盒</button>
+      ><Copy size={13} /> {t('复制到沙盒')}</button>
       <div ref={exportBoxRef} style={{ position: 'relative' }}>
         <button
           onClick={() => setExportOpen((v) => !v)}
           data-tool="export"
-          title="导出当前电路"
+          title={t('导出当前电路')}
           style={{
             display: 'inline-flex', alignItems: 'center', gap: 4,
             padding: '4px 10px', border: '1px solid var(--border)',
             borderRadius: 'var(--radius-sm)', cursor: 'pointer', fontSize: 'var(--fs-sm)',
             background: 'var(--surface)', color: 'var(--text)',
           }}
-        ><Download size={13} /> 导出 <ChevronDown size={12} /></button>
+        ><Download size={13} /> {t('导出')} <ChevronDown size={12} /></button>
         {exportOpen && (
           <div style={{
             position: 'absolute', top: 'calc(100% + 4px)', left: 0, zIndex: 30,
@@ -153,9 +154,9 @@ export default function CanvasToolbar({
             borderRadius: 'var(--radius-md)', padding: 4, boxShadow: '0 6px 18px var(--vscode-widget-shadow, rgba(0,0,0,.28))',
           }}>
             {[
-              { label: 'SVG 图片', action: onExportSvg },
-              { label: '电路 JSON（.json）', action: onExportJson },
-              { label: '综合网表（.v）', action: onExportNetlist },
+              { label: t('SVG 图片'), action: onExportSvg },
+              { label: t('电路 JSON（.json）'), action: onExportJson },
+              { label: t('综合网表（.v）'), action: onExportNetlist },
             ].map((it) => (
               <button key={it.label} onClick={() => { setExportOpen(false); it.action(); }}
                 style={{

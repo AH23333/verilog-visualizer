@@ -125,7 +125,15 @@ describe('装载前提（manifest）', () => {
     expect(manifest.capabilities?.untrustedWorkspaces?.supported).toBe(true);
     // ⚠ 声明了 supported 就得给 description：VS Code 在受限模式里会把这句话显示给用户，
     //    没写等于让用户在⛔ 知道为什么放行的地方点了放行
-    expect(String(manifest.capabilities.untrustedWorkspaces.description).length).toBeGreaterThan(40);
+    // i18n 起 manifest 串走 %key% → 断言必须经 nls 解析（裸 %key% 长度只有十几个字符，台架先红）。
+    const rawDesc = String(manifest.capabilities.untrustedWorkspaces.description);
+    const nls = JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'extension', 'package.nls.json'), 'utf8')) as Record<string, string>;
+    const resolved = rawDesc.replace(/%([A-Za-z0-9_.]+)%/g, (_m, k: string) => {
+      if (!(k in nls)) throw new Error(`manifest 引用了 nls 没有的 key：${k}`);
+      return nls[k];
+    });
+    expect(resolved.length).toBeGreaterThan(40);
+    expect(resolved).not.toMatch(/%/);   // 解析后不许残留 %（半解析＝真机裸 %key%）
   });
 
   it('activationEvents 里有 onStartupFinished（⛔ 它，没人调命令时扩展根本⛔ 激活，面板也⛔ 自己弹）', () => {

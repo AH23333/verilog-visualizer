@@ -1,7 +1,7 @@
 {
   "name": "verilog-visualizer-vscode",
   "displayName": "Verilog Visualizer",
-  "description": "Verilog 可视化与数字电路沙盒（digitaljs 仿真）在 VS Code 内的宿主壳",
+  "description": "%vv.description%",
   "version": "0.0.1",
   "private": true,
   "publisher": "local",
@@ -20,7 +20,7 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": true,
-      "description": "本扩展不起子进程、不执行工作区里带来的可执行文件：Yosys/DigitalJS 是打进包里的 WASM，工作区内容只当文本读、当图渲染（前端两处 innerHTML 都只赋空串，webview 那份 CSP 的 script-src 只有 nonce + webview origin）。少了这一句，在一个从没信任过的新文件夹里宿主根本不会被激活——症状是启动后只剩一颗 Welcome（受限模式）页，不报错、日志里也一行都没有。"
+      "description": "%vv.untrusted%"
     }
   },
   "contributes": {
@@ -28,12 +28,12 @@
       "activitybar": [
         {
           "id": "verilogVizCode",
-          "title": "代码编译",
+          "title": "%vv.container.code%",
           "icon": "./media/code.svg"
         },
         {
           "id": "verilogVizSandbox",
-          "title": "沙盒编辑",
+          "title": "%vv.container.sandbox%",
           "icon": "./media/sandbox.svg"
         }
       ]
@@ -42,40 +42,40 @@
       "verilogVizCode": [
         {
           "id": "verilogViz.codeFiles",
-          "name": "文件",
+          "name": "%vv.view.codeFiles%",
           "type": "tree",
           "icon": "$(files)"
         },
         {
           "id": "verilogViz.modules",
-          "name": "模块 Modules"
+          "name": "%vv.view.modules%"
         },
         {
           "id": "verilogViz.hierarchy",
-          "name": "层次结构 Hierarchy"
+          "name": "%vv.view.hierarchy%"
         }
       ],
       "verilogVizSandbox": [
         {
           "id": "verilogViz.sandboxFiles",
-          "name": "文件",
+          "name": "%vv.view.sandboxFiles%",
           "type": "tree",
           "icon": "$(files)"
         },
         {
           "id": "verilogViz.sandboxParts",
-          "name": "部件 Parts"
+          "name": "%vv.view.parts%"
         },
         {
           "id": "verilogViz.sandboxHierarchy",
-          "name": "层次结构 Hierarchy"
+          "name": "%vv.view.sandboxHierarchy%"
         }
       ]
     },
     "customEditors": [
       {
         "viewType": "verilogViz.doc",
-        "displayName": "电路画布",
+        "displayName": "%vv.editor.canvas%",
         "selector": [
           {
             "filenamePattern": "*.djs"
@@ -123,163 +123,163 @@
     "commands": [
       {
         "command": "verilogViz.compileAndShow",
-        "title": "编译并查看电路",
+        "title": "%vv.cmd.verilogViz.compileAndShow%",
         "category": "Verilog Visualizer",
         "icon": "./media/compile.svg"
       },
       {
         "command": "verilogViz.sim.togglePause",
-        "title": "暂停/继续仿真",
+        "title": "%vv.cmd.verilogViz.sim.togglePause%",
         "category": "Verilog Visualizer",
         "icon": "./media/pause.svg"
       },
       {
         "command": "verilogViz.sim.stepOnce",
-        "title": "单步仿真",
+        "title": "%vv.cmd.verilogViz.sim.stepOnce%",
         "category": "Verilog Visualizer",
         "icon": "./media/step.svg"
       },
       {
         "command": "verilogViz.exportSvg",
-        "title": "导出电路为 SVG",
+        "title": "%vv.cmd.verilogViz.exportSvg%",
         "category": "Verilog Visualizer",
         "icon": "./media/export.svg"
       },
       {
         "command": "verilogViz.newVerilogFile",
-        "title": "新建 Verilog 文件",
+        "title": "%vv.cmd.verilogViz.newVerilogFile%",
         "category": "Verilog Visualizer",
         "icon": "$(new-file)"
       },
       {
         "command": "verilogViz.newSandboxFile",
-        "title": "新建沙盒电路",
+        "title": "%vv.cmd.verilogViz.newSandboxFile%",
         "category": "Verilog Visualizer",
         "icon": "$(new-file)"
       },
       {
         "command": "verilogViz.newSandboxFolder",
-        "title": "新建文件夹",
+        "title": "%vv.cmd.verilogViz.newSandboxFolder%",
         "category": "Verilog Visualizer",
         "icon": "$(new-folder)"
       },
       {
         "command": "verilogViz.openExamples",
-        "title": "打开示例电路",
+        "title": "%vv.cmd.verilogViz.openExamples%",
         "category": "Verilog Visualizer"
       },
       {
         "command": "verilogVisualizer.refreshTrees",
-        "title": "刷新",
+        "title": "%vv.cmd.verilogVisualizer.refreshTrees%",
         "category": "Verilog Visualizer",
         "icon": "$(refresh)"
       },
       {
         "command": "verilogVisualizer.revealProjectDir",
-        "title": "打开项目文件所在文件夹（落盘核对用）",
+        "title": "%vv.cmd.verilogVisualizer.revealProjectDir%",
         "category": "Verilog Visualizer"
       },
       {
         "command": "verilogViz.openDoc",
-        "title": "打开电路画布",
+        "title": "%vv.cmd.verilogViz.openDoc%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.renameFile",
-        "title": "重命名",
+        "title": "%vv.cmd.verilogViz.renameFile%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.deleteFile",
-        "title": "删除",
+        "title": "%vv.cmd.verilogViz.deleteFile%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.duplicateFile",
-        "title": "创建副本",
+        "title": "%vv.cmd.verilogViz.duplicateFile%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.togglePartRole",
-        "title": "切换部件角色",
+        "title": "%vv.cmd.verilogViz.togglePartRole%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.bindParts",
-        "title": "部件绑定",
+        "title": "%vv.cmd.verilogViz.bindParts%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.openModuleAt",
-        "title": "打开模块定义",
+        "title": "%vv.cmd.verilogViz.openModuleAt%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.openModuleItem",
-        "title": "打开定义",
+        "title": "%vv.cmd.verilogViz.openModuleItem%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.openFile",
-        "title": "打开定义文件",
+        "title": "%vv.cmd.verilogViz.openFile%",
         "category": "Verilog Viz"
       },
       {
         "command": "verilogViz.openBindingConfig",
-        "title": "打开部件绑定配置…",
+        "title": "%vv.cmd.verilogViz.openBindingConfig%",
         "icon": "$(json)"
       },
       {
         "command": "verilogViz.materializeBindings",
-        "title": "固化自动绑定到配置文件",
+        "title": "%vv.cmd.verilogViz.materializeBindings%",
         "icon": "$(lock)"
       },
       {
         "command": "verilogViz.duplicateFolder",
-        "title": "复制文件夹",
+        "title": "%vv.cmd.verilogViz.duplicateFolder%",
         "icon": "$(files)"
       },
       {
         "command": "verilogViz.importFiles",
-        "title": "导入文件…",
+        "title": "%vv.cmd.verilogViz.importFiles%",
         "icon": "$(desktop-download)"
       },
       {
         "command": "verilogViz.importVerilogFiles",
-        "title": "导入 Verilog 文件…",
+        "title": "%vv.cmd.verilogViz.importVerilogFiles%",
         "icon": "$(desktop-download)"
       },
       {
         "command": "verilogViz.importSandboxFiles",
-        "title": "导入电路文件…",
+        "title": "%vv.cmd.verilogViz.importSandboxFiles%",
         "icon": "$(desktop-download)"
       },
       {
         "command": "verilogViz.moveTo",
-        "title": "移动到…",
+        "title": "%vv.cmd.verilogViz.moveTo%",
         "icon": "$(arrow-right)"
       },
       {
         "command": "verilogViz.copyPath",
-        "title": "复制路径"
+        "title": "%vv.cmd.verilogViz.copyPath%"
       },
       {
         "command": "verilogViz.revealInOS",
-        "title": "在磁盘显示"
+        "title": "%vv.cmd.verilogViz.revealInOS%"
       },
       {
         "command": "verilogViz.auditBindings",
-        "title": "检查绑定完整性…",
+        "title": "%vv.cmd.verilogViz.auditBindings%",
         "icon": "$(search)"
       },
       {
         "command": "verilogViz.completeBindings",
-        "title": "写全绑定配置",
+        "title": "%vv.cmd.verilogViz.completeBindings%",
         "icon": "$(checklist)"
       },
       {
         "command": "verilogViz.initProject",
-        "title": "初始化工程配置（.vv/）",
+        "title": "%vv.cmd.verilogViz.initProject%",
         "icon": "$(root-folder)"
       }
     ],
@@ -566,7 +566,6 @@
           "group": "8_reveal@2"
         }
       ],
-
       "editor/title": [
         {
           "command": "verilogViz.compileAndShow",
@@ -785,44 +784,44 @@
         "verilogViz.compile.topModule": {
           "type": "string",
           "default": "",
-          "markdownDescription": "编译的顶层模块名。留空则用入口文件里定义的第一个模块。"
+          "markdownDescription": "%vv.config.verilogViz.compile.topModule%"
         },
         "verilogViz.compile.yosysOptions": {
           "type": "string",
           "default": "",
-          "markdownDescription": "附加给 yosys 的选项（空格分隔）。"
+          "markdownDescription": "%vv.config.verilogViz.compile.yosysOptions%"
         },
         "verilogViz.compile.noFlatten": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "⛔ 展平层次（保留模块边界）。"
+          "markdownDescription": "%vv.config.verilogViz.compile.noFlatten%"
         },
         "verilogViz.compile.noOpt": {
           "type": "boolean",
           "default": false,
-          "markdownDescription": "⛔ 优化（保留原始门结构）。"
+          "markdownDescription": "%vv.config.verilogViz.compile.noOpt%"
         },
         "verilogViz.compile.autoRecompile": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "保存 `.v` 文件时自动重新编译并刷新画布（画布面板开着时）。"
+          "markdownDescription": "%vv.config.verilogViz.compile.autoRecompile%"
         },
         "verilogViz.sandbox.gridSize": {
           "type": "number",
           "default": 16,
           "minimum": 4,
           "maximum": 64,
-          "markdownDescription": "沙盒画布网格间距（px）。"
+          "markdownDescription": "%vv.config.verilogViz.sandbox.gridSize%"
         },
         "verilogViz.sandbox.showGrid": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "沙盒画布显示网格。"
+          "markdownDescription": "%vv.config.verilogViz.sandbox.showGrid%"
         },
         "verilogViz.sandbox.snapToGrid": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "拖动部件时吸附到网格。"
+          "markdownDescription": "%vv.config.verilogViz.sandbox.snapToGrid%"
         },
         "verilogViz.sandbox.wireStyle": {
           "type": "string",
@@ -832,7 +831,7 @@
             "straight"
           ],
           "default": "metro",
-          "markdownDescription": "连线走线方式。"
+          "markdownDescription": "%vv.config.verilogViz.sandbox.wireStyle%"
         },
         "verilogViz.sandbox.defaultBits": {
           "type": "number",
@@ -844,24 +843,24 @@
             8,
             16
           ],
-          "markdownDescription": "新建 IO 部件的默认位宽。"
+          "markdownDescription": "%vv.config.verilogViz.sandbox.defaultBits%"
         },
         "verilogViz.sandbox.autoStartSim": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "打开沙盒时自动运行仿真。"
+          "markdownDescription": "%vv.config.verilogViz.sandbox.autoStartSim%"
         },
         "verilogViz.sandbox.simSpeedMs": {
           "type": "number",
           "default": 10,
           "minimum": 5,
           "maximum": 200,
-          "markdownDescription": "仿真步进间隔（ms）。"
+          "markdownDescription": "%vv.config.verilogViz.sandbox.simSpeedMs%"
         },
         "verilogViz.sandbox.foldConstants": {
           "type": "boolean",
           "default": true,
-          "markdownDescription": "只读视图把「运算器 + Constant 喂入」折叠成圆圈。"
+          "markdownDescription": "%vv.config.verilogViz.sandbox.foldConstants%"
         },
         "verilogViz.bindings.policy": {
           "type": "string",
@@ -870,19 +869,31 @@
             "strict"
           ],
           "default": "auto",
-          "markdownDescription": "沙盒画布子部件展开的兜底策略（R152 裁决：**编译侧恒为绑定权威**——未录入实例⛔ 同名兜底，直接报错引导「写全绑定配置」；本设置只管画布）：**auto**＝画布上未录入的子电路实例靠同名部件兜底展开，并可见提示\"一键写全\"；**strict**＝画布也⛔ 兜底——没录入配置的子部件实例不展开，右键「写全绑定配置」一键补齐后恢复。",
+          "markdownDescription": "%vv.config.verilogViz.bindings.policy%",
           "enumItemLabels": [
-            "自动兜底（提示写全）",
-            "严格（必须配全）"
+            "%vv.config.verilogViz.bindings.policy.label0%",
+            "%vv.config.verilogViz.bindings.policy.label1%"
           ]
         }
       }
     },
     "viewsWelcome": [
-      { "view": "verilogViz.codeFiles", "contents": "工作区还没有 `.v/.sv` 文件。\n[新建 Verilog 文件](command:verilogViz.newVerilogFile)\n[导入 Verilog 文件…](command:verilogViz.importVerilogFiles)\n也可以在资源管理器里放一个 `.v`，回来直接 `Ctrl+F5` 编译。" },
-      { "view": "verilogViz.sandboxFiles", "contents": "还没有电路文档（`.djs`）。\n[新建电路](command:verilogViz.newSandboxFile)\n[新建文件夹](command:verilogViz.newSandboxFolder)\n[导入电路文件…](command:verilogViz.importSandboxFiles)\n[打开示例电路](command:verilogViz.openExamples)" },
-      { "view": "verilogViz.hierarchy", "contents": "打开一个 `.v / .sv` 文件后，这里按**例化关系**展开模块层次。" },
-      { "view": "verilogViz.sandboxHierarchy", "contents": "打开一个 `.djs` 电路文档后，这里列出它的子电路实例（右键直达部件绑定）。" }
+      {
+        "view": "verilogViz.codeFiles",
+        "contents": "%vv.welcome.code%"
+      },
+      {
+        "view": "verilogViz.sandboxFiles",
+        "contents": "%vv.welcome.sandbox%"
+      },
+      {
+        "view": "verilogViz.hierarchy",
+        "contents": "%vv.welcome.modules%"
+      },
+      {
+        "view": "verilogViz.sandboxHierarchy",
+        "contents": "%vv.welcome.parts%"
+      }
     ],
     "jsonValidation": [
       {
