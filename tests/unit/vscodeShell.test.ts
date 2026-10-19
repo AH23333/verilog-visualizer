@@ -339,7 +339,7 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
     //    ⛔ 顺着 surfaces 数组悄悄多挂一颗）。surfacesGlobal.mcp 的开闸事实源同颗锁可见。
     expect(api.surfacesGlobal.mcp).toBe(true);
     const MCP_WRITE = ['bindings.complete', 'bindings.materialize', 'bindings.set', 'circuits.toggle',
-      'compile.compileAndShow', 'compile.completeBindings', 'fs.createFile', 'fs.createFolder',
+      'fs.createFile', 'fs.createFolder',
       'fs.delete', 'fs.duplicateFile', 'fs.duplicateFolder', 'fs.import', 'fs.move', 'fs.rename'];
     expect(tools.filter(({ t }) => t.surfaces.includes('mcp') && t.sideEffects !== 'none')
       .map(({ id }) => id).sort()).toEqual(MCP_WRITE);

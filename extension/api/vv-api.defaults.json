@@ -116,8 +116,7 @@
       "perm": "config-write",
       "sideEffects": "config-write",
       "surfaces": [
-        "ui",
-        "mcp"
+        "ui"
       ],
       "ref": "verilogViz.completeBindings",
       "since": "0.1.0"
@@ -126,8 +125,7 @@
       "perm": "process",
       "sideEffects": "process",
       "surfaces": [
-        "ui",
-        "mcp"
+        "ui"
       ],
       "ref": "verilogViz.compileAndShow",
       "idempotent": false,
