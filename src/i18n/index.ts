@@ -34,3 +34,14 @@ export function t(msg: string, vars?: Record<string, string | number>): string {
   if (vars) out = out.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
   return out;
 }
+
+/**
+ * 共享词表（动态键白名单，I18N_DESIGN §二）：这些键经 `t(变量)` 动态使用（如器件中文名
+ * `CN_NAME[type]`），完备性闸扫不到字面量——显式登记后免孤儿检查，但闸照查「英文表必须有、译文无 CJK」。
+ * ⛔ 借口动态使用绕闸：新动态键必须进这份名单，一份声明一处真相。
+ */
+export const SHARED_VOCAB: ReadonlySet<string> = new Set([
+  // 器件中文名（CN_NAME 值；cellMenu toast 的 sgnName 动态插值）——S2 目录批扩到全表
+  '加法器', '减法器', '乘法器', '除法器', '取模', '幂运算', '取负', '正号器',
+  '相等比较', '不等比较', '小于比较', '小于等于', '大于比较', '大于等于', '左移', '右移',
+]);

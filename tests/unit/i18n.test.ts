@@ -4,7 +4,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { normalizeLocale, t, setLocaleForTest, initLocale, getLocale } from '../../src/i18n';
+import { normalizeLocale, t, setLocaleForTest, initLocale, getLocale, SHARED_VOCAB } from '../../src/i18n';
 import { EN as WEB_EN } from '../../src/i18n/en';
 import { normalizeLocale as extNormalize, t as extT, setLocaleForTest as extSetLocale } from '../../extension/src/i18n';
 import { EN as EXT_EN } from '../../extension/src/i18n.en';
@@ -117,7 +117,9 @@ describe('i18n 完备性闸：源码 t(…) 字面量 ↔ 英文表双向对齐'
     const used = collectTLiterals(join(REPO, 'src'));
     const missing = [...used.keys()].filter((k) => !(k in WEB_EN));
     expect(missing, `缺英文项（按 I18N_DESIGN §二必须补进 src/i18n/en.ts）：\n${missing.map((k) => `  ${k}  ← ${used.get(k)!.join(', ')}`).join('\n')}`).toEqual([]);
-    const orphans = Object.keys(WEB_EN).filter((k) => !used.has(k));
+    const vocabMissing = [...SHARED_VOCAB].filter((k) => !(k in WEB_EN));
+    expect(vocabMissing, '共享词表缺英文项：' + vocabMissing.join('；')).toEqual([]);
+    const orphans = Object.keys(WEB_EN).filter((k) => !used.has(k) && !SHARED_VOCAB.has(k));   // 动态键（SHARED_VOCAB 登记制）免孤儿
     expect(orphans, `英文表孤儿键（表里有、代码没人用＝漂移，删掉或补使用点）：\n${orphans.join('\n')}`).toEqual([]);
   });
   it('扩展侧：使用点 ↔ 英文表双向对齐（当前 S1 尚未迁移扩展运行时串，两侧都应为空集）', () => {
