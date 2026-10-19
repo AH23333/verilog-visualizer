@@ -1937,3 +1937,14 @@ e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿�
 - 插曲：drc 补丁首打 0 命中＝`linkId: id`（变量 id）被看成 `l.id`——探针定位后修正；en 表三颗键撞车
   （输入 / 输出·输入·输出 已在表）当即去重；「自定义门」双写去重。
 - 读数：台架 **341/341** · root tsc 0 · vite 0 · lint 0 error · qc-audit 5/0 · qc-audit2 4/0（清红）。
+
+**S2-3 SandboxCanvas 深串（同日续，`39fbed0`＋遮蔽追补 `ff04c00`）**：
+- 168 串全量迁移（137 组补丁分三批）：仿真提示/撤销重做/总线对话框/存部件（长短两变体分键）/连线菜单/
+  画布菜单全家/位宽自动转换/文件操作全家桶 toast/三级右键菜单/存储器寄存器状态机重建回包/
+  循环依赖与绑定审计横幅（`<b>同名兜底</b>` 拆段翻译）/默认文件名（电路_N.djs→Circuit_N.djs）。
+- **事故（在册）**：S2-2 的 drc 迁移落进 `runCanvasDrc` 的 `const t = l.get('target')` 影子里——esbuild 把局部 t
+  改写成 t2，真机 `TypeError: t2 is not a function` ×3；l 是 any ⇒ tsc 沉默、台架不执行 ⇒ 全绿假象，
+  **只有真宿主闸（r13）当场咬红**。修：作用域内局部 t→tgt；探针复刻流程抓带栈 pageerror 一发定位。
+  纪律新增（I18N_DESIGN §五）：迁移前扫同作用域 t 遮蔽；「重启必验证」同族教训。
+- 读数：台架 341/341 · build 0 · lint 0 error · r13 15/0 满血 · 探针 Phase A/B 0 pageerror ·
+  qc-paused 10/0 · qc-audit 5/0 · qc-realuser 6/0 · r53 11/0 · r55 13/0 · r60 7/0。

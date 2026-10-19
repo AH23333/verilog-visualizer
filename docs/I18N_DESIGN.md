@@ -50,6 +50,9 @@
 
 - **一次一颗文件**：改完跑台架 + `git diff` 逐串目检；⛔ 全局正则替换——中文串常兼作查表键（器件目录名、菜单 id），
   包一层 `t()` 就断链，且 grep 看不出来。
+- **迁移前扫同作用域 `t` 遮蔽**：`t` 是高频单字母名（连线目标、setTimeout 句柄、parseFloat 结果、
+  回调参数都叫 t）——遮蔽后 `any` 类型让 tsc 沉默、只有真机运行时才炸（S2-2 drc 案：`t2 is not a function`，
+  r13 变异闸当场咬红）。转换前 `rg "const t =|\\(t: |\\(t,"` 扫一遍，遮蔽者改名（推荐 `tgt`）。
 - 新增 UI 串一律 `t()`；新增英文缺项＝`i18n.test.ts` 当场红。
 - 英文译名口径：VS Code 用词优先（Command Palette / Explorer / Problems），电路术语用业界通名
   （schematic / netlist / flip-flop / multiplexer / seven-segment display），⛔ 拼音。
