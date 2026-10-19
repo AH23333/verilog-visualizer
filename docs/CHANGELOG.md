@@ -7,6 +7,36 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R160 API 深度战役（两波：`3a0af2f` 四族 · `f42942f` 第五族类型闸）（2026-10-19）
+
+> 用户令「自行深度测试，尽可能覆盖大量场景」＋「继续完成上一个代理的工作和深度测试」。波次一对 45 颗工具
+> 真 mcp 管道打满 400+ 枪、修四族缺陷；波次二清偿前账（bundle 同步基座＋harness/e2e 顺延批），并对批次四
+> 新面/协议/并发/审计链补 ~95 枪，揪出第五族。读数正本＝账本卷七十第九/十节。
+
+### Fixed（波次一 `3a0af2f`）
+- 路径族归责反转 ×4（parseFile/hierarchy/doctor.dir/readProjectFile）：`sanitizeRel` 内核英文裸抛溜进
+  HANDLER_ERROR → 收编 `relOrBadArgs` 一把尺：BAD_ARGS＋中文码壳＋hint 指路。
+- `sys.readAudit` date 无白名单（可当「工程内任意 .jsonl 在场性探雷器」；`*`/`?` 裸抛 EPERM）→ 日档两形白名单。
+- `res.readProjectFile` 喂目录 EISDIR 裸炸 → BAD_ARGS 指路 `res.listProject`。
+- 测试口径洞：写面拒收旧钉全用空参（落闸①b，测不到面闸本身）→ 补合法必填实参动态拒收七枪＋零动盘旁证。
+
+### Fixed（波次二 `f42942f`）
+- **类型闸（第五族）**：闸①b 只查在场不查类型 → `path:42/["a"]/{}` 经 `String()` 强转谎报 `ok:true NOT_FOUND`
+  （`["a"]` 静默收首元素）；同族 `readAudit limit:"abc"` → `Number()=NaN` → `slice(-NaN)`＝整日档倒出（200 行帽旁路）。
+  修：schema 声明了 type 的实参（必填/在场的可选）类型不合当场 BAD_ARGS＋hint；兼容 `['number','null']` 数组形与
+  `'null'` 单判；未知字段容忍不回退。
+- **schema 声明不实**：`bindings.set.part` 描述「null/空＝删」却只声明 `type:'string'`
+  → 归位 `['string','null']`（类型闸上线当日咬红既有 closure 钉，正是它揪出来的）。
+
+### 验证（波次二）
+- 台架 **327/327**（323→4 证人臂：类型五形×三工具＋limit 非数字＋可选实参类型＋未知字段容忍不回退）；
+- 真宿主 harness **17/17 failed=0**（文案收口版 bundle 装基座后两轮全中）；e2e 修正版 **85/86**
+  （唯一红点＝C3d 判据自纠：not-registered 行 tool:null 是在册设计）；
+- ~95 枪覆盖面：常规批／四族回归／全工程 parseFile 对账扫（5 .v 模块级一致＋6 .djs）／幂等 8 颗／
+  MCP stdio 全协议（含烂行与未知工具）／并发八枪／doctor deep 展开／depth 边界／审计链按 traceId 亲查；
+  桥缺席明确报错（⛔ 静默空转）。第九节欠账（bundle 未同步）清账。
+
+---
 ## [未发布 Unreleased] — R160：四批上屏走测 20 案统一修 + 假 API 事故（2026-10-18 深夜）
 
 > 用户令「放开边界、大量测试、统计后统一修」。四批上屏走测入册 20 案（`tests/manual-notes.md`），

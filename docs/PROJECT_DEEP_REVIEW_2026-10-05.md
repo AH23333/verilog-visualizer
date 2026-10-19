@@ -1843,3 +1843,44 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
 挡在门外——修复验证前**必先探桥读一个新版独有行为**（本次＝BAD_ARGS 归位枪）再宣生效；apply-brand 后不重启＝白装。
 
 **终读数**：台架 323/323 · root/ext tsc 0 · lint 0 error。欠账：文案收口版 bundle 未再同步基座（随下一批统一 harness/e2e）。
+
+## 十、第十节 · API 深度战役二波与前账清偿（2026-10-19 接手代理，用户令「继续完成上一个代理的工作和深度测试」）
+
+**接手时的账**：第九节欠账＝「文案收口版 bundle 未同步基座（harness/e2e 常规批顺延）」。本波先清前账再探新面：
+台架复验 323/323 → `apply-brand` 装基座 → 杀基座重启 → **探新版独有行为再宣生效**（BAD_ARGS 归位枪 4/4——
+parseFile 穿越/readAudit 星号/readProjectFile 目录全按新码回）→ harness **17/17 failed=0**（10 颗 mcp 枪全中，
+parseFile 的 dff 族 mainSelf 肉眼可见）→ 真工程 e2e 开打。
+
+**真缺陷第五族（本波揪出并修，`f42942f`）**——类型闸缺失，闸①b 只查在场不查类型：
+1. `res.parseFile {path:42/["a"]/{}/null/true}` 经 `String()` 强转成 `"42"/"a"/"[object Object]"/"null"` →
+   `ok:true` ＋ `NOT_FOUND`（把「调用方递了非字符串」读成「文件不存在」；`["a"]` 还静默收首元素，最阴）。
+   与第九节四族同根：归责反转——只这次病灶在闸不在 handler。
+2. 同族姊妹洞：`sys.readAudit {limit:"abc"}` → `Number()=NaN` → `slice(-NaN)`＝从头切 → **200 行帽被旁路、整日档倒出**。
+3. 修：闸①b 补类型判（schema 声明了 type 的实参，必填与在场的可选都判；数组形声明如 `['number','null']` 兼容；
+   `'null'` 类型单判——`typeof null==='object'`）；`BAD_ARGS＋hint` 指路 sys.describeTool。未知字段容忍不回退。
+4. 连带揪出**声明不实**：`bindings.set.part` 描述写「null/空＝删」却只声明 `type:'string'` → 归位 `['string','null']`
+   （闸上线当日咬红既有 closure 钉——`part:null` 拆表语义被误拒——正是它揪出的；声明是闸的判据，就得把真语义说全）。
+
+**判据自纠三笔（如实入册）**：
+- A4 explain：`verdict=resolved` 本就不发 hint（hint 只给「可照打」的拒向），我判据要求 hint 必在＝判宽了；
+- C3b 审计亲链：拒单行**异步落账**（实测晚 69ms，与 `3a0af2f` 那波同款）——紧跟 readAudit 会扑空，
+  轮询到账或超时两态如实（四-1 桥补点同一条纪律），⛔ 赌「再等一拍」；
+- C3d 审计行形状：`not-registered` 行 `tool:null` 是**在册设计**（账本不许谎称调用过不存在的工具），我判据写宽了。
+
+**深度二波覆盖面**（真管道 @D:\vv-it-manual，~95 枪）：
+A 常规批 9（ping/listTools/getStatus/explain/tables/parseFile/hierarchy/doctor/ctxSnapshot）·
+B 四族回归 32（路径族 10＋date 8＋目录 2＋写面 7＋零动盘 1，全按新码复中）·
+C1 全工程 parseFile 对账扫 16（5 颗 .v 形状＋**模块级一致断言**，6 颗 .djs 单栏）·
+C2 幂等对拍 8（批次四新面全列：parseFile/hierarchy/doctor/tables/explain/list×2/circuits）·
+C3 审计链 4（拒单 traceId → 账上那行亲查，argsDigest 只记形状字节）·
+C4 MCP stdio 全协议 5（initialize/tools/list/tools/call/烂行容忍/未知工具 isError）·
+C5 类型闸回归 10（五形×parseFile＋limit 两形＋depth 帽＋BAD_EXT 判决＋未知字段容忍）·
+C6 并发八枪 2（一连接一枪模型下并发不串包）· C7 doctor deep:true 展开 1（info 收拢→展开、suppressed→0）·
+C8 depth 边界单调 1（0≤1≤4）；补 C9 桥缺席明确报错 1（工程未开 →「连不上…把 <path> 打开再试」，⛔ 静默空转）。
+
+**终读数**：台架 **327/327**（323→4 证人臂）· 真宿主 harness **17/17 failed=0**（装新 bundle 后复跑）·
+e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿）· root/ext tsc 0 · lint 0 error（扩展两文件 22w 存量、
+新码零告警）· `api:doc` 再生成仅动 bindings.set part 声明（契约无漂移）。
+**第九节欠账清账**：文案收口版 bundle 已装基座并经 harness＋e2e 双复验。
+环境插曲（沿战役一纪律，两轮都守住）：基座映像名 `Verilog Visualizer.exe`；`apply-brand` 后必杀基座重启，
+**探桥读新版独有行为（本次＝类型闸 BAD_ARGS 三枪）再宣生效**——否则旧 bundle 在跑，读数全是假的。
