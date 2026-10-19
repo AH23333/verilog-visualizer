@@ -7,6 +7,24 @@
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
 ---
+## [未发布 Unreleased] — R161 i18n 英文国际化 S1（2026-10-19）
+
+> 用户令「先做英文国际化」。设计正本＝`docs/I18N_DESIGN.md`：中文原文即键，语言跟随 VS Code 显示语言
+> （zh 系→中文＝行为不变；其余→英文＝国际缺省），⛔ 应用内切换 UI。施工账＝账本第十一节。
+
+### Added
+- **i18n 内核两侧**：`src/i18n/`（webview）＋ `extension/src/i18n.ts`；`t('原句', {name})` 插值、缺译回落原文（产品永不空串）；
+  宿主语言经 `<meta name="vv-locale">`＋`<html lang>` 进 webview（CSP 下不注内联脚本），三入口挂 initLocale。
+- **manifest 全双语（62 键）**：命令/视图/容器/设置/欢迎页 → `package.nls.json`（en 缺省）＋ `package.nls.zh-cn.json`；
+  **apply-brand 内置装载补带 nls 两颗**（漏装＝基座里裸 %key%，与 grammars/schemas 同族教训）。
+- **前端画布面迁移 ~70 串**：编译画布工具条/菜单/空态/迁移横幅、沙盒工具条全部 t() 化。
+
+### 验证
+- 台架 **339/339**（新增 tests/unit/i18n.test.ts 12 颗：归一/插值/回落/字典完备性双向/英文面无 CJK/manifest 三向对账/html 注入两态）；
+- 真宿主 harness **17/17 failed=0**；root/ext tsc 0 · lint 0 error。
+- 欠账（S2）：SandboxCanvas 深串/单元菜单/器件目录/各弹窗/doc、gates 长文/扩展运行时消息；API 契约串另议。
+
+---
 ## [未发布 Unreleased] — R160 API 深度战役（两波：`3a0af2f` 四族 · `f42942f` 第五族类型闸）（2026-10-19）
 
 > 用户令「自行深度测试，尽可能覆盖大量场景」＋「继续完成上一个代理的工作和深度测试」。波次一对 45 颗工具

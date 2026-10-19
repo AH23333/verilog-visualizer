@@ -1884,3 +1884,28 @@ e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿�
 **第九节欠账清账**：文案收口版 bundle 已装基座并经 harness＋e2e 双复验。
 环境插曲（沿战役一纪律，两轮都守住）：基座映像名 `Verilog Visualizer.exe`；`apply-brand` 后必杀基座重启，
 **探桥读新版独有行为（本次＝类型闸 BAD_ARGS 三枪）再宣生效**——否则旧 bundle 在跑，读数全是假的。
+
+## 十一、第十一节 · i18n 英文国际化 S1（2026-10-19，用户令「先做英文国际化」）
+
+**设计正本**＝`docs/I18N_DESIGN.md`（语言判据/字典形状/闸门/覆盖分期）。要点：
+- 中文原文即键（message-as-key）：代码保留中文原句，`t('原句', {name})` 查英文表；zh 系回原文、其余回落 en，缺译回落原文（产品永不空串）；
+- 语言跟随宿主：扩展读 `vscode.env.language`，webview 由 `html.ts` 写 `<meta name="vv-locale">`（CSP 下不注内联脚本）＋ `<html lang>`；未知宿主（测试桩）回落 zh-CN＝存量行为；
+- ⛔ 不做应用内切换 UI（宿主自带显示语言切换）；**API 契约串（toolsDomain 工具描述/错误码壳）暂不动**＝机器面契约，改动需契约版本决策（另议）。
+
+**S1 落地面**：
+- manifest 62 颗全双语：31 命令＋6 视图＋2 容器＋1 customEditor＋14 配置＋2 enumItemLabels＋4 欢迎页＋description＋untrusted——`package.nls.json`（en 缺省）＋`package.nls.zh-cn.json`，package.json 全 %key% 化；
+- **apply-brand 补装 nls 两颗**（builtinExtFiles need ＋ main 拷贝，台架夹具同步）——漏装＝基座里全裸 %key%（与 grammars/schemas 同族「声明在、文件缺＝静默失踪」）；
+- i18n 内核两侧：`src/i18n/`（webview）与 `extension/src/i18n.ts`（扩展）；三入口（canvas/doc/gates main.tsx）挂 initLocale；
+- 前端迁移 ~70 串：CanvasToolbar（16 处含 JSX 短词）、SandboxToolbar（29 处）、CanvasApp（25 组含 flash/菜单/空态/迁移横幅；`未启动仿真` 是 marker 复用串——en 译句必须包含 marker 译文，检查处同步 t()，⛔ 只翻句子不翻检查）。
+
+**闸门（tests/unit/i18n.test.ts，12 颗）**：locale 归一 / 插值与缺参保留 / 缺译回落 / **字典完备性双向**（扫源码 t(…) 字面量 ↔ 英文表，孤儿键也红）/ **英文面无 CJK** / **manifest %key% ↔ nls 双语三向对账**（含孤儿） / html locale 注入两态。
+既有闸随迁：manifest 未信任说明臂改**经 nls 解析**后断言；studioBrand 夹具补 nls 两颗。
+
+**插曲（在册）**：
+- 块注释里 `en*/ja` 的 `*/` 把注释提前终止＝esbuild 语法错（「注释里别写星号斜杠」）；改「en 系、ja」。
+- 写 vscodeApiStub 时被工作区安全判据拦（`CancellationToken` 的 Token 键名误判凭据）——如实记录未绕过；改走「内核回落 zh-CN」方案，桩零改动、存量断言零迁移。
+- manifest 生成脚本首跑即抛「命令缺英文」（猜测 id 与真实 id 错位）——fail-fast 断言生效零错写盘，拿真实 id 重跑。
+
+**读数**：台架 **339/339**（327→12 颗 i18n 闸）· root/ext tsc 0 · vite/esbuild 0 · lint 0 error · harness **17/17 failed=0**（i18n 版 bundle＋manifest 真宿主）· 基座已装 nls 双语表（5542/5490 B）。
+
+**欠账（S2，分期表正本＝I18N_DESIGN §四）**：SandboxCanvas 深串（168）/sandboxCellMenu（120）/sandboxCatalog（69）/各 Modal（~100）/doc、gates 长文/test-real/apiDoc；扩展侧运行时消息（extension.ts 44 等）；API 契约串（另议）。
