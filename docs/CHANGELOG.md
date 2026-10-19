@@ -30,7 +30,11 @@
   （默认文件名也走 i18n；示例名入词表）；全量闸门 74 格 GREEN=71（3 红＝1 已修断言过期＋2 中段编辑瞬态，单跑清红；
   跑批期间⛔ 编辑 src 入册）；**drc 局部 t 遮蔽事故**（t2 is not a function——any 让 tsc 沉默，r13 真宿主闸当场咬红，
   追补修复；迁移前扫遮蔽入纪律）。欠账余：各弹窗/doc、gates 长文/扩展运行时消息。
-- 欠账（S2 余）：SandboxCanvas 深串/各弹窗/doc、gates 长文/扩展运行时消息；API 契约串另议。
+- **S2 全量完成（同日续）**：**弹窗家族 119 串·17 文件**（MemPorts/DffPorts/Expand/Fsm/MemoryView/IOPanel/
+  BusWidth/ExprGen/PartSearch/Rebind/Waveform/FileTree）＋**扩展侧运行时消息 87 串·5 文件**（extension.ts 通知与
+  确认框/trees 树提示/compilePanel Problems 四码/bindingPanel 两级 QuickPick 全量/customEditors）＋GateHarness 主题
+  ——**UI 可见面全量英文可用**。SHARED_VOCAB 84 键；完备性闸又揪两类笔误（JSX 裸 =t 丢花括号 10 处、EN '无' 双写）；
+  drc/Canvas 双料 t 遮蔽事故（any 让 tsc 沉默，真宿主闸当场咬红）修复并入册。欠账余：dispatch.ts（RPC 契约层元数据）/API 契约串另议。
 
 ---
 ## [未发布 Unreleased] — R160 API 深度战役（两波：`3a0af2f` 四族 · `f42942f` 第五族类型闸）（2026-10-19）

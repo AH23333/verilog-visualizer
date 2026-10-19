@@ -1961,6 +1961,13 @@ e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿�
 - 读数：台架 341/341 · build 0 · lint 0 error · r55 13/0 · r53 11/0 · r117 8/0 · qc-audit 5/0。
 - S2 余量：dispatch.ts（RPC 层 47 串）/API 契约串另议；console 日志按既定口径保留中文（开发者日志非 UI）。
 
+**S2-6 收尾（同日续，`2f9787a`）**：
+- GateHarness「主题」title/文本 2 处 t() 化；`data-activity="主题"` 是闸门选择器锚 ⛔ 不动。
+- **dispatch.ts 47 串定性**：绝大多数为 RPC_METHODS 契约表的 title/description 元数据（消费方＝apiDoc
+  文档生成器），与 API 契约串同批另议；运行时用户串仅极少数。DocApp 两串为 console.warn（按口径保留）。
+- **S2 至此 UI 可见面全量完成**（webview 全部入口＋通知＋命令面板＋设置＋扩展侧消息）。
+- 读数：台架 341/341 · build 0。基座同步至 S2-5 bundle（S2-6 仅 2 串，随下次统一同步）。
+
 **S2-5 扩展侧运行时消息（同日续，`a17c0ce`）**：
 - 87 串·5 文件：extension.ts 38 组（导入/移动/删除确认/固化/写全/初始化/复制路径/移动 QuickPick/
   API 覆盖与授权告警/绑定盘归一/打不开窗口）、trees 10、compilePanel 8（Problems 绑定错误四码）、
