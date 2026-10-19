@@ -49,6 +49,13 @@ const AUDIT_CAP = 200;   // readAudit 单次行数上限（⛔ 整账倒给 agen
 async function readAuditDay(ctx: vscode.ExtensionContext, rawDate: unknown, rawLimit: unknown) {
   const input = String(rawDate ?? new Date().toISOString().slice(0, 10));
   const date = /^\d{8}$/.test(input) ? `${input.slice(0, 4)}-${input.slice(4, 6)}-${input.slice(6, 8)}` : input;
+  // 深度战役修（2026-10-19）：date 白名单——这颗直拼 `trace-<date>.jsonl` 文件名，自由文本＝可拿
+  //  exists:true/false 探读工程树内任意 .jsonl 的在场性（读面越出"日档"本职），`?`/`*` 等非法字符还裸抛
+  //  EPERM 溜进 HANDLER_ERROR。两形（带连字符 / 8 位数）之外当场 BAD_ARGS。
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new ToolError('BAD_ARGS', `[API_BAD_ARGS] date 实参不合日档形状：${input.slice(0, 40)}`, '',
+      '只收 YYYY-MM-DD 或 8 位纯数字（审计一日一档）；列有哪些日档＝sys.selfCheck 的 audit 段');
+  }
   const limit = Math.min(Math.max(Number(rawLimit ?? 50), 1), AUDIT_CAP);
   const uri = vscode.Uri.joinPath(projectRoot(ctx), '.vv', 'audit', `trace-${date}.jsonl`);
   let raw: string;
@@ -308,6 +315,17 @@ export function registerDomainTools(): void {
 
   /* ============ R160 批次四 四-3：解析器输出并呈＋实例层次树（P5/P3——"解析器眼里长什么样"与"树显示的同一份数据"） ============ */
 
+  /** 深度战役（2026-10-19）归位修：res.* 路径族对 sanitizeRel 拒签（`..`/绝对/盘符）折 BAD_ARGS——
+   *  ⛔ 让宿主内核的 "Parent directory traversal is not allowed" 裸抛溜进 HANDLER_ERROR（把"你递了颗坏路径"
+   *  归责成"工具内部炸了"，正是 v2 要根除的形）。四-3/4-4 四颗 path 实参工具共用这把尺。 */
+  const relOrBadArgs = (s: string): string => {
+    try { return sanitizeRel(s); }
+    catch { throw new ToolError('BAD_ARGS',
+      '[API_BAD_ARGS] path/entry/dir 实参被拒（工程根之外的形状：.. / 绝对 / 盘符）', '',
+      '路径按工程根相对给（.. / 绝对 / 盘符开头都拒）——res.listProject / res.listSandbox 列在册名'); }
+  };
+
+
   /** 回包帽 256KB（P9 纪律）：超限就逐个砍最长数组（折半），并标 truncated——列表总数⛔ 静默失真。 */
   const capLists256 = (obj: Record<string, any>, cap = 262144): Record<string, any> => {
     if (JSON.stringify(obj).length <= cap) return obj;
@@ -346,7 +364,7 @@ export function registerDomainTools(): void {
       + '.djs 单栏（cells/subcircuits/inputs/outputs＝审计族同词表）。帽 256KB（截数组标 truncated）。幂等只读。',
     schema: { type: 'object', properties: { path: { type: 'string', description: '根相对 .v/.sv/.vh 或 .djs' } }, required: ['path'] },
     handler: async (ctx, a) => {
-      const rel = sanitizeRel(String(a.path));
+      const rel = relOrBadArgs(String(a.path));
       const root = projectRoot(ctx);
       let text: string;
       try { text = new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, ...rel.split('/')))); }
@@ -409,7 +427,7 @@ export function registerDomainTools(): void {
       + '树显示什么，agent 就问到什么。预算 500 颗＋回包 64KB 帽（truncated+total 如实）。幂等只读。',
     schema: { type: 'object', properties: { entry: { type: 'string', description: '根相对 .v 入口' }, depth: { type: 'number', description: '下钻深度（帽 4，缺省 4）' } }, required: ['entry'] },
     handler: async (ctx, a) => {
-      const rel = sanitizeRel(String(a.entry));
+      const rel = relOrBadArgs(String(a.entry));
       if (!isVerilogPath(rel)) return { entry: rel, verdict: 'BAD_EXT', hint: '只认 .v/.sv/.vh（与 compile.closure 同域）；.djs 的层级见 bindings.audit / res.parseFile' };
       const root = projectRoot(ctx);
       const entryUri = vscode.Uri.joinPath(root, ...rel.split('/'));
@@ -477,7 +495,7 @@ export function registerDomainTools(): void {
     },
     handler: async (ctx, a, caller) => {
       const root = projectRoot(ctx);
-      const dirF = a.dir ? sanitizeRel(String(a.dir)) : '';
+      const dirF = a.dir ? relOrBadArgs(String(a.dir)) : '';
       const inDir = (relName: string) => !dirF || relName === dirF || relName.startsWith(`${dirF}/`);
       const HOST_CAP = 60;
       const store = new ProjectStore(vscodeFs(root), '@root');
@@ -637,15 +655,16 @@ export function registerDomainTools(): void {
     handler: async (ctx, a) => {
       // 错误契约 v2（R160 四-4）：这颗是"三码归位"的样板——穿越＝调用方写错（BAD_ARGS）、
       // 查无＝现场问题（NOT_FOUND）、过大＝目标问题（TOO_LARGE），⛔ 都挤进 HANDLER_ERROR 让 agent 猜。
-      let rel: string;
-      try { rel = sanitizeRel(String(a.path)); }
-      catch (e) { throw new ToolError('BAD_ARGS', `[API_BAD_ARGS] path 被拒：${String((e as Error)?.message || e).slice(0, 120)}`, '', 'path 必须根相对（.. / 绝对 / 盘符开头都拒）——res.listProject 拿在册名'); }
+      const rel = relOrBadArgs(String(a.path));   // 同款首刀并成一族一把尺（helper 见四-3 区头）
       const root = projectRoot(ctx);
       const uri = vscode.Uri.joinPath(root, ...rel.split('/'));
-      let st: { size: number } | null = null;
+      let st: { size: number; type?: number } | null = null;
       try { st = await vscode.workspace.fs.stat(uri); } catch { st = null; }
       if (!st) {
         throw new ToolError('NOT_FOUND', `[API_NOT_FOUND]「${rel}」查无此档`, '', 'res.listProject（.v/.sv/.vh）/ res.listSandbox（.djs）列在册名再打');
+      }
+      if ((st as { type?: number }).type === 2) {
+        throw new ToolError('BAD_ARGS', `[API_BAD_ARGS]「${rel}」是目录不是文件`, '', '列目录内容＝res.listProject / res.listSandbox（按 dir 视野）');
       }
       // 错误契约 v2（R160 四-4）：过大拒读＝调用方问题不是工具炸——收编 TOO_LARGE 码（旧版裸 Error 会被
       //   执行器折成 HANDLER_ERROR，把"你塞了颗 5MB 的"读成"工具内部故障"，归责反向）。

@@ -3207,3 +3207,72 @@ describe('R160 批次四 四-4：错误契约 v2 九码满表 + project.doctor �
     expect(clean.tables.malformed.length).toBe(0);
   });
 });
+
+describe('R160 API 深度战役证人（2026-10-19 真管道 400+ 枪揪出的四族缺陷，修后永久回钉）', () => {
+  const call = async (id: string, args: Record<string, unknown>, caller?: any) => {
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    return executeTool(ctx(PROD) as never, caller ?? CALLER_UI, id, args) as Promise<any>;
+  };
+  const AGENT_MCP = { surface: 'mcp', subject: 'mcp:agent', interactive: false };
+
+  it('路径族 BAD_ARGS 归位：.. 穿越/盘符绝对⛔ 溜进 HANDLER_ERROR（宿主内核英文裸抛＝归责反转）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/main.v': 'module main; endmodule' } });
+    for (const [tool, key] of [['res.parseFile', 'path'], ['compile.hierarchy', 'entry'], ['res.readProjectFile', 'path']] as const) {
+      for (const bad of ['../outside', 'C:/Windows/win.ini', 'D:\\p\\main.v']) {
+        const err = await call(tool, { [key]: bad }).catch((e: any) => e);
+        expect(err.code, tool + ' ← ' + bad).toBe('BAD_ARGS');
+        expect(String(err.traceId)).toMatch(/^[0-9a-f]{8}$/);
+        expect(String(err.hint)).toContain('res.listProject');
+        expect(String(err.message)).toContain('实参被拒');                                // v2 口径自有中文码壳，⛔ 内核英文裸透传
+      }
+    }
+    const dir = await call('project.doctor', { dir: '../..' }).catch((e: any) => e);
+    expect(dir.code).toBe('BAD_ARGS');
+    const okDoc = await call('project.doctor', { dir: 'sub' });                                // 合法 dir 不误伤
+    expect(okDoc.files).toBeTruthy();
+  });
+
+  it('sys.readAudit date 白名单：日档两形收、自由文本当场拒（旧形＝探读工程内任意 .jsonl 的探雷器）', async () => {
+    const day = new Date().toISOString().slice(0, 10);
+    await boot({ folders: ['D:/w'], seed: {
+      'D:/w/.vv/project.json': '{"kind":"project"}',
+      'D:/w/.vv/api.grants.json': JSON.stringify({ subjects: { ui: 'x' }, profiles: { x: ['sys.readAudit'] } }),
+      [`D:/w/.vv/audit/trace-${day}.jsonl`]: '{"verdict":"auto","tool":"sys.ping"}\n',
+    } });
+    for (const bad of ['a/b', '../../etc/passwd', '..\\..\\D:\\x', '2026-10-*9', 'x'.repeat(300)]) {
+      const err = await call('sys.readAudit', { date: bad }).catch((e: any) => e);
+      expect(err.code, 'date=' + bad.slice(0, 12)).toBe('BAD_ARGS');
+      expect(String(err.hint)).toContain('sys.selfCheck');
+    }
+    expect((await call('sys.readAudit', { date: day })).exists).toBe(true);                    // 带连字符回归
+    expect((await call('sys.readAudit', { date: day.replace(/-/g, '') })).date).toBe(day);      // 8 位归一回归
+    expect((await call('sys.readAudit', {})).exists).toBe(true);                               // 缺省今天回归
+  });
+
+  it('readProjectFile 喂目录＝BAD_ARGS 指列目录工具（旧形：readFile(EISDIR) 裸炸 HANDLER_ERROR）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/lib/adder.v': 'module adder; endmodule' } });   // writeFile 自动记父目录
+    const err = await call('res.readProjectFile', { path: 'lib' }).catch((e: any) => e);
+    expect(err.code).toBe('BAD_ARGS');
+    expect(err.hint).toContain('res.listProject');
+    expect((await call('res.readProjectFile', { path: 'lib/adder.v' })).content).toContain('module adder');  // 文件照旧通
+  });
+
+  it('写面合法实参 mcp 动态拒收六枪（闸①b 必填先于闸②——空参矩阵测不到面闸，真参才算证过）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/top.v': 'module top; endmodule', 'D:/p/main.djs': '{"cells":[]}' } });
+    const shots: Array<[string, Record<string, unknown>]> = [
+      ['bindings.set', { doc: 'top.v', celltype: 'x', part: 'main.djs' }],
+      ['bindings.complete', { doc: 'top.v' }],
+      ['bindings.materialize', { doc: 'top.v' }],
+      ['circuits.toggle', { uri: 'D:/p/main.djs' }],
+      ['fs.copyPath', { uri: 'D:/p/top.v' }],
+      ['fs.delete', { uri: 'D:/p/nothing.djs' }],
+      ['fs.rename', { uri: 'D:/p/nothing.djs', newName: 'x.djs' }],
+    ];
+    for (const [t, args] of shots) {
+      const err = await call(t, args, AGENT_MCP).catch((e: any) => e);
+      expect(err.code, t + ' 经 mcp 面').toBe('SURFACE_DENIED');       // 落 handler 之前＝盘一根毛都没动
+      expect(err.hint).toBeTruthy();
+    }
+    expect(has('D:/p/nothing.djs')).toBe(false);                        // 全程只拒不动盘（写面零执行旁证）
+  });
+});
