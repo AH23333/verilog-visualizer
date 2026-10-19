@@ -1948,3 +1948,15 @@ e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿�
   纪律新增（I18N_DESIGN §五）：迁移前扫同作用域 t 遮蔽；「重启必验证」同族教训。
 - 读数：台架 341/341 · build 0 · lint 0 error · r13 15/0 满血 · 探针 Phase A/B 0 pageerror ·
   qc-paused 10/0 · qc-audit 5/0 · qc-realuser 6/0 · r53 11/0 · r55 13/0 · r60 7/0。
+
+**S2-4 弹窗家族（同日续，`63ae06d`）**：
+- 119 串·17 文件全量迁移：MemPortsModal 35 组（下拉选项渲染点 t(动态)）、DffPortsModal 22 组
+  （CONTROLS name/desc 动态键）、SandboxExpandModal 17 组、FsmTableModal 12、MemoryViewModal 7、
+  IOPanel 7、ExprGenDialog 11（预览行拆段 t(片段) 拼装）、PartSearchDialog 6、RebindDialog 5、
+  BusWidthDialog 4、WaveformPanel 2、SandboxFileTree 2。SHARED_VOCAB 扩到 84 键（＋下拉选项 9/
+  CONTROLS name 3/desc 7）。
+- **完备性闸当场揪出两类笔误**：①JSX 属性裸 `=t('…')` 丢花括号 10 处（ExprGen/PartSearch/
+  MemoryView/FileTree/Waveform）——双引号锚对替换时把属性引号一起吃掉；批量正则 `=t\('…'\)` →
+  `={t('…')}` 修复。②EN 表 '无' 双写（cellMenu 的 none 与目录下拉撞键）——保 sentence 形。
+- 读数：台架 341/341 · build 0 · lint 0 error · r55 13/0 · r53 11/0 · r117 8/0 · qc-audit 5/0。
+- S2 余量：doc、gates 长文/扩展运行时消息/API 契约串另议。
