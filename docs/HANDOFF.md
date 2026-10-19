@@ -113,3 +113,35 @@ Start-Process cmd '/c','scripts\code.bat --user-data-dir=D:\vv-studio\profile D:
 - ⛔ 新建第二真源：工具表以 registry＋契约为准，颗粒度/裁决以设计稿为准，账本叙事以 PROJECT_DEEP_REVIEW 为准——本文只放指针与快照。
 - ⛔ 擅自"收敛"双解析器、擅自改绑定语义/UI 硬约束——超出批次四范围（只读工具＋错误契约＋激活插桩）的改动，先停下问用户。
 - ⛔ 长时间占用屏幕测试：命令＋台架＋harness＋e2e 脚本优先，剩余真机点验交用户（用户偏好）。
+
+---
+
+## 八、待拍板事项清单（2026-10-19 归拢；逐项拍板后在对应正本销账）
+
+> 本节只放指针与决策语。拍板＝在对话里逐条给结论，代理负责落契约/落账。
+
+### ① 批次五·写面 L6 逐颗放开（mcp/agent 面候选）
+- 正本＝`API_GRANULARITY_DESIGN.md` §八.4：「写面挂批次五逐颗拍板——HITL 路已在场，放开只是契约一行」。
+- 候选 14 颗（契约 sideEffects≠none 且 surfaces 含 ui；host.* 5 颗为 webview 内部通道不参与）：
+  - 绑定族（config-write）：`bindings.set` / `bindings.complete` / `bindings.materialize` / `circuits.toggle`
+  - 编译族：`compile.completeBindings`（config-write）/ `compile.compileAndShow`（process）
+  - 文件族（file-write）：`fs.createFile` / `fs.createFolder` / `fs.rename` / `fs.move` /
+    `fs.duplicateFile` / `fs.duplicateFolder` / `fs.import` / `fs.delete`（现挂 requiresApproval HITL）
+- 决策点：哪些颗对 mcp 面（agent）开放；开放后 HITL 审批是否保留（fs.delete 现挂审批）。
+- 前置：AI 接入试跑攒 e2e 读数（裁决原文）。
+
+### ② AI 接入试跑
+- 现状：MCP 桥就绪（19 颗只读面，真管道 400+ 枪深测）；接入方式「另行拍板」。
+- 决策点：接哪个客户端（Claude/Trae/其它）、stdio MCP 还是直连管道、试跑范围与验收口径。
+
+### ③ dispatch.ts RPC 契约层元数据 i18n（47 串）
+- S2 余量（账本第十一节 S2-6 段）：RPC_METHODS 的 title/description 元数据，消费方＝apiDoc 文档生成器。
+- 决策点：与④同批处理（机器面文案的英文策略）。
+
+### ④ API 契约串 i18n（toolsDomain 工具描述/错误码壳/hint ~140 串）
+- 深度战役刚收口的机器面契约；366 处测试断言压着；agent 消费面。
+- 决策点：是否翻译（改契约＝版本决策）；若翻，en 走 t() 动态还是双表（I18N_DESIGN §二）。
+
+### ⑤ CLI（挂待真实需求拍板）
+- 结论：headless CLI 现在不做——AI 走 MCP 桥、无 CI/脚本真实拉力、第二真源风险。
+- 若要做：低档＝活桥一发式客户端（半天级，零契约改动）；高档＝headless（等需求定形态）。
