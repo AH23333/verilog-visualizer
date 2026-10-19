@@ -2291,7 +2291,8 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
   it('闸① not-registered：未登记 id 拒（[API_NOT_REGISTERED] 机读码）', async () => {
     await boot({ folders: ['D:/p'] });
     const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
-    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.nope', {})).rejects.toThrow(/\[API_NOT_REGISTERED\]/);
+    await expect(executeTool(ctx(PROD) as never, CALLER_UI, 'fs.nope', {})).rejects.toThrow(/\[API_NOT_REGISTERED\]/); // v2hint闸①
+    expect(((await executeTool(ctx(PROD) as never, CALLER_UI, 'fs.nope', {}).catch((e: any) => e)) as any).hint).toContain('sys.listTools');
   });
 
   it('sys.readAudit 的 date 实参归一：交 20261017（上一版 schema 就教这么写）也读到当天那颗连字符档——⛔ 把调用方的笔误伪装成"今天没人调用过"', async () => {
@@ -2349,6 +2350,8 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const { executeTool } = await import('../../extension/src/toolRegistry');
     await expect(executeTool(ctx(PROD) as never, { surface: 'mcp', subject: 'mcp:agent', interactive: false }, 'fs.copyPath', { uri: 'D:/p/main.djs' }))
       .rejects.toThrow(/\[API_SURFACE_DENIED\]/);
+    // v2hint闸②：闸拒必带"下一步"（v2 硬要求）
+    expect(((await executeTool(ctx(PROD) as never, { surface: 'mcp', subject: 'mcp:agent', interactive: false } as any, 'fs.copyPath', { uri: 'D:/p/main.djs' }).catch((e: any) => e)) as any).hint).toContain('sys.describeTool');
   });
 
   it('闸③ not-granted：.vv/api.grants.json 绑空白名单 subject → 拒（fail-closed）；ui 未绑不受闸', async () => {
@@ -2360,6 +2363,7 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const { executeTool } = await import('../../extension/src/toolRegistry');
     await expect(executeTool(ctx(PROD) as never, { surface: 'ui', subject: 'agent', interactive: false }, 'fs.copyPath', { uri: 'D:/g/main.djs' }))
       .rejects.toThrow(/\[API_NOT_GRANTED\]/);
+    expect(((await executeTool(ctx(PROD) as never, { surface: 'ui', subject: 'agent', interactive: false } as any, 'fs.copyPath', { uri: 'D:/g/main.djs' }).catch((e: any) => e)) as any).hint).toContain('sys.selfCheck');   // v2hint闸③
     await expect(executeTool(ctx(PROD) as never, { surface: 'ui', subject: 'ui', interactive: true }, 'fs.copyPath', { uri: 'D:/g/main.djs' })).resolves.toBeTruthy();
   });
 
@@ -2371,7 +2375,8 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const { executeTool } = await import('../../extension/src/toolRegistry');
     const agent = { surface: 'ui' as const, subject: 'agent', interactive: false };
     vscode.state.modalChoice = undefined;
-    await expect(executeTool(ctx(PROD) as never, agent, 'fs.delete', { uri: 'D:/p/main.djs' })).rejects.toThrow(/\[API_NOT_APPROVED\]/);
+    await expect(executeTool(ctx(PROD) as never, agent, 'fs.delete', { uri: 'D:/p/main.djs' })).rejects.toThrow(/\[API_NOT_APPROVED\]/); // v2hint闸④
+    { const e4: any = await executeTool(ctx(PROD) as never, agent, 'fs.delete', { uri: 'D:/p/main.djs' }).catch((x: any) => x); expect(String(e4.hint)).toContain('sys.readAudit'); }
     expect(has('D:/p/main.djs')).toBe(true);             // ⛔ 未批准不得动盘
     vscode.state.modalChoice = '允许';
     await executeTool(ctx(PROD) as never, agent, 'fs.delete', { uri: 'D:/p/main.djs' });
@@ -3101,5 +3106,104 @@ describe('R160 批次四 四-3：解析并呈与层次树（res.parseFile / comp
     const e = await call('compile.hierarchy', { entry: 'other.djs' });
     expect(e.verdict).toBe('BAD_EXT');
     expect(e.hint).toContain('compile.closure');
+  });
+});
+
+describe('R160 批次四 四-4：错误契约 v2 九码满表 + project.doctor 聚合', () => {
+  const call = async (id: string, args: Record<string, unknown>) => {
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    return executeTool(ctx(PROD) as never, CALLER_UI, id, args) as Promise<any>;
+  };
+  const flushAudit = async () => {
+    await new Promise((r) => setTimeout(r, 5));
+    await vscode.commands.executeCommand('verilogViz.auditFlush');
+  };
+  const dayFile = (root: string) => {
+    const day = new Date().toISOString().slice(0, 10);
+    const bytes = vscode.state.files.get(vscode.Uri.file(root + '/.vv/audit/trace-' + day + '.jsonl').path.toLowerCase());
+    expect(bytes).toBeTruthy();
+    return new TextDecoder().decode(bytes!).split('\n').filter(Boolean).map((l) => JSON.parse(l));
+  };
+
+  it('readProjectFile 三码归位：穿越＝BAD_ARGS、查无＝NOT_FOUND、过大＝TOO_LARGE（各带 hint，⛔ 挤 HANDLER_ERROR）', async () => {
+    const big = 'x'.repeat(2 * 1024 * 1024 + 10);
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/big.v': big } });
+    const ghost = await call('res.readProjectFile', { path: 'ghost.v' }).catch((e: any) => e);
+    expect(ghost.code).toBe('NOT_FOUND');
+    expect(ghost.hint).toContain('res.listProject');
+    const too = await call('res.readProjectFile', { path: 'big.v' }).catch((e: any) => e);
+    expect(too.code).toBe('TOO_LARGE');
+    expect(too.hint).toContain('res.parseFile');
+    const tr = await call('res.readProjectFile', { path: '../up.v' }).catch((e: any) => e);
+    expect(tr.code).toBe('BAD_ARGS');
+    expect(tr.hint).toContain('res.listProject');
+  });
+
+  it('HANDLER_ERROR 收编：handler 内 raw 抛（argUri 空参守卫）折码补号——traceId＝执行器号＝账上那行', async () => {
+    await boot({ folders: ['D:/h'], seed: { 'D:/h/.vv/project.json': '{"kind":"project"}' } });
+    const err = await call('fs.copyPath', { uri: '' }).catch((e: any) => e);
+    expect(err.code).toBe('HANDLER_ERROR');
+    expect(String(err.message)).toContain('uri 实参为空');            // 原判据文本仍是子串（旧钉零波及）
+    expect(String(err.traceId)).toMatch(/^[0-9a-f]{8}$/);
+    expect(err.hint).toContain('sys.readAudit');
+    await flushAudit();
+    const lines = dayFile('D:/h');
+    expect(lines.some((l: any) => l && l.traceId === err.traceId && l.verdict === 'error')).toBe(true);
+  });
+
+  it('BAD_ARGS 的 hint 点缺项与预演入口（九码表里的执行器面全覆盖）', async () => {
+    await boot({ folders: ['D:/p'] });
+    const err = await call('fs.rename', {}).catch((e: any) => e);
+    expect(err.code).toBe('BAD_ARGS');
+    expect(err.hint).toContain('sys.describeTool');
+  });
+
+  it('doctor 坏工程四样本：B2 表坏 / B3 djs 坏 / B1 missing / B4 unresolved 一眼数清，各带下一颗', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.djs': '{"cells":[{"type":"Subcircuit","celltype":"counter"}]}',
+      'D:/p/counter.djs': '{"cells":[]}',
+      'D:/p/broken.djs': '{oops',
+      'D:/p/sub/.verilogviz.json': 'not-json{',
+      'D:/p/wiring.v': 'module wiring; ghost u1(); endmodule',
+      'D:/p/.verilogviz.json': JSON.stringify({ circuits: [], bindings: { 'wiring.v::ghost': 'lib/nothere.v' } }),
+    } });
+    const r = await call('project.doctor', {});
+    const ids = r.verdicts.map((v: any) => v.id);
+    expect(ids).toContain('B1'); expect(ids).toContain('B2'); expect(ids).toContain('B3'); expect(ids).toContain('B4');
+    expect(r.verdicts.filter((v: any) => v.sev === 'info')).toEqual([]);
+    expect(r.infoSuppressed).toBeGreaterThan(0);
+    const b1 = r.verdicts.find((v: any) => v.id === 'B1');
+    expect(b1.where).toBe('top.djs');
+    expect(b1.nextTool).toBe('bindings.complete');
+    const deep = await call('project.doctor', { deep: true });
+    expect(deep.verdicts.length).toBeGreaterThan(r.verdicts.length);
+    expect(deep.infoSuppressed).toBe(0);
+  });
+
+  it('doctor closure 段顺检最近编译单（与 compile.closure 同尺）；probe＝D1 预演在场', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/top.v': 'module top; adder u1(); endmodule',
+      'D:/p/adder.v': 'module adder; endmodule',
+    } });
+    await vscode.commands.executeCommand('verilogViz.compileAndShow', { label: 'top.v', desc: '', uri: vscode.Uri.file('D:/p/top.v'), kind: 'file' });
+    const r = await call('project.doctor', { probe: 'fs.copyPath' });
+    expect(String(r.closure.entry)).toContain('top.v');
+    expect(String((r.closure.bindingErrors || []).join(''))).toContain('adder');
+    const b5 = r.verdicts.find((v: any) => v.id === 'B5');
+    expect(b5).toBeTruthy();
+    expect(b5.sev).toBe('error');
+    expect(Array.isArray(r.probe.blockers)).toBe(true);
+  });
+
+  it('doctor 按 dir 子树体检；tables⛔ 无表刷事（没表≠坏）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/a/x.djs': '{"cells":[]}',
+      'D:/p/b/.verilogviz.json': '{"circuits":"不是数组","bindings":{}}',
+    } });
+    const only = await call('project.doctor', { dir: 'b' });
+    expect(only.tables.malformed.length).toBe(1);
+    expect(only.tables.malformed[0].why).toContain('circuits');
+    const clean = await call('project.doctor', { dir: 'a' });
+    expect(clean.tables.malformed.length).toBe(0);
   });
 });

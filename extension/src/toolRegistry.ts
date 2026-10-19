@@ -65,9 +65,13 @@ export function __resetRegistryForTest(): void { registry.clear(); }
 /** 带码错误：调用方（webview/agent）按 code 机读，message 人读。
  *  `traceId`＝这次调用在审计账上的那一行（同串）——最坏情况下 agent 拿到的只有"被拒"，
  *  有了它就能 `sys.readAudit`/grep 账本定位"哪道闸、什么实参形状、看到的契约是哪份（configHash）"，
- *  ⛔ 只能靠复述现象回来找人。 */
+ *  ⛔ 只能靠复述现象回来找人。
+ *  R160 四-4 错误契约 v2：code 枚举收编满设计稿 §五 九颗（+NOT_FOUND/TOO_LARGE/HANDLER_ERROR/BAD_REQUEST）；
+ *  `hint`＝拒单必须自带的"下一步打哪颗、带什么实参形状"（每道闸抛出点硬要求，台架逐 code 样本钉）。 */
 export class ToolError extends Error {
-  constructor(readonly code: 'NOT_REGISTERED' | 'SURFACE_DENIED' | 'NOT_GRANTED' | 'NOT_APPROVED' | 'BAD_ARGS', message: string, readonly traceId: string) { super(message); }
+  constructor(readonly code: 'NOT_REGISTERED' | 'SURFACE_DENIED' | 'NOT_GRANTED' | 'NOT_APPROVED' | 'BAD_ARGS'
+    | 'NOT_FOUND' | 'TOO_LARGE' | 'HANDLER_ERROR' | 'BAD_REQUEST', message: string,
+    readonly traceId: string = '', readonly hint?: string) { super(message); }
 }
 
 /** 工具成功执行后的宿主联动（extension.ts 订阅：sideEffects≠none ⇒ refreshAllTrees） */
@@ -104,30 +108,35 @@ export async function executeTool(
     // 工具说成调用过（审计臂②判的正是这一格）。
     auditToolCall(context, { tool: getTool(id) ? id : undefined, ref, subject: caller.subject, channel: caller.surface, verdict, ms: Date.now() - t0, args, note, traceId });
   };
-  const fail = (code: ToolError['code'], verdict: AuditVerdict, msg: string, note?: string): never => {
+  // 错误契约 v2（R160 四-4）：fail 多收一颗 hint——"拒了去哪修"与闸码同批落地，⛔ 自由发挥。
+  const fail = (code: ToolError['code'], verdict: AuditVerdict, msg: string, note?: string, hint?: string): never => {
     // 拒单那行必须**自带机读码**（`[API_*]`）且⛔ 空。两条理由：
     //   · `sys.readAudit`/agent 自调试是按 note 反查拒因的，note=undefined 的账＝"被拦了，为什么没说"；
     //   · verdict 与 code ⛔ 一一对应——BAD_ARGS 和 handler 抛错都落 `error`，只盯 verdict 会把
     //     "调用方实参写错"读成"工具自己有 bug"，归责方向直接反了。
     // 缺省 note 时整条 msg 上账（msg 本就带标签）；给了 note 就补标签，两界读法一致。
     audit(verdict, note ? `[API_${code}] ${note}` : msg);
-    throw new ToolError(code, msg, traceId);
+    throw new ToolError(code, msg, traceId, hint);
   };
   if (!def || !ct) {
     return fail('NOT_REGISTERED', 'not-registered',
       `[API_NOT_REGISTERED] ${id} 未登记（registry=${!!def} contract=${!!ct}——两边必须一一对齐）`,
-      `registry=${!!def} contract=${!!ct}`);
+      `registry=${!!def} contract=${!!ct}`,
+      '两颗账里没有这个名字——sys.listTools 拿真名清单；sys.describeTool {"tool":"…"} 可预演任意名字');
   }
   // §15 设计纪律「每接口 schema+校验」的最小实现：required 实参在场校验（完整 JSON Schema 校验挂账批次三）。
   const missing = (def.schema.required ?? []).filter((k) => args?.[k] === undefined);
   if (missing.length) {
-    return fail('BAD_ARGS', 'error', `[API_BAD_ARGS] ${id} 缺必填实参：${missing.join(', ')}`, `missing=${missing.join(',')}`);
+    return fail('BAD_ARGS', 'error', `[API_BAD_ARGS] ${id} 缺必填实参：${missing.join(', ')}`, `missing=${missing.join(',')}`,
+      `补齐再打：sys.describeTool {"tool":"${id}"} 有参数 schema 全形（缺的是 ${missing.join(', ')}）`);
   }
   if (!canSurface(id, caller.surface)) {
-    return fail('SURFACE_DENIED', 'surface-denied', `[API_SURFACE_DENIED] ${id}：端点未对 ${caller.surface} 开放（契约工具账）`);
+    return fail('SURFACE_DENIED', 'surface-denied', `[API_SURFACE_DENIED] ${id}：端点未对 ${caller.surface} 开放（契约工具账）`, undefined,
+      `这颗在 ${caller.surface} 面没开是契约裁的——sys.describeTool {"tool":"${id}","surface":"${caller.surface}"} 看账面；开面＝人类侧契约/覆盖文件改动，⛔ 绕面硬打`);
   }
   if (!checkGrant(caller.subject, id)) {
-    return fail('NOT_GRANTED', 'not-granted', `[API_NOT_GRANTED] ${id}：调用方档案（${caller.subject}）未获授权（改 .vv/api.grants.json）`);
+    return fail('NOT_GRANTED', 'not-granted', `[API_NOT_GRANTED] ${id}：调用方档案（${caller.subject}）未获授权（改 .vv/api.grants.json）`, undefined,
+      `授权档案归人类管理——sys.selfCheck 看 ${caller.subject} 档案在场与告警；⛔ agent 自批`);
   }
   let approved = false;
   // 审批豁免只给**扩展自己的 UI**（三条件全满足）——树命令的确认弹窗已在命令层出过，⛔ 二次弹。
@@ -139,7 +148,8 @@ export async function executeTool(
       `API 工具「${id}」要求确认后执行（调用方 ${caller.subject}）。${ct.description ?? def.description}`,
       { modal: true } as any, '允许');
     if (pick !== '允许') {
-      return fail('NOT_APPROVED', 'denied', `[API_NOT_APPROVED] ${id}：用户未批准`, 'HITL 拒');
+      return fail('NOT_APPROVED', 'denied', `[API_NOT_APPROVED] ${id}：用户未批准`, 'HITL 拒',
+        '人没点头＝这次意图已尽，⛔ 循环重试；sys.readAudit {"limit":20} 回看这行（traceId=' + traceId + '），人工明示后再打');
     }
     approved = true;
   }
@@ -150,7 +160,16 @@ export async function executeTool(
     return out;
   } catch (e) {
     audit('error', String(e instanceof Error ? e.message : e).slice(0, 200));
-    throw e;
+    // 错误契约 v2 收编（§五"后三颗桥/执行器已有语义"）：handler 世界的错误也一律带码带号——
+    //   ToolError 空号（handler 内部构造拿不到执行器号）补上这颗，调用方手里那串＝账上那行；
+    //   raw throw 折成 HANDLER_ERROR（此前裸抛进桥的泛型 catch＝归责含糊，"过大"读成"工具炸了"）。
+    if (e instanceof ToolError) {
+      throw e.traceId ? e : new ToolError(e.code, e.message, traceId, e.hint);
+    }
+    throw new ToolError('HANDLER_ERROR',
+      `[API_HANDLER_ERROR] ${id} handler 内部抛错：${String(e instanceof Error ? e.message : e).slice(0, 300)}`,
+      traceId,
+      '这颗工具内部炸了（不是你的实参问题）——sys.readAudit 按 traceId 回看这行；sys.describeTool {"tool":"…"} 看卡预演；反复重现＝报人类的工具缺陷，⛔ 换着实参硬试掩盖它');
   }
 }
 

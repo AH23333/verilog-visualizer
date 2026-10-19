@@ -769,8 +769,9 @@ export async function scanDirChoices(context: vscode.ExtensionContext): Promise<
 
 /* ================= M7 一次性归一清扫（幂等）：盘名 `x.djs.djs` 裁尾 + 各层表值归一写回 ================= */
 
-/** 收集 root 下所有目录（含根的 ''）：跳过 node_modules 与点开头目录（配置表所在目录必含部件或用户手放过）。 */
-async function collectTableDirs(dir: vscode.Uri, rootPathL: string, depth = 16, acc: string[] = []): Promise<string[]> {
+/** 收集 root 下所有目录（含根的 ''）：跳过 node_modules 与点开头目录（配置表所在目录必含部件或用户手放过）。
+ *  R160 四-4 转导出（project.doctor 表层盘点复用同一把扫目录尺，⛔ 第二份全树 walk）。 */
+export async function collectTableDirs(dir: vscode.Uri, rootPathL: string, depth = 16, acc: string[] = []): Promise<string[]> {
   if (depth <= 0) return acc;
   let entries: Array<[string, number]> = [];
   try { entries = await then(vscode.workspace.fs.readDirectory(dir)); } catch { return acc; }

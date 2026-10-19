@@ -14,14 +14,14 @@
 //   （策略引擎）、subscribe（hook 埋点）、readMemory/writeMemory（记忆存储）、长操作 getStatus 句柄。
 // ============================================================================
 import * as vscode from 'vscode';
-import { registerTool, argUri, getTool, listTools, type ToolCaller, type ToolSurface } from './toolRegistry';
+import { registerTool, argUri, getTool, listTools, ToolError, type ToolCaller, type ToolSurface } from './toolRegistry';
 import { broadcastBindingsChanged, projectRoot, vscodeFs } from './dispatch';
 import { ProjectStore, sanitizeRel } from './projectStore';
 import { rootRel, isVerilogPath } from './verilogDomain';
 import {
   getAllBindings, setBindingInDir, collectInstanceHits, completeFromHits,
   materializeBindings, togglePartRole, getCircuitsSet, pathRel, META_FILE,
-  readMetaAt, dirChain, metaPathOf, resolveLayerValue, normalizePartName,
+  readMetaAt, dirChain, metaPathOf, resolveLayerValue, normalizePartName, collectTableDirs,
 } from './sandboxFiles';
 import { parseVerilogInstances, parseVerilogModules, parseVerilogInstancesWithLines, VERILOG_LITE_PRIMITIVES } from './verilogParseLite';
 // R160 四-3：主仓解析器 namespace 引入（res.parseFile main 栏；正本在 shared/，与主仓编译校验同一颗主人）
@@ -459,6 +459,156 @@ export function registerDomainTools(): void {
     },
   });
 
+  /* ============ R160 批次四 四-4c：project.doctor（L5 聚合——一枪"几处坏、各处哪坏、分别打哪颗"） ============ */
+
+  registerTool({
+    id: 'project.doctor', title: '工程语义体检（内核聚合）',
+    description: 'L5：一枪回答"这份工程现在几处坏、各坏在哪、分别打哪颗修"——聚合层⛔ 第三把尺：'
+      + 'missing＝collectInstanceHits 原样；unresolved＝各层表值经 readMetaAt+resolveLayerValue 折叠后现场核实（与 explain 终点同判据）；'
+      + 'tables＝盘上 .verilogviz.json 逐份 parse/形状判；closure＝closureOf（缺省吃最近编译单 entry）；probe＝D1 闸前预演（⛔ 执行）。'
+      + 'verdicts 按 error→warn→info 排序；**info 级默认收拢，deep:true 显式展**（裁决 §8.3）。宿主预算 60、帽 128KB（truncated+total）。幂等只读。',
+    schema: {
+      type: 'object',
+      properties: {
+        dir: { type: 'string', description: '只体检这个目录子树（根相对；缺省全工程）' },
+        probe: { type: 'string', description: '顺带预演一颗工具的闸（名字=sys.listTools；⛔ 执行＝零副作用）' },
+        deep: { type: 'boolean', description: 'true＝展开 info 级读数（默认只 error/warn）' },
+      },
+    },
+    handler: async (ctx, a, caller) => {
+      const root = projectRoot(ctx);
+      const dirF = a.dir ? sanitizeRel(String(a.dir)) : '';
+      const inDir = (relName: string) => !dirF || relName === dirF || relName.startsWith(`${dirF}/`);
+      const HOST_CAP = 60;
+      const store = new ProjectStore(vscodeFs(root), '@root');
+      const [tree, sb] = await Promise.all([store.listTree(), store.listSandboxTree()]);
+      const vfiles = tree.files.map((f) => f.name).filter(inDir);
+      const dfiles = sb.files.map((f: { name: string }) => f.name).filter(inDir);
+
+      // ① files 扫描：verilog 正则内核不抛（best-effort——语义发现住 bindings/closure 段，此栏对 .v 恒空＝如实）；
+      //    .djs 的 parse 失败是有判据的（JSON.parse/cells 形状＝res.parseFile 同式）。
+      const parseErrors: Array<{ path: string; msg: string; line: number | null }> = [];
+      let djsScanned = 0;
+      for (const name of dfiles) {
+        if (djsScanned++ >= 300) break;
+        try {
+          const pj = JSON.parse(new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, ...name.split('/')))));
+          if (!Array.isArray(pj?.cells)) parseErrors.push({ path: name, msg: '顶层没有 cells 数组', line: null });
+        } catch (e) { parseErrors.push({ path: name, msg: String((e as Error)?.message || e).slice(0, 160), line: null }); }
+      }
+
+      // ② tables：逐目录探 .verilogviz.json 原文（parse/形状判＝与各层 readMetaAt 容忍面互补——它吞的坏这里点名）
+      const malformed: Array<{ path: string; why: string }> = [];
+      const tableDirs = ['', ...await collectTableDirs(root, root.fsPath.replace(/[\\/]+$/, '').toLowerCase())];   // 根表''层与 tableDirsOf 同法（G1 扫描含根）
+      for (const dirRel of tableDirs) {
+        if (!inDir(dirRel ? `${dirRel}/x` : 'x')) continue;
+        const uri = vscode.Uri.joinPath(root, ...(dirRel ? dirRel.split('/') : []), META_FILE);
+        let raw: Uint8Array | null = null;
+        try { raw = await vscode.workspace.fs.readFile(uri); } catch { continue; }   // 无表＝不是坏
+        try {
+          const meta = JSON.parse(new TextDecoder().decode(raw));
+          if (!meta || typeof meta !== 'object') { malformed.push({ path: (dirRel ? dirRel + '/' : '') + META_FILE, why: '顶层不是对象' }); continue; }
+          if (meta.circuits !== undefined && !Array.isArray(meta.circuits)) malformed.push({ path: (dirRel ? dirRel + '/' : '') + META_FILE, why: 'circuits 不是数组' });
+          if (meta.bindings !== undefined && (typeof meta.bindings !== 'object' || meta.bindings === null || Array.isArray(meta.bindings))) malformed.push({ path: (dirRel ? dirRel + '/' : '') + META_FILE, why: 'bindings 不是对象' });
+        } catch (e) { malformed.push({ path: (dirRel ? dirRel + '/' : '') + META_FILE, why: `JSON 解析失败：${String((e as Error)?.message || e).slice(0, 120)}` }); }
+      }
+
+      // ③ bindings 逐宿主（hosts＝.v∪.djs 名单，预算 60）：missing＝audit 内核；unresolved＝表值现核
+      const hostsOut: Array<Record<string, unknown>> = [];
+      let truncatedHosts = false;
+      const hosts = [...vfiles, ...dfiles];
+      for (const doc of hosts.slice(0, HOST_CAP)) {
+        if (hosts.length > HOST_CAP) truncatedHosts = true;
+        const misses = await collectInstanceHits(ctx, doc);
+        const rec = await getAllBindings(ctx, doc);                       // 链折叠根相对生效表
+        const unresolved: Array<{ key: string; value: string; why: string }> = [];
+        for (const [k, v] of Object.entries(rec)) {                       // 生效值现场核实（文件在否/含不含该模块——explain 终点同款检查）
+          const inst = k.includes('::') ? k.slice(k.lastIndexOf('::') + 2) : k;
+          try {
+            const vu = vscode.Uri.joinPath(root, ...String(v).split('/'));
+            const t = new TextDecoder().decode(await vscode.workspace.fs.readFile(vu));
+            if (isVerilogPath(String(v))) {
+              const mods = mainParse.parseVerilogModules(t);
+              if (!mods.includes(inst)) unresolved.push({ key: k, value: String(v), why: `文件里没有模块「${inst}」（它定义的是：${mods.slice(0, 4).join('、') || '无'}）` });
+            } else if (/\.(djs|gate)$/i.test(String(v))) {
+              try { JSON.parse(t); } catch { unresolved.push({ key: k, value: String(v), why: '部件文件 JSON 解析失败' }); }
+            }
+          } catch { unresolved.push({ key: k, value: String(v), why: '指向的文件不存在' }); }
+        }
+        if (misses.length || unresolved.length) {
+          hostsOut.push({ doc, missing: [...new Set(misses.map((h) => h.name))].slice(0, 30), unresolved: unresolved.slice(0, 20) });
+        }
+      }
+
+      // ④ closure：显式 entry 或最近编译单（lastJobInfo）——无则如实 null
+      let closure: Record<string, unknown> | null = null;
+      const last = lastJobInfo();
+      const closureEntry = last ? last.entry : '';   // §4.8：无显式入口参数——有最近编译单就顺检，没有如实 null
+      if (closureEntry) {
+        try {
+          const job = await closureOf(ctx, argUri(closureEntry));
+          closure = { entry: closureEntry, ok: !(job.bindingErrors && job.bindingErrors.length), bindingErrors: job.bindingErrors ?? [] };
+        } catch (e) { closure = { entry: closureEntry, ok: false, bindingErrors: [`闭包计算失败：${String((e as Error)?.message || e).slice(0, 160)}`] }; }
+      } else closure = { entry: null, ok: true, bindingErrors: [] };
+
+      // ⑤ probe＝D1 同一颗预演核（⛔ 执行）
+      const probe = a.probe ? probeToolNoExec(String(a.probe), ctx, caller) : null;
+
+      // verdicts 聚合排序（B 码表在册，sev 三档；info 默认收拢只计数）——纯搬运，判据全来自上面各段。
+      const verdicts: Array<Record<string, unknown>> = [];
+      const info: Array<Record<string, unknown>> = [];
+      for (const m of malformed) {
+        verdicts.push({ id: 'B2', sev: 'error', what: '配置表坏了（整层失效）', where: m.path,
+          nextTool: '(人类)在编辑器里改这份 json', nextArgs: m.why });
+      }
+      for (const pe of parseErrors) {
+        verdicts.push({ id: 'B3', sev: 'error', what: '.djs 解析失败（画布会拒开）', where: pe.path,
+          nextTool: 'res.parseFile', nextArgs: { path: pe.path } });
+      }
+      for (const h of hostsOut) {
+        if ((h.missing as unknown[]).length) {
+          verdicts.push({ id: 'B1', sev: 'error', what: `${(h.missing as unknown[]).length} 个子部件实例未录入绑定（R152 编译会拦）`, where: String(h.doc),
+            nextTool: 'bindings.complete', nextArgs: { doc: String(h.doc) } });
+        }
+        for (const u of (h.unresolved as Array<Record<string, unknown>>)) {
+          verdicts.push({ id: 'B4', sev: 'warn', what: `绑定记录对不上：${String(u.key)}→${String(u.value)}`, where: String(h.doc),
+            nextTool: 'bindings.explain', nextArgs: { doc: String(h.doc), instance: String(u.key).includes('::') ? String(u.key).slice(String(u.key).lastIndexOf('::') + 2) : String(u.key) } });
+        }
+      }
+      for (const be of ((closure?.bindingErrors as string[]) || []).slice(0, 30)) {
+        verdicts.push({ id: 'B5', sev: 'error', what: be.slice(0, 200), where: String(closure?.entry ?? ''), nextTool: 'bindings.explain', nextArgs: be });
+      }
+      info.push({ id: 'I0', sev: 'info', what: `扫描面：verilog ${vfiles.length} 颗 / 沙盒 ${dfiles.length} 颗（宿主预算 ${HOST_CAP}${truncatedHosts ? '，超出未检——按 dir 分批' : ''}）` });
+      for (const dirRel of tableDirs.filter(inDir0)) {
+        info.push({ id: 'I1', sev: 'info', what: '目录层在场配置表', where: (dirRel ? dirRel + '/' : '') + META_FILE, nextTool: 'res.readBindingTables', nextArgs: { dir: dirRel } });
+      }
+      const sevRank: Record<string, number> = { error: 0, warn: 1, info: 2 };
+      verdicts.sort((x, y) => sevRank[String(x.sev)] - sevRank[String(y.sev)]);
+      const out: Record<string, any> = {
+        files: { scanned: vfiles.length + Math.min(djsScanned, dfiles.length), parseErrors },
+        bindings: { hosts: hostsOut, truncated: truncatedHosts },
+        tables: { malformed },
+        closure, probe,
+        verdicts: a.deep === true ? [...verdicts, ...info] : verdicts,
+        infoSuppressed: a.deep === true ? 0 : info.length,
+      };
+      out.total = out.verdicts.length;
+      const j = JSON.stringify(out);
+      if (j.length > 131072) {
+        out.verdicts = out.verdicts.slice(0, 100);
+        out.truncated = true;
+        out.note = `verdicts 按 128KB 帽截到 100 条（total=${j.length}B 原读数——⛔ 当全貌；deep 与 dir 分批收敛）`;
+      }
+      return out;
+      // inDir 的目录版谓词（dirRel ''＝根）
+      function inDir0(dirRel: string): boolean { return !dirF || dirRel === dirF || dirRel.startsWith(`${dirF}/`) || dirF.startsWith(dirRel + '/'); }
+      // D1 预演同一颗（本地函数直调；⛔ 执行——describeTool 同款零副作用）
+      function probeToolNoExec(id: string, _c: typeof ctx, caller0: ToolCaller) {
+        return probeTool(id, {}, { ...caller0 });
+      }
+    },
+  });
+
   /* ============ circuits 族：部件/电路角色（显式取消名单在根表） ============ */
 
   registerTool({
@@ -485,11 +635,25 @@ export function registerDomainTools(): void {
     id: 'res.readProjectFile', title: '读工程文件', description: '读工程根下的文本文件（sanitizeRel 拒 `..`/绝对路径穿越；>2MB 拒）。幂等只读。',
     schema: { type: 'object', properties: { path: { type: 'string', description: '根相对路径' } }, required: ['path'] },
     handler: async (ctx, a) => {
-      const rel = sanitizeRel(String(a.path));
+      // 错误契约 v2（R160 四-4）：这颗是"三码归位"的样板——穿越＝调用方写错（BAD_ARGS）、
+      // 查无＝现场问题（NOT_FOUND）、过大＝目标问题（TOO_LARGE），⛔ 都挤进 HANDLER_ERROR 让 agent 猜。
+      let rel: string;
+      try { rel = sanitizeRel(String(a.path)); }
+      catch (e) { throw new ToolError('BAD_ARGS', `[API_BAD_ARGS] path 被拒：${String((e as Error)?.message || e).slice(0, 120)}`, '', 'path 必须根相对（.. / 绝对 / 盘符开头都拒）——res.listProject 拿在册名'); }
       const root = projectRoot(ctx);
       const uri = vscode.Uri.joinPath(root, ...rel.split('/'));
-      const st = await vscode.workspace.fs.stat(uri);
-      if (st.size > 2 * 1024 * 1024) throw new Error(`文件过大（${st.size}B > 2MB）：⛔ 整读（按段/专用工具读）`);
+      let st: { size: number } | null = null;
+      try { st = await vscode.workspace.fs.stat(uri); } catch { st = null; }
+      if (!st) {
+        throw new ToolError('NOT_FOUND', `[API_NOT_FOUND]「${rel}」查无此档`, '', 'res.listProject（.v/.sv/.vh）/ res.listSandbox（.djs）列在册名再打');
+      }
+      // 错误契约 v2（R160 四-4）：过大拒读＝调用方问题不是工具炸——收编 TOO_LARGE 码（旧版裸 Error 会被
+      //   执行器折成 HANDLER_ERROR，把"你塞了颗 5MB 的"读成"工具内部故障"，归责反向）。
+      if (st.size > 2 * 1024 * 1024) {
+        throw new ToolError('TOO_LARGE',
+          `[API_TOO_LARGE] 文件过大（${st.size}B > 2MB）：⛔ 整读`, '',
+          '按段/专用工具读：.v/.djs 语义看 res.parseFile（自带 256KB 帽截标），其余 res.listProject 定位后换小目标');
+      }
       return { path: rel, size: st.size, content: new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)) };
     },
   });

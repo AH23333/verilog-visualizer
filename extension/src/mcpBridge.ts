@@ -57,15 +57,18 @@ export async function handleMcpLine(context: vscode.ExtensionContext, line: stri
     req = JSON.parse(line);
     if (!req || typeof req !== 'object' || typeof req.tool !== 'string') throw new Error('缺 tool 字段');
   } catch (e) {
-    return reply(null, false, { code: 'BAD_REQUEST', message: `请求不是合法的一枪 JSON（{id,tool,args}）：${String(e instanceof Error ? e.message : e)}` });
+    return reply(null, false, { code: 'BAD_REQUEST', message: `请求不是合法的一枪 JSON（{id,tool,args}）：${String(e instanceof Error ? e.message : e)}`,
+      hint: '协议一行一枪：{"id":<任意>,"tool":"<sys.listTools 的名字>","args":{…}}（≤1MB/行；mcp/mcp-server.cjs 是参考实现）' });
   }
   try {
     const result = await executeTool(context, CALLER_AGENT, req.tool,
       (req.args && typeof req.args === 'object' && !Array.isArray(req.args)) ? req.args as Record<string, unknown> : {});
     return reply(req.id, true, { result });
   } catch (e) {
-    if (e instanceof ToolError) return reply(req.id, false, { code: e.code, message: e.message, traceId: e.traceId });
-    return reply(req.id, false, { code: 'HANDLER_ERROR', message: String(e instanceof Error ? e.message : e).slice(0, 400) });
+    // v2：ToolError 分支透 hint（执行器已把 handler raw 抛折成 HANDLER_ERROR 带码带号）；泛型分支只兜执行器自身意外。
+    if (e instanceof ToolError) return reply(req.id, false, { code: e.code, message: e.message, traceId: e.traceId, ...(e.hint ? { hint: e.hint } : {}) });
+    return reply(req.id, false, { code: 'HANDLER_ERROR', message: String(e instanceof Error ? e.message : e).slice(0, 400),
+      hint: '执行器外层的意外（正常应带码抵达上一条分支）——sys.readAudit 回看当日账，重现报人类' });
   }
 }
 

@@ -304,7 +304,8 @@ describe('RPC 方法名表对账（前端 ↔ Extension Host）', () => {
     expect(tools.length).toBeGreaterThanOrEqual(10);
     // ① 工具 id 词表（域.动词 闭集形状）。命名空间本身也钉成等式：新增一域要同时改这里，
     //    ⛔ 让 ① 跟着放宽（词表由被检对象自己决定＝没检）。
-    const NS = ['bindings', 'circuits', 'compile', 'fs', 'host', 'res', 'sys'];
+    // R160 四-4：新域 project（工程体检聚合）在此登记开户——310 行等式照旧双向自查（每域必有实例、实例必归此表）。
+    const NS = ['bindings', 'circuits', 'compile', 'fs', 'host', 'project', 'res', 'sys'];
     const idRe = new RegExp(`^(${NS.join('|')})\\.[a-z][A-Za-z]*$`);
     expect(tools.map(({ id }) => id).filter((id) => !idRe.test(id))).toEqual([]);
     expect([...new Set(tools.map(({ id }) => id.split('.')[0]))].sort()).toEqual(NS);

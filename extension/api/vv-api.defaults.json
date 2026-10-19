@@ -39,6 +39,7 @@
     "res.listSandbox":     { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "res.listSandbox", "idempotent": true, "since": "0.2.0", "description": "沙盒域工程树" },
     "res.readBindingTables": { "perm": "read",       "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "res.readBindingTables", "idempotent": true, "since": "0.4.0", "description": "L3 链上逐层 .verilogviz.json 原文（含协议外键/truncated 帽）" },
     "res.parseFile": { "perm": "read", "sideEffects": "none", "surfaces": ["ui","mcp"], "ref": "res.parseFile", "idempotent": true, "since": "0.4.0", "description": "L4 解析器原样双栏（main/lite 并呈+差集+分岔表，帽 256KB）" },
+    "project.doctor": { "perm": "read", "sideEffects": "none", "surfaces": ["ui","mcp"], "ref": "project.doctor", "idempotent": true, "since": "0.4.0", "description": "L5 工程语义体检聚合（内核搬运 verdicts；info 默认关 deep 开；probe 预演）" },
     "compile.hierarchy": { "perm": "read", "sideEffects": "none", "surfaces": ["ui","mcp"], "ref": "compile.hierarchy", "idempotent": true, "since": "0.4.0", "description": "L4 实例层次树（树主人 BFS 平表，depth 帽 4，与 HierarchyTree 同尺）" },
     "compile.closure":     { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp"], "ref": "compile.closure", "idempotent": true, "since": "0.2.0", "description": ".v 依赖闭包（拓扑文件名单+顶层模块）" },
     "sys.ping":          { "perm": "read",         "sideEffects": "none",         "surfaces": ["ui", "mcp", "cli"], "ref": "sys.ping", "idempotent": true, "since": "0.4.0", "description": "L0 活体探针：alive/激活检查点/桥态/uptime（半活假象终结者）" },

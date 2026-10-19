@@ -1,7 +1,7 @@
 # API_REFERENCE（生成物 · 统一调用层）
 
 > ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
-> apiVersion `0.1.0` · 生成工具数 **41** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
+> apiVersion `0.1.0` · 生成工具数 **42** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
@@ -43,6 +43,7 @@
 | `host.publishProblems` | 发 Problems | read | none | rpc | — | `publishProblems` | 0.1.0 |
 | `host.saveExportFile` | 宿主另存为 | file-write | file-write | rpc | — | `saveExportFile` | 0.1.0 |
 | `host.setDocBindings` | 写一份文档的绑定表 | config-write | config-write | rpc | — | `setDocBindings` | 0.1.0 |
+| `project.doctor` | 工程语义体检（内核聚合） | read | none | ui/mcp | — | `project.doctor` | 0.4.0 |
 | `res.listProject` | 列编译域文件 | read | none | ui/mcp | — | `res.listProject` | 0.2.0 |
 | `res.listSandbox` | 列沙盒域文件 | read | none | ui/mcp | — | `res.listSandbox` | 0.2.0 |
 | `res.parseFile` | 解析器原样输出摊开（双栏并呈） | read | none | ui/mcp | — | `res.parseFile` | 0.4.0 |
@@ -700,6 +701,30 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
     "bindings": {
       "type": "object",
       "description": "只覆写**本文档**的条目（v0.4：别档前缀键⛔ 落本表、手编条目一颗不碰；本档一律产前缀键）"
+    }
+  }
+}
+```
+
+### `project.doctor` — 工程语义体检（内核聚合）
+
+L5：一枪回答"这份工程现在几处坏、各坏在哪、分别打哪颗修"——聚合层⛔ 第三把尺：missing＝collectInstanceHits 原样；unresolved＝各层表值经 readMetaAt+resolveLayerValue 折叠后现场核实（与 explain 终点同判据）；tables＝盘上 .verilogviz.json 逐份 parse/形状判；closure＝closureOf（缺省吃最近编译单 entry）；probe＝D1 闸前预演（⛔ 执行）。verdicts 按 error→warn→info 排序；**info 级默认收拢，deep:true 显式展**（裁决 §8.3）。宿主预算 60、帽 128KB（truncated+total）。幂等只读。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "dir": {
+      "type": "string",
+      "description": "只体检这个目录子树（根相对；缺省全工程）"
+    },
+    "probe": {
+      "type": "string",
+      "description": "顺带预演一颗工具的闸（名字=sys.listTools；⛔ 执行＝零副作用）"
+    },
+    "deep": {
+      "type": "boolean",
+      "description": "true＝展开 info 级读数（默认只 error/warn）"
     }
   }
 }

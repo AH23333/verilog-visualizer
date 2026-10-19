@@ -126,6 +126,14 @@ async function run() {
         ok('mcp-hierarchy-chain', hh.ok === true && hh.result.nodes.some((x) => x.chain === 'it_p43_mid/it_p43_leaf')
           && hh.result.nodes.some((x) => x.defFile === 'it_p43_leaf.v' && typeof x.line === 'number'),
           hh.ok ? 'total=' + hh.result.total + ' chains=' + hh.result.nodes.map((x) => x.chain).join(',') : JSON.stringify(hh));
+        // 四-4 两枪：doctor 真管道聚合在场；拒单 hint 过传输（v2 硬要求的管道实证）
+        const dc = await shot('project.doctor', {});
+        ok('mcp-doctor-agg', dc.ok === true && Array.isArray(dc.result.verdicts) && typeof dc.result.infoSuppressed === 'number'
+          && dc.result.closure && typeof dc.result.closure.ok === 'boolean',
+          dc.ok ? 'verdicts=' + dc.result.verdicts.length + ' suppressed=' + dc.result.infoSuppressed : JSON.stringify(dc));
+        const nope = await shot('sys.nope', {});
+        ok('mcp-hint-on-wire', nope.ok === false && nope.code === 'NOT_REGISTERED' && typeof nope.hint === 'string' && nope.hint.includes('sys.listTools') && !!nope.traceId,
+          JSON.stringify(nope).slice(0, 220));
       } catch (e) { ok('mcp-pipe-roundtrip', false, String((e && e.message) || e)); }
     }
   } catch (e) {

@@ -149,6 +149,9 @@ export async function dispatchAndReply(
       vvh: 'res', id: msg.id, ok: false, data: undefined,
       error: String(e instanceof Error ? e.message : e),
       trace: e instanceof ToolError ? e.traceId : undefined,
+      // R160 四-4 错误契约 v2：机读码与 hint 同包透出（旧消费页读 error 字符串不变＝向后兼容加键）。
+      code: e instanceof ToolError ? e.code : 'HANDLER_ERROR',
+      ...(e instanceof ToolError && e.hint ? { hint: e.hint } : {}),
     });
   }
 }
