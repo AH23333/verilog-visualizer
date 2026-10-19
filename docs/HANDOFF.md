@@ -120,10 +120,12 @@ Start-Process cmd '/c','scripts\code.bat --user-data-dir=D:\vv-studio\profile D:
 
 > 本节只放指针与决策语。拍板＝在对话里逐条给结论，代理负责落契约/落账。
 
-### ① 批次五·写面 L6 —— ✅ 已拍板已落地（2026-10-19「全部放开」）
-- 已落地：14 颗写工具 surfaces += mcp（`c3ec960`）；fs.delete 保留 requiresApproval HITL。
-- 证人：契约锁白名单 14 颗 / mcpBridge 执行+回读 / extensionHost 执行五枪+HITL 拒 / harness 双态；真管道探针全 PASS。
-- 详见账本第十二节。
+### ① 批次五·写面 L6 —— ✅ 已拍板已落地＋真管道深测通过（2026-10-19「全部放开」→ 12 颗）
+- 已落地：12 颗写工具 surfaces += mcp（`c3ec960` 初版 14 颗 → 深测收回 compile 族 2 颗＝非 registry 工具，`d5f02f6`）；
+  fs.delete 保留 requiresApproval HITL。
+- 证人：契约锁白名单 12 颗 / mcpBridge 执行+回读 / extensionHost 执行五枪+HITL 拒 / harness 双态；
+  真管道深测 24 判据全过（绑定族/文件族/compile 族收回/审计/穿越消毒）。
+- 真机点验留用户：fs.delete 经 mcp 的 HITL 模窗。详见账本第十二节。
 
 ### ② AI 接入 —— 方向已拍板（侧边栏聊天窗），实现挂后续批次
 - 方向：`vscode.chat.createChatParticipant`（基座 1.143.0 稳定 API 在位）；工具调用走 executeTool 全闸链（写面已同步放开）；

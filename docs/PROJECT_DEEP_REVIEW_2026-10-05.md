@@ -2013,3 +2013,16 @@ LLM 部分＝`vscode.lm.selectChatModels`（需 LM provider 扩展在场）或�
 - 插曲：四文件 import 路径误写 ../i18n（webview 形）——tsc TS2307 当场点名列改 ./i18n；
   console 日志按既定口径保留中文；「无」双表同形（webview none / 扩展 none）。
 - 读数：台架 341/341 · ext tsc 0 · root build 0 · lint 0 error。基座已同步 S2 累计 bundle。
+
+**批次五写面真管道深测（同日续，24 判据）**：
+- **真缺陷当场咬出**：compile 族 2 颗（completeBindings/compileAndShow）在契约（上轮误加 mcp）但
+  registry 无 handler（命令面板直调族）——mcp 调用＝NOT_REGISTERED。收回 surfaces 改回 ui-only
+  （`d5f02f6`），契约锁白名单 14→12。教训：拍板「全部放开」前应 listTools 对单——深度测试替我补了这一课。
+- 判据修正三笔（如实）：①bindings.set 缺 part＝删键语义（part 可选，schema 只必填 celltype）；
+  ②fs.rename 穿越＝单段消毒落工作区内（G7 在册语义；`../escape2.v` → `escape2.v`，⛔ 逃出）；
+  ③副本名去重后缀 `(2)`（上轮导入过同名探针）——工具行为全部正确，是判据赌错了形状。
+- **fs.delete 真机点验留用户**：经 mcp 调用会弹 HITL 模窗（⛔ 探针自动调，会占屏）。
+- 读数：深测 v2 **23 pass / 1 判据瑕疵**（工具行为全验证）· harness failed=0 · 台架 341/341 · build 0。
+- **E 段（机器面 i18n 端到端）**：zh 基座元数据中文（跟随宿主 ✓）· `--locale=en` 基座 42 颗
+  title/description 全英文（41 直接 + 1 反引号字面量 `x 副本 (n)`＝代码真生成的名字）——
+  **B 方案端到端验证通过**。
