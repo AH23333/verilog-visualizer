@@ -2824,10 +2824,10 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     return n;
   };
 
-  const handleFileRenameCommit = (t: RenameTarget, name: string) => {
+  const handleFileRenameCommit = (tgt: RenameTarget, name: string) => {
     name = name.trim();
     if (!name) return;
-    const f = sandboxStore.get(t.key);
+    const f = sandboxStore.get(tgt.key);
     if (!f) return;
     const isPart = f.role === 'part';
     if (isPart || f.kind === 'gate') {
@@ -2835,7 +2835,7 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
       // 改名后全库扫描改写引用，展开/放置继续命中新部件。
       const base = name.replace(/\.(djs|gate|json)$/i, '');
       const oldName = baseName(f.name).replace(/\.(djs|gate|json)$/i, '');
-      const n = renamePartDef(t.key, base);
+      const n = renamePartDef(tgt.key, base);
       // 必须在 refreshGates（会触发画布 effect 重建 → cleanup 持久化）之前
       // 同步活画布：否则画布上仍是旧 celltype 的活实例会把存储盖回去。
       let live = 0;
@@ -2853,8 +2853,8 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     }
     const dir = dirOf(f);
     // R101：同名去重交给 store（照抄编译模式的 ` (1)` 格式），不再用沙盒旧的 `_1` 后缀
-    sandboxStore.rename(t.key, dir ? dir + '/' + name : name);
-    if (activeFile?.id === t.key) setActiveFile(sandboxStore.get(t.key));
+    sandboxStore.rename(tgt.key, dir ? dir + '/' + name : name);
+    if (activeFile?.id === tgt.key) setActiveFile(sandboxStore.get(tgt.key));
     syncAfterFsOp();
   };
 
@@ -2866,15 +2866,15 @@ function SandboxCanvas({ theme, leftPanel = 'files', sidebarCollapsed = false, o
     syncAfterFsOp();
   };
 
-  const handleCreateCommit = (t: CreateTarget, name: string) => {
+  const handleCreateCommit = (tgt: CreateTarget, name: string) => {
     name = name.trim();
     if (!name) return;
-    if (t.kind === 'folder') {
-      const base = t.folder ? t.folder + '/' + name : name;
+    if (tgt.kind === 'folder') {
+      const base = tgt.folder ? tgt.folder + '/' + name : name;
       sandboxStore.createFolder(base);
       showToast(t('已创建文件夹 {name}', { name: base }));
     } else {
-      const fullName = uniqueDjsName(files, t.folder ? t.folder + '/' + name : name);
+      const fullName = uniqueDjsName(files, tgt.folder ? tgt.folder + '/' + name : name);
       const f = sandboxStore.create(fullName);
       sandboxStore.setActiveId(f.id);
       setActiveFile(f);
