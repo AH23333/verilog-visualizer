@@ -1909,3 +1909,19 @@ e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿�
 **读数**：台架 **339/339**（327→12 颗 i18n 闸）· root/ext tsc 0 · vite/esbuild 0 · lint 0 error · harness **17/17 failed=0**（i18n 版 bundle＋manifest 真宿主）· 基座已装 nls 双语表（5542/5490 B）。
 
 **欠账（S2，分期表正本＝I18N_DESIGN §四）**：SandboxCanvas 深串（168）/sandboxCellMenu（120）/sandboxCatalog（69）/各 Modal（~100）/doc、gates 长文/test-real/apiDoc；扩展侧运行时消息（extension.ts 44 等）；API 契约串（另议）。
+
+**S1 深测轮（同日，用户令「深度测试」）**：
+- **设计修订（真回归→修设计）**：webview 语言**只认宿主 meta**——无 meta（pnpm dev 预览/Playwright 闸门）→ zh-CN。
+  缘由：无头 Edge navigator=en-US，原稿「回落 navigator」会把验收套件底下的 UI 整体翻面（qc-paused 等闸用
+  `title="运行 / 暂停仿真"`、`placeholder="自定义门名称"` 做选择器）——语言⛔ 依赖「跑测试的那台机器」。
+  I18N_DESIGN §一已修订；initLocale 同步收口（navigator 回落整条删除）。
+- **闸门升级**：r19 [2a] 命令面断言改**经双语 nls 解析**（zh 面全中文＋en 面无 CJK＋%key% 两表都能解；
+  未迁移中文原句照旧认）——跑批首 RED 即此格（断言语义过期非产品回归），修后单跑 11/0 GREEN。
+- **新增证人三颗**：marker 复用串两语一致性（en 译句包含 marker 译文）/ 三入口都挂 initLocale / initLocale 无 meta→zh-CN。
+- **产物级检查**：dist canvas bundle 含英文表（'Copy to Sandbox'/'Run'/'Step once' 在包内）；基座安装副本
+  nls 对账 used=62 en=62 zh=62 缺 0 孤儿 0。
+- **真管道回归 84/84**（A/B/C 全套，i18n 后 API 面与战役二波逐枪一致）；台架 **341/341**；r84 变异台账 OK；
+  r137 CSP 闸全 PASS（meta 注入不碰 CSP 语义）；i18n 敏感面抽跑 qc-paused 10/0 · qc-audit 5/0 ·
+  qc-realuser 6/0 · r46 9/0 · r50 6/0 · r91 2/0。
+- 全量闸门跑批（73 格）后台进行中，r19 修后其余全绿；终表随跑批收口。
+- **环境插曲**：跑批前基座整个掉了（上轮重启后未验进程数）——重启后补验进程数=10 再开打（「重启必验证」入册）。

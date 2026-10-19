@@ -70,11 +70,24 @@ describe('i18n 内核：locale 归一（I18N_DESIGN §一）', () => {
       expect(norm(null)).toBe('en');
     }
   });
-  it('webview initLocale：meta 优先，回落 navigator，都没有（node 测试环境）→ zh-CN 存量行为', () => {
+  it('webview initLocale：只认宿主 meta；无 meta（node 测试环境/dev 预览/闸门）→ zh-CN（I18N_DESIGN §一修订）', () => {
     setLocaleForTest('en');
     expect(getLocale()).toBe('en');
-    // node 环境无 document/navigator → 存量缺省 zh-CN（327 颗既有断言不因 i18n 迁移而翻面）
+    // node 环境无 document → zh-CN。修订缘由（账本第十一节）：无头 Edge 闸门 navigator=en-US，
+    // 回落 navigator 会把验收套件底下的 UI 整体翻面——语言⛔ 依赖跑测试的那台机器。
     expect(initLocale()).toBe('zh-CN');
+  });
+
+  it('三入口都挂了 initLocale（漏挂＝那颗入口永远读不到宿主语言，meta 注入形同虚设）', () => {
+    for (const rel of ['src/canvas/main.tsx', 'src/doc/main.tsx', 'src/gates/main.tsx']) {
+      expect(readFileSync(join(REPO, rel), 'utf8')).toContain('initLocale()');
+    }
+  });
+
+  it('marker 复用串的两语一致性：en 译句必须包含 marker 译文（CanvasApp 检查 n.text.includes(t(未启动仿真))）', () => {
+    expect(WEB_EN['未启动仿真']).toBeTruthy();
+    expect(WEB_EN['电路存在悬空/成环的连线——未启动仿真。']).toContain(WEB_EN['未启动仿真']);
+    expect('电路存在悬空/成环的连线——未启动仿真。').toContain('未启动仿真');   // zh 原文侧天然成立（对偶说明）
   });
 });
 

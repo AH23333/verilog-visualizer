@@ -118,16 +118,30 @@ async function dragWireById(page, srcId, srcPort, tgtId, tgtPort) {
     //   ① 原生命令面（`contributes.commands` 标题、`keybindings` 是否指向在册命令）；
     //   ② 画布调色板（每行 `中文名 + 型号名`；`CN_NAME` 漏一颗就露出裸英文行——那才是真未汉化）。
     console.log('\n===== [2] 汉化补全 =====');
-    const man = JSON.parse(require('fs').readFileSync(path.join(PROJECT_ROOT, 'extension/package.json'), 'utf8'));
+    const rfs = require('fs');
+    const man = JSON.parse(rfs.readFileSync(path.join(PROJECT_ROOT, 'extension/package.json'), 'utf8'));
+    // i18n（R161）起命令标题走 %key% → 断言必须经双语 nls 解析：zh 面解析后仍全中文（命令面汉化不变量），
+    // en 面解析后无 CJK，%key% 两份表都必须能解（漏 key＝真机裸 %key%）。未迁移的中文原句照旧认。
     const cmds = (man.contributes || {}).commands || [];
     const kb = (man.contributes || {}).keybindings || [];
     const cmdIds = new Set(cmds.map((x) => x.command));
-    const badTitles = cmds.filter((x) => !/[一-龥]/.test(String(x.title || ''))).map((x) => `${x.command}→${x.title}`);
+    const nlsEn = JSON.parse(rfs.readFileSync(path.join(PROJECT_ROOT, 'extension/package.nls.json'), 'utf8'));
+    const nlsZh = JSON.parse(rfs.readFileSync(path.join(PROJECT_ROOT, 'extension/package.nls.zh-cn.json'), 'utf8'));
+    const resNls = (s, tab) => String(s || '').replace(/%([A-Za-z0-9_.]+)%/g, (m, k) => (k in tab ? tab[k] : m));
+    const badTitles = cmds.filter((x) => {
+      const raw = String(x.title || '');
+      if (/[一-龥]/.test(raw)) return false;                                   // 未迁移中文原句照旧认
+      const keys = [...raw.matchAll(/%([A-Za-z0-9_.]+)%/g)].map((m) => m[1]);
+      if (!keys.length) return true;                                          // 既非中文又非 %key%＝裸串才坏
+      return keys.some((k) => !(k in nlsEn) || !(k in nlsZh));                 // %key% 两份表都必须能解
+    }).map((x) => `${x.command}→${x.title}`);
+    const zhFaceBad = cmds.filter((x) => !/[一-龥]/.test(resNls(x.title, nlsZh))).map((x) => x.command);
+    const enFaceBad = cmds.filter((x) => /[一-龥]/.test(resNls(x.title, nlsEn))).map((x) => x.command);
     const orphanKeys = kb.filter((x) => !cmdIds.has(x.command) && !/^(workbench|editor|vscode)\./.test(String(x.command))).map((x) => x.command);
     console.log('    contributes:', JSON.stringify({ commands: cmds.length, keybindings: kb.length, badTitles, orphanKeys }));
-    (cmds.length >= 20 && badTitles.length === 0 && orphanKeys.length === 0)
-      ? ok('[2a] 命令标题全中文、键位都指向在册命令', `${cmds.length} 颗命令 / ${kb.length} 条键位`)
-      : bad('[2a] 命令面汉化或键位在册性有缺', JSON.stringify({ badTitles, orphanKeys, commands: cmds.length }));
+    (cmds.length >= 20 && badTitles.length === 0 && orphanKeys.length === 0 && zhFaceBad.length === 0 && enFaceBad.length === 0)
+      ? ok('[2a] 命令标题双语可解析（zh 面全中文/en 面无 CJK）、键位都指向在册命令', `${cmds.length} 颗命令 / ${kb.length} 条键位`)
+      : bad('[2a] 命令面汉化或键位在册性有缺', JSON.stringify({ badTitles, orphanKeys, zhFaceBad, enFaceBad, commands: cmds.length }));
     const palLabels = await page.evaluate(() => [...document.querySelectorAll('button[data-gate]')]
       .map((b) => (b.innerText || '').trim()).filter(Boolean));
     const bare = palLabels.filter((t) => !/[一-龥]/.test(t));

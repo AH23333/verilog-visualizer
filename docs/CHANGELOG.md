@@ -20,8 +20,11 @@
 - **前端画布面迁移 ~70 串**：编译画布工具条/菜单/空态/迁移横幅、沙盒工具条全部 t() 化。
 
 ### 验证
-- 台架 **339/339**（新增 tests/unit/i18n.test.ts 12 颗：归一/插值/回落/字典完备性双向/英文面无 CJK/manifest 三向对账/html 注入两态）；
-- 真宿主 harness **17/17 failed=0**；root/ext tsc 0 · lint 0 error。
+- 台架 **341/341**（新增 tests/unit/i18n.test.ts 14 颗：归一/插值/回落/字典完备性双向/英文面无 CJK/manifest 三向对账/html 注入两态/marker 两语一致性/三入口 initLocale）；
+- 真宿主 harness **17/17 failed=0**；root/ext tsc 0 · lint 0 error；真管道回归 **84/84**（API 面逐枪与战役二波一致）。
+- **S1 深测轮**：webview 语言只认宿主 meta（设计 §一修订——无头闸门 navigator=en-US 会把验收 UI 翻面，无 meta→zh-CN）；
+  r19 [2a] 命令面断言升级为双语 nls 解析；产物级检查（bundle 英文表在包、基座 nls 对账零缺零孤儿）；
+  r84 变异台账/r137 CSP 闸全过；i18n 敏感面抽跑 qc-paused/qc-audit/qc-realuser/r46/r50/r91 全绿。
 - 欠账（S2）：SandboxCanvas 深串/单元菜单/器件目录/各弹窗/doc、gates 长文/扩展运行时消息；API 契约串另议。
 
 ---

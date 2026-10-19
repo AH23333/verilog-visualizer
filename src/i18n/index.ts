@@ -17,13 +17,14 @@ export function getLocale(): Locale { return current; }
 /** 台架/测试用：直接置位（⛔ 生产路径不调——语言由 initLocale 按宿主定，无应用内切换）。 */
 export function setLocaleForTest(raw: string | null | undefined): Locale { current = normalizeLocale(raw); return current; }
 
-/** 启动时读一次：宿主注入的 meta 优先，浏览器预览回落 navigator.language；两界都没有（测试环境）→ zh-CN＝存量行为。 */
+/** 启动时读一次：**只认宿主注入的 meta**（I18N_DESIGN §一修订）。
+ *  深度测试实却（账本第十一节）：无头 Edge 闸门环境下 navigator.language=en-US，若回落 navigator
+ *  会把验收套件底下的 UI 整体翻面——语言⛔ 依赖「跑测试的那台机器」。无 meta＝未宿主化环境
+ *  （pnpm dev 预览/闸门）→ zh-CN＝作者语缺省，闸门选择器（placeholder=自定义门名称 等）保持原语义。 */
 export function initLocale(): Locale {
   const injected = typeof document !== 'undefined'
     ? document.querySelector('meta[name="vv-locale"]')?.getAttribute('content') : undefined;
-  const nav = typeof navigator !== 'undefined' ? navigator.language : undefined;
-  const raw = injected ?? nav;
-  current = raw === undefined || raw === null || String(raw).trim() === '' ? 'zh-CN' : normalizeLocale(raw);
+  current = injected ? normalizeLocale(injected) : 'zh-CN';
   return current;
 }
 

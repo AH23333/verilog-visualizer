@@ -7,8 +7,10 @@
 ## 一、目标与语言判据
 
 - **产品面语言跟随宿主**：扩展侧读 `vscode.env.language`；webview 由 `extension/src/html.ts` 把同一值写进
-  `<meta name="vv-locale" content="…">`（CSP 下**不注内联脚本**——inline script 无 nonce 必被拦），前端启动时读；
-  `pnpm dev` 浏览器预览回落 `navigator.language`。
+  `<meta name="vv-locale" content="…">`（CSP 下**不注内联脚本**——inline script 无 nonce 必被拦），前端启动时读。
+  **修订（S1 深度测试实却，账本第十一节）**：webview **只认 meta**——无 meta＝未宿主化环境（`pnpm dev` 预览/闸门）→
+  zh-CN 缺省。原稿的「回落 navigator.language」作废：无头 Edge 闸门 navigator=en-US，会把验收套件底下的 UI 整体翻面
+  （语言⛔ 依赖「跑测试的那台机器」）。
 - **归一**：`zh*` → `zh-CN`（中文），其余（`en*`、`ja`、空值、未知）→ `en`。**英文是国际缺省**；
   zh 系用户看中文，行为与今天完全一致。
 - ⛔ **不做应用内语言切换 UI**：跟随 VS Code 显示语言（宿主自带切换入口）——避免第二套状态与「切了没生效」案族。
