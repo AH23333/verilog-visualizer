@@ -126,8 +126,16 @@ Start-Process cmd '/c','scripts\code.bat --user-data-dir=D:\vv-studio\profile D:
 - 详见账本第十二节。
 
 ### ② AI 接入 —— 方向已拍板（侧边栏聊天窗），实现挂后续批次
-- 方向：`vscode.chat.createChatParticipant`（基座 1.143.0 稳定 API 在位）；工具调用走 executeTool 全闸链；
+- 方向：`vscode.chat.createChatParticipant`（基座 1.143.0 稳定 API 在位）；工具调用走 executeTool 全闸链（写面已同步放开）；
   LLM 部分暂不实接（用户令）——详见账本第十二节。实现时从这颗开始。
+
+### ③ dispatch.ts RPC 契约层元数据 i18n（47 串） —— ✅ 已按 B 方案落地（`f4318d9`）
+- 运行时 dump 推翻上轮判断：host.* 族经 registerRpcTools 入注册表、listTools 可见（有消费点）。
+- 渲染层已接（listTools/apiDoc），EN 全量在表；数据源中文保留。
+
+### ④ API 契约串 i18n —— ✅ 已按 B 方案落地（同上）
+- toolsDomain 45 颗工具 title/description/schema 描述 104 条全量 EN；渲染层四点；闸升级注册表驱动；
+  API_REFERENCE 生成物锁 en。错误码壳 `[API_*]` 机读 token 保持原样。
 
 ### ③ dispatch.ts RPC 契约层元数据 i18n（47 串）
 - S2 余量（账本第十一节 S2-6 段）：RPC_METHODS 的 title/description 元数据，消费方＝apiDoc 文档生成器。

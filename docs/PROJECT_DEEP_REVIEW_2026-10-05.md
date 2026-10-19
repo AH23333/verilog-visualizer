@@ -1992,6 +1992,19 @@ e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿�
 LLM 部分＝`vscode.lm.selectChatModels`（需 LM provider 扩展在场）或后续自带 API——**暂不实接（用户令）**，
 实现挂后续批次。MCP-in-Copilot 路径不可用（fork 无 Copilot Chat）。
 
+**机器面 i18n（B 方案落地，同日续）**：用户拍板「说明书字段也要国际化；按 B 方案来」——
+- **架构**：注册表数据存中文（先于 initLocale 加载 ⛔ 表内 t），渲染层翻译——sys.listTools/describeTool
+  运行时 t()+tSchema（宿主语言）；apiDoc tIn('en')+tSchemaIn('en')（API_REFERENCE 生成物锁 en）。
+- **键源修正**：上轮「dispatch 元数据无消费点」判断被运行时 dump 推翻——host.* 族经 registerRpcTools
+  入注册表、listTools 可见（有消费点）；dump 得 110 条真身键（源码单行抽取会漏多行拼接串）。
+- **EXT_EN 补 ~140 键**（45 颗工具 title/description + schema 描述全量）；错误码壳 `[API_*]` 机读 token 不动。
+- **闸升级**：扩展侧完备性闸改**注册表驱动**（三处 register*Tools 全注册后走查元数据 ↔ EXT_EN 双向；
+  字面量使用点照旧）；CJK 闸反引号字面量段豁免（`x 副本 (n)` 等代码/名字原文）。
+- **遮蔽再抓两处**（listTools map 参数 t、describeTool targetCaller 局部 t——tsc 提前咬住，✓ 纪律生效）；
+  插曲：toolsFs 导出名 registerFilesystemTools（不是 registerTools）。
+- 读数：台架 341/341 · ext tsc 0 · root build 0 · lint 0 error · harness failed=0 · api:doc 零漂移
+  （API_REFERENCE 生成物转英文）。dispatch 纯代码内注释性元数据（无消费点）按口径保留中文。
+
 **S2-5 扩展侧运行时消息（同日续，`a17c0ce`）**：
 - 87 串·5 文件：extension.ts 38 组（导入/移动/删除确认/固化/写全/初始化/复制路径/移动 QuickPick/
   API 覆盖与授权告警/绑定盘归一/打不开窗口）、trees 10、compilePanel 8（Problems 绑定错误四码）、
