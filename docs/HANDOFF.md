@@ -120,19 +120,14 @@ Start-Process cmd '/c','scripts\code.bat --user-data-dir=D:\vv-studio\profile D:
 
 > 本节只放指针与决策语。拍板＝在对话里逐条给结论，代理负责落契约/落账。
 
-### ① 批次五·写面 L6 逐颗放开（mcp/agent 面候选）
-- 正本＝`API_GRANULARITY_DESIGN.md` §八.4：「写面挂批次五逐颗拍板——HITL 路已在场，放开只是契约一行」。
-- 候选 14 颗（契约 sideEffects≠none 且 surfaces 含 ui；host.* 5 颗为 webview 内部通道不参与）：
-  - 绑定族（config-write）：`bindings.set` / `bindings.complete` / `bindings.materialize` / `circuits.toggle`
-  - 编译族：`compile.completeBindings`（config-write）/ `compile.compileAndShow`（process）
-  - 文件族（file-write）：`fs.createFile` / `fs.createFolder` / `fs.rename` / `fs.move` /
-    `fs.duplicateFile` / `fs.duplicateFolder` / `fs.import` / `fs.delete`（现挂 requiresApproval HITL）
-- 决策点：哪些颗对 mcp 面（agent）开放；开放后 HITL 审批是否保留（fs.delete 现挂审批）。
-- 前置：AI 接入试跑攒 e2e 读数（裁决原文）。
+### ① 批次五·写面 L6 —— ✅ 已拍板已落地（2026-10-19「全部放开」）
+- 已落地：14 颗写工具 surfaces += mcp（`c3ec960`）；fs.delete 保留 requiresApproval HITL。
+- 证人：契约锁白名单 14 颗 / mcpBridge 执行+回读 / extensionHost 执行五枪+HITL 拒 / harness 双态；真管道探针全 PASS。
+- 详见账本第十二节。
 
-### ② AI 接入试跑
-- 现状：MCP 桥就绪（19 颗只读面，真管道 400+ 枪深测）；接入方式「另行拍板」。
-- 决策点：接哪个客户端（Claude/Trae/其它）、stdio MCP 还是直连管道、试跑范围与验收口径。
+### ② AI 接入 —— 方向已拍板（侧边栏聊天窗），实现挂后续批次
+- 方向：`vscode.chat.createChatParticipant`（基座 1.143.0 稳定 API 在位）；工具调用走 executeTool 全闸链；
+  LLM 部分暂不实接（用户令）——详见账本第十二节。实现时从这颗开始。
 
 ### ③ dispatch.ts RPC 契约层元数据 i18n（47 串）
 - S2 余量（账本第十一节 S2-6 段）：RPC_METHODS 的 title/description 元数据，消费方＝apiDoc 文档生成器。

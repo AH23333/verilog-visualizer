@@ -1968,6 +1968,30 @@ e2e 修正版 **85/86**（唯一红点＝C3d 判据自纠，产品读数全绿�
 - **S2 至此 UI 可见面全量完成**（webview 全部入口＋通知＋命令面板＋设置＋扩展侧消息）。
 - 读数：台架 341/341 · build 0。基座同步至 S2-5 bundle（S2-6 仅 2 串，随下次统一同步）。
 
+## 十二、第十二节 · 批次五写面 L6 全部放开（2026-10-19，用户拍板「全部放开」）
+
+**拍板记录**：HANDOFF §八①五项待拍板归拢后，用户逐项结论：①写面**全部放开**；②接入方向＝vscode
+侧边栏自带聊天窗（chat participant），暂不接真实 LLM；③④见下；⑤CLI 在册不实现。
+
+**落刀（`c3ec960`）**：
+- 契约：14 颗写工具 surfaces += mcp（mcp 面 19→33）；fs.delete 保留 requiresApproval HITL
+  （agent 非交互＝NOT_APPROVED，审批闸在面闸开放后接班——两道闸的接力语义有证人钉住）。
+- 证人翻转（写面放开＝语义翻转，旧拒收证人全部翻为执行证人）：
+  · 契约锁 ⑤：mcp 面副作用工具「零颗」→「逐颗等于拍板名单 14 颗」（多一颗少一颗都是漂移；
+    首跑红点＝白名单字面序与 .sort() 输出序不合——compileAndShow 排在 completeBindings 前，程序化 diff 定位）；
+  · mcpBridge：写工具经 mcp 真执行＋回读可见（成功回包⛔ 带 traceId——traceId 在审计账上，只有错误回包带）；
+  · extensionHost：深测战役拒收七枪翻执行五枪＋fs.delete HITL 拒（闸③授权先行＝mcp:agent 绑档案种子）；
+  · harness：mcp-write-denied → **双态证人**（mcp-write-allowed＋mcp-host-rpc-denied）——「关」与「开」两态都有枪。
+- **真管道探针全 PASS**：bindings.set 经 mcp 真执行→回读可见→part=null 删键→表回原（零净变化）；
+  host.*（rpc-only）仍拒；审计行 set+删两条在账。
+- 读数：台架 341/341 · build 0 · lint 0 error · harness failed=0（18 步）。
+- 风险面如实：fs.delete 之外的重命名/移动/建删文件对 agent 无审批（用户拍板全开）；审计账全程在册可回溯。
+
+**②方向拍板记录**：接入 vscode 侧边栏自带聊天窗＝`vscode.chat.createChatParticipant`（基座 1.143.0
+稳定 API 在位，chat 视图随参与者注册出现）；工具调用走 executeTool 全闸链（本次放开后含写面）；
+LLM 部分＝`vscode.lm.selectChatModels`（需 LM provider 扩展在场）或后续自带 API——**暂不实接（用户令）**，
+实现挂后续批次。MCP-in-Copilot 路径不可用（fork 无 Copilot Chat）。
+
 **S2-5 扩展侧运行时消息（同日续，`a17c0ce`）**：
 - 87 串·5 文件：extension.ts 38 组（导入/移动/删除确认/固化/写全/初始化/复制路径/移动 QuickPick/
   API 覆盖与授权告警/绑定盘归一/打不开窗口）、trees 10、compilePanel 8（Problems 绑定错误四码）、

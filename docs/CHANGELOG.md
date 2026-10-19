@@ -6,8 +6,23 @@
 
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
+## [未发布 Unreleased] — R161 批次五：写面 L6 全部放开（2026-10-19，用户拍板「全部放开」）
+
+> HANDOFF §八①五项归拢后用户拍板。14 颗写工具 surfaces += mcp（mcp 面 19→33）；
+> fs.delete 保留 requiresApproval HITL（agent 非交互＝NOT_APPROVED，审批闸在面闸开放后接班）。
+
+### Changed
+- 契约：`bindings.set/complete/materialize`、`circuits.toggle`、`compile.completeBindings/compileAndShow`、
+  `fs.createFile/createFolder/rename/move/duplicateFile/duplicateFolder/import/delete` —— surfaces += mcp。
+- API_REFERENCE 随契约再生成。
+
+### 验证
+- 证人翻转：契约锁 ⑤ 改白名单语义（mcp 副作用工具逐颗等于拍板名单 14 颗）；mcpBridge 写工具真执行＋回读；
+  extensionHost 深测拒收七枪翻执行五枪＋HITL 拒；harness mcp-write-denied → 双态（allowed＋host-rpc-denied）。
+- 真管道探针全 PASS（set→回读→part=null 删→表回原零净变化；host.* 仍拒）；台架 341/341；
+  root/ext tsc 0；harness failed=0（18 步）。
+
 ---
-## [未发布 Unreleased] — R161 i18n 英文国际化 S1（2026-10-19）
 
 > 用户令「先做英文国际化」。设计正本＝`docs/I18N_DESIGN.md`：中文原文即键，语言跟随 VS Code 显示语言
 > （zh 系→中文＝行为不变；其余→英文＝国际缺省），⛔ 应用内切换 UI。施工账＝账本第十一节。
