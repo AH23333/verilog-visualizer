@@ -1787,3 +1787,36 @@ M6–M8 把那一格换回旧写法、数据照常坏 ⇒ 读回 21 passed / 零
   argsDigest 只记形状）＝agent 自调试闭环成。⚠ 途中实撞出在册语义：`.vv/` 未开户⇒审计静默丢行且 vvReady 进程内缓存
   （init 后要重启窗口才开账，刻意保守）——e2e 首跑没账即此因，非 bug。
 - 读数：vitest **294/294** · harness **failed=0（9 步）** · 终态已装基座。
+
+## 八、批次四下半场（四-3/四-4）施工账（2026-10-19 恢复开发，代管续刀）
+
+> 接手读 HANDOFF 原件即开工；三件套（台架+harness+e2e）一颗不减。提交：片0 `335ba7a`→四-3 `b619a2c`→四-4 `925027c`→四-5 本件。
+
+- **片0（双吃通道）**：verilogParse 正本逐字 `git mv` 进 shared/（examples.ts 同路先例），旧路径 re-export 桩——
+  主仓 lib.test/verilog.ts 零改动全绿。**顺手扫出两颗隐性红**：root tsc（vscode→桩 paths 那张编译面）自四-1 起
+  缺 textDocument.languageId / treeProvider.refresh 声明——四-1/四-2 只跑 ext tsc 没跑这张面，今天 git mv 让它现形；
+  按"真宿主早已在场"补可选字段（⛔ 改判据、⛔ 放宽，只补类型面）。教训入册：**凡动 tests/** 也纳入 root tsc 终判**。
+- **四-3（P5/P3）**：`res.parseFile`——同一份字节两颗解析器并呈：main 栏（shared 内核：parseModulePorts 端口格
+  转 export 直吐、parseInstantiations 实例名/行号/连接全形）+ lite 栏 + **divergence.mainSelfDiff**——
+  dff 族"主仓 parseVerilogInstances 跳、parseInstantiations 不跳"的 r80 案底升格为一等公民读数；
+  三张原语跳表挂名 export 并呈差集（⛔ 借并呈之名偷收敛——收敛仍是独立战役）。⛔ ANSI 声明 ports 空数组＝
+  parseModulePorts 现状如实（工具层⛔ 修饰）。`compile.hierarchy`——下钻/索引/环守卫**逐字抽出**为
+  buildHierDefIndex/hierInstancesOf（类改委托调用零改动），台架"与树同尺证人"钉：同现场树第一层==工具第一层。
+  harness 15/15（mcp-parse-file-divergence 实机读数 mainSelf=["dff"]）；e2e 真工程三枪（top.v 端口连接行号全形、
+  hierarchy 出 lib/sub.v 跨目录定义）。
+- **四-4b（错误契约 v2 存量收编 §八.2）**：ToolError 枚举满表九码；五道闸抛出点全带 hint（"下一步打哪颗"硬要求）；
+  handler 内 raw 抛折 HANDLER_ERROR **补发执行器号**（手里那串==账上那行——台架 traceId==dayFile 行反查钉）；
+  readProjectFile 三码归位样板（BAD_ARGS/NOT_FOUND/TOO_LARGE 各带路标，⛔ 挤 HANDLER_ERROR 让 agent 猜归责）。
+  桥/RPC 回包加 hint 键＝向后兼容。台架九码颗颗样本钉；vscodeShell 词表**开户 project 新域**（双向等式照旧严）。
+  自纠一笔：闸② hint 钉曾被插行脚本拼进注释成**死断言**（tsc/vitest 都抓不到——绿得毫无说服力），
+  逐行读回现场救活；教训＝落盘插入脚本⛔ 拼接多语句为一行。
+- **四-4c（doctor，L5）**：⛔ 新逻辑纪律执行到底——missing=collectInstanceHits、unresolved=生效表值现核
+  （readMetaAt+resolveLayerValue 折叠后 stat/模块在场，与 explain 终点同判据）、tables=collectTableDirs（转导出）逐层
+  parse/形状判、closure=closureOf 顺检最近编译单、probe=D1 同一颗预演。verdicts B1~B5 码表排序、info 默认收拢
+  （deep:true 显式展，裁决 §八.3）、128KB 帽 truncated+total 如实、**没表≠坏⛔ 刷事**。
+  e2e 真探针工程实读：健康＝scanned 11、malformed []、verdicts 0、infoSuppressed 5——**零误报**（对健康工程张口
+  闭嘴正是体检的本分）；hint 过线实录 traceId=7ef2590f。
+- **终读数**：vitest 305→313→319 满绿 · harness 13→15→17 failed=0 · root/ext tsc 0 · esbuild 0 · lint 0 error（34 warnings 沿基线）。
+- **在册欠账（⛔ 本批遗忘）**：doctor hosts 预算 60 外需 dir 分批（读数已带提醒）；files.parseErrors 对 .v 恒空是
+  "正则内核不抛"的如实而非能力——语义级 verilog 报错住 bindings/closure 两段，下批若做"编译前哨"再收；
+  双解析器收敛（P5 正业）仍挂独立战役。

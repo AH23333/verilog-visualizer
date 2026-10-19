@@ -77,7 +77,7 @@ initialize→tools/list(12)→sys.getStatus(真根)→bindings.get(真表)→bin
 - vitest **294/294** · 真宿主 harness **failed=0（9 步）** · D1 预演钉改判（mcp 已开＝ready，关闸取证位换 cli）。
 
 ---
-## [未发布 Unreleased] — R160 批次四：API 颗粒度扩容（进行中·四-1/四-2 已交付，2026-10-19 暂停收尾）
+## [未发布 Unreleased] — R160 批次四：API 颗粒度扩容（**四批全收口**：四-1 `e8b3ae2` · 四-2 `7caab8b` · 四-3 `b619a2c` · 四-4 `925027c`，2026-10-19）
 
 > 设计正本＝`API_GRANULARITY_DESIGN.md`（十病灶→L0~L6 阶梯→六颗只读新工具→错误契约 v2→分期验收，§八 四板裁决）。
 > 用户 2026-10-19 令暂停开发；交接边界与待办＝`HANDOFF.md`。
@@ -91,13 +91,29 @@ initialize→tools/list(12)→sys.getStatus(真根)→bindings.get(真表)→bin
 - `bindings.explain`（L4 主枪：逐层试键轨迹＝closureOf 合并查表镜像，verdict＋hint 给可照打实参）
   ＋`res.readBindingTables`（L3 逐层表原文＋extraKeys＋32KB 帽）。台架 7 钉 305/305×2 · harness 13/13 · e2e resolved 轨迹实读。
 
-### TODO（恢复开发即开工，见 HANDOFF §六）
-- 四-3：`res.parseFile`（main/lite 双解析器并呈＋对账钉）＋`compile.hierarchy`（与 HierarchyTree 同一把主人）。
-- 四-4：`project.doctor`（全复用内核聚合，info 级 `deep:true` 才开）＋错误契约 v2 hint（含存量收编）。
-- 四-5：文档再生成＋账本卷七十第八节＋本段收口。
+### Added（四-3 `b619a2c`·片0 前置 `335ba7a`）
+- 片0：`src/lib/verilogParse.ts` 正本逐字搬入 `shared/`（旧路径 re-export 桩零改动；主仓/扩展双吃一颗主人），
+  `parseModulePorts` 转 export、两份原语跳表提为命名 `export const`（⛔ 收敛 dff 族的表内分岔＝P5 案底，挂名如实并呈）。
+- `res.parseFile`（L4）：main/lite 双栏并呈＋divergence（跨栏差＋**mainSelfDiff**——dff 族主仓两面分岔一等公民格）
+  ＋三表差集 primitivesIgnored；`.djs` 单栏；帽 256KB。`compile.hierarchy`（L4）：与 HierarchyTree **同一把主人**
+  （buildHierDefIndex/hierInstancesOf 逐字抽出+类委托），BFS 平表 chain/defFile/line/depth、depth 帽 4、环守卫同尺。
+  台架 8 钉 313/313 · harness 15/15（真机 mainSelf=["dff"] 肉眼可见）· e2e 三枪真工程读数。
 
-### 验证（暂停点复验）
-- vitest **305/305**（2026-10-19 收尾亲跑）· harness 13 步 failed=0（四-2 提交时）· e2e 桥直调全绿。
+### Added/Fixed（四-4 `925027c`·错误契约 v2 + doctor）
+- 错误契约 v2 存量收编（裁决 §八.2）：ToolError 枚举满九码；**五道闸抛出点全带 hint**（拒单即路标）；handler raw 抛
+  折 HANDLER_ERROR 并**补发执行器号**（手里 traceId==账上行）；RPC/桥回包加 hint 键向后兼容；`readProjectFile`
+  三码归位样板（BAD_ARGS/NOT_FOUND/TOO_LARGE 分岔，⛔ 挤成"工具炸了"误导归责）。台架九码颗颗样本钉＋traceId 反查钉。
+- `project.doctor`（L5）：⛔ 新逻辑全复用（collectInstanceHits/closureOf/readMetaAt/collectTableDirs/D1 预演），
+  verdicts B1~B5 排序＋**info 默认收拢 deep:true 显式展**（裁决 §八.3）＋128KB 帽；没表≠坏。真探针工程 e2e **零误报**实读。
+- harness 加两枪（mcp-doctor-agg / mcp-hint-on-wire）——17/17 failed=0；vscodeShell 词表开户 project 域（双向等式照旧严）。
+
+### 四-5（本段收口）
+- 账本卷七十第八节（含自纠两笔：闸②死断言拼行事故、四-1/2 期 root tsc 未跑现形补扫）；
+  设计稿 §4.6/§4.7 落"实现形状"注；API_REFERENCE 由 api:doc 随契约再生成零漂（45 工具满盘）。
+
+### 验证（批次四终态）
+- vitest **319/319** · harness **17/17 failed=0** · root tsc 0 · ext tsc 0 · esbuild 0 · lint 0 error；
+  e2e：四-3 三枪＋四-4 两枪真工程实读（健康零误报、hint 过线）；%TEMP 脚本用完已删。
 
 ---
 ## [未发布 Unreleased] — R159：真宿主集成测试上线 + "越修越坏"四刀（2026-10-18 夜）

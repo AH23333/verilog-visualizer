@@ -1,7 +1,8 @@
 # API 颗粒度设计（批次四提案）— 面向 agent/MCP 与本项目调试难度
 
-> 状态：**已拍板（§八），分期施工至四-2（`7caab8b`）后用户令暂停（2026-10-19）**——
-> 四-1/四-2 已交付，四-3 起待恢复；交接边界、环境命令、待办清单见 [HANDOFF.md](./HANDOFF.md)。
+> 状态：**批次四全收口（四-1 `e8b3ae2` · 四-2 `7caab8b` · 片0 `335ba7a` · 四-3 `b619a2c` · 四-4 `925027c` · 四-5 文档收口，2026-10-19）**——
+> 中途曾按用户令暂停于四-2 后（HANDOFF 快照 `d39f73a`），同日恢复开发跑完四-3/四-4/四-5。
+> 施工账＝账本卷七十第七/八节；交付读数＝CHANGELOG 批次四段；写面（L6）按裁决 §八.4 挂批次五逐颗拍板。
 > 前提纪律（用户 2026-10-19）：先确保基本功能没问题——每颗新 API 的验收＝台架钉＋真宿主 harness＋脚本化 e2e（桥直调），
 > **⛔ 依赖 LLM agent 试出来才算数**；AI 接入是最后一步，不是验收手段。
 > 正本关系：本文定"该有哪些颗、颗粒度怎么分层、错误怎么说话"；工具账逐颗 schema 仍以
@@ -86,6 +87,9 @@ L6 变更（后续档）bindings.set → fs.* → compile.run   ← 逐颗拍板
 - 实现纪律：**吃 closureOf 的同一把解析函数**（一颗主人，⛔ 第二套判据——E2 双解析器教训）。
 
 ### 4.6 `res.parseFile`（L4·解析器输出摊开）
+> **实现形状（四-3 落地注）**：divergence 增 mainSelfDiff（主仓自身两函数分岔=dff 族案底）；
+> primitivesIgnored 落地为**三张跳表差集**（"本文件命中扫描"需第三把尺＝⛔ 发明，表差集才是 P5 的如实）；
+> `.v` 非 ANSI 声明 ports 空数组＝parseModulePorts 现状如实。
 - 目的：P5。把"解析器眼里的这份文件"原样吐出。
 - schema：`{ path:string }`（工程根相对；.v/.sv/.vh/.djs）。
 - 回包：`.v → { modules:[{name, ports:[{name,direction,width,isSigned}], instances:[{name,line,connections?}] }], primitivesIgnored:[…] }`；
@@ -93,6 +97,8 @@ L6 变更（后续档）bindings.set → fs.* → compile.run   ← 逐颗拍板
 - 口径：**主仓解析器（src/lib/verilogParse）与扩展侧 lite 各出一栏**（`parsers:{main,lite}`）——两解析器分岔从此肉眼可比，长期目标收敛成一颗（在册）。
 
 ### 4.7 `compile.hierarchy`（L4·实例树数据源）
+> **实现形状（四-3 落地注）**：主人抽出为 buildHierDefIndex/hierInstancesOf（类改委托，⛔ 第二把尺）；
+> 预算 500 颗＋64KB 帽（truncated+total+note）；line=parseVerilogInstancesWithLines 首现行（同判据两形）。
 - 目的：P3/层次树调试——层次树显示什么，agent 直接问同一份数据。
 - schema：`{ entry:string, depth?:number(帽4) }`。
 - 回包：`{ root, nodes:[{ chain, instance, module, defFile|null, line }] }`——与 HierarchyTree.getChildren 同一把主人。
