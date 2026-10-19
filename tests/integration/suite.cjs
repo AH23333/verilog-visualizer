@@ -113,6 +113,19 @@ async function run() {
         const tb = await shot('res.readBindingTables', { doc: 'it_top.v' });
         ok('mcp-tables-chain', tb.ok === true && Array.isArray(tb.result.chain) && tb.result.chain.length >= 1,
           tb.ok ? 'layers=' + tb.result.chain.map((l) => l.dir + (l.exists ? '*' : '')).join(',') : JSON.stringify(tb));
+        // 四-3 双枪（自给探针件）：parseFile 并呈的 P5 案底在真宿主可见（dff 族）；hierarchy 沿链展开 defFile 落地
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(ws.uri, 'it_p43_top.v'), new TextEncoder().encode('module it_p43_top(input a, output y); dff u_d(.d(a)); it_p43_mid u_m(); endmodule\n'));
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(ws.uri, 'it_p43_mid.v'), new TextEncoder().encode('module it_p43_mid; it_p43_leaf l1(); endmodule\n'));
+        await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(ws.uri, 'it_p43_leaf.v'), new TextEncoder().encode('module it_p43_leaf; endmodule\n'));
+        const pf = await shot('res.parseFile', { path: 'it_p43_top.v' });
+        ok('mcp-parse-file-divergence', pf.ok === true && pf.result.kind === 'verilog'
+          && pf.result.parsers.lite.instances.includes('dff') && pf.result.divergence.mainSelfDiff.includes('dff')
+          && pf.result.parsers.main.instances.some((x) => x.name === 'u_m'),
+          pf.ok ? 'lite=' + JSON.stringify(pf.result.parsers.lite.instances) + ' mainSelf=' + JSON.stringify(pf.result.divergence.mainSelfDiff) : JSON.stringify(pf));
+        const hh = await shot('compile.hierarchy', { entry: 'it_p43_top.v' });
+        ok('mcp-hierarchy-chain', hh.ok === true && hh.result.nodes.some((x) => x.chain === 'it_p43_mid/it_p43_leaf')
+          && hh.result.nodes.some((x) => x.defFile === 'it_p43_leaf.v' && typeof x.line === 'number'),
+          hh.ok ? 'total=' + hh.result.total + ' chains=' + hh.result.nodes.map((x) => x.chain).join(',') : JSON.stringify(hh));
       } catch (e) { ok('mcp-pipe-roundtrip', false, String((e && e.message) || e)); }
     }
   } catch (e) {

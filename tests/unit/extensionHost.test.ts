@@ -2278,7 +2278,14 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
       const rg = regIds.filter((k: string) => k.startsWith(fam)).sort();
       expect(rg, `契约族 ${fam} 有未注册孤儿`).toEqual(ct);
     }
-    expect(regIds.filter((k: string) => k.startsWith('compile.'))).toEqual(['compile.closure']);   // compile 族只上只读分析
+    // R160 四-3 族形升档：compile. 族⛔ 进 fam 孤儿双查——契约里 compile.auditBindings/compileAndShow/
+    //   completeBindings 等是 **RPC 兼容面**（dispatch 命令名上账，非 toolRegistry 工具；批次一的旧裁量，
+    //   保留"名册点名"防漂移）：registry 侧只允许只读分析两颗，且必全 read/none。
+    expect(regIds.filter((k: string) => k.startsWith('compile.')).sort()).toEqual(['compile.closure', 'compile.hierarchy']);
+    for (const id of ['compile.closure', 'compile.hierarchy']) {
+      expect(contract.tools[id].perm).toBe('read');
+      expect(contract.tools[id].sideEffects).toBe('none');
+    }
   });
 
   it('闸① not-registered：未登记 id 拒（[API_NOT_REGISTERED] 机读码）', async () => {
@@ -2988,5 +2995,111 @@ describe('R157 绑定链六连（2026-10-18 用户绑定链实机投诉）：树
     const labels = qp.items.map((i: any) => i.label);                                  // 同一颗 picker 换到二级
     expect(labels).toContain('alt_impl.djs');
     expect(labels).not.toContain('adder.v');                    // ⛔ 编译域文件混进沙盒弹窗
+  });
+});
+
+describe('R160 批次四 四-3：解析并呈与层次树（res.parseFile / compile.hierarchy）', () => {
+  const call = async (id: string, args: Record<string, unknown>) => {
+    const { executeTool, CALLER_UI } = await import('../../extension/src/toolRegistry');
+    return await executeTool(ctx(PROD) as never, CALLER_UI, id, args) as any;
+  };
+
+  it('parseFile 双栏并呈：main 端口/连接结构化、lite 名单——P5 案底（dff 族）当场可见', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/pf_top.v': 'module pf_top(input a, output y); dff u_dff(.d(a)); adder u_adder(.a(a), .b(a), .s(y)); endmodule\n',
+    } });
+    const r = await call('res.parseFile', { path: 'pf_top.v' });
+    expect(r.kind).toBe('verilog');
+    expect(r.parsers.main.modules[0].name).toBe('pf_top');
+    expect(r.parsers.main.modules[0].ports.map((p: any) => p.direction)).toEqual(['input', 'output']);
+    expect(r.parsers.main.instances.map((i: any) => i.module)).toEqual(['dff', 'adder']);
+    expect(r.parsers.main.instances[0].name).toBe('u_dff');               // 实例名只活在 main 栏（lite 按模块名去重）——并呈的意义
+    expect(r.parsers.lite.instances).toEqual(['dff', 'adder']);
+    expect(r.divergence.mainSelfDiff).toContain('dff');                    // 主栏 parseVerilogInstances 跳 dff、parseInstantiations 不跳＝r80 案底现形
+    expect(r.primitivesIgnored.onlyInstancesTable).toContain('dff');
+  });
+
+  it('parseFile .djs 单栏：cells 计数/subcircuits/inputs/outputs 与解析错误如实', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/m.djs': '{"cells":[{"type":"Input","net":"a"},{"type":"Subcircuit","celltype":"counter"},{"type":"Subcircuit","celltype":"counter"},{"type":"Output","net":"y"}]}',
+      'D:/p/bad.djs': '{oops',
+    } });
+    const r = await call('res.parseFile', { path: 'm.djs' });
+    expect(r.kind).toBe('djs');
+    expect(r.cells).toBe(4);
+    expect(r.subcircuits).toEqual(['counter']);      // 名去重＝审计族同词表
+    expect(r.inputs).toEqual(['a']);
+    expect(r.outputs).toEqual(['y']);
+    const bad = await call('res.parseFile', { path: 'bad.djs' });
+    expect(bad.parseError).toBeTruthy();
+    expect(bad.cells).toBe(0);
+  });
+
+  it('parseFile 两态拒绝都给 hint（缺档 NOT_FOUND 与越域 BAD_EXT 分岔）', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/note.md': 'hi' } });
+    const ghost = await call('res.parseFile', { path: 'ghost.v' });
+    expect(ghost.verdict).toBe('NOT_FOUND');
+    expect(ghost.hint).toContain('res.listProject');
+    const ext = await call('res.parseFile', { path: 'note.md' });
+    expect(ext.verdict).toBe('BAD_EXT');
+    expect(ext.hint).toContain('res.readProjectFile');
+  });
+
+  it('parseFile 帽 256KB：超长文件截数组并标 truncated＋capBytes（⛔ 静默截半当全貌）', async () => {
+    const mods: string[] = [];
+    for (let i = 0; i < 12000; i++) mods.push('module m' + i + '(input a, output y); endmodule');
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/fat.v': mods.join('\n') } });
+    const r = await call('res.parseFile', { path: 'fat.v' });
+    expect(r.truncated).toBe(true);
+    expect(r.capBytes).toBe(262144);
+    expect(r.parsers.main.modules.length).toBeLessThan(12000);
+  });
+
+  it('hierarchy BFS 平表：chain/defFile/line/depth 齐；depth 请求越帽钳到 4', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/h_top.v': 'module h_top; h_mid m1(); endmodule',
+      'D:/p/h_mid.v': 'module h_mid; h_leaf l1(); endmodule',
+      'D:/p/h_leaf.v': 'module h_leaf; endmodule',
+    } });
+    const r = await call('compile.hierarchy', { entry: 'h_top.v', depth: 9 });
+    expect(r.depthCap).toBe(4);
+    expect(r.nodes.map((n: any) => n.chain).sort()).toEqual(['h_mid', 'h_mid/h_leaf']);
+    const deep = r.nodes.find((n: any) => n.chain === 'h_mid/h_leaf');
+    expect(deep.defFile).toBe('h_leaf.v');
+    expect(deep.line).toBe(1);
+    expect(deep.depth).toBe(2);
+  });
+
+  it('hierarchy 环守卫与树同道：a↔b 互实例化只停一次（chain 上已有＝跳，无无限递归）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/cy_a.v': 'module cy_a; cy_b b1(); endmodule',
+      'D:/p/cy_b.v': 'module cy_b; cy_a a1(); endmodule',
+    } });
+    const r = await call('compile.hierarchy', { entry: 'cy_a.v' });
+    expect(r.nodes.map((n: any) => n.chain)).toEqual(['cy_b', 'cy_b/cy_a']);   // 回头那颗 cy_b 在链上＝止
+  });
+
+  it('hierarchy 与 HierarchyTree 一把尺证人：同现场树第一层 == 工具第一层（主人抽取零漂移）', async () => {
+    await boot({ folders: ['D:/p'], seed: {
+      'D:/p/h_top.v': 'module h_top; h_mid m1(); endmodule',
+      'D:/p/h_mid.v': 'module h_mid; endmodule',
+    } });
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file('D:/p/h_top.v'));
+    vscode.state.activeEditor = { document: doc, viewColumn: 1, revealRange: () => { } };
+    const hier = vscode.state.treeProviders['verilogViz.hierarchy'];
+    hier.refresh?.();
+    const treeKids = (await hier.getChildren()).map((n: any) => n.label);
+    const r = await call('compile.hierarchy', { entry: 'h_top.v' });
+    expect(r.nodes.filter((n: any) => n.depth === 1).map((n: any) => n.module)).toEqual(treeKids);
+  });
+
+  it('hierarchy NOT_FOUND 带 hint；越域 BAD_EXT 指向同域工具', async () => {
+    await boot({ folders: ['D:/p'], seed: { 'D:/p/other.djs': '{"cells":[]}' } });
+    const g = await call('compile.hierarchy', { entry: 'ghost.v' });
+    expect(g.verdict).toBe('NOT_FOUND');
+    expect(g.hint).toContain('res.listProject');
+    const e = await call('compile.hierarchy', { entry: 'other.djs' });
+    expect(e.verdict).toBe('BAD_EXT');
+    expect(e.hint).toContain('compile.closure');
   });
 });

@@ -23,7 +23,9 @@ import {
   materializeBindings, togglePartRole, getCircuitsSet, pathRel, META_FILE,
   readMetaAt, dirChain, metaPathOf, resolveLayerValue, normalizePartName,
 } from './sandboxFiles';
-import { parseVerilogInstances, parseVerilogModules } from './verilogParseLite';
+import { parseVerilogInstances, parseVerilogModules, parseVerilogInstancesWithLines, VERILOG_LITE_PRIMITIVES } from './verilogParseLite';
+// R160 四-3：主仓解析器 namespace 引入（res.parseFile main 栏；正本在 shared/，与主仓编译校验同一颗主人）
+import * as mainParse from '../../shared/verilogParse';
 import { closureOf, scanDefs, lastJobInfo, getLastTextUri } from './compilePanel';
 import { apiOverrideSnapshot, canSurface, loadApiContract } from './apiSurface';
 import { checkGrant, grantsSnapshot } from './apiGrants';
@@ -31,7 +33,7 @@ import { auditChannelState } from './apiAudit';
 import { activationSnapshot } from './activationTrail';
 import { bridgeSnapshot } from './mcpBridge';
 import { openDocsSnapshot } from './customEditors';
-import { getActiveSandboxDocUri } from './trees';
+import { getActiveSandboxDocUri, buildHierDefIndex, hierInstancesOf } from './trees';
 import { hostState } from './hostState';
 
 let registered = false;
@@ -301,6 +303,159 @@ export function registerDomainTools(): void {
         } catch { return { ...base, verdict: 'UNRESOLVED_REF', hint: `部件「${v}」不存在或不是合法电路 json——bindings.set 改值` }; }
       }
       return { ...base, verdict: 'SCHEMA_INVALID', hint: `绑定值「${v}」不支持：只认 .v/.sv/.vh 定义或 .djs/.gate 部件` };
+    },
+  });
+
+  /* ============ R160 批次四 四-3：解析器输出并呈＋实例层次树（P5/P3——"解析器眼里长什么样"与"树显示的同一份数据"） ============ */
+
+  /** 回包帽 256KB（P9 纪律）：超限就逐个砍最长数组（折半），并标 truncated——列表总数⛔ 静默失真。 */
+  const capLists256 = (obj: Record<string, any>, cap = 262144): Record<string, any> => {
+    if (JSON.stringify(obj).length <= cap) return obj;
+    const getArr = (path: string): any[] | null => {
+      let cur: any = obj;
+      for (const seg of path.split('.')) { cur = cur?.[seg]; }
+      return Array.isArray(cur) ? cur : null;
+    };
+    for (;;) {
+      const keys: string[] = [];
+      const walk = (o: any, p: string) => {
+        for (const k of Object.keys(o ?? {})) {
+          const v = o[k]; const q = p ? `${p}.${k}` : k;
+          if (Array.isArray(v) && v.length > 1) keys.push(q);
+          else if (v && typeof v === 'object' && !Array.isArray(v)) walk(v, q);
+        }
+      };
+      walk(obj, '');
+      let best: string | null = null; let bestLen = 0;
+      for (const q of keys) { const arr = getArr(q); if (arr && arr.length > bestLen) { bestLen = arr.length; best = q; } }
+      if (!best) break;
+      const arr = getArr(best)!;
+      arr.splice(Math.ceil(arr.length / 2));
+      if (JSON.stringify(obj).length <= cap) break;
+    }
+    obj.truncated = true;
+    obj.capBytes = cap;
+    return obj;
+  };
+
+  registerTool({
+    id: 'res.parseFile', title: '解析器原样输出摊开（双栏并呈）',
+    description: 'L4（P5）：同一份文件字节喂**两颗解析器**——main 栏＝主仓 shared/verilogParse（模块端口 parseModulePorts、例化端口连接 parseInstantiations，编译校验血统）；'
+      + 'lite 栏＝扩展侧 verilogParseLite（树/编译面板血统）。divergence 报两套输出差集、primitivesIgnored 报三张原语跳表的差——'
+      + '分岔（dff 族一颗表跳一颗不跳＝r80 案底）**如实并呈**⛔ 掩盖，收敛＝独立战役（裁决 §八.1）。'
+      + '.djs 单栏（cells/subcircuits/inputs/outputs＝审计族同词表）。帽 256KB（截数组标 truncated）。幂等只读。',
+    schema: { type: 'object', properties: { path: { type: 'string', description: '根相对 .v/.sv/.vh 或 .djs' } }, required: ['path'] },
+    handler: async (ctx, a) => {
+      const rel = sanitizeRel(String(a.path));
+      const root = projectRoot(ctx);
+      let text: string;
+      try { text = new TextDecoder().decode(await vscode.workspace.fs.readFile(vscode.Uri.joinPath(root, ...rel.split('/')))); }
+      catch { return { path: rel, verdict: 'NOT_FOUND', hint: `读不到「${rel}」——路径按根相对给；res.listProject / res.listSandbox 可列真名` }; }
+      if (/\.djs$/i.test(rel)) {
+        let cells: any[] = []; let parseError: string | null = null;
+        try {
+          const pj = JSON.parse(text);
+          cells = Array.isArray(pj?.cells) ? pj.cells : [];
+          if (!Array.isArray(pj?.cells)) parseError = '顶层没有 cells 数组';
+        } catch (e) { parseError = String((e as Error)?.message || e).slice(0, 160); }
+        const names = (t: string) => [...new Set(cells.filter((c: any) => c?.type === t && c.celltype).map((c: any) => String(c.celltype)))];
+        const nets = (t: string) => cells.filter((c: any) => c?.type === t).map((c: any) => String(c?.net ?? '?'));
+        return capLists256({ path: rel, kind: 'djs', bytes: text.length, parseError,
+          cells: cells.length, subcircuits: names('Subcircuit'), inputs: nets('Input'), outputs: nets('Output') });
+      }
+      if (!isVerilogPath(rel)) return { path: rel, verdict: 'BAD_EXT', hint: '只收 .v/.sv/.vh（编译域）与 .djs（沙盒域）；其他文本走 res.readProjectFile' };
+      const mainMods = mainParse.parseVerilogModules(text);
+      const portsMap = mainParse.parseModulePorts(text);
+      const insts = mainParse.parseInstantiations(text);
+      const mainPVIs = mainParse.parseVerilogInstances(text);   // 主仓自己的 instances 栏（dff 族与 instantiations 分岔的证人）
+      const liteMods = parseVerilogModules(text);           // 名字没让渡——toolsDomain 的裸名恒指 lite（文件头 import 为准）
+      const liteInsts = parseVerilogInstances(text);
+      const liteLines = parseVerilogInstancesWithLines(text);
+      const instMods = [...new Set(insts.map((i) => i.moduleName))];
+      const MI = mainParse.VERILOG_INSTANCES_PRIMITIVES; const MN = mainParse.VERILOG_INSTANTIATIONS_PRIMITIVES; const LT = VERILOG_LITE_PRIMITIVES;
+      const diff = (a: readonly string[], b: readonly string[]) => a.filter((w) => !b.includes(w));
+      return capLists256({
+        path: rel, kind: 'verilog', bytes: text.length,
+        parsers: {
+          main: {
+            modules: mainMods.map((name) => ({ name,
+              ports: (portsMap.get(name)?.ports ?? []).map((p) => ({ name: p.name, direction: p.direction, width: p.width, isSigned: p.isSigned })),
+              // 口径如实：ports 只吃 ANSI 式声明（非 ANSI 的端口在体内——这一格给空数组是 parseModulePorts 现行为，⛔ 工具层修饰）
+            })),
+            instances: insts.map((i) => ({ name: i.instanceName, module: i.moduleName, line: i.lineNumber,
+              connections: i.ports.map((p) => ({ port: p.portName, expr: p.connectedExpr })) })),
+          },
+          lite: { modules: liteMods, instances: liteInsts, instancesWithLines: liteLines },
+        },
+        divergence: {
+          modules: { onlyMain: mainMods.filter((m) => !liteMods.includes(m)), onlyLite: liteMods.filter((m) => !mainMods.includes(m)) },
+          instances: { onlyMain: instMods.filter((m) => !liteInsts.includes(m)), onlyLite: liteInsts.filter((m) => !instMods.includes(m)) },
+          // 主栏 own 两面（parseVerilogInstances 跳 dff 族、parseInstantiations 不跳＝r80 案底的本体）——⛔ 只看跨栏差会漏它
+          mainSelfDiff: instMods.filter((m) => !mainPVIs.includes(m)),
+        },
+        primitivesIgnored: {
+          onlyInstancesTable: diff(MI, MN), onlyInstantiationsTable: diff(MN, MI),
+          liteVsMainInstances: { onlyLite: diff(LT, MI), onlyMain: diff(MI, LT) },
+          note: '三张跳表的差集＝"同一颗词被一颗表当原语跳掉、被另一颗表放过"的分岔名单（P5 案底；dff 族在册）',
+        },
+      });
+    },
+  });
+
+  registerTool({
+    id: 'compile.hierarchy', title: '实例层次树（与树同一把主人）',
+    description: 'L4（P3）：entry（根相对 .v）为根、depth（帽 4）全展开成平表——用的就是**层次树的下钻主人**'
+      + '（hierInstancesOf/buildHierDefIndex 抽自 HierarchyTree，环守卫同一把 chain 尺）；line＝parseVerilogInstancesWithLines 首现行（同判据两形，一把尺）。'
+      + '树显示什么，agent 就问到什么。预算 500 颗＋回包 64KB 帽（truncated+total 如实）。幂等只读。',
+    schema: { type: 'object', properties: { entry: { type: 'string', description: '根相对 .v 入口' }, depth: { type: 'number', description: '下钻深度（帽 4，缺省 4）' } }, required: ['entry'] },
+    handler: async (ctx, a) => {
+      const rel = sanitizeRel(String(a.entry));
+      if (!isVerilogPath(rel)) return { entry: rel, verdict: 'BAD_EXT', hint: '只认 .v/.sv/.vh（与 compile.closure 同域）；.djs 的层级见 bindings.audit / res.parseFile' };
+      const root = projectRoot(ctx);
+      const entryUri = vscode.Uri.joinPath(root, ...rel.split('/'));
+      try { await vscode.workspace.fs.stat(entryUri); } catch { return { entry: rel, verdict: 'NOT_FOUND', hint: `入口「${rel}」不存在——res.listProject 列真名` }; }
+      const defMap = await buildHierDefIndex();
+      const capD = Math.min(4, Math.max(1, Math.floor(Number(a.depth)) || 4));
+      const lineCache = new Map<string, Map<string, number>>();
+      const lineOf = async (uri: vscode.Uri, mod: string): Promise<number | null> => {
+        let m = lineCache.get(uri.path);
+        if (!m) {
+          m = new Map();
+          try {
+            const t = new TextDecoder().decode(await vscode.workspace.fs.readFile(uri));
+            for (const e of parseVerilogInstancesWithLines(t)) if (!m!.has(e.name)) m.set(e.name, e.line);
+          } catch { /* 读不到＝整图 null，如实 */ }
+          lineCache.set(uri.path, m);
+        }
+        return m.get(mod) ?? null;
+      };
+      const relOf = (u: vscode.Uri) => rootRel(root, u);
+      const nodes: Array<Record<string, unknown>> = [];
+      let budget = 500; let truncated = false;
+      const queue: Array<{ uri: vscode.Uri; chain: string; depth: number }> = [{ uri: entryUri, chain: '', depth: 0 }];
+      while (queue.length && budget > 0) {
+        const cur = queue.shift()!;
+        let kids;
+        try { kids = await hierInstancesOf(cur.uri, cur.chain, defMap); } catch { continue; }
+        for (const nd of kids) {
+          if (budget-- <= 0) { truncated = true; break; }
+          nodes.push({ chain: nd.chain ?? nd.label, instance: nd.label, module: nd.label,
+            defFile: nd.uri ? relOf(nd.uri) : null, line: await lineOf(cur.uri, nd.label), depth: cur.depth + 1 });
+          if (nd.uri && cur.depth + 1 < capD) queue.push({ uri: nd.uri, chain: String(nd.chain ?? nd.label), depth: cur.depth + 1 });
+        }
+      }
+      if (queue.length && !truncated) truncated = true;
+      let out: Record<string, unknown> = { entry: rel, root: rel, depthCap: capD, total: nodes.length, truncated, nodes };
+      if (JSON.stringify(out).length > 65536) {
+        let lo = 0; let hi = nodes.length;
+        while (lo < hi - 1) {
+          const mid = Math.floor((lo + hi) / 2);
+          if (JSON.stringify({ ...out, nodes: nodes.slice(0, mid) }).length <= 65536) lo = mid; else hi = mid;
+        }
+        out = { ...out, nodes: nodes.slice(0, lo), truncated: true,
+          note: `nodes 已按 64KB 帽截到 ${lo} 颗（total＝全量 ${nodes.length}——⛔ 把截断当全貌）` };
+      }
+      return out;
     },
   });
 

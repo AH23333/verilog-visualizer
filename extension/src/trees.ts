@@ -103,6 +103,39 @@ export class ModuleTree implements vscode.TreeDataProvider<Node> {
 
 /* ============ 层次结构 Hierarchy ============ */
 /** 从活动编辑器的 .v 出发逐层下钻：实例 → 定义文件 → 该文件的实例……（环守卫见 `Node.chain`）。 */
+
+/** 全工作区编译域扫一遍建模块名→文件索引（R160 四-3：从 HierarchyTree.rebuildDefIndex **逐字抽出**——
+ *  树与 compile.hierarchy 工具同一把尺；调用方自持缓存（树类 refresh 作废、工具每次现建）。 */
+export async function buildHierDefIndex(): Promise<Map<string, vscode.Uri>> {
+  const map = new Map<string, vscode.Uri>();
+  for (const uri of await findVerilogUris()) {
+    try {
+      for (const mod of parseVerilogModules(await readText(uri))) if (!map.has(mod)) map.set(mod, uri);
+    } catch { /* 读不到的文件跳过 */ }
+  }
+  return map;
+}
+
+/** 某文件里例化的模块 → 子节点（跳过链上已有的＝环守卫）。**逐字抽出自 HierarchyTree._instancesOf**，
+ *  差别只有 defMap 改为入参（缓存归属上移）；compile.hierarchy 与树共用，⛔ 第二套下钻判据。 */
+export async function hierInstancesOf(file: vscode.Uri, chain: string, defMap: Map<string, vscode.Uri>): Promise<Node[]> {
+  const seen = new Set(chain.split('/').filter(Boolean));
+  const src = await readText(file);
+  return parseVerilogInstances(src)
+    .filter((mod) => !seen.has(mod))
+    .map((mod) => {
+      const uri = defMap.get(mod) ?? null;
+      return {
+        label: mod,
+        desc: uri ? path.basename(uri.fsPath) : '未找到定义',
+        uri,
+        chain: chain ? `${chain}/${mod}` : mod,
+        kind: 'instance' as const,
+        collapsible: uri ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+      };
+    });
+}
+
 export class HierarchyTree implements vscode.TreeDataProvider<Node> {
   private _change = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._change.event;
@@ -145,36 +178,16 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
     return [];
   }
 
-  /** 某文件里例化的模块 → 子节点（跳过链上已有的＝环守卫） */
+  /** 某文件里例化的模块 → 子节点（跳过链上已有的＝环守卫）——委托模块级主人（compile.hierarchy 同尺） */
   private async _instancesOf(file: vscode.Uri, chain: string): Promise<Node[]> {
     await this.rebuildDefIndex();
-    const seen = new Set(chain.split('/').filter(Boolean));
-    const src = await readText(file);
-    return parseVerilogInstances(src)
-      .filter((mod) => !seen.has(mod))
-      .map((mod) => {
-        const uri = this._defMap?.get(mod) ?? null;
-        return {
-          label: mod,
-          desc: uri ? path.basename(uri.fsPath) : '未找到定义',
-          uri,
-          chain: chain ? `${chain}/${mod}` : mod,
-          kind: 'instance' as const,
-          collapsible: uri ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
-        };
-      });
+    return hierInstancesOf(file, chain, this._defMap!);
   }
 
   /** 全工作区扫一遍**编译域**文件建模块名→文件的索引（refresh 作废；`getChildren` 异步，正好每次展开前确保就绪） */
   private async rebuildDefIndex(): Promise<void> {
     if (this._defMap) return;
-    const map = new Map<string, vscode.Uri>();
-    for (const uri of await findVerilogUris()) {
-      try {
-        for (const mod of parseVerilogModules(await readText(uri))) if (!map.has(mod)) map.set(mod, uri);
-      } catch { /* 读不到的文件跳过 */ }
-    }
-    this._defMap = map;
+    this._defMap = await buildHierDefIndex();
   }
 }
 

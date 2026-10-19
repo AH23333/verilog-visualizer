@@ -1,7 +1,7 @@
 # API_REFERENCE（生成物 · 统一调用层）
 
 > ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
-> apiVersion `0.1.0` · 生成工具数 **39** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
+> apiVersion `0.1.0` · 生成工具数 **41** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
@@ -23,6 +23,7 @@
 | `circuits.list` | 读电路名单 | read | none | ui/mcp | — | `circuits.list` | 0.2.0 |
 | `circuits.toggle` | 翻转部件角色 | config-write | config-write | ui | — | `verilogViz.togglePartRole` | 0.2.0 |
 | `compile.closure` | 依赖闭包 | read | none | ui/mcp | — | `compile.closure` | 0.2.0 |
+| `compile.hierarchy` | 实例层次树（与树同一把主人） | read | none | ui/mcp | — | `compile.hierarchy` | 0.4.0 |
 | `fs.copyPath` | 复制路径 | read | none | ui | — | `verilogViz.copyPath` | 0.2.0 |
 | `fs.createFile` | 新建文件 | file-write | file-write | ui | — | `verilogViz.newVerilogFile` | 0.2.0 |
 | `fs.createFolder` | 新建文件夹 | file-write | file-write | ui | — | `verilogViz.newSandboxFolder` | 0.2.0 |
@@ -44,6 +45,7 @@
 | `host.setDocBindings` | 写一份文档的绑定表 | config-write | config-write | rpc | — | `setDocBindings` | 0.1.0 |
 | `res.listProject` | 列编译域文件 | read | none | ui/mcp | — | `res.listProject` | 0.2.0 |
 | `res.listSandbox` | 列沙盒域文件 | read | none | ui/mcp | — | `res.listSandbox` | 0.2.0 |
+| `res.parseFile` | 解析器原样输出摊开（双栏并呈） | read | none | ui/mcp | — | `res.parseFile` | 0.4.0 |
 | `res.readBindingTables` | 逐层绑定表原文 | read | none | ui/mcp | — | `res.readBindingTables` | 0.4.0 |
 | `res.readProjectFile` | 读工程文件 | read | none | ui/mcp | — | `res.readProjectFile` | 0.2.0 |
 | `sys.ctxSnapshot` | 宿主隐式态快照（如实转述） | read | none | ui/mcp/cli | — | `sys.ctxSnapshot` | 0.4.0 |
@@ -222,6 +224,29 @@ L4 主枪：这颗实例**为什么**解析成这个文件（或为什么没解�
   },
   "required": [
     "uri"
+  ]
+}
+```
+
+### `compile.hierarchy` — 实例层次树（与树同一把主人）
+
+L4（P3）：entry（根相对 .v）为根、depth（帽 4）全展开成平表——用的就是**层次树的下钻主人**（hierInstancesOf/buildHierDefIndex 抽自 HierarchyTree，环守卫同一把 chain 尺）；line＝parseVerilogInstancesWithLines 首现行（同判据两形，一把尺）。树显示什么，agent 就问到什么。预算 500 颗＋回包 64KB 帽（truncated+total 如实）。幂等只读。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "entry": {
+      "type": "string",
+      "description": "根相对 .v 入口"
+    },
+    "depth": {
+      "type": "number",
+      "description": "下钻深度（帽 4，缺省 4）"
+    }
+  },
+  "required": [
+    "entry"
   ]
 }
 ```
@@ -699,6 +724,25 @@ kind=verilog：最小可编译模板；kind=sandbox：空画布 `{"cells":[]}` �
 {
   "type": "object",
   "properties": {}
+}
+```
+
+### `res.parseFile` — 解析器原样输出摊开（双栏并呈）
+
+L4（P5）：同一份文件字节喂**两颗解析器**——main 栏＝主仓 shared/verilogParse（模块端口 parseModulePorts、例化端口连接 parseInstantiations，编译校验血统）；lite 栏＝扩展侧 verilogParseLite（树/编译面板血统）。divergence 报两套输出差集、primitivesIgnored 报三张原语跳表的差——分岔（dff 族一颗表跳一颗不跳＝r80 案底）**如实并呈**⛔ 掩盖，收敛＝独立战役（裁决 §八.1）。.djs 单栏（cells/subcircuits/inputs/outputs＝审计族同词表）。帽 256KB（截数组标 truncated）。幂等只读。
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "根相对 .v/.sv/.vh 或 .djs"
+    }
+  },
+  "required": [
+    "path"
+  ]
 }
 ```
 
