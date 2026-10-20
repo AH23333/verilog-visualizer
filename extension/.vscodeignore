@@ -1,0 +1,16 @@
+# Source (runtime uses the bundled dist/)
+src/**
+api/**
+
+# Test / dev artifacts
+test-real-launch.mjs
+**/*.map
+**/*.tsbuildinfo
+.vscode-test/**
+
+# Dependencies (also handled by `vsce package --no-dependencies`)
+node_modules/**
+
+# Lint / misc
+.eslintrc*
+*.vsix
