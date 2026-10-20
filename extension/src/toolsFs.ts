@@ -24,9 +24,9 @@ export function registerFilesystemTools(): void {
 
   registerTool({
     id: 'fs.rename', title: '重命名', description: '重命名文件或目录；绑定值/`宿主::`前缀键/根表 circuits 随迁（G1）。输入经单段消毒（`../` 无法逃出工作区）。名字无效/与现名相同/目标被占用 ⇒ 报错（⛔ 静默 ok:false）。',
-    schema: { type: 'object', properties: { uri: { type: 'string', description: '目标文件/目录（fsPath 或 file: uri）' }, newName: { type: 'string', description: '新名字（单段）' } }, required: ['uri', 'newName'] },
+    schema: { type: 'object', properties: { uri: { type: 'string', description: '目标文件/目录（根相对或 fsPath/file: uri）' }, newName: { type: 'string', description: '新名字（单段）' } }, required: ['uri', 'newName'] },
     handler: async (ctx, a) => {
-      const ok = await renameEntry(ctx, argUri(a.uri), String(a.newName ?? ''));
+      const ok = await renameEntry(ctx, argUri(a.uri, projectRoot(ctx)), String(a.newName ?? ''));
       if (!ok) throw new Error('重命名未执行：名字无效（消毒后为空/与现名相同）或目标被占用（详情见错误告示）');
       broadcastBindingsChanged();
       return { ok: true };
@@ -37,7 +37,7 @@ export function registerFilesystemTools(): void {
     id: 'fs.move', title: '移动', description: '移动文件/目录到目标目录；(n) 去重、自环拒、原地 no-op；绑定记录随迁（G1）。',
     schema: { type: 'object', properties: { src: { type: 'string', description: '源文件/目录' }, destDir: { type: 'string', description: '目标目录' } }, required: ['src', 'destDir'] },
     handler: async (ctx, a) => {
-      const target = await moveToFile(ctx, argUri(a.src), argUri(a.destDir));
+      const target = await moveToFile(ctx, argUri(a.src, projectRoot(ctx)), argUri(a.destDir, projectRoot(ctx)));
       if (!target) throw new Error('移动失败（目标占用/自环/原地）；详情见错误告示');
       broadcastBindingsChanged();
       return uriOut(target);
@@ -48,7 +48,7 @@ export function registerFilesystemTools(): void {
     id: 'fs.delete', title: '删除', description: '删除文件/目录（进回收站）；指向被删内容的绑定/电路名单随清（G1 双路）。requiresApproval：非交互调用方（agent）须 HITL 批准。',
     schema: { type: 'object', properties: { uri: { type: 'string', description: '待删除的文件/目录' } }, required: ['uri'] },
     handler: async (ctx, a) => {
-      await deleteEntry(ctx, argUri(a.uri));
+      await deleteEntry(ctx, argUri(a.uri, projectRoot(ctx)));
       broadcastBindingsChanged();
       return { ok: true };
     },
@@ -57,13 +57,13 @@ export function registerFilesystemTools(): void {
   registerTool({
     id: 'fs.duplicateFile', title: '创建文件副本', description: '同目录 (n) 序号复制；副本角色不随（默认 circuit）。',
     schema: { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'] },
-    handler: async (ctx, a) => { await duplicateFile(ctx, argUri(a.uri)); return { ok: true }; },
+    handler: async (ctx, a) => { await duplicateFile(ctx, argUri(a.uri, projectRoot(ctx))); return { ok: true }; },
   });
 
   registerTool({
     id: 'fs.duplicateFolder', title: '复制文件夹', description: '递归复制 `x`→`x 副本 (n)`；副本含 .djs 时自动配绑定表。',
     schema: { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'] },
-    handler: async (ctx, a) => { await duplicateFolder(ctx, argUri(a.uri)); return { ok: true }; },
+    handler: async (ctx, a) => { await duplicateFolder(ctx, argUri(a.uri, projectRoot(ctx))); return { ok: true }; },
   });
 
   registerTool({
@@ -78,10 +78,10 @@ export function registerFilesystemTools(): void {
       required: ['destDir', 'sources'],
     },
     handler: async (ctx, a) => {
-      const sources = (Array.isArray(a.sources) ? a.sources : []).map((s) => argUri(s));
+      const sources = (Array.isArray(a.sources) ? a.sources : []).map((s) => argUri(s, projectRoot(ctx)));
       // exts 双形态收货：JSON 数组（agent 正形态）或 csv 串（容错）
       const exts = Array.isArray(a.exts) ? a.exts.map(String) : (a.exts ? String(a.exts).split(',') : undefined);
-      const r = await importFromUris(ctx, argUri(a.destDir), sources, exts);
+      const r = await importFromUris(ctx, argUri(a.destDir, projectRoot(ctx)), sources, exts);
       if (r.written.length) broadcastBindingsChanged();
       return r;
     },
@@ -90,8 +90,8 @@ export function registerFilesystemTools(): void {
   registerTool({
     id: 'fs.copyPath', title: '复制路径', description: '绝对路径进剪贴板（幂等、无副作用）。',
     schema: { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'] },
-    handler: async (_ctx, a) => {
-      const uri = argUri(a.uri);
+    handler: async (ctx, a) => {
+      const uri = argUri(a.uri, projectRoot(ctx));
       await vscode.env.clipboard.writeText(uri.fsPath);
       return { path: uri.fsPath.replace(/\\/g, '/') };
     },
@@ -100,8 +100,8 @@ export function registerFilesystemTools(): void {
   registerTool({
     id: 'fs.revealInOS', title: '在磁盘显示', description: '调用工作台 revealFileInOS 定位文件/目录（幂等）。',
     schema: { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'] },
-    handler: async (_ctx, a) => {
-      await vscode.commands.executeCommand('revealFileInOS', argUri(a.uri));
+    handler: async (ctx, a) => {
+      await vscode.commands.executeCommand('revealFileInOS', argUri(a.uri, projectRoot(ctx)));
       return { ok: true };
     },
   });
@@ -118,7 +118,7 @@ export function registerFilesystemTools(): void {
       required: ['name'],
     },
     handler: async (ctx, a) => {
-      const dir = a.dir ? argUri(a.dir) : projectRoot(ctx);
+      const dir = a.dir ? argUri(a.dir, projectRoot(ctx)) : projectRoot(ctx);
       const uri = a.kind === 'sandbox'
         ? await createSandboxFile(ctx, dir, String(a.name ?? ''))
         : await createVerilogFile(ctx, dir, String(a.name ?? ''));
@@ -131,7 +131,7 @@ export function registerFilesystemTools(): void {
     id: 'fs.createFolder', title: '新建文件夹', description: '段级消毒（`..` 逃逸死掉）+递归建目录（可含子路径）。',
     schema: { type: 'object', properties: { dir: { type: 'string' }, name: { type: 'string', description: '可含子路径' } }, required: ['name'] },
     handler: async (ctx, a) => {
-      const dir = a.dir ? argUri(a.dir) : projectRoot(ctx);
+      const dir = a.dir ? argUri(a.dir, projectRoot(ctx)) : projectRoot(ctx);
       return uriOut(await createFolder(ctx, dir, String(a.name ?? '')));
     },
   });

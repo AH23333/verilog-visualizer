@@ -40,16 +40,20 @@ if (!project) {
 }
 const PIPE = pipeNameFor(project);
 
-/** 向扩展打一发 NDJSON 请求并等回包（一连接一枪：简单、无队头纠缠）。 */
-function callPipe(tool, args) {
+/** 向扩展打一发 NDJSON 请求并等回包（一连接一枪：简单、无队头纠缠）。
+ *  ⚠ timeout 按工具分档：requiresApproval 工具＝HITL 弹窗等人手点，30s 硬超时＜人的反应，
+ *  agent 打审批类工具必丢回包（2026-10-20 真宿主实锤：fs.delete 弹窗在、删除执行了、回包没了）
+ *  ——这类给 10 分钟窗口；其余照旧 30s（真挂死仍要快断，⛔ 一律放宽掩盖故障）。 */
+function callPipe(tool, args, timeoutMs) {
+  const ms = timeoutMs || 30000;
   return new Promise((resolve, reject) => {
     const s = net.connect(PIPE);
     let buf = '';
     const req = JSON.stringify({ id: Date.now(), tool, args: args || {} }) + '\n';
-    s.setTimeout(30000);
+    s.setTimeout(ms);
     s.once('error', (e) => reject(new Error(e.code === 'ENOENT' || e.code === 'ECONNREFUSED'
       ? `连不上 ${PIPE}——该工程没在基座里开（或 mcp 开关关着）。把 ${project} 打开再试。` : String(e.message))));
-    s.once('timeout', () => { s.destroy(); reject(new Error(`${tool} 超时（30s）`)); });
+    s.once('timeout', () => { s.destroy(); reject(new Error(`${tool} 超时（${Math.round(ms / 1000)}s${ms > 30000 ? '——HITL 弹窗仍未有人点允许' : ''}）`)); });
     s.once('connect', () => s.write(req));
     s.on('data', (d) => {
       buf += d.toString('utf8');
@@ -61,11 +65,14 @@ function callPipe(tool, args) {
 }
 
 let toolCache = null;
-async function mcpToolList() {
+let approvalSet = null;   // 契约 requiresApproval 的 id 集合（tools/call 分档超时的依据）
+async function fetchToolMeta() {
   if (!toolCache) {
     const r = await callPipe('sys.listTools', {});
     if (!r.ok) throw new Error(`sys.listTools 被拒：${r.code} ${r.message}（traceId=${r.traceId}）`);
-    toolCache = (r.result.tools || []).filter((t) => (t.surfaces || []).includes('mcp'))
+    const tools = r.result.tools || [];
+    approvalSet = new Set(tools.filter((t) => t.requiresApproval).map((t) => t.id));
+    toolCache = tools.filter((t) => (t.surfaces || []).includes('mcp'))
       .map((t) => ({ name: t.id, title: t.title, description: `${t.description || ''}（perm=${t.perm}；sideEffects=${t.sideEffects}${t.requiresApproval ? '；须用户批准' : ''}）`, inputSchema: t.schema }));
   }
   return toolCache;
@@ -96,9 +103,13 @@ process.stdin.on('data', async (chunk) => {
       } else if (method === 'ping') {
         reply(id, {});
       } else if (method === 'tools/list') {
-        reply(id, { tools: await mcpToolList() });
+        reply(id, { tools: await fetchToolMeta() });
       } else if (method === 'tools/call') {
-        const r = await callPipe(String(params && params.name), (params && params.arguments) || {});
+        const name = String(params && params.name);
+        let ms = 30000;
+        try { await fetchToolMeta(); if (approvalSet && approvalSet.has(name)) ms = 600000; }
+        catch { /* 清单拉不到＝退回默认超时，⛔ 因元数据失败挡死正调用 */ }
+        const r = await callPipe(name, (params && params.arguments) || {}, ms);
         reply(id, r.ok
           ? { content: [{ type: 'text', text: JSON.stringify(r.result, null, 2) }] }
           : { content: [{ type: 'text', text: `[${r.code}] ${r.message}（traceId=${r.traceId || '-'}）` }], isError: true });

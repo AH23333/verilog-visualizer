@@ -118,28 +118,37 @@ export async function buildHierDefIndex(): Promise<Map<string, vscode.Uri>> {
 }
 
 /** 某文件里例化的模块 → 子节点（跳过链上已有的＝环守卫）。**逐字抽出自 HierarchyTree._instancesOf**，
- *  差别只有 defMap 改为入参（缓存归属上移）；compile.hierarchy 与树共用，⛔ 第二套下钻判据。 */
-export async function hierInstancesOf(file: vscode.Uri, chain: string, defMap: Map<string, vscode.Uri>): Promise<Node[]> {
+ *  差别只有 defMap 改为入参（缓存归属上移）；compile.hierarchy 与树共用，⛔ 第二套下钻判据。
+ *  ⚠ 2026-10-20 分岔修：`bindingUriOf` 注入**绑定权威**（宿主自身目录链的表值 → 定义文件 Uri）——
+ *  R152 起编译内核按表解析，纯同名索引（defMap 首扫命中）会把已绑定的实例解到别的同名文件上，
+ *  树/工具与编译单分岔。给了表值命中就⛔ 同名兜底；没给（或表未录）照旧同名索引，行为零变化。 */
+export async function hierInstancesOf(
+  file: vscode.Uri, chain: string, defMap: Map<string, vscode.Uri>,
+  bindingUriOf?: (file: vscode.Uri, mod: string) => Promise<vscode.Uri | null>,
+): Promise<Node[]> {
   const seen = new Set(chain.split('/').filter(Boolean));
   const src = await readText(file);
-  return parseVerilogInstances(src)
-    .filter((mod) => !seen.has(mod))
-    .map((mod) => {
-      const uri = defMap.get(mod) ?? null;
-      return {
-        label: mod,
-        desc: uri ? path.basename(uri.fsPath) : t('未找到定义'),
-        uri,
-        chain: chain ? `${chain}/${mod}` : mod,
-        kind: 'instance' as const,
-        collapsible: uri ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
-      };
+  const mods = parseVerilogInstances(src).filter((mod) => !seen.has(mod));
+  const out: Node[] = [];
+  for (const mod of mods) {
+    const uri = (bindingUriOf ? await bindingUriOf(file, mod) : null) ?? defMap.get(mod) ?? null;
+    out.push({
+      label: mod,
+      desc: uri ? path.basename(uri.fsPath) : t('未找到定义'),
+      uri,
+      chain: chain ? `${chain}/${mod}` : mod,
+      kind: 'instance' as const,
+      collapsible: uri ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
     });
+  }
+  return out;
 }
 
 export class HierarchyTree implements vscode.TreeDataProvider<Node> {
   private _change = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this._change.event;
+  /** 绑定权威注入（extension.ts 给 makeHierBindingResolver 的产物；缺省＝纯同名索引旧行为） */
+  constructor(private readonly _bindingUriOf?: (file: vscode.Uri, mod: string) => Promise<vscode.Uri | null>) { }
   /** 模块名 → 定义文件（refresh 时作废；约定"模块名=文件名"只是兜底，现在以真扫描为准） */
   private _defMap: Map<string, vscode.Uri> | null = null;
   /** R160（批1问题L）：webview/custom editor 激活时 activeTextEditor＝undefined——层次树此前当场
@@ -182,7 +191,7 @@ export class HierarchyTree implements vscode.TreeDataProvider<Node> {
   /** 某文件里例化的模块 → 子节点（跳过链上已有的＝环守卫）——委托模块级主人（compile.hierarchy 同尺） */
   private async _instancesOf(file: vscode.Uri, chain: string): Promise<Node[]> {
     await this.rebuildDefIndex();
-    return hierInstancesOf(file, chain, this._defMap!);
+    return hierInstancesOf(file, chain, this._defMap!, this._bindingUriOf);
   }
 
   /** 全工作区扫一遍**编译域**文件建模块名→文件的索引（refresh 作废；`getChildren` 异步，正好每次展开前确保就绪） */

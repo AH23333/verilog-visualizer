@@ -199,8 +199,13 @@ export async function executeTool(
 /** 实参宽容：uri 实参可能以 string（agent/JSON）或 vscode.Uri（进程内调用）抵达。
  *  ⚠ scheme 判定只认 `file://` 前缀——宽正则会把 Windows 盘符 `D:\p` 误判成 scheme（`D:` 命中），
  *    然后栽在宿主/桩的 `Uri.parse` 上（批次一实测连环 18 红，全被命令层 .catch 吞成静默）。
- *  ⚠ 空实参当场抛（自检补）：`Uri.file('')` 在宿主/桩两界的形状都不可靠，缺路径＝调用方 bug，⛔ 静默吞。 */
-export function argUri(v: unknown): vscode.Uri {
+ *  ⚠ 空实参当场抛（自检补）：`Uri.file('')` 在宿主/桩两界的形状都不可靠，缺路径＝调用方 bug，⛔ 静默吞。
+ *  ⚠ 根相对锚定（2026-10-20 真宿主实锤修）：schema 一直声称"根相对或 fsPath"，但旧版对相对串
+ *    一律 `Uri.file(s)`——win 下 'demo/top.v' 变成无盘符 '/demo/top.v'，pathRel 折键必 miss＝假
+ *    BINDING_MISSING。现给 root（＝projectRoot(ctx)）时相对段折回工程根；绝对形（盘符/UNC，
+ *    posix 下还有 `/` 打头）照旧原样。win 上 `/demo/top.v` 按根相对理解（agent 手写斜杠前缀的
+ *    自然形），fsPath 绝对路径在 win 必带盘符，两形无歧义。⛔ root 缺省＝旧行为（进程内调用方自带 Uri）。 */
+export function argUri(v: unknown, root?: vscode.Uri): vscode.Uri {
   if (v && typeof v === 'object' && 'fsPath' in (v as any)) return v as vscode.Uri;
   const s = String(v ?? '').trim();
   if (!s) throw new Error('uri 实参为空（工具调用缺必填路径）');
@@ -209,5 +214,10 @@ export function argUri(v: unknown): vscode.Uri {
     try { p = decodeURIComponent(p); } catch { /* 编码坏＝原样 */ }
     return vscode.Uri.file(p);
   }
-  return vscode.Uri.file(s);   // fsPath（win 反斜杠 / posix 斜杠 / 桩的 `/d:/…` 全收）
+  const abs = /^[a-zA-Z]:[\\/]/.test(s) || s.startsWith('\\\\') || s.startsWith('//')
+    || /^\/[a-zA-Z]:[\\/]/.test(s)                                  // uri.path 形（'/d:/…'）也是绝对
+    || (process.platform !== 'win32' && s.startsWith('/'));
+  if (abs) return vscode.Uri.file(s.replace(/^\/(?=[a-zA-Z]:[\\/])/, ''));   // fsPath（win 反斜杠 / posix 斜杠 / 桩的 `/d:/…` 全收）
+  if (root) return vscode.Uri.joinPath(root, ...s.split(/[\\/]+/).filter((seg) => seg && seg !== '.'));
+  return vscode.Uri.file(s);
 }

@@ -22,6 +22,7 @@ import {
   getAllBindings, setBindingInDir, collectInstanceHits, completeFromHits,
   materializeBindings, togglePartRole, getCircuitsSet, pathRel, META_FILE,
   readMetaAt, dirChain, metaPathOf, resolveLayerValue, normalizePartName, collectTableDirs,
+  makeHierBindingResolver,
 } from './sandboxFiles';
 import { parseVerilogInstances, parseVerilogModules, parseVerilogInstancesWithLines, VERILOG_LITE_PRIMITIVES } from './verilogParseLite';
 // R160 四-3：主仓解析器 namespace 引入（res.parseFile main 栏；正本在 shared/，与主仓编译校验同一颗主人）
@@ -455,13 +456,14 @@ export function registerDomainTools(): void {
         return m.get(mod) ?? null;
       };
       const relOf = (u: vscode.Uri) => rootRel(root, u);
+      const bindingUriOf = makeHierBindingResolver(ctx);   // 2026-10-20 分岔修：表权威先于同名索引（与 closureOf 同尺）
       const nodes: Array<Record<string, unknown>> = [];
       let budget = 500; let truncated = false;
       const queue: Array<{ uri: vscode.Uri; chain: string; depth: number }> = [{ uri: entryUri, chain: '', depth: 0 }];
       while (queue.length && budget > 0) {
         const cur = queue.shift()!;
         let kids;
-        try { kids = await hierInstancesOf(cur.uri, cur.chain, defMap); } catch { continue; }
+        try { kids = await hierInstancesOf(cur.uri, cur.chain, defMap, bindingUriOf); } catch { continue; }
         for (const nd of kids) {
           if (budget-- <= 0) { truncated = true; break; }
           nodes.push({ chain: nd.chain ?? nd.label, instance: nd.label, module: nd.label,
@@ -615,7 +617,7 @@ registerTool({
       const closureEntry = last ? last.entry : '';   // §4.8：无显式入口参数——有最近编译单就顺检，没有如实 null
       if (closureEntry) {
         try {
-          const job = await closureOf(ctx, argUri(closureEntry));
+          const job = await closureOf(ctx, argUri(closureEntry, projectRoot(ctx)));
           closure = { entry: closureEntry, ok: !(job.bindingErrors && job.bindingErrors.length), bindingErrors: job.bindingErrors ?? [] };
         } catch (e) { closure = { entry: closureEntry, ok: false, bindingErrors: [`闭包计算失败：${String((e as Error)?.message || e).slice(0, 160)}`] }; }
       } else closure = { entry: null, ok: true, bindingErrors: [] };
@@ -690,7 +692,7 @@ registerTool({
     id: 'circuits.toggle', title: '翻转部件角色', description: '名单有=当前电路 → 翻回部件；没有 → 标为电路（显式取消语义）。树/画布联动由宿主订阅完成。',
     schema: { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'] },
     handler: async (ctx, a) => {
-      const uri = argUri(a.uri);
+      const uri = argUri(a.uri, projectRoot(ctx));
       await togglePartRole(ctx, uri);
       const isCircuit = (await getCircuitsSet(ctx)).has(pathRel(projectRoot(ctx), uri));
       broadcastBindingsChanged();
@@ -752,7 +754,7 @@ registerTool({
     id: 'compile.closure', title: '依赖闭包', description: '.v 入口的编译依赖闭包（拓扑文件名单+顶层模块）。R152 绑定权威：未显式绑定的实例进 bindingErrors（配套 bindings.set 补录）。幂等只读；⛔ 文件内容（大）。',
     schema: { type: 'object', properties: { uri: { type: 'string', description: '入口 .v（根相对或 fsPath）' } }, required: ['uri'] },
     handler: async (ctx, a) => {
-      const job = await closureOf(ctx, argUri(a.uri));
+      const job = await closureOf(ctx, argUri(a.uri, projectRoot(ctx)));
       return { topModule: job.topModule, files: job.files.map((f) => f.name), bindingErrors: job.bindingErrors ?? [] };
     },
   });

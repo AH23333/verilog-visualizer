@@ -510,7 +510,7 @@ Renames a file or folder; binding values / host:: prefixed keys / root circuits 
   "properties": {
     "uri": {
       "type": "string",
-      "description": "Target file/folder (fsPath or file: uri)"
+      "description": "Target file/folder (project-root-relative, fsPath, or file: uri)"
     },
     "newName": {
       "type": "string",

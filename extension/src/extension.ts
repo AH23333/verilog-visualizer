@@ -23,7 +23,7 @@ import {
   openDoc, togglePartRole, getCircuitsSet, openBindingConfig,
   normalizeBindingsDisk, META_FILE,
   scanDirChoices, importFilters, describeDeletion, ensureDirsMeta,
-  migrateAfterExternalRename, migrateAfterExternalDelete
+  migrateAfterExternalRename, migrateAfterExternalDelete, makeHierBindingResolver
 } from './sandboxFiles';
 import { openBindingPicker } from './bindingPanel';
 import { loadApiContract, loadProjectApiOverride } from './apiSurface';
@@ -57,7 +57,7 @@ export function activate(context: vscode.ExtensionContext) {
   markActivated('tools');
   const storeFactory = () => new ProjectStore(vscodeFsLike(projectRoot(context)), '@root');
   const moduleTree = new ModuleTree();
-  const hierarchyTree = new HierarchyTree();
+  const hierarchyTree = new HierarchyTree(makeHierBindingResolver(context));
   const sandboxTree = new SandboxTree(storeFactory, () => getCircuitsSet(context));
   const codeFilesTree = new CodeFilesTree(storeFactory);
   const sandboxPartsTree = new SandboxPartsTree(storeFactory, () => getCircuitsSet(context));

@@ -104,7 +104,7 @@ export const EN: Record<string, string> = {
   '删除文件/目录（进回收站）；指向被删内容的绑定/电路名单随清（G1 双路）。requiresApproval：非交互调用方（agent）须 HITL 批准。': 'Deletes a file/folder (to trash); bindings/circuits lists pointing at the deleted content are cleaned along (G1 both paths). requiresApproval: non-interactive callers (agents) need HITL approval.',
   '待删除的文件/目录': 'The file/folder to delete',
   '重命名文件或目录；绑定值/`宿主::`前缀键/根表 circuits 随迁（G1）。输入经单段消毒（`../` 无法逃出工作区）。名字无效/与现名相同/目标被占用 ⇒ 报错（⛔ 静默 ok:false）。': 'Renames a file or folder; binding values / host:: prefixed keys / root circuits move along (G1). Input is single-segment sanitized (../ cannot escape the workspace). Invalid name / same name / target occupied = error (no silent ok:false).',
-  '目标文件/目录（fsPath 或 file: uri）': 'Target file/folder (fsPath or file: uri)',
+  '目标文件/目录（根相对或 fsPath/file: uri）': 'Target file/folder (project-root-relative, fsPath, or file: uri)',
   '新名字（单段）': 'New name (single segment)',
   '移动文件/目录到目标目录；(n) 去重、自环拒、原地 no-op；绑定记录随迁（G1）。': 'Moves a file/folder into the target folder; (n) dedup, self-loop rejected, in-place no-op; binding records move along (G1).',
   '源文件/目录': 'Source file/folder',

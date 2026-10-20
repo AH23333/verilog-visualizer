@@ -124,6 +124,32 @@ export async function bindingsForFile(context: vscode.ExtensionContext, docRel: 
   return merged;
 }
 
+/** 一次调用内按**宿主文档**缓存 bindingsForFile（枚举族用：同一文档⛔ 重复读链上各层表）。
+ *  ⚠ 只在单次调用生命周期内存——表是用户随手会改的东西，跨调用缓存＝陈旧判据（分岔新源）。 */
+export function memoBindings(context: vscode.ExtensionContext): (docRel: string) => Promise<Record<string, string>> {
+  const m = new Map<string, Promise<Record<string, string>>>();
+  return (docRel) => {
+    let p = m.get(docRel);
+    if (!p) { p = bindingsForFile(context, docRel); m.set(docRel, p); }
+    return p;
+  };
+}
+
+/** 层次下钻的绑定权威（HierarchyTree 与 compile.hierarchy 共用一把尺，2026-10-20 分岔修）：
+ *  宿主**自身目录链**的表值命中（前缀键先于裸键，与 closureOf 同判据）→ 定义文件 Uri；
+ *  未录/工作区外文档 → null（调用侧回落同名索引——表没说话才轮到名字兜底）。 */
+export function makeHierBindingResolver(context: vscode.ExtensionContext): (file: vscode.Uri, mod: string) => Promise<vscode.Uri | null> {
+  const root = projectRoot(context);
+  const bindingsOf = memoBindings(context);
+  return async (file, mod) => {
+    const rel = pathRel(root, file);
+    if (!rel || rel.includes(':') || rel.startsWith('/') || rel.startsWith('..')) return null;
+    const m = await bindingsOf(rel);
+    const v = m[`${rel}::${mod}`] ?? m[mod];
+    return v ? vscode.Uri.joinPath(root, ...v.split('/')) : null;
+  };
+}
+
 /** 显式「取消部件」名单：保持**项目根表**（取消部件是显式动作，全局唯一最不易误解；
  *  circuits 目录化刻意保守不做）。customEditors 的 siblings role 消费。 */
 export async function getCircuitsSet(context: vscode.ExtensionContext): Promise<Set<string>> {
@@ -522,11 +548,14 @@ export async function completeFromHits(
   pairs: BindingHit[],
 ): Promise<string[]> {
   const dir = docRel.includes('/') ? docRel.slice(0, docRel.lastIndexOf('/')) : '';
-  const recorded = await bindingsForFile(context, docRel);
+  // 2026-10-20 分岔修：跳过判定按**各宿主文档自身目录链**查表（与编译内核 closureOf 同一把尺）。
+  // 旧版只查入口文档链＝深层表里已录的前缀键看不见 ⇒ "已录入⛔覆写"失守、审计误报缺失。
+  const bindingsOf = memoBindings(context);
   const byName = new Map<string, BindingHit[]>();
   for (const h of pairs) {
     const ctx = h.ctx === '' ? docRel : h.ctx;
-    if (recorded[`${ctx}::${h.name}`] || (ctx === docRel && recorded[h.name])) continue;   // 该层已精控/顶层已录入 ⇒ ⛔ 覆写
+    const rec = await bindingsOf(ctx);
+    if (rec[`${ctx}::${h.name}`] || rec[h.name]) continue;   // 该宿主链上已精控/已录入 ⇒ ⛔ 覆写
     const list = byName.get(h.name) || [];
     if (!list.some((x) => x.ctx === ctx)) list.push({ ctx, name: h.name, file: h.file });
     byName.set(h.name, list);
@@ -556,7 +585,10 @@ export async function collectInstanceHits(
   const all = !!opts?.all;
   const root = projectRoot(context);
   const dirOf = (p: string): string => (p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '');
-  const recorded = await bindingsForFile(context, docRel);
+  // 2026-10-20 分岔修（真宿主实锤）：查表必须按**各宿主文档自身目录链**——旧版一把入口链
+  // 套到深层宿主头上，深层表已录的前缀键（如 demo/lib 的 'alu.v::adder'）读不见 ⇒ doctor/audit
+  // 把编译内核能正确解析的条目报成 missing（读侧两把尺，编译权威⛔ 错）。
+  const bindingsOf = memoBindings(context);
   const hits: BindingHit[] = [];
   let budget = 300;
   if (/\.djs$/i.test(docRel)) {
@@ -590,6 +622,7 @@ export async function collectInstanceHits(
     const visited = new Set<string>([docRel.toLowerCase()]);
     while (queue.length && (budget--) > 0) {
       const doc = queue.shift()!;
+      const recorded = await bindingsOf(doc);
       for (const inst of await readCells(doc)) {
         const rec = recorded[`${doc}::${inst}`] ?? recorded[inst];            // 已录入（本层精控优先，回落裸键）
         if (rec && !all) continue;                                            // 审计/写全口径：表说了算，⛔ 进 hits
@@ -604,6 +637,7 @@ export async function collectInstanceHits(
     const [{ scanDefs, closureOf }, { parseVerilogInstances }] = await Promise.all([import('./compilePanel'), import('./verilogParseLite')]);
     const [defs, job] = await Promise.all([scanDefs(), closureOf(context, vscode.Uri.joinPath(root, ...docRel.split('/')))]);
     for (const f of job.files) {
+      const recorded = await bindingsOf(f.name);
       for (const inst of [...new Set(parseVerilogInstances(f.content))]) {
         if (inst === job.topModule) continue;
         const rec = recorded[`${f.name}::${inst}`] ?? recorded[inst];           // 该层已精控/全局已录
