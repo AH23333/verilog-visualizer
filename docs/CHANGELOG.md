@@ -6,6 +6,19 @@
 
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
+## [未发布 Unreleased] — R161 批次六：写面全放开 18 颗 + 英文点验补漏（2026-10-19，用户令「全面放开写面」）
+
+### Added（R161 批次六：写面全放开 18 颗 + 英文点验补漏）
+- host 四颗 + compile.completeBindings/compileAndShow 六颗 mcp 面真开（后者当年因「契约在册、registry 无真身」被深测收回——本轮补真身再开，开面即真）；伴生 compile.auditBindings 一并落地 → **sys.selfCheck pendingHandlers 归零**。
+- compile.compileAndShow 以「runner 注入」分居工具面（元数据闸可扫）与 activate 闭包（ensurePanel）——一把主人与命令面板同执行体。
+- 契约统一排版；⑤ 白名单 12→18 逐颗点名；批次六证言臂（六枪 D1 预演 + 三枪真执行 + 落表账面）；harness 加 mcp-compile-run（真桥真编译推送）。
+- 英文点验补漏：SandboxExpandModal 模板键 + 「适应」label 过壳（用户报「调试按钮未翻译」= 旧 bundle 窗口，bundle 面已随本批重灌）。
+
+### 验证（批次六终态）
+- vitest **343/343** · root/ext tsc 0 · 双构建 0 · lint 0 error（65w 留档）· 全量闸门 **74/74 一次通过（三零）** · harness **19/19**（mcp-compile-run 新枪＋批次六面翻案枪）。
+
+---
+
 ## [未发布 Unreleased] — R161 批次五：写面 L6 全部放开（2026-10-19，用户拍板「全部放开」）
 
 > HANDOFF §八①五项归拢后用户拍板。14 颗写工具 surfaces += mcp（mcp 面 19→33）；

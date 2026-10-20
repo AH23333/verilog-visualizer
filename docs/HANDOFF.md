@@ -1,5 +1,9 @@
 # 开发交接与边界（HANDOFF）— R160 批次四阶段性收尾快照
 
+> ⚠ **2026-10-19 五更（批次六：写面全放开 18 颗 + 英文点验补漏）**：host 四颗直接开面、compile.completeBindings/compileAndShow/auditBindings 补真身再开
+>   （d5f02f6 收回的假开面这轮转正），sys.selfCheck pending 归零、⑤ 锁 18 颗名册；英文面补 ExpandModal 两针（调试按钮群本已全包＝旧 bundle 窗口，重灌后 --locale=en 可点验）。
+>   终读数：343 台架 · 74/74 三零一次过 · harness 19/19。卷七十第十五节在册。
+> 
 > ⚠ **2026-10-19 四更（质检接管：S2「全量完成」claim 曾折价 → S2-7 清账）**：本线深度质检揪出可见面英文直漏 54 处
 >   （含 RebindDialog 整档未迁／编译 Problems 消息／侧栏 toast），**已全部包壳 + 双表补键收口**；
 >   并上新常驻**可见面直出差闸**（i18n.test.ts：sink/JSX 文本节点/模板键四形，逐行 `i18n-exempt` 豁免登记制——

@@ -2112,3 +2112,24 @@ fs.delete 留 HITL，其余无审批＝用户原话"全部放开"如实）；nls
 
 ### 验证
 - 三件套终读数：台架 vitest **342/342** · 全量闸门 **73/74，唯一红 r48 干净单跑转绿＝有效 74/74**（红因＝本人在跑批窗口写 src 触发 HMR 打断该格——自伤在册，教训：批在途⛔ 一切 src 落盘）· harness **18/18 failed=0** · root/ext tsc 0 · vite+esbuild 0 · lint 0 error（38w 基线内）· 真机英文截图点验留用户（语言随宿主 display language，闸门面 zh 缺省零回归）
+## 十五、第十五节 · R161 批次六：写面全放开 + 英文点验补漏（2026-10-19，用户令「全面放开写面」+ 真机点验报缺）
+
+### 写面终态（18 颗 mcp 全开）
+- 靶册六颗：host.copyToSandbox/importLegacyData/saveExportFile/setDocBindings（registry 已在 dispatch 九颗循环登记）＋ **compile.completeBindings / compile.compileAndShow**（契约在册、registry 无真身＝d5f02f6 深测曾收回的假开面——这回收补真身，开面才真）。
+- **伴生那颗也落地**：compile.auditBindings（audit=collectInstanceHits 只读现扫；与 completeBindings 成「发现→修复」一对）——**sys.selfCheck 的 pendingHandlers 从此归零**（D2 钉翻案：≥3 → toEqual([])，挂账清零是状态不是巧合）。
+- compile.compileAndShow 执行体注入式落位（工具本体住 toolsDomain 给元数据完备闸扫到；ensurePanel 闭包留 activate 域经 setCompileRunner 递进去——一把主人与命令面板同颗执行体，注册面与注入面分居不破坏闸的覆盖面）。
+- 契约 6 行 surfaces+=mcp 顺手**全文件统一排版**（此前混排历史痕迹）；shell ⑤ 白名单 12→18（逐颗点名，多一颗少一颗都红）；「写面合法实参」翻案臂扩批次六臂（六颗 D1 预演⛔面拒 + completeBindings/setDocBindings/compileAndShow 三枪真执行 + 落表前缀键账面取证）。
+
+### 英文点验补漏（用户报「画布调试按钮与子电路展开图未翻译」）
+- 深扫坐实两条真漏（差闸规则盲区=模板拼键与数组 label 位）：SandboxExpandModal `部件「${name}」没有可渲染的器件`→插值键化 + 缩放条 `适应` label 包壳；en.ts +2 键。
+- 调试按钮群（SandboxToolbar/CanvasToolbar/IOPanel/Waveform）复核**本已全包**——用户所见＝旧 bundle 窗口（webview 更新须重启基座加载）；已随 apply-brand 重灌并 EN 点验路径写明（--locale=en 重启）。
+
+### 教训在册
+- 内嵌转义雷第 16~18 次连踩（含一次**险把 extension.ts 整文件覆盖**的写歪——落盘工具的 writeFileSync 参数手滑，幸未执行；此后凡长代码字符串一律 .cjs 落盘 + 双验）。
+- 新注册元数据会被 i18n 完备闸**自动开工**（title/description/schema desc 三型都要英）——拿闸的单补表是唯一正道，勿绕闸。
+- 批毕 src 冻结纪律执行到位：本轮 74 全量期间只动 lint/docs，无自伤窗。
+
+### 三件套与终读数
+- 台架 vitest **343/343**（含 D2 pending 归零翻案、批次六臂六预演三真执行、⑤ 锁 18 颗、i18n 元数据闸 8+1 键）· root tsc 0 · ext tsc 0 · vite+esbuild 0 · lint 0 error（65w 基线内留档）。
+- 全量闸门 **74/74 GREEN · RED=0 · ENVRED=0 · NOVERDICT=0 一次通过**（src 冻结纪律首战生效，无自伤窗）。
+- harness **19/19 failed=0**（新枪 mcp-compile-run＋host 拒枪翻案为 mcp-host-write-allowed——批次六后 mcp 拒态已无实体可测，面账由 ⑤ 名册锁看死）。
