@@ -1,17 +1,21 @@
 {
   "name": "verilog-visualizer-vscode",
   "displayName": "Verilog Visualizer",
-  "description": "%vv.description%",
-  "version": "0.0.1",
-  "private": true,
-  "publisher": "local",
+  "description": "VS Code host shell for Verilog visualization and a digital-circuit sandbox (digitaljs simulation)",
+  "version": "0.0.2",
+  "publisher": "AH233",
   "license": "MIT",
+  "icon": "./media/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AH23333/verilog-visualizer"
+  },
   "engines": {
     "vscode": "^1.100.0",
     "node": ">=18"
   },
   "categories": [
-    "Other"
+    "Programming Languages"
   ],
   "main": "./dist/extension.cjs",
   "activationEvents": [
@@ -19,8 +23,8 @@
   ],
   "capabilities": {
     "untrustedWorkspaces": {
-      "supported": true,
-      "description": "%vv.untrusted%"
+      "supported": "limited",
+      "description": "只读浏览、电路渲染与 Verilog 综合在不受信任工作区可用；写入或改动工作区文件（新建/重命名/删除/保存 .djs）需要受信任的工作区。"
     }
   },
   "contributes": {
@@ -781,6 +785,21 @@
     "configuration": {
       "title": "Verilog Visualizer",
       "properties": {
+        "verilogViz.language": {
+          "type": "string",
+          "enum": [
+            "auto",
+            "zh-CN",
+            "en"
+          ],
+          "default": "auto",
+          "markdownDescription": "%vv.config.verilogViz.language%",
+          "enumItemLabels": [
+            "%vv.config.verilogViz.language.label0%",
+            "%vv.config.verilogViz.language.label1%",
+            "%vv.config.verilogViz.language.label2%"
+          ]
+        },
         "verilogViz.compile.topModule": {
           "type": "string",
           "default": "",

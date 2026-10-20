@@ -60,5 +60,9 @@
   "vv.welcome.code": "工作区还没有 `.v/.sv` 文件。\n[新建 Verilog 文件](command:verilogViz.newVerilogFile)\n[导入 Verilog 文件…](command:verilogViz.importVerilogFiles)\n也可以在资源管理器里放一个 `.v`，回来直接 `Ctrl+F5` 编译。",
   "vv.welcome.sandbox": "还没有电路文档（`.djs`）。\n[新建电路](command:verilogViz.newSandboxFile)\n[新建文件夹](command:verilogViz.newSandboxFolder)\n[导入电路文件…](command:verilogViz.importSandboxFiles)\n[打开示例电路](command:verilogViz.openExamples)",
   "vv.welcome.modules": "打开一个 `.v / .sv` 文件后，这里按**例化关系**展开模块层次。",
-  "vv.welcome.parts": "打开一个 `.djs` 电路文档后，这里列出它的子电路实例（右键直达部件绑定）。"
+  "vv.welcome.parts": "打开一个 `.djs` 电路文档后，这里列出它的子电路实例（右键直达部件绑定）。",
+  "vv.config.verilogViz.language": "界面显示语言。'auto' 跟随 VS Code 显示语言；可强制指定中文（zh-CN）或英文（en）。",
+  "vv.config.verilogViz.language.label0": "跟随 VS Code（自动）",
+  "vv.config.verilogViz.language.label1": "中文",
+  "vv.config.verilogViz.language.label2": "English"
 }

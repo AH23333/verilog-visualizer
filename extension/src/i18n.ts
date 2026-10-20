@@ -15,8 +15,13 @@ export function normalizeLocale(raw: string | null | undefined): Locale {
 let cached: Locale | undefined;
 
 /** 宿主语言（懒读一次并缓存；VS Code 会话内显示语言不变）。
- *  宿主语言未知（测试桩无 env、异常宿主）→ 回落 zh-CN＝存量行为，真宿主恒有 env.language。 */
+ *  宿主语言未知（测试桩无 env、异常宿主）→ 回落 zh-CN＝存量行为，真宿主恒有 env.language。
+ *  显式覆盖：设置 verilogViz.language 为 zh-CN/en 时强制该语种；auto（默认）才跟随宿主。 */
 export function getLocale(): Locale {
+  const override = vscode.workspace
+    ?.getConfiguration?.('verilogViz')
+    ?.get<string>('language');
+  if (override === 'zh-CN' || override === 'en') return override;
   if (!cached) {
     const raw = (vscode as { env?: { language?: string } }).env?.language;
     cached = raw === undefined || raw === null || String(raw).trim() === '' ? 'zh-CN' : normalizeLocale(raw);

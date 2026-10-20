@@ -60,5 +60,9 @@
   "vv.welcome.code": "No `.v/.sv` files in this workspace yet.\n[New Verilog File](command:verilogViz.newVerilogFile)\n[Import Verilog Files…](command:verilogViz.importVerilogFiles)\nYou can also drop a `.v` into the Explorer and press `Ctrl+F5` to compile.",
   "vv.welcome.sandbox": "No circuit documents (`.djs`) yet.\n[New Circuit](command:verilogViz.newSandboxFile)\n[New Folder](command:verilogViz.newSandboxFolder)\n[Import Circuit Files…](command:verilogViz.importSandboxFiles)\n[Open Example Circuits](command:verilogViz.openExamples)",
   "vv.welcome.modules": "Open a `.v / .sv` file and this view expands the module hierarchy by **instantiation**.",
-  "vv.welcome.parts": "Open a `.djs` circuit document and this view lists its subcircuit instances (right-click to jump to part binding)."
+  "vv.welcome.parts": "Open a `.djs` circuit document and this view lists its subcircuit instances (right-click to jump to part binding).",
+  "vv.config.verilogViz.language": "UI display language. 'auto' follows the VS Code display language; explicitly force Chinese (zh-CN) or English (en).",
+  "vv.config.verilogViz.language.label0": "Follow VS Code (auto)",
+  "vv.config.verilogViz.language.label1": "Chinese (中文)",
+  "vv.config.verilogViz.language.label2": "English"
 }
