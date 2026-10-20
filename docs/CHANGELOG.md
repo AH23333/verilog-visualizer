@@ -6,6 +6,26 @@
 
 本项目变更以开发批次 `R<n>` 为主键；条目按批次倒序。
 
+## [未发布 Unreleased] — R161 批次七·开道件：MCP 接入冒烟自检 + 外部接入指南（2026-10-20，交接线收口）
+
+> 前代理中断遗留 `mcp/smoke.cjs`（未跟踪，引用的 `docs/MCP_CONNECT.md` 未落）。本线先对批次六终态**全量复测背书**，再补齐开道件收口。
+
+### Added
+- **`mcp/smoke.cjs`**：标准 MCP stdio 客户端身份完整走一遍桥——initialize → tools/list（名册在场＋形状校验）→
+  四枪只读真调用（ping/listProject/describeTool/doctor），逐发报时延；**退出码＝失败数**，接入前/升版后各跑一次证全链在线。
+- **`docs/MCP_CONNECT.md`**：外部 agent 接入指南（前置三条 / 客户端配置 / 一键冒烟 / 调用语义五条 / 审计排障 / 边界）；
+  名册⛔ 抄表——指针 `sys.listTools` 现读＋API_REFERENCE。
+
+### Fixed（开道件修正一处）
+- smoke `tools/list` 判据 `>=40`＝开道时误账（契约 mcp 面终账 **37**，探针亲证 37 颗形状全齐）→ 改下限 35
+  （工程 `.vv/api.json` 只许再关⇒留 2 颗余量），且红点打印缺形状名单（归因当场）；逐颗名册对账仍归台架契约锁⑤，⛔ 两处各判。
+
+### 验证（批次六终态复测＋开道件，HEAD `bd8d2a8`）
+- vitest **343/343** · api:doc 漂移锁绿 · root vite＋ext esbuild 双构建 0 · 全量闸门 **74/74 GREEN（RED=0·ENVRED=0·NOVERDICT=0）** ·
+  harness **19/19 failed=0** · smoke **7/7 PASS exit=0**（真管道 D:\vv-it-manual）。
+
+---
+
 ## [未发布 Unreleased] — R161 批次六：写面全放开 18 颗 + 英文点验补漏（2026-10-19，用户令「全面放开写面」）
 
 ### Added（R161 批次六：写面全放开 18 颗 + 英文点验补漏）

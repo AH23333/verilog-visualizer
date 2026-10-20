@@ -2133,3 +2133,25 @@ fs.delete 留 HITL，其余无审批＝用户原话"全部放开"如实）；nls
 - 台架 vitest **343/343**（含 D2 pending 归零翻案、批次六臂六预演三真执行、⑤ 锁 18 颗、i18n 元数据闸 8+1 键）· root tsc 0 · ext tsc 0 · vite+esbuild 0 · lint 0 error（65w 基线内留档）。
 - 全量闸门 **74/74 GREEN · RED=0 · ENVRED=0 · NOVERDICT=0 一次通过**（src 冻结纪律首战生效，无自伤窗）。
 - harness **19/19 failed=0**（新枪 mcp-compile-run＋host 拒枪翻案为 mcp-host-write-allowed——批次六后 mcp 拒态已无实体可测，面账由 ⑤ 名册锁看死）。
+
+## 十六、第十六节 · R161 批次七·开道件收口（2026-10-20，本线接手：复测＋补齐）
+
+### 接手背景
+- 前代理中断遗留 `mcp/smoke.cjs` 未跟踪（自题"批次七·开道件"，引用的 `docs/MCP_CONNECT.md` 未落、账本无账）。
+- 本线先对批次六终态（HEAD `bd8d2a8`）全量复测背书，再补齐开道件收口。
+
+### 复测读数（全部亲跑）
+- 台架 vitest **343/343**（12 文件）· `pnpm api:doc` 漂移锁绿 · root vite＋ext esbuild 双构建 exit 0。
+- 全量闸门 **74/74 GREEN · RED=0 · ENVRED=0 · NOVERDICT=0**（一次通过，跑批期间 src 冻结纪律执行——只动 docs）。
+- 真宿主 harness **19/19 failed=0**（含 mcp-compile-run/mcp-doctor-agg/mcp-hint-on-wire 全链）。
+
+### 开道件一处修正（S2-7 式质检兑现）
+- smoke `tools/list` 判据 `>=40` 红点——契约对账 mcp 面终账 **37**（TEMP 探针亲证 37 颗 description/inputSchema 全齐，
+  唯一红＝阈值误账非产品病）→ 改下限 35（工程 `.vv/api.json` 只许再关⇒留 2 颗余量），红点打印缺形状名单归因当场。
+  逐颗名册对账⛔ 在 smoke 做——台架契约锁⑤是主人（⛔ 两处各判一把尺）。
+- 修正后 smoke **7/7 PASS exit=0**（真管道 `D:\vv-it-manual`，doctor 一枪 3.2s 带账）。
+
+### MCP_CONNECT.md 落盘
+- 结构：前置三条（基座活＋工程开＋契约 mcp 开）/ 客户端配置（`node mcp-server.cjs --project`）/ 一键冒烟 /
+  调用语义五条（ping 第一枪·⛔ 隐式上下文·hint 会说话·回包有帽·HITL ⛔ 轰炸）/ 审计排障 / 边界（单工程单管道·ACL 同用户）。
+- 名册⛔ 抄表（第二真源纪律）：指针 `sys.listTools` 现读＋API_REFERENCE。

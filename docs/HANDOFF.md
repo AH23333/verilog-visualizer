@@ -1,5 +1,9 @@
 # 开发交接与边界（HANDOFF）— R160 批次四阶段性收尾快照
 
+> ⚠ **2026-10-20 六更（批次七·开道件收口＋批次六终态复测背书）**：前代理遗留未跟踪 `mcp/smoke.cjs`（tools/list 阈值误账 40→35 已修）
+>   ＋新落 `docs/MCP_CONNECT.md`（外部 agent 接入指南，名册⛔ 抄表）。批次六终态全量复测亲跑：台架 **343/343** · 全量闸门 **74/74 GREEN** ·
+>   harness **19/19 failed=0** · smoke **7/7 PASS**。账本第十六节在册。下一步＝§八② AI 接入实现（侧边栏聊天窗，LLM 暂不实接）。
+>
 > ⚠ **2026-10-19 五更（批次六：写面全放开 18 颗 + 英文点验补漏）**：host 四颗直接开面、compile.completeBindings/compileAndShow/auditBindings 补真身再开
 >   （d5f02f6 收回的假开面这轮转正），sys.selfCheck pending 归零、⑤ 锁 18 颗名册；英文面补 ExpandModal 两针（调试按钮群本已全包＝旧 bundle 窗口，重灌后 --locale=en 可点验）。
 >   终读数：343 台架 · 74/74 三零一次过 · harness 19/19。卷七十第十五节在册。
