@@ -33,7 +33,7 @@ import { flushAudit } from './apiAudit';
 import { uniqueName } from './naming';
 import { executeTool, CALLER_UI, onToolExecuted } from './toolRegistry';
 import { registerFilesystemTools } from './toolsFs';
-import { registerDomainTools } from './toolsDomain';
+import { registerDomainTools, setCompileRunner } from './toolsDomain';
 import { registerRpcTools } from './dispatch';
 import { startMcpBridge } from './mcpBridge';
 import { markActivationStart, markActivated } from './activationTrail';
@@ -173,6 +173,9 @@ export function activate(context: vscode.ExtensionContext) {
   const sandboxFilesTv = treeViewOf('verilogViz.sandboxFiles', sandboxTree, sandboxDrop);
   const sandboxPartsTv = treeViewOf('verilogViz.sandboxParts', sandboxPartsTree);
   const sandboxHierarchyTv = treeViewOf('verilogViz.sandboxHierarchy', sandboxHierarchyTree);
+  // R161 批次六：「编译并查看电路」工具孪生的执行体注入（工具本体注册在 toolsDomain——元数据完备闸扫得到；
+  //   ensurePanel 归 activate 域，这里只把"怎么跑"递进去，一把主人与命令面板同颗 compileAndShow）。
+  setCompileRunner((c, uri) => compileAndShow(c, uri, ensurePanel));
   context.subscriptions.push(
     codeFilesTv, modulesTv, hierarchyTv, sandboxFilesTv, sandboxPartsTv, sandboxHierarchyTv,
     // 沙盒层次树的数据源：活动 .djs 文档的子电路实例（customEditors init/edit 时上报）

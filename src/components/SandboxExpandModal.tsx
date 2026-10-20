@@ -134,7 +134,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
         if (top?.kind === 'circuit') {
           setSource('def');
           handle = renderCircuitView(digitaljs, mount, top.circuit, { autoLayout });
-          if (!handle) setFailMsg(`部件「${top.name}」没有可渲染的器件`);
+          if (!handle) setFailMsg(t('部件「{name}」没有可渲染的器件', { name: top.name }));
         } else if (top?.kind === 'def') {
           const defCells = resolveDefCells(top.name, scope);
           if (defCells) { setSource('def'); handle = renderSubcircuitView(digitaljs, mount, defCells, { autoLayout }); }
@@ -338,7 +338,7 @@ export default function SandboxExpandModal({ cell, theme, scope = '', initialCir
           {/* 放大查看：按钮 + ctrl/⌘+滚轮（弹窗只读，不禁缩放平移） */}
           <span style={{ display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
             {([['−', () => zoomBy(1 / 1.25), t('缩小')], ['+', () => zoomBy(1.25), t('放大')],
-              ['适应', zoomFit, t('缩放到整张图可见')], ['1:1', zoomActual, t('按实际大小显示')]] as [string, () => void, string][])
+              [t('适应'), zoomFit, t('缩放到整张图可见')], ['1:1', zoomActual, t('按实际大小显示')]] as [string, () => void, string][])
               .map(([txt, fn, tip]) => (
               <button key={txt} data-xz={txt} onClick={fn} title={t('{tip}（滚轮以光标为中心缩放，Shift+滚轮左右平移）', { tip })}
                 style={{ background: 'transparent', border: '1px solid var(--border-subtle)', borderRadius: 4,

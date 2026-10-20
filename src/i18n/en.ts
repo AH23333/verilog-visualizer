@@ -611,4 +611,6 @@ export const EN: Record<string, string> = {
   '自动整理布局': 'Auto-layout',
   '暂无文件（右键空白处新建）': 'No files yet (right-click empty area to create)',
   '正在载入电路文档…': 'Loading circuit document…',
+  '部件「{name}」没有可渲染的器件': 'Part "{name}" has no renderable components',
+  '适应': 'Fit',
 };

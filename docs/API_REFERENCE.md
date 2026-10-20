@@ -1,7 +1,7 @@
 # API_REFERENCE（生成物 · 统一调用层）
 
 > ⛔ **手改无效**：本文件由 `pnpm api:doc` 从 registry（`toolsFs.ts`／`toolsDomain.ts`／`dispatch.ts` 三处 `register*Tools()` 的并集）+ 契约（extension/api/vv-api.defaults.json，工程层 `.vv/api.json` 只许收窄）**生成**；漂移会被台架钉住。
-> apiVersion `0.1.0` · 生成工具数 **42** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
+> apiVersion `0.1.0` · 生成工具数 **45** · 调用面 ui=开 / rpc=开 / mcp=开 / cli=关
 >
 > **调用方式（三方同门）**：`executeTool(context, caller, toolId, args)`（extension/src/toolRegistry.ts）。
 > **闸序（硬）**：① 登记（registry∧契约双查）→ ② surfaces（全局开关∧工具面）→ ③ 档案 `.vv/api.grants.json` → ④ `requiresApproval` 且调用方非交互 ⇒ HITL 弹窗。
@@ -22,7 +22,10 @@
 | `bindings.set` | Write binding | config-write | config-write | ui/mcp | — | `bindings.set` | 0.2.0 |
 | `circuits.list` | Read circuits list | read | none | ui/mcp | — | `circuits.list` | 0.2.0 |
 | `circuits.toggle` | Toggle part role | config-write | config-write | ui/mcp | — | `verilogViz.togglePartRole` | 0.2.0 |
+| `compile.auditBindings` | Audit unregistered instances (read-only) | read | none | ui | — | `verilogViz.auditBindings` | 0.1.0 |
 | `compile.closure` | Dependency closure | read | none | ui/mcp | — | `compile.closure` | 0.2.0 |
+| `compile.compileAndShow` | Compile & view circuit | process | process | ui/mcp | — | `verilogViz.compileAndShow` | 0.1.0 |
+| `compile.completeBindings` | Bulk-write bindings (complete the table) | config-write | config-write | ui/mcp | — | `verilogViz.completeBindings` | 0.1.0 |
 | `compile.hierarchy` | Instance hierarchy (same owner as the tree) | read | none | ui/mcp | — | `compile.hierarchy` | 0.4.0 |
 | `fs.copyPath` | Copy path | read | none | ui | — | `verilogViz.copyPath` | 0.2.0 |
 | `fs.createFile` | Create file | file-write | file-write | ui/mcp | — | `verilogViz.newVerilogFile` | 0.2.0 |
@@ -35,14 +38,14 @@
 | `fs.rename` | Rename | file-write | file-write | ui/mcp | — | `verilogViz.renameFile` | 0.2.0 |
 | `fs.revealInOS` | Reveal in file explorer | read | none | ui | — | `verilogViz.revealInOS` | 0.2.0 |
 | `host.appendOutput` | Write output panel | read | none | rpc | — | `appendOutput` | 0.1.0 |
-| `host.copyToSandbox` | Compile graph to sandbox | file-write | file-write | rpc | — | `copyToSandbox` | 0.1.0 |
+| `host.copyToSandbox` | Compile graph to sandbox | file-write | file-write | rpc/mcp | — | `copyToSandbox` | 0.1.0 |
 | `host.getAllBindings` | Read binding chain | read | none | rpc | — | `getAllBindings` | 0.1.0 |
 | `host.getConfig` | Read host config | read | none | rpc | — | `getConfig` | 0.1.0 |
-| `host.importLegacyData` | One-time legacy data migration | file-write | file-write | rpc | **HITL** | `importLegacyData` | 0.1.0 |
+| `host.importLegacyData` | One-time legacy data migration | file-write | file-write | rpc/mcp | **HITL** | `importLegacyData` | 0.1.0 |
 | `host.jumpToSource` | Jump to source line | read | none | rpc | — | `jumpToSource` | 0.1.0 |
 | `host.publishProblems` | Publish Problems | read | none | rpc | — | `publishProblems` | 0.1.0 |
-| `host.saveExportFile` | Host save-as | file-write | file-write | rpc | — | `saveExportFile` | 0.1.0 |
-| `host.setDocBindings` | Write one document's binding table | config-write | config-write | rpc | — | `setDocBindings` | 0.1.0 |
+| `host.saveExportFile` | Host save-as | file-write | file-write | rpc/mcp | — | `saveExportFile` | 0.1.0 |
+| `host.setDocBindings` | Write one document's binding table | config-write | config-write | rpc/mcp | — | `setDocBindings` | 0.1.0 |
 | `project.doctor` | Project semantic checkup (kernel aggregation) | read | none | ui/mcp | — | `project.doctor` | 0.4.0 |
 | `res.listProject` | List compile-domain files | read | none | ui/mcp | — | `res.listProject` | 0.2.0 |
 | `res.listSandbox` | List sandbox-domain files | read | none | ui/mcp | — | `res.listSandbox` | 0.2.0 |
@@ -213,6 +216,25 @@ In the list = currently a circuit → flip back to part; not in it → mark as c
 }
 ```
 
+### `compile.auditBindings` — Audit unregistered instances (read-only)
+
+Read: list instances across the document’s layers that resolve via same-name fallback and are not recorded in binding tables (host recomputes from disk — same ruler as the canvas banner, collectInstanceHits). Returns {doc, count, hits:[{ctx,name,file}]}. Idempotent, read-only.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "doc": {
+      "type": "string",
+      "description": "Root-relative document path"
+    }
+  },
+  "required": [
+    "doc"
+  ]
+}
+```
+
 ### `compile.closure` — Dependency closure
 
 Compile dependency closure of a .v entry (topological file list + top module). R152 binding authority: un-bound instances land in bindingErrors (use bindings.set to record). Idempotent read-only; no file contents (large).
@@ -228,6 +250,45 @@ Compile dependency closure of a .v entry (topological file list + top module). R
   },
   "required": [
     "uri"
+  ]
+}
+```
+
+### `compile.compileAndShow` — Compile & view circuit
+
+L6: compile one compile-domain source (root-relative .v/.sv/.vh) and push the circuit to the canvas panel; omit path = active editor. Same execution body as the command-palette / editor-title button (lazy panel + closure compile + push). Idempotent (re-push overwrites); returns {via}.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "path": {
+      "type": "string",
+      "description": "root-relative .v/.sv/.vh; omit = current active text editor"
+    }
+  }
+}
+```
+
+### `compile.completeBindings` — Bulk-write bindings (complete the table)
+
+L6: same kernel as the banner’s "complete the table" (collectInstanceHits scans unrecorded instances per layer → completeFromHits writes current resolutions into each layer’s table; recorded entries untouched, values layer-relative). Optionally pass hits (replay of compile.auditBindings output for precise control). Returns {doc, scanned, written}. Broadcasts bindingsChanged so live canvases clear their banners.
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "doc": {
+      "type": "string",
+      "description": "root-relative document path (.v/.sv/.vh/.djs)"
+    },
+    "hits": {
+      "type": "array",
+      "description": "optional: prefetched hits [{ctx,name,file}] (omit = host rescans)"
+    }
+  },
+  "required": [
+    "doc"
   ]
 }
 ```
@@ -958,7 +1019,7 @@ Depth D2: one shot answering whether this API is usable right now, which gate is
 ## 尚未收编（第二批挂账）
 
 - webview RPC：待迁 **0** 颗（契约 rpc 面在册 9 颗已全部走 `executeTool`；名册正本＝`dispatch.ts` 那颗 `RPC_METHODS`，对账锁拿它与契约 rpc 投影双向钉）。
-- 契约上账、非 rpc 面且⛔ registry handler：**3** 颗（compile.auditBindings→verilogViz.auditBindings / compile.completeBindings→verilogViz.completeBindings / compile.compileAndShow→verilogViz.compileAndShow）——这几颗现在由命令面板直调 Extension Host 里的实现，绕开 executeTool。
+- 契约上账、非 rpc 面且⛔ registry handler：**0** 颗（（无））——这几颗现在由命令面板直调 Extension Host 里的实现，绕开 executeTool。
 - 反向（registry 有 handler 而契约⛔ 上账）：**0** 颗（（无））。
 - OS 拖入的字节流写盘（拖拽 writeDropped 内联中）。
 

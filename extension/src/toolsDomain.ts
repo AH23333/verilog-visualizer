@@ -115,6 +115,10 @@ function probeTool(id: string, probeArgs: Record<string, unknown>, caller: ToolC
 }
 
 /** 上账入口（activate 调一次；幂等）。 */
+/** activate 期注入（extension.ts）：编译面板执行体（ensurePanel 闭包住在 activate 域，工具本体住这里给元数据闸扫到）。 */
+let compileRunner: ((ctx: vscode.ExtensionContext, uri?: vscode.Uri) => Promise<void>) | null = null;
+export function setCompileRunner(fn: (ctx: vscode.ExtensionContext, uri?: vscode.Uri) => Promise<void>): void { compileRunner = fn; }
+
 export function registerDomainTools(): void {
   if (registered) return;
   registered = true;
@@ -477,6 +481,50 @@ export function registerDomainTools(): void {
           note: `nodes 已按 64KB 帽截到 ${lo} 颗（total＝全量 ${nodes.length}——⛔ 把截断当全貌）` };
       }
       return out;
+    },
+  });
+
+  /* ============ R161 批次六：写面全放开（用户拍板）——契约在册三颗 compile.* 补 registry 真身（一把主人薄壳） ============ */
+  registerTool({
+    id: 'compile.compileAndShow', title: '编译并查看电路',
+    description: 'L6：把一颗编译域源码（根相对 .v/.sv/.vh）编译并把电路推上画布面板；缺省 path＝活动编辑器。与命令面板/编辑器标题按钮同颗执行体（ensurePanel 懒建面板 + 闭包编译 + 推送）。幂等（重推覆盖），返回 {via}。',
+    schema: { type: 'object', properties: { path: { type: 'string', description: '根相对 .v/.sv/.vh；省略＝当前活动文本编辑器' } } },
+    handler: async (ctx, a) => {
+      if (!compileRunner) throw new ToolError('HANDLER_ERROR', '[API_HANDLER_ERROR] compile.compileAndShow：执行体未注入（activate 未走完？）', '', '稍后重试；持续即报——activate 时序问题');
+      const uri = a.path === undefined ? undefined : vscode.Uri.joinPath(projectRoot(ctx), ...relOrBadArgs(String(a.path)).split('/'));
+      await compileRunner(ctx, uri);
+      return { via: a.path === undefined ? 'activeEditor' : 'path' };
+    },
+  });
+
+  // 伴生那颗也落地（R161 批次六）：audit=现扫未录入实例只读报——与 completeBindings 打「发现→修复」一对，
+  //   并把契约挂账的最后一颗 RPC 兼容面 pending 吃光（sys.selfCheck drift 从此归零）。
+  registerTool({
+    id: 'compile.auditBindings', title: '审计未录入实例（只读）',
+    description: '读：列该文档各层「同名兜底解析、未录入绑定配置」的实例（宿主按盘现算＝画布提示条同一把尺 collectInstanceHits）。返回 {doc, count, hits:[{ctx,name,file}]}。幂等只读。',
+    schema: { type: 'object', properties: { doc: { type: 'string', description: '根相对文档路径' } }, required: ['doc'] },
+    handler: async (ctx, a) => {
+      const docRel = relOrBadArgs(String(a.doc));
+      const hits = await collectInstanceHits(ctx, docRel);
+      return { doc: docRel, count: hits.length, hits };
+    },
+  });
+
+registerTool({
+    id: 'compile.completeBindings', title: '批量落绑定（写全配置）',
+    description: 'L6：与画布提示条「写全配置」同一颗内核（collectInstanceHits 现扫该文档各层未录入实例 → completeFromHits 把现解析按层目录落表；已录条目一颗不碰、值按层相对）。可带 hits（compile.auditBindings 的产出原样回喂＝精控重放）。返回 {doc, scanned, written}。广播 bindingsChanged 让活画布即时销账。',
+    schema: { type: 'object', properties: {
+      doc: { type: 'string', description: '根相对文档路径（.v/.sv/.vh/.djs）' },
+      hits: { type: 'array', description: '可选：预取命中对 [{ctx,name,file}]（一般省略＝宿主现扫）' },
+    }, required: ['doc'] },
+    handler: async (ctx, a) => {
+      const docRel = relOrBadArgs(String(a.doc));
+      const pairs = (Array.isArray(a.hits) && a.hits.length)
+        ? (a.hits as Array<{ ctx: string; name: string; file: string }>)
+        : await collectInstanceHits(ctx, docRel);
+      const written = await completeFromHits(ctx, docRel, pairs);
+      broadcastBindingsChanged();
+      return { doc: docRel, scanned: pairs.length, written: written.length };
     },
   });
 

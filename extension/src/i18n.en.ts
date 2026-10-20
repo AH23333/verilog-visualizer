@@ -225,4 +225,13 @@ export const EN: Record<string, string> = {
   '绑定配置＝「{dir}」目录的 {file}（改完保存即生效；部件文件路径写该目录内或 ../ 相对）。': 'Binding configuration = {file} in the "{dir}" folder (save to apply; part file paths are folder-local or ../ relative).',
   '重命名失败：{reason}': 'Rename failed: {reason}',
   '不能把目录「{name}」移动到它自己或它的子目录里。': 'Folder "{name}" cannot be moved into itself or one of its own subfolders.',
+  '审计未录入实例（只读）': 'Audit unregistered instances (read-only)',
+  '读：列该文档各层「同名兜底解析、未录入绑定配置」的实例（宿主按盘现算＝画布提示条同一把尺 collectInstanceHits）。返回 {doc, count, hits:[{ctx,name,file}]}。幂等只读。': 'Read: list instances across the document’s layers that resolve via same-name fallback and are not recorded in binding tables (host recomputes from disk — same ruler as the canvas banner, collectInstanceHits). Returns {doc, count, hits:[{ctx,name,file}]}. Idempotent, read-only.',
+  '批量落绑定（写全配置）': 'Bulk-write bindings (complete the table)',
+  'L6：与画布提示条「写全配置」同一颗内核（collectInstanceHits 现扫该文档各层未录入实例 → completeFromHits 把现解析按层目录落表；已录条目一颗不碰、值按层相对）。可带 hits（compile.auditBindings 的产出原样回喂＝精控重放）。返回 {doc, scanned, written}。广播 bindingsChanged 让活画布即时销账。': 'L6: same kernel as the banner’s "complete the table" (collectInstanceHits scans unrecorded instances per layer → completeFromHits writes current resolutions into each layer’s table; recorded entries untouched, values layer-relative). Optionally pass hits (replay of compile.auditBindings output for precise control). Returns {doc, scanned, written}. Broadcasts bindingsChanged so live canvases clear their banners.',
+  '根相对文档路径（.v/.sv/.vh/.djs）': 'root-relative document path (.v/.sv/.vh/.djs)',
+  '可选：预取命中对 [{ctx,name,file}]（一般省略＝宿主现扫）': 'optional: prefetched hits [{ctx,name,file}] (omit = host rescans)',
+  'L6：把一颗编译域源码（根相对 .v/.sv/.vh）编译并把电路推上画布面板；缺省 path＝活动编辑器。与命令面板/编辑器标题按钮同颗执行体（ensurePanel 懒建面板 + 闭包编译 + 推送）。幂等（重推覆盖），返回 {via}。': 'L6: compile one compile-domain source (root-relative .v/.sv/.vh) and push the circuit to the canvas panel; omit path = active editor. Same execution body as the command-palette / editor-title button (lazy panel + closure compile + push). Idempotent (re-push overwrites); returns {via}.',
+  '根相对 .v/.sv/.vh；省略＝当前活动文本编辑器': 'root-relative .v/.sv/.vh; omit = current active text editor',
+  '编译并查看电路': 'Compile & view circuit',
 };

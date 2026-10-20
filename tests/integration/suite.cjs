@@ -97,11 +97,12 @@ async function run() {
         ok('mcp-pipe-roundtrip', g.ok === true && !!(g.result && g.result.projectRoot),
           g.ok ? 'root=' + g.result.projectRoot : JSON.stringify(g));
         // 2026-10-19 拍板写面放开：bindings.set 经 mcp 真**执行**（旧 mcp-write-denied 证人翻面）；
-        //   拒收路径的覆盖转由 host.*（rpc-only）继续把守——面闸的「关」与「开」两态都有证人。
+        //   R161 批次六「全面放开」后 mcp 拒态已无实体可测（host.* 四颗也开闸）——旧 host 拒枪就地翻正：
+        //   改证批次六新开的 host.setDocBindings 真写表；面账的"多开/漏开"从此由 vscodeShell ⑤ 名册锁 18 颗看死。
         const d = await shot('bindings.set', { celltype: 'x', part: 'y.djs' });
         ok('mcp-write-allowed', d.ok === true && !!d.result && !!d.result.dir, JSON.stringify(d).slice(0, 160));
-        const hst = await shot('host.copyToSandbox', { uri: 'y.djs' });
-        ok('mcp-host-rpc-denied', hst.ok === false && hst.code === 'SURFACE_DENIED' && !!hst.traceId, JSON.stringify(hst).slice(0, 160));
+        const hst = await shot('host.setDocBindings', { docName: 'it_main.djs', bindings: { demo: 'it_top.v' } });
+        ok('mcp-host-write-allowed', hst.ok === true, JSON.stringify(hst).slice(0, 160));
         // 四-1 活体探针：真宿主里 ping 必须报"活到底"（检查点全程＋桥 listening）；ctxSnapshot 如实转述（此窗必有工作区根）
         const p = await shot('sys.ping', {});
         ok('mcp-ping-alive', p.ok === true && p.result.alive === true && p.result.activation.done === true
@@ -126,6 +127,9 @@ async function run() {
           && pf.result.parsers.lite.instances.includes('dff') && pf.result.divergence.mainSelfDiff.includes('dff')
           && pf.result.parsers.main.instances.some((x) => x.name === 'u_m'),
           pf.ok ? 'lite=' + JSON.stringify(pf.result.parsers.lite.instances) + ' mainSelf=' + JSON.stringify(pf.result.divergence.mainSelfDiff) : JSON.stringify(pf));
+        const cr = await shot('compile.compileAndShow', { path: 'it_p43_top.v' });
+        ok('mcp-compile-run', cr.ok === true && cr.result.via === 'path',
+          cr.ok ? '编译推面板经 mcp 真执行' : JSON.stringify(cr).slice(0, 160));
         const hh = await shot('compile.hierarchy', { entry: 'it_p43_top.v' });
         ok('mcp-hierarchy-chain', hh.ok === true && hh.result.nodes.some((x) => x.chain === 'it_p43_mid/it_p43_leaf')
           && hh.result.nodes.some((x) => x.defFile === 'it_p43_leaf.v' && typeof x.line === 'number'),

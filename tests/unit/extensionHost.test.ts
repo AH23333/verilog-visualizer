@@ -2281,19 +2281,22 @@ describe('统一调用层（toolRegistry 批次一）：单执行器 + 闸序 + 
     const contract = JSON.parse(fs.readFileSync(path.join(ROOT, 'extension/api/vv-api.defaults.json'), 'utf8'));
     const regIds = listTools().map((t: any) => t.id);
     for (const id of regIds) expect(contract.tools[id], `registry 独苗（契约缺账）: ${id}`).toBeTruthy();
-    for (const fam of ['fs.', 'bindings.', 'circuits.', 'res.', 'sys.']) {
+    for (const fam of ['fs.', 'bindings.', 'circuits.', 'compile.', 'res.', 'sys.']) {
       const ct = Object.keys(contract.tools).filter((k) => k.startsWith(fam)).sort();
       const rg = regIds.filter((k: string) => k.startsWith(fam)).sort();
       expect(rg, `契约族 ${fam} 有未注册孤儿`).toEqual(ct);
     }
-    // R160 四-3 族形升档：compile. 族⛔ 进 fam 孤儿双查——契约里 compile.auditBindings/compileAndShow/
-    //   completeBindings 等是 **RPC 兼容面**（dispatch 命令名上账，非 toolRegistry 工具；批次一的旧裁量，
-    //   保留"名册点名"防漂移）：registry 侧只允许只读分析两颗，且必全 read/none。
-    expect(regIds.filter((k: string) => k.startsWith('compile.')).sort()).toEqual(['compile.closure', 'compile.hierarchy']);
-    for (const id of ['compile.closure', 'compile.hierarchy']) {
+    // R161 批次六收口：compile. 族五颗**全真身**（audit/closure/hierarchy 读 + compileAndShow/completeBindings 写）——
+    //   当年"RPC 兼容面挂账不注册"的旧裁量已把欠账清光（sys.selfCheck pending 归零），
+    //   名册＋读写分池双断言：读写⛔ 混进只读池。
+    expect(regIds.filter((k: string) => k.startsWith('compile.')).sort())
+      .toEqual(['compile.auditBindings', 'compile.closure', 'compile.compileAndShow', 'compile.completeBindings', 'compile.hierarchy']);
+    for (const id of ['compile.auditBindings', 'compile.closure', 'compile.hierarchy']) {
       expect(contract.tools[id].perm).toBe('read');
       expect(contract.tools[id].sideEffects).toBe('none');
     }
+    expect(contract.tools['compile.compileAndShow'].sideEffects).toBe('process');
+    expect(contract.tools['compile.completeBindings'].sideEffects).toBe('config-write');
   });
 
   it('闸① not-registered：未登记 id 拒（[API_NOT_REGISTERED] 机读码）', async () => {
@@ -2656,7 +2659,7 @@ describe('阶段三·给 agent 的四档深度（D0 全表／D1 单颗预演／D
     expect(s.audit.ready).toBe(true);
     expect(s.audit.pending).toBe(0);
     expect(s.drift.registeredOffContract).toEqual([]);                        // 契约说谎那一半＝真故障
-    expect(s.drift.pendingHandlers.length).toBeGreaterThanOrEqual(3);         // 那三颗由命令直调＝挂账（状态），⛔ 让 verdict 响
+    expect(s.drift.pendingHandlers).toEqual([]);                                     // 批次六收尾：契约挂账全落地（pending 清零是状态不是巧合）         // 那三颗由命令直调＝挂账（状态），⛔ 让 verdict 响
     expect(s.contractTools).toBeGreaterThanOrEqual(s.registeredTools);        // 方向也钉住：挂账只可能"契约多"，反向是漂移
     expect(s.verdict).toBe('ready');
     expect(s.findings).toEqual([]);
@@ -3286,6 +3289,35 @@ describe('R160 API 深度战役证人（2026-10-19 真管道 400+ 枪揪出的�
     const del = await call('fs.delete', { uri: 'D:/p/nothing.djs' }, AGENT_MCP).catch((e: any) => e);
     expect(del.code, 'HITL 审批闸在面闸开放后接班').toBe('NOT_APPROVED');
     expect(has('D:/p/nothing.djs')).toBe(false);                        // 审批拒＝不动盘（零执行旁证保持）
+  });
+
+  it('R161 批次六：写面全放开六颗——D1 预演六枪⛔ 面拒 + 可控三枪真执行（6 新颗翻案自 d5f02f6 收回态）', async () => {
+    await boot({ folders: ['D:/w6'], seed: {
+      'D:/w6/top.v': 'module top; adder u1(); endmodule',
+      'D:/w6/alt.v': 'module alt; adder u9(); endmodule',
+      'D:/w6/adder.v': 'module adder; endmodule',
+      'D:/w6/.vv/api.grants.json': JSON.stringify({ subjects: { 'mcp:agent': 'w6' }, profiles: { w6: [
+        'sys.describeTool', 'host.setDocBindings', 'compile.compileAndShow', 'compile.completeBindings',
+        'host.copyToSandbox', 'host.importLegacyData', 'host.saveExportFile',
+      ] } }),
+    } });
+    for (const t of ['host.copyToSandbox', 'host.importLegacyData', 'host.saveExportFile', 'host.setDocBindings', 'compile.completeBindings', 'compile.compileAndShow']) {
+      const g = await call('sys.describeTool', { tool: t, surface: 'mcp', subject: 'mcp:agent' }, AGENT_MCP);
+      const blocked = (g.gates?.blockers ?? g.blockers ?? []).some((b: string) => b.includes('面'));
+      expect(blocked, t + ' 面开＝闸②不再是拦路石').toBe(false);
+    }
+    const cb = await call('compile.completeBindings', { doc: 'alt.v' }, AGENT_MCP);
+    expect(cb.doc).toBe('alt.v');
+    expect(cb.written).toBe(1);                                                // adder 落 alt.v 的目录层表
+    const meta = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/w6/.verilogviz.json').path.toLowerCase())!));
+    expect(meta.bindings['alt.v::adder']).toBe('adder.v');                      // 前缀键＝写全配置同一形状
+    const sb = await call('host.setDocBindings', { docName: 'top.v', bindings: { adder: 'adder.v' } }, AGENT_MCP);
+    expect(sb === null || typeof sb === 'object', '执行无抛（返回值形状归 dispatch）').toBe(true);
+    const meta2 = JSON.parse(new TextDecoder().decode(vscode.state.files.get(vscode.Uri.file('D:/w6/.verilogviz.json').path.toLowerCase())!));
+    expect(meta2.bindings['top.v::adder']).toBe('adder.v');
+    expect(meta2.bindings['alt.v::adder']).toBe('adder.v');                     // 前一笔⛔ 被顶（链式合并）
+    const cs = await call('compile.compileAndShow', { path: 'top.v' }, AGENT_MCP);
+    expect(cs.via).toBe('path');                                                // 真身执行体（stub 面板在场，推送无炸）
   });
 });
 
